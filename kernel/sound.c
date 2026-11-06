@@ -282,10 +282,10 @@ static void opl_rhythm_init(void)
     opl_op(OP_BD2, 0x01, 0x00, 0xF8, 0xF7);
     opl_write(0xC6, 0x00);
 
-    opl_op(OP_HH,  0x01, 0x0A, 0xD8, 0xF8);
+    opl_op(OP_HH,  0x01, 0x1A, 0xD8, 0xF9);   /* well back     */
     opl_op(OP_SD,  0x01, 0x06, 0xD8, 0xF7);
     opl_op(OP_TOM, 0x05, 0x08, 0xF8, 0xF7);
-    opl_op(OP_CYM, 0x01, 0x0A, 0xD8, 0xF8);
+    opl_op(OP_CYM, 0x01, 0x16, 0xD8, 0xF8);
 
     /* Pitches for the kit.  Key-on bits stay clear: 0xBD does that job. */
     opl_write(0xA6, 0x20); opl_write(0xB6, 0x09);
@@ -483,6 +483,7 @@ void snd_tick(void)
 
     const Pattern *p = &s_pats[s_pat];
     int step_len, idx, bass, lead, voice;
+    u8  drum;
 
     /* Beat envelopes decay whether or not the sound is on, so the visuals
      * keep pulsing for anyone running this silently. */
@@ -510,17 +511,63 @@ void snd_tick(void)
     idx  = (int)(g_step % (u32)pat_len(p));
     bass = p->bass[idx];
     lead = p->lead[idx];
+    drum = p->drum[idx];
+
+    /* --- variation --------------------------------------------------------
+     * A dense figure that repeats exactly every four seconds stops being
+     * complex and becomes irritating -- a simple loop survives repetition,
+     * an intricate one does not.  So the written pattern is treated as a
+     * seed rather than as the music.  What actually plays is that seed put
+     * through a mutation keyed to which pass we are on: hats thinned
+     * differently each time round, ghosts appearing where none were
+     * written, the root moving on a longer cycle than the bar, and the kit
+     * falling away entirely for half a pass every so often.
+     *
+     * It is all deterministic, so it is a composition and not a random
+     * number generator with a drum kit.  Nothing repeats exactly for
+     * sixteen passes, which is about a minute and a quarter, and the
+     * shape of the figure survives the whole way.
+     */
+    if (pat_subdiv(p) == 8) {
+        static const s8 roots[8] = { 0, 0, -2, 0, 3, 0, -4, 5 };
+        u32 cycle = g_step / (u32)pat_len(p);
+        int sect  = (int)((cycle >> 2) & 3);
+        u32 h = (cycle * 2654435761u) ^ ((u32)idx * 40503u);
+        h ^= h >> 13; h *= 1274126177u; h ^= h >> 16;
+
+        if ((drum & DR_HH) && (h & 3) == 0) drum &= (u8)~DR_HH;
+        if (!drum && (h & 63) == 0) drum |= DR_SD;
+        if (!drum && ((h >> 6) & 127) == 0) drum |= DR_BD;
+
+        switch (sect) {
+        case 1:                          /* leaner: fewer kicks, no lead  */
+            if ((drum & DR_BD) && ((h >> 13) & 3) == 0) drum &= (u8)~DR_BD;
+            lead = 0;
+            break;
+        case 2:                          /* busier: toms creep in         */
+            if (!drum && ((h >> 15) & 31) == 0) drum |= DR_TOM;
+            break;
+        case 3:                          /* the break: kit drops out      */
+            if (idx < pat_len(p) / 2) drum &= (u8)DR_HH;
+            break;
+        default:
+            break;
+        }
+
+        if (bass) bass += roots[cycle & 7];
+        if (bass < 1) bass = 1;
+    }
 
     /* The beat meter follows the kick, not the grid, so what the screen
      * does lines up with what you actually hear. */
-    if (p->drum[idx] & DR_BD) g_beat = 255;
-    else if (p->drum[idx]) g_beat = 160;
+    if (drum & DR_BD) g_beat = 255;
+    else if (drum) g_beat = 160;
     if ((g_step % (u32)(pat_len(p) / 2)) == 0) g_bar = 255;
 
     if (!s_on) return;
 
     if (s_fm) {
-        opl_drums(p->drum[idx]);
+        opl_drums((u8)drum);
         if (bass) opl_note_on(0, bass);
         if (lead) opl_note_on(1, lead);
         if (lead && (idx & 15) == 3) opl_note_on(2, lead - 5);
