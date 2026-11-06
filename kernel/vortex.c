@@ -4,7 +4,8 @@
  * The screen as it stands -- terminal, text, cursor, everything -- is
  * photographed, then dragged through a hole in the middle of itself and
  * turned inside out, and what you are dropped back into is the same shell
- * in the negative of the colours it had.
+ * somewhere colder.  The palette it arrives in is handed in by the caller,
+ * crossfaded across the turn.
  *
  * It is a backwards warp: for every pixel of the output, work out where it
  * must have come from.  That is the only way round that leaves no holes.
@@ -117,9 +118,9 @@ static void warp(u8 *dst, const u8 *src, int pull, int twist, int invert)
 /* ---- the whole performance ------------------------------------------- */
 #define SPAN_MS 2300
 
-void vortex_run(void)
+void vortex_run(const u8 *pal_to)
 {
-    static u8 pal_from[768], pal_to[768], pal_mix[768];
+    static u8 pal_from[768], pal_mix[768];
     u32 t0;
     int i;
 
@@ -130,7 +131,6 @@ void vortex_run(void)
     memcpy32(s_snap, g_back, SCR_PIX / 4);
 
     vga_get_palette(pal_from);
-    for (i = 0; i < 768; i++) pal_to[i] = (u8)(63 - pal_from[i]);
 
     snd_sweep_begin();
     t0 = ms_now();

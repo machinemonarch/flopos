@@ -49,8 +49,8 @@ static const char *s_voice[V_COUNT] = {
     /* V_YES           */ "Good.",
     /* V_NO            */ "Fair enough.",
     /* V_PLEASE        */ "No need to ask like that.",
-    /* V_WHAAAT_IN     */ "There. You are on the other side of it now.",
-    /* V_WHAAAT_OUT    */ "Back the right way round. Mostly.",
+    /* V_WHAAAT_IN     */ "There. It is very quiet down here.",
+    /* V_WHAAAT_OUT    */ "Back up. You were gone a while.",
 };
 
 const char *voice(VoiceId id)

@@ -44,7 +44,7 @@ static const Mood s_moods[] = {
 #define MOOD_N ((int)(sizeof s_moods / sizeof s_moods[0]))
 
 static int  s_which;
-static int  s_negative;
+static int  s_deep;
 static u16 *s_rad;                       /* radius table for the rings     */
 static u8  *s_rowa, *s_rowb;             /* two source rows, interpolated  */
 static u8   s_pal[768];
@@ -100,8 +100,8 @@ void mood_init(void)
 }
 
 int  mood_get(void)   { return s_which; }
-int  mood_negative(void) { return s_negative; }
-void mood_set_negative(int on) { s_negative = on ? 1 : 0; }
+int  mood_deep(void) { return s_deep; }
+void mood_set_deep(int on) { s_deep = on ? 1 : 0; }
 int  mood_count(void) { return MOOD_N; }
 
 const char *mood_name(int which)
@@ -115,13 +115,52 @@ void mood_set(int which)
     s_which = ((which % MOOD_N) + MOOD_N) % MOOD_N;
 }
 
-void mood_apply_palette(int fade_steps)
+/* The far side of the vortex.
+ *
+ * Inverting the palette was the obvious thing and it was wrong: the
+ * negative of a dark room is a bright one, and bright is the opposite of
+ * what is wanted.  This is a different palette rather than a flipped one
+ * -- cold, under pressure, almost no light in it, and what light there is
+ * arriving from a long way above.  Nothing in here reaches white.
+ *
+ * The place keeps whichever mood it was in; this drowns it.
+ */
+static void build_deep(u8 *p, const Mood *m)
 {
-    const Mood *m = &s_moods[s_which];
-    u8 *p = s_pal;
     int i, r, g, b;
 
+    p[0] = 0; p[1] = 1; p[2] = 3;        /* not quite black, even here */
+
+    /* The field barely lifts off black, and what colour it has leans
+     * towards the green of water rather than the hue of the room. */
+    for (i = 0; i < PAL_MOOD_N; i++) {
+        int t = i;
+        int a = m->hue + ((m->hue2 - m->hue) * t) / (PAL_MOOD_N - 1);
+        int f = (t * 15) / (PAL_MOOD_N - 1);
+        hue_rgb(a, &r, &g, &b);
+        p[(PAL_MOOD + i) * 3 + 0] = (u8)((r * f) / 200);
+        p[(PAL_MOOD + i) * 3 + 1] = (u8)(((g + 40) * f) / 110);
+        p[(PAL_MOOD + i) * 3 + 2] = (u8)(((b + 70) * f) / 95);
+    }
+
+    ramp(p, PAL_SHADOW, PAL_SHADOW_N,  0, 0, 1,    1, 4, 6);
+    ramp(p, PAL_TEXT,   PAL_TEXT_N,    5, 13, 16,  30, 49, 54);
+    ramp(p, PAL_BRIGHT, PAL_BRIGHT_N, 14, 28, 33,  44, 60, 62);
+    ramp(p, PAL_ACCENT, PAL_ACCENT_N,  1,  9,  8,  18, 54, 40);
+    ramp(p, PAL_PROMPT, PAL_PROMPT_N,  1,  6, 11,  14, 42, 52);
+    ramp(p, PAL_CURSOR, PAL_CURSOR_N,  3, 13, 16,  34, 56, 60);
+    ramp(p, PAL_GREY,   PAL_GREY_N,    1,  3,  5,  15, 23, 26);
+}
+
+static void build_palette(u8 *p)
+{
+    const Mood *m = &s_moods[s_which];
+    int i, r, g, b;
+
+    if (s_deep) { build_deep(p, m); return; }
+
     p[0] = p[1] = p[2] = 0;              /* index 0 is always true black   */
+    (void)r; (void)g; (void)b;
 
     /* The field: black up to the place's colour, blending hue to hue2 and
      * capped well short of the text ramps. */
@@ -152,11 +191,13 @@ void mood_apply_palette(int fade_steps)
 
     ramp(p, PAL_GREY, PAL_GREY_N, 6, 6, 8, 34, 34, 38);
 
-    /* Inside out means inside out: every gun, including index 0, so the
-     * room comes back as its own negative rather than merely recoloured. */
-    if (s_negative)
-        for (i = 0; i < 768; i++) p[i] = (u8)(63 - p[i]);
+}
 
+void mood_build_palette(u8 *out) { build_palette(out); }
+
+void mood_apply_palette(int fade_steps)
+{
+    build_palette(s_pal);
     if (fade_steps > 0) vga_fade_to(s_pal, fade_steps);
     else vga_set_palette(s_pal);
 }
@@ -230,8 +271,8 @@ static void field_row(const Mood *m, int sy, int ph, int lift, u8 *out)
 void mood_draw(u8 *dst, u32 t)
 {
     const Mood *m = &s_moods[s_which];
-    int ph = (int)(t >> 4);
-    int lift = g_beat >> 5;              /* the room breathes with the beat */
+    int ph = (int)(t >> (s_deep ? 6 : 4));   /* slower, down there */
+    int lift = g_beat >> (s_deep ? 7 : 5);              /* the room breathes with the beat */
     u8 *rowa = s_rowa, *rowb = s_rowb, *swap;
     int sy, w, x, i;
 

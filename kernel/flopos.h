@@ -246,7 +246,7 @@ extern const u8 g_saffran_pix[SCR_PIX];
 void   splash_show(void);
 
 /* --- vortex.c ---------------------------------------------------------- */
-void   vortex_run(void);
+void   vortex_run(const u8 *pal_to);
 
 /* --- mood.c ------------------------------------------------------------ */
 void   mood_init(void);
@@ -255,8 +255,9 @@ int    mood_get(void);
 int    mood_count(void);
 const char *mood_name(int which);
 void   mood_apply_palette(int fade_steps);
-void   mood_set_negative(int on);
-int    mood_negative(void);
+void   mood_set_deep(int on);
+int    mood_deep(void);
+void   mood_build_palette(u8 *out768);
 void   mood_draw(u8 *dst, u32 t);
 
 /* --- line.c ------------------------------------------------------------ */

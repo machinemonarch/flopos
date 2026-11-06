@@ -522,7 +522,8 @@ static void cmd_journal(void)
 
 static void cmd_whaaat(void)
 {
-    int going_in = !mood_negative();
+    static u8 target[768];
+    int going_in = !mood_deep();
 
     /* Draw the screen as it stands this instant, so the vortex takes hold
      * of what is actually there -- background, text, prompt and all --
@@ -531,9 +532,15 @@ static void cmd_whaaat(void)
     term_render(g_back, ms_now());
     vga_present();
 
-    vortex_run();
+    /* Work out where we are going before setting off, so the vortex can
+     * cross into it rather than snapping at the end. */
+    mood_set_deep(going_in);
+    mood_build_palette(target);
+    mood_set_deep(!going_in);
 
-    mood_set_negative(going_in);
+    vortex_run(target);
+
+    mood_set_deep(going_in);
     term_zalgo(going_in);
     mood_apply_palette(0);
 
