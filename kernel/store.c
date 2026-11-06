@@ -1,0 +1,309 @@
+/* ===========================================================================
+ * store.c -- what FLOPOS remembers.
+ *
+ * Two files are laid down on the floppy at build time, each a fixed size
+ * and in one piece: JOURNAL.TXT, which is plain text anybody can read on
+ * any machine, and STATE.BIN, which holds the words you have taught it.
+ *
+ * Because both files never change length, FLOPOS can overwrite their data
+ * sectors in place and never touch the FAT or the directory.  That is the
+ * whole reason there is no filesystem driver here: the build already did
+ * the filesystem's job, and left behind the two numbers -- a starting
+ * sector and a length -- that the kernel needs.  tools/mkimage.py patches
+ * those into the signature block below.
+ *
+ * Nothing is written unless something asks.  A command that saves says so.
+ * ===========================================================================
+ */
+#include "flopos.h"
+#include "io.h"
+
+/* mkimage.py finds this by its signature and fills in the numbers.  The
+ * volatile stops the compiler deciding the zeroes are the final word. */
+volatile DiskMap g_diskmap = {
+    { 'F','L','O','P','O','S','-','D','I','S','K','M','A','P','!',0 },
+    0, 0, 0, 0
+};
+
+#define SECTOR 512
+
+static u8 *s_journal;                    /* the text file, in RAM          */
+static u32 s_journal_len;                /* bytes used                     */
+static u32 s_journal_cap;
+static int s_journal_dirty;
+
+static Taught *s_taught;
+static int     s_taught_n;
+static int     s_taught_dirty;
+
+static int s_ready;
+
+int store_ready(void) { return s_ready; }
+int store_taught_count(void) { return s_taught_n; }
+u32 store_journal_used(void) { return s_journal_len; }
+u32 store_journal_size(void) { return s_journal_cap; }
+
+const Taught *store_taught_at(int i)
+{
+    if (i < 0 || i >= s_taught_n) return NULL;
+    return &s_taught[i];
+}
+
+/* ---- sectors ----------------------------------------------------------
+ * As many sectors per BIOS call as the geometry allows, which is up to a
+ * whole track.  Every call is a round trip out of protected mode and back
+ * with the interrupt controller handed over and returned, so doing this a
+ * sector at a time turns sixteen kilobytes into thirty-two of those --
+ * slow enough on a real drive to look like a hang.
+ */
+#define SPT 18
+
+static u32 run_limit(u32 lba, u32 left)
+{
+    u32 in_track = SPT - (lba % SPT);    /* the BIOS will not cross one    */
+    if (in_track < left) left = in_track;
+    if (left > SPT) left = SPT;
+    return left;
+}
+
+static int read_run(u32 lba, u32 sectors, u8 *dst)
+{
+    while (sectors) {
+        u32 n = run_limit(lba, sectors);
+        if (!disk_read(lba, (int)n)) return 0;
+        memcpy8(dst, (const void *)DISK_BUF, n * SECTOR);
+        dst += n * SECTOR;
+        lba += n;
+        sectors -= n;
+    }
+    return 1;
+}
+
+static int write_run(u32 lba, u32 sectors, const u8 *src)
+{
+    while (sectors) {
+        u32 n = run_limit(lba, sectors);
+        memcpy8((void *)DISK_BUF, src, n * SECTOR);
+        if (!disk_write(lba, (int)n)) return 0;
+        src += n * SECTOR;
+        lba += n;
+        sectors -= n;
+    }
+    return 1;
+}
+
+/* ---- the journal ------------------------------------------------------
+ * Plain text, terminated by the DOS end-of-file character so that TYPE,
+ * Notepad and cat all stop in the right place, then padded with zeroes.
+ */
+#define EOF_MARK 0x1A
+
+static void journal_find_end(void)
+{
+    u32 i;
+    s_journal_len = 0;
+    for (i = 0; i < s_journal_cap; i++) {
+        if (s_journal[i] == EOF_MARK || s_journal[i] == 0) break;
+    }
+    s_journal_len = i;
+}
+
+void store_journal_line(const char *s)
+{
+    u32 n;
+
+    if (!s_ready) return;
+    for (n = 0; s[n]; n++) { }
+
+    /* Full is full.  Overwriting the oldest entries would lose exactly the
+     * part that is worth keeping, so it stops instead and says so. */
+    if (s_journal_len + n + 2 >= s_journal_cap) return;
+
+    memcpy8(s_journal + s_journal_len, s, n);
+    s_journal_len += n;
+    s_journal[s_journal_len++] = '\r';   /* CRLF: it will be read on a PC  */
+    s_journal[s_journal_len++] = '\n';
+    s_journal_dirty = 1;
+}
+
+void store_journal_printf(const char *fmt, ...)
+{
+    char buf[160];
+    __builtin_va_list ap;
+    __builtin_va_start(ap, fmt);
+    fmt_vstr(buf, sizeof buf, fmt, ap);
+    __builtin_va_end(ap);
+    store_journal_line(buf);
+}
+
+const char *store_journal_text(void) { return (const char *)s_journal; }
+
+/* ---- taught words ----------------------------------------------------- */
+static u32 taught_checksum(void)
+{
+    u32 sum = 0x9E3779B9u;
+    const u8 *p = (const u8 *)s_taught;
+    u32 i, n = (u32)(s_taught_n * (int)sizeof(Taught));
+    for (i = 0; i < n; i++) sum = (sum << 1 | sum >> 31) ^ p[i];
+    return sum;
+}
+
+static int lower(int c) { return (c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c; }
+
+const char *store_lookup(const char *word)
+{
+    int i, j;
+    for (i = 0; i < s_taught_n; i++) {
+        const char *a = s_taught[i].word;
+        for (j = 0; a[j] && word[j]; j++)
+            if (lower((u8)a[j]) != lower((u8)word[j])) break;
+        if (!a[j] && !word[j]) return s_taught[i].resp;
+    }
+    return NULL;
+}
+
+int store_teach(const char *word, const char *resp)
+{
+    int i, slot = -1;
+
+    if (!s_ready || !word[0] || !resp[0]) return 0;
+
+    for (i = 0; i < s_taught_n; i++) {
+        const char *a = s_taught[i].word;
+        int j;
+        for (j = 0; a[j] && word[j]; j++)
+            if (lower((u8)a[j]) != lower((u8)word[j])) break;
+        if (!a[j] && !word[j]) { slot = i; break; }
+    }
+    if (slot < 0) {
+        if (s_taught_n >= TAUGHT_MAX) return -1;
+        slot = s_taught_n++;
+    }
+
+    for (i = 0; word[i] && i < WORD_MAX - 1; i++) s_taught[slot].word[i] = word[i];
+    s_taught[slot].word[i] = 0;
+    for (i = 0; resp[i] && i < RESP_MAX - 1; i++) s_taught[slot].resp[i] = resp[i];
+    s_taught[slot].resp[i] = 0;
+
+    s_taught_dirty = 1;
+    return 1;
+}
+
+int store_forget(const char *word)
+{
+    int i, j;
+    for (i = 0; i < s_taught_n; i++) {
+        const char *a = s_taught[i].word;
+        for (j = 0; a[j] && word[j]; j++)
+            if (lower((u8)a[j]) != lower((u8)word[j])) break;
+        if (!a[j] && !word[j]) {
+            for (; i < s_taught_n - 1; i++) s_taught[i] = s_taught[i + 1];
+            s_taught_n--;
+            s_taught_dirty = 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* ---- load and save ---------------------------------------------------- */
+typedef struct {
+    char magic[8];
+    u32  version;
+    u32  count;
+    u32  checksum;
+    u32  boots;
+} StateHdr;
+
+static u32 s_boots;
+u32 store_boots(void) { return s_boots; }
+
+void store_init(void)
+{
+    StateHdr *h;
+    u8 *statebuf;
+    int i;
+
+    s_ready = 0;
+    if (g_diskmap.journal_sectors == 0 || g_diskmap.state_sectors == 0) return;
+
+    s_journal_cap = g_diskmap.journal_sectors * SECTOR;
+    s_journal = (u8 *)halloc(s_journal_cap);
+    statebuf  = (u8 *)halloc(g_diskmap.state_sectors * SECTOR);
+    s_taught  = (Taught *)(statebuf + sizeof(StateHdr));
+
+    if (!read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
+        return;
+    if (!read_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
+        return;
+
+    /* Before trusting any of this enough to write to it, check that the
+     * sectors the build pointed us at really are the journal.  If the disk
+     * map were ever wrong, a write would land somewhere else on the floppy
+     * -- and the only copy of the kernel is on that same floppy.  A wrong
+     * address now fails safe and read-only instead of eating the disk. */
+    {
+        static const char sig[] = "FLOPOS journal";
+        int k;
+        for (k = 0; sig[k]; k++)
+            if (s_journal[k] != (u8)sig[k]) return;
+    }
+
+    journal_find_end();
+
+    h = (StateHdr *)statebuf;
+    s_taught_n = 0;
+    s_boots = 0;
+    if (h->magic[0] == 'F' && h->magic[1] == 'L' && h->version == 1) {
+        if (h->count <= TAUGHT_MAX) {
+            s_taught_n = (int)h->count;
+            s_boots = h->boots;
+            if (taught_checksum() != h->checksum) s_taught_n = 0;
+        }
+    }
+    for (i = s_taught_n; i < TAUGHT_MAX; i++) s_taught[i].word[0] = 0;
+
+    s_boots++;
+    s_taught_dirty = 1;                  /* the boot count changed         */
+    s_ready = 1;
+}
+
+int store_save(void)
+{
+    u8 *statebuf = (u8 *)s_taught - sizeof(StateHdr);
+    StateHdr *h = (StateHdr *)statebuf;
+    int ok = 1;
+
+    if (!s_ready) return 0;
+
+    if (s_journal_dirty) {
+        /* Terminate, then clear everything after so a shorter journal
+         * never leaves the tail of a longer one behind it. */
+        u32 i;
+        s_journal[s_journal_len] = EOF_MARK;
+        for (i = s_journal_len + 1; i < s_journal_cap; i++) s_journal[i] = 0;
+        if (!write_run(g_diskmap.journal_lba, g_diskmap.journal_sectors,
+                       s_journal))
+            ok = 0;
+        else
+            s_journal_dirty = 0;
+    }
+
+    if (s_taught_dirty) {
+        h->magic[0] = 'F'; h->magic[1] = 'L'; h->magic[2] = 'O';
+        h->magic[3] = 'P'; h->magic[4] = 'S'; h->magic[5] = 'T';
+        h->magic[6] = 0;   h->magic[7] = 0;
+        h->version  = 1;
+        h->count    = (u32)s_taught_n;
+        h->boots    = s_boots;
+        h->checksum = taught_checksum();
+        if (!write_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
+            ok = 0;
+        else
+            s_taught_dirty = 0;
+    }
+
+    return ok;
+}
+
+int store_unsaved(void) { return s_journal_dirty || s_taught_dirty; }

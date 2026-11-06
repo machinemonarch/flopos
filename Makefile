@@ -1,0 +1,91 @@
+# =============================================================================
+#  FLOPOS -- a bootable 1.44MB psychedelic live environment
+#
+#    make            build dist/flopos.img
+#    make run        boot it in QEMU with a window
+#    make shot       boot headless and grab PNG frames into dist/shots/
+#    make write DEV=/dev/sdX    write the image to a real floppy
+# =============================================================================
+
+CC      := gcc
+AS      := as
+LD      := ld
+PYTHON  := python3
+
+CFLAGS  := -m32 -std=gnu99 -ffreestanding -nostdlib -nostdinc \
+           -fno-pie -fno-pic -fno-builtin -fno-common \
+           -O2 -march=i386 -mtune=pentium \
+           -mno-mmx -mno-sse -mno-sse2 -mno-80387 -msoft-float \
+           -fno-asynchronous-unwind-tables -fno-unwind-tables \
+           -fno-stack-protector -fomit-frame-pointer \
+           -fno-tree-loop-distribute-patterns \
+           -Wall -Wextra -Wno-unused-parameter -Wno-array-bounds -Ikernel
+# -Wno-array-bounds: the boot info block genuinely lives at fixed low
+# addresses, and gcc reads any absolute dereference as an array at zero.
+
+ASFLAGS := --32
+
+BUILD   := dist
+OBJDIR  := $(BUILD)/obj
+
+CSRC    := $(wildcard kernel/*.c)
+ASRC    := kernel/start.S kernel/isr.S kernel/bios.S
+COBJ    := $(patsubst kernel/%.c,$(OBJDIR)/%.o,$(CSRC))
+AOBJ    := $(patsubst kernel/%.S,$(OBJDIR)/%.o,$(ASRC))
+
+# start.o must come first: it owns physical 0x10000.
+KOBJ    := $(OBJDIR)/start.o $(OBJDIR)/isr.o $(OBJDIR)/bios.o $(COBJ)
+
+IMG     := $(BUILD)/flopos.img
+
+.PHONY: all clean run shot write size release
+all: $(IMG)
+
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
+
+$(OBJDIR)/%.o: kernel/%.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR)/%.o: kernel/%.S | $(OBJDIR)
+	$(AS) $(ASFLAGS) $< -o $@
+
+$(BUILD)/boot.bin: boot/boot.S | $(OBJDIR)
+	$(AS) $(ASFLAGS) $< -o $(OBJDIR)/boot.o
+	$(LD) -m elf_i386 --section-start=.boot=0x7c00 --oformat binary \
+	      $(OBJDIR)/boot.o -o $@
+	@test $$(stat -c%s $@) -eq 512 || (echo "boot sector is not 512 bytes"; exit 1)
+
+$(BUILD)/kernel.bin: $(KOBJ) linker.ld
+	$(LD) -m elf_i386 -T linker.ld -o $@ $(KOBJ) --no-warn-rwx-segments
+	@echo "   kernel.bin: $$(stat -c%s $@) bytes"
+
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin tools/mkimage.py README.md
+	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@
+
+size: $(BUILD)/kernel.bin
+	@$(LD) -m elf_i386 -T linker.ld -o /dev/null $(KOBJ) --no-warn-rwx-segments -M 2>/dev/null \
+	 | grep -E "^\.(text|rodata|data|bss)|_bss|_image_end" | head -20
+
+run: $(IMG)
+	qemu-system-i386 -machine pc -cpu pentium -m 16 \
+	  -drive file=$(IMG),if=floppy,format=raw -boot a \
+	  -vga std -audiodev pa,id=sp -machine pcspk-audiodev=sp
+
+shot: $(IMG)
+	$(PYTHON) tools/shots.py $(IMG)
+
+write: $(IMG)
+	tools/writefloppy.sh $(DEV)
+
+# Every image handed over gets its own number and its own archived copy.
+release:
+	@v=$$($(PYTHON) tools/release.py $(PART)) && \
+	 $(MAKE) --no-print-directory clean >/dev/null && \
+	 $(MAKE) --no-print-directory all && \
+	 mkdir -p releases && \
+	 cp $(IMG) releases/flopos-$$v.img && \
+	 echo "   released flopos-$$v.img"
+
+clean:
+	rm -rf $(OBJDIR) $(BUILD)/*.bin $(BUILD)/*.img

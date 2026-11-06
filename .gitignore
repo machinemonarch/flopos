@@ -1,0 +1,38 @@
+# Build output. Everything here is reproducible from source.
+dist/
+
+# Released floppy images: 1.4MB each, and any of them can be rebuilt by
+# checking out the matching commit and running `make`.
+releases/
+
+# Vendor documentation and third-party binaries used for reference only.
+# Toshiba's manuals and driver CDs are theirs, not part of this project,
+# and must not be redistributed with it. Nothing in here is built against
+# or copied from -- it is read to learn facts about the hardware.
+reference/
+
+# Photographs dropped in to be turned into a boot screen. The generated
+# kernel/splash.c is committed, so the build does not need these; only
+# regenerating it does.
+photos/
+
+*.ppm
+*.o
+*.bin
+*.img
+
+# Not part of the project: shell and editor configuration that happens to
+# sit in this directory, and which the sandbox presents as character
+# devices that git cannot add in any case.
+.bash_profile
+.bashrc
+.gitconfig
+.gitmodules
+.profile
+.ripgreprc
+.zprofile
+.zshrc
+.mcp.json
+.idea
+.vscode
+.claude/
