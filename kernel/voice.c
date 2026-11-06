@@ -168,8 +168,8 @@ static const Phrase s_phrases[] = {
     RUN("shutup",           "quiet"),
     RUN("bequiet",          "quiet"),
     RUN("saysomething",     "whoami"),
-    RUN("goodbye",          "reboot"),
-    RUN("bye",              "reboot"),
+    RUN("goodbye",          "bye"),
+    RUN("goodnight",        "bye"),
 };
 
 #undef SAY

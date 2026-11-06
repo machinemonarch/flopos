@@ -110,6 +110,36 @@ void cpu_measure_mhz(void)
     g_cpu_mhz = cycles / (elapsed_ms * 1000u);
 }
 
+/* Switch the machine off, properly.
+ *
+ * There is no instruction for this on a 1996 laptop; the only thing that
+ * can cut its own power is the BIOS, through APM.  So: check it is there,
+ * connect in real mode, say which version of the protocol we speak, turn
+ * power management on for everything, and then ask for the off state.
+ *
+ * If any of that is refused the function returns, and the caller is
+ * expected to say so and park the machine instead of pretending.
+ */
+int power_off(void)
+{
+    u32 r;
+
+    cli();
+    snd_silence();
+
+    pic_to_bios();
+    r = bios_int(0x15, 0x5300, 0x0000, 0, 0, 0);   /* is APM there?       */
+    if (!(r & 0x10000)) {
+        (void)bios_int(0x15, 0x5301, 0x0000, 0, 0, 0);      /* connect    */
+        (void)bios_int(0x15, 0x530E, 0x0000, 0x0102, 0, 0); /* version 1.2 */
+        (void)bios_int(0x15, 0x5308, 0x0001, 0x0001, 0, 0); /* enable      */
+        (void)bios_int(0x15, 0x5307, 0x0001, 0x0003, 0, 0); /* and off     */
+    }
+    pic_to_kernel();
+
+    return 0;                            /* still here: it would not      */
+}
+
 void reboot(void)
 {
     int i;

@@ -214,6 +214,8 @@ int    term_scrolled(void);
 int    term_cursor_col(void);
 int    term_at_origin(void);
 void   term_set_cursor_col(int c);
+void   term_quirks(int on);
+int    term_quirks_on(void);
 void   term_zalgo(int on);
 int    term_zalgo_on(void);
 void   term_rule(void);                  /* a horizontal rule across a row  */
@@ -339,7 +341,7 @@ void   serial_set_echo(int on);
  * BIOS's AX, with bit 16 set if it reported failure.  Interrupts are off
  * for the duration, so this is not cheap -- but it is the machine's own
  * disk code, which is the point. */
-u32    bios_disk(u16 ax, u16 cx, u16 dx, u16 buf_seg);
+u32    bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es);
 void   pic_to_bios(void);
 void   pic_to_kernel(void);
 
@@ -400,5 +402,6 @@ extern u32  g_cpu_mhz;
 void   cpu_detect(void);
 void   cpu_measure_mhz(void);
 void   reboot(void);
+int    power_off(void);  /* returns only if it could not */
 
 #endif /* FLOPOS_H */

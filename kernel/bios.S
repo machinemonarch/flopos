@@ -52,14 +52,14 @@
         .set    RM_SEG,     0x1000       /* KBASE >> 4                     */
         .set    RM_STACK,   0x7C00       /* the boot sector is long done   */
 
-/* u32 bios_disk(u16 ax, u16 cx, u16 dx, u16 buf_seg)
+/* u32 bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es)
  *
- * INT 13h with those registers; ES:BX is set to buf_seg:0000.  Returns the
- * BIOS's AX, with bit 16 set if it reported carry -- so a non-zero high
- * half means the operation failed.
+ * which is 0x13 for the disk or 0x15 for the services APM lives behind.
+ * Returns the BIOS's AX, with bit 16 set if it reported carry -- so a
+ * non-zero high half means the call failed.
  */
-        .globl  bios_disk
-bios_disk:
+        .globl  bios_int
+bios_int:
         pushl   %ebp
         movl    %esp, %ebp
         pushal
@@ -67,12 +67,16 @@ bios_disk:
         /* Fill the scratch block while 32-bit flat addressing still makes
          * that trivial. */
         movw    8(%ebp),  %ax
-        movw    %ax, blk_ax
+        movw    %ax, blk_which
         movw    12(%ebp), %ax
-        movw    %ax, blk_cx
+        movw    %ax, blk_ax
         movw    16(%ebp), %ax
-        movw    %ax, blk_dx
+        movw    %ax, blk_bx
         movw    20(%ebp), %ax
+        movw    %ax, blk_cx
+        movw    24(%ebp), %ax
+        movw    %ax, blk_dx
+        movw    28(%ebp), %ax
         movw    %ax, blk_es
         movw    $0, blk_flags
 
@@ -127,11 +131,16 @@ real_mode:
         movw    8(%bx),  %dx
         movw    10(%bx), %si
         movw    %si, %es
-        xorw    %si, %si
+        movw    36(%bx), %si             /* what BX should be for the call */
+        movw    38(%bx), %di             /* and which interrupt            */
         pushw   %bx
-        xorw    %bx, %bx
+        movw    %si, %bx
+        cmpw    $0x15, %di
+        je      call15
         int     $0x13
-        popw    %bx
+        jmp     called
+call15: int     $0x15
+called: popw    %bx
 
         movw    %ax, 4(%bx)
         jnc     1f
@@ -190,3 +199,5 @@ blk_pm_gdt:   .word 0                    /* 20 */
 blk_pm_idt:   .word 0                    /* 26 */
               .long 0                    /* 28 */
 blk_pm_esp:   .long 0                    /* 32 */
+blk_bx:       .word 0                    /* 36 */
+blk_which:    .word 0                    /* 38 */

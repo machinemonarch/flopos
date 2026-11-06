@@ -548,12 +548,53 @@ static void cmd_whaaat(void)
     say(voice(going_in ? V_WHAAAT_IN : V_WHAAAT_OUT));
 }
 
+static void cmd_quirks(void)
+{
+    term_quirks(!term_quirks_on());
+    term_colour(C_ACCENT);
+    say(term_quirks_on() ? "Let it do what it likes."
+                         : "Held still.");
+}
+
 static void cmd_version(void)
 {
     term_colour(C_BRIGHT);
     term_printf("FLOPOS %s", FLOPOS_VERSION);
     term_newline();
     say_dim("built from nothing in particular");
+}
+
+static void cmd_bye(void)
+{
+    if (store_unsaved()) {
+        say_dim("Writing things down first...");
+        term_render(g_back, ms_now());
+        vga_present();
+        store_save();
+    }
+
+    say(voice(V_BYE));
+    term_render(g_back, ms_now());
+    vga_present();
+    delay_ms(700);
+
+    snd_silence();
+    vga_fade_out(22);
+
+    power_off();                         /* only returns if it could not  */
+
+    /* No APM, or it declined.  Say so rather than leaving a black screen
+     * that might or might not mean anything. */
+    {
+        u8 *fb = (u8 *)VGA_FB;
+        cli();
+        outb(0x3C8, 0);  outb(0x3C9, 0);  outb(0x3C9, 0);  outb(0x3C9, 0);
+        outb(0x3C8, 15); outb(0x3C9, 44); outb(0x3C9, 50); outb(0x3C9, 56);
+        memset8(fb, 0, SCR_PIX);
+        draw_text(fb, 62, 88, "Everything is written down.", 15);
+        draw_text(fb, 62, 102, "It is safe to switch off now.", 15);
+        for (;;) hlt();
+    }
 }
 
 static void cmd_reboot(void)
@@ -582,6 +623,7 @@ static const Cmd s_cmds[] = {
     { "listen",  "a different rhythm",           cmd_listen  },
     { "sound",   "turn the sound on",            cmd_sound   },
     { "quiet",   "turn the sound off",           cmd_quiet   },
+    { "quirks",  "steady the text, or let it go",cmd_quirks  },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
     { "speed",   "where the time goes",          cmd_speed   },
@@ -596,6 +638,7 @@ static const Cmd s_cmds[] = {
     { "learned", "what you have taught me",      cmd_learned },
     { "remember","write it all to the disk",     cmd_remember},
     { "journal", "what I have written down",     cmd_journal },
+    { "bye",     "write everything down and stop", cmd_bye   },
     { "reboot",  "start the machine again",      cmd_reboot  },
 };
 
