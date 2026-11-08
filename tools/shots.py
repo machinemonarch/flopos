@@ -139,7 +139,8 @@ def main():
                 ("grid-1-roomy",  ["frames\n"]),
                 ("grid-2-close",  ["goaway\n", "squint\n", "frames\n"]),
                 ("grid-3-help",   ["goaway\n", "help\n"]),
-                ("grid-4-sys",    ["goaway\n", "sys\n", "whoami\n",
+                ("grid-4-card",   ["goaway\n", "card\n"]),
+                ("grid-5-sys",    ["goaway\n", "sys\n", "whoami\n",
                                    "look\n", "version\n"]),
             ):
                 for k in keys:

@@ -350,6 +350,35 @@ void   shell_prompt(void);
 void   shell_submit(const char *line);
 const char *shell_place(void);
 
+/* --- pcic.c ------------------------------------------------------------ *
+ * The PC Card sockets.  A CIS walk hands each tuple to a callback rather
+ * than building a list, because the only two things anyone wants from a
+ * CIS -- who made this card, and how do I switch it on -- are both single
+ * tuples and neither is worth a parser or the memory one would need.
+ */
+#define CIS_MAX_BODY 64
+
+typedef int (*CisFn)(u8 code, const u8 *body, int len, void *ctx);
+
+int    pcic_probe(void);                 /* sockets found, 0 for none      */
+int    pcic_scan(u16 *ports, u8 *ids, int max);
+int    pcic_sockets(void);
+u16    pcic_port(void);
+u8     pcic_ident(int sock);
+const char *pcic_kind(u8 id);
+int    pcic_present(int sock);
+u8     pcic_status(int sock);
+int    pcic_power_up(int sock, int io_card);
+void   pcic_power_down(int sock);
+int    pcic_cis_walk(int sock, CisFn fn, void *ctx);
+
+/* The tuples worth knowing by name. */
+#define CISTPL_VERS_1       0x15         /* who made it, in words          */
+#define CISTPL_CONFIG       0x1A         /* where its config registers are */
+#define CISTPL_CFTABLE      0x1B         /* what resources it will take    */
+#define CISTPL_MANFID       0x20         /* who made it, in numbers        */
+#define CISTPL_FUNCID       0x21         /* what kind of card it is        */
+
 /* --- voice.c ----------------------------------------------------------- */
 typedef enum {
     V_WHOAMI, V_UNKNOWN, V_HELP_HEAD, V_HELP_FOOT, V_LOOK, V_HERE,

@@ -10,6 +10,12 @@
 #include "io.h"
 
 /* The glyph slots are published by fontmap.h; what maps onto them is here. */
+/* Everything in here draws with the large face and only the large face:
+ * the splash, the panic screen, the arrival sequence.  Those are fixed
+ * pictures with their own layout, so they do not follow the terminal when
+ * it changes grid, and this is the advance they were measured against. */
+#define DRAW_ADV 6
+
 int glyph_index(int c)
 {
     c &= 0xFF;
@@ -60,7 +66,7 @@ void draw_text(u8 *buf, int x, int y, const char *s, u8 colour)
 {
     while (*s) {
         draw_char(buf, x, y, (u8)*s++, colour);
-        x += GLYPH_ADV;
+        x += DRAW_ADV;
         if (x >= SCR_W) break;
     }
 }
@@ -98,7 +104,7 @@ int text_width(const char *s)
 {
     int n = 0;
     while (s[n]) n++;
-    return n * GLYPH_ADV - 1;
+    return n * DRAW_ADV - 1;
 }
 
 void draw_hline(u8 *buf, int x, int y, int w, u8 colour)

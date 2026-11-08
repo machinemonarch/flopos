@@ -557,6 +557,198 @@ static void cmd_quirks(void)
                          : "Held still.");
 }
 
+/* ---- what is in the PC Card slots ------------------------------------
+ * The first half of a network stack is finding out what hardware is
+ * actually there, in its own words, on the machine itself -- not from a
+ * specification sheet and not from me guessing.  So this powers each
+ * socket up, reads the card's CIS, and prints what the card says it is.
+ * It changes nothing and puts the socket back the way it found it.
+ */
+typedef struct {
+    char vers[96];                       /* maker and model, as text      */
+    int  vlen;
+    u16  manf, prod;
+    int  func;
+    u16  cfg_base;
+    int  codes[20];
+    int  ncodes;
+} CardInfo;
+
+static int cis_tuple(u8 code, const u8 *body, int len, void *ctx)
+{
+    CardInfo *ci = (CardInfo *)ctx;
+    int i;
+
+    if (ci->ncodes < 20) ci->codes[ci->ncodes++] = code;
+
+    switch (code) {
+    case CISTPL_VERS_1:
+        /* Major, minor, then NUL-separated strings.  Run them together
+         * with a comma, which is how they are meant to be read anyway. */
+        for (i = 2; i < len && ci->vlen < (int)sizeof ci->vers - 2; i++) {
+            if (body[i] == 0xFF) break;
+            if (body[i] == 0) {
+                if (ci->vlen && ci->vers[ci->vlen - 1] != ' ') {
+                    ci->vers[ci->vlen++] = ',';
+                    ci->vers[ci->vlen++] = ' ';
+                }
+            } else {
+                ci->vers[ci->vlen++] = (char)body[i];
+            }
+        }
+        while (ci->vlen > 1 && (ci->vers[ci->vlen - 1] == ' ' ||
+                                ci->vers[ci->vlen - 1] == ',')) ci->vlen--;
+        ci->vers[ci->vlen] = 0;
+        break;
+
+    case CISTPL_MANFID:
+        if (len >= 4) {
+            ci->manf = (u16)(body[0] | (body[1] << 8));
+            ci->prod = (u16)(body[2] | (body[3] << 8));
+        }
+        break;
+
+    case CISTPL_FUNCID:
+        if (len >= 1) ci->func = body[0];
+        break;
+
+    case CISTPL_CONFIG:
+        /* The first byte says how many bytes of base address follow the
+         * last-index byte; the card's configuration registers live there,
+         * in attribute memory, and that is where a card gets switched on. */
+        if (len >= 3) {
+            int nb = (body[0] & 3) + 1;
+            u32 base = 0;
+            for (i = 0; i < nb && 2 + i < len; i++)
+                base |= (u32)body[2 + i] << (8 * i);
+            ci->cfg_base = (u16)base;
+        }
+        break;
+
+    default:
+        break;
+    }
+    return 0;
+}
+
+static const char *func_name(int f)
+{
+    switch (f) {
+    case 0:  return "multi-function";
+    case 1:  return "memory";
+    case 2:  return "serial port or modem";
+    case 3:  return "parallel port";
+    case 4:  return "fixed disk";
+    case 5:  return "video";
+    case 6:  return "network adapter";
+    case 7:  return "AIMS";
+    case 8:  return "SCSI";
+    default: return "unstated";
+    }
+}
+
+static void card_socket(int sock, int w)
+{
+    CardInfo ci;
+    char line[96];
+    u8 st;
+    int n, i;
+
+    memset8((u8 *)&ci, 0, sizeof ci);
+    ci.func = -1;
+
+    fmt_str(line, sizeof line, "socket %u", (u32)sock);
+    term_frame_top(w, line, 0);
+
+    if (!pcic_present(sock)) {
+        term_frame_row(w, "empty", 0);
+        term_frame_bottom(w, 0);
+        return;
+    }
+
+    st = pcic_status(sock);
+    fmt_str(line, sizeof line, "card seated, status %x%s%s", (u32)st,
+            (st & 0x10) ? ", write protected" : "",
+            (st & 0x40) ? ", already powered" : "");
+    term_frame_row(w, line, 0);
+
+    if (!pcic_power_up(sock, 1)) {
+        term_frame_row(w, "it would not come ready", 0);
+        term_frame_bottom(w, 0);
+        pcic_power_down(sock);
+        return;
+    }
+
+    n = pcic_cis_walk(sock, cis_tuple, &ci);
+    if (n <= 0) {
+        term_frame_row(w, "powered, but it has nothing to say", 0);
+    } else {
+        if (ci.vlen) term_frame_row(w, ci.vers, 0);
+        fmt_str(line, sizeof line, "maker %x  product %x  %s",
+                (u32)ci.manf, (u32)ci.prod, func_name(ci.func));
+        term_frame_row(w, line, 0);
+        fmt_str(line, sizeof line, "%u tuples, config registers at %x",
+                (u32)n, (u32)ci.cfg_base);
+        term_frame_row(w, line, 0);
+
+        /* The raw codes, because the first time anything talks to new
+         * hardware the only honest report is the one that has not been
+         * interpreted. */
+        {
+            char *p = line;
+            int left = (int)sizeof line - 1;
+            for (i = 0; i < ci.ncodes && left > 4; i++) {
+                char tmp[8];
+                char *e = fmt_hex(tmp, (u32)ci.codes[i], 2);
+                int k = (int)(e - tmp);
+                int j;
+                for (j = 0; j < k && left > 1; j++) { *p++ = tmp[j]; left--; }
+                if (left > 1) { *p++ = ' '; left--; }
+            }
+            *p = 0;
+            term_frame_row(w, line, 0);
+        }
+    }
+
+    pcic_power_down(sock);
+    term_frame_bottom(w, 0);
+}
+
+static void cmd_card(void)
+{
+    int w = term_cols() - 2;
+    int n = pcic_probe();
+    int i;
+    char line[96];
+
+    term_colour(C_ACCENT);
+    if (!n) {
+        u16 ports[4];
+        u8  ids[4];
+        int k = pcic_scan(ports, ids, 4), j;
+
+        say("No PC Card adapter answered.");
+        for (j = 0; j < k; j++) {
+            fmt_str(line, sizeof line, "   %x gave %x%s", (u32)ports[j],
+                    (u32)ids[j], ids[j] == 0xFF ? "  (nothing there)" : "");
+            term_colour(C_DIM);
+            term_print(line);
+            term_newline();
+        }
+        say_dim("an ExCA part answers 8x, 9x, Ax or Bx");
+        return;
+    }
+
+    fmt_str(line, sizeof line, "adapter at %x, %u socket%s, %s",
+            (u32)pcic_port(), (u32)n, n == 1 ? "" : "s",
+            pcic_kind(pcic_ident(0)));
+    term_colour(C_TEXT);
+    term_print(line);
+    term_newline();
+
+    for (i = 0; i < n; i++) card_socket(i, w);
+}
+
 /* The grid is a matter of eyesight and of what is being built, so it is a
  * command rather than a build-time decision.  Cycles, because there are
  * only two and there will be more. */
@@ -678,6 +870,7 @@ static const Cmd s_cmds[] = {
     { "quirks",  "steady the text, or let it go",cmd_quirks  },
     { "squint",  "fit more on the screen",       cmd_squint  },
     { "frames",  "what a frame is made of",      cmd_frames  },
+    { "card",    "what is in the PC Card slots",  cmd_card    },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
     { "speed",   "where the time goes",          cmd_speed   },
