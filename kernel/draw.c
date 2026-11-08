@@ -119,6 +119,33 @@ void draw_vline(u8 *buf, int x, int y, int h, u8 colour)
     for (i = 0; i < h; i++) buf[(y + i) * SCR_W + x] = colour;
 }
 
+/* Bresenham, clipped to a box rather than to the screen, so a caller can
+ * keep something inside its own corner without checking every point. */
+void draw_line_clipped(u8 *buf, int x0, int y0, int x1, int y1, u8 colour,
+                       int bx, int by, int bw, int bh)
+{
+    int dx = x1 - x0, dy = y1 - y0;
+    int sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+    int err, n;
+
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    err = dx - dy;
+    n = (dx > dy ? dx : dy) + 1;
+    if (n > 512) return;                 /* nothing sane is this long      */
+
+    while (n--) {
+        if (x0 >= bx && x0 < bx + bw && y0 >= by && y0 < by + bh &&
+            x0 >= 0 && x0 < SCR_W && y0 >= 0 && y0 < SCR_H)
+            buf[y0 * SCR_W + x0] = colour;
+        {
+            int e2 = err * 2;
+            if (e2 > -dy) { err -= dy; x0 += sx; }
+            if (e2 <  dx) { err += dx; y0 += sy; }
+        }
+    }
+}
+
 void draw_rect(u8 *buf, int x, int y, int w, int h, u8 colour)
 {
     int i;

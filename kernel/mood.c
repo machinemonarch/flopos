@@ -150,6 +150,8 @@ static void build_deep(u8 *p, const Mood *m)
     ramp(p, PAL_PROMPT, PAL_PROMPT_N,  1,  6, 11,  14, 42, 52);
     ramp(p, PAL_CURSOR, PAL_CURSOR_N,  3, 13, 16,  34, 56, 60);
     ramp(p, PAL_GREY,   PAL_GREY_N,    1,  3,  5,  15, 23, 26);
+    /* Still yellow down here, just colder and further off. */
+    ramp(p, PAL_BANANA, PAL_BANANA_N,  8,  8,  4,  44, 46, 20);
 }
 
 static void build_palette(u8 *p)
@@ -190,6 +192,10 @@ static void build_palette(u8 *p)
     ramp(p, PAL_CURSOR, PAL_CURSOR_N, r / 3, g / 3, b / 3, 63, 63, 63);
 
     ramp(p, PAL_GREY, PAL_GREY_N, 6, 6, 8, 34, 34, 38);
+
+    /* Its own ramp, because no part of a mood palette is ever yellow and
+     * a banana is not negotiable about this. */
+    ramp(p, PAL_BANANA, PAL_BANANA_N, 16, 12, 2, 63, 60, 20);
 
 }
 

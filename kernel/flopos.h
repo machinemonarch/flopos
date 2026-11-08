@@ -71,8 +71,10 @@ int    glyph_index(int c);
 #define PAL_PROMPT_N 32
 #define PAL_CURSOR  200                  /* 200..231  cursor, animated      */
 #define PAL_CURSOR_N 32
-#define PAL_GREY    232                  /* 232..255  rules and furniture   */
-#define PAL_GREY_N  24
+#define PAL_GREY    232                  /* 232..247  rules and furniture   */
+#define PAL_GREY_N  16
+#define PAL_BANANA  248                  /* 248..255  a banana is yellow    */
+#define PAL_BANANA_N 8
 
 #define C_SHADOW (PAL_SHADOW + 2)
 #define C_DIM    (PAL_TEXT + 8)
@@ -167,6 +169,8 @@ void   draw_text_outline(u8 *buf, int x, int y, const char *s, u8 fg, u8 bg);
 void   draw_char_outline(u8 *buf, int x, int y, int c, u8 fg, u8 bg);
 int    text_width(const char *s);
 void   draw_rect(u8 *buf, int x, int y, int w, int h, u8 colour);
+void   draw_line_clipped(u8 *buf, int x0, int y0, int x1, int y1,
+                         u8 colour, int bx, int by, int bw, int bh);
 void   draw_frame(u8 *buf, int x, int y, int w, int h, u8 colour);
 void   draw_hline(u8 *buf, int x, int y, int w, u8 colour);
 void   draw_vline(u8 *buf, int x, int y, int h, u8 colour);
@@ -246,6 +250,9 @@ extern const u8 g_saffran_pix[SCR_PIX];
 #define SPL_WHITE  255
 
 void   splash_show(void);
+
+/* --- banana.c ---------------------------------------------------------- */
+void   banana_draw(u8 *dst, u32 t);
 
 /* --- vortex.c ---------------------------------------------------------- */
 void   vortex_run(const u8 *pal_to);

@@ -69,6 +69,7 @@ static void draw_frame_now(u32 t)
 
     term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
     term_render(g_back, t);
+    banana_draw(g_back, t);              /* over everything, always        */
     b = tsc32(); perf_add(PERF_TEXT, b - a); a = b;
 
     vga_wait_retrace();
