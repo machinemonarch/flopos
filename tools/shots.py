@@ -136,12 +136,14 @@ def main():
         if args.grid:
             time.sleep(12.0)             # through the arrival sequence
             for name, keys in (
-                ("grid-1-roomy",  ["frames\n"]),
-                ("grid-2-close",  ["goaway\n", "squint\n", "frames\n"]),
-                ("grid-3-help",   ["goaway\n", "help\n"]),
-                ("grid-4-card",   ["goaway\n", "card\n"]),
-                ("grid-5-sys",    ["goaway\n", "sys\n", "whoami\n",
-                                   "look\n", "version\n"]),
+                ("grid-1-close-frames", ["frames\n"]),
+                ("grid-2-close-help",   ["goaway\n", "help\n"]),
+                ("grid-3-close-sys",    ["goaway\n", "sys\n", "whoami\n",
+                                         "look\n", "version\n"]),
+                ("grid-4-card",         ["goaway\n", "card\n"]),
+                ("grid-5-roomy-frames", ["goaway\n", "squint\n",
+                                         "frames\n"]),
+                ("grid-6-roomy-help",   ["goaway\n", "help\n"]),
             ):
                 for k in keys:
                     type_text(mon, k)
