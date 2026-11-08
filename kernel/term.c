@@ -1,5 +1,11 @@
 /* ===========================================================================
- * term.c -- the terminal: 53 columns by 25 rows, drawn by hand.
+ * term.c -- the terminal, drawn by hand, on whichever grid is in use.
+ *
+ * The face is a runtime choice, not a build-time one: the cell grid is
+ * always allocated at the largest face's width and only as much of each
+ * row is shown as the current face has columns.  So changing face costs
+ * nothing and loses nothing, which matters because the only way to find
+ * out how small text can get on a 1996 panel is to sit in front of one.
  *
  * A ring of cells holds both the visible screen and the scrollback, each
  * cell a character and a palette index.  The whole visible window is
@@ -16,14 +22,15 @@
 #include "io.h"
 
 #define SCROLLBACK 200
-#define TEXT_X0    1                     /* 1 + 53*6 = 319, just fits      */
+#define STRIDE     TERM_MAX_COLS         /* every row is allocated wide    */
 
 typedef struct {
     u8 ch;
     u8 col;
 } Cell;
 
-static Cell *s_grid;                     /* SCROLLBACK rows of TERM_COLS   */
+static const Face *s_face = &g_faces[1];   /* close, by default      */
+static Cell *s_grid;                     /* SCROLLBACK rows of STRIDE      */
 static u32   s_line;                     /* absolute row the cursor is on  */
 static int   s_col;
 static u8    s_colour = C_TEXT;
@@ -34,22 +41,40 @@ static int   s_quirks = 1;
 
 static void style_birth(u32 abs);
 
+#define COLS (s_face->cols)
+#define ROWS (s_face->rows)
+
+const Face *term_face(void) { return s_face; }
+int  term_cols(void) { return COLS; }
+int  term_rows(void) { return ROWS; }
+int  term_face_index(void) { return (int)(s_face - &g_faces[0]); }
+
+int term_set_face(int n)
+{
+    if (n < 0) n = 0;
+    if (n >= FACE_COUNT) n = FACE_COUNT - 1;
+    s_face = &g_faces[n];
+    if (s_col > COLS) s_col = COLS;
+    s_view = 0;
+    return n;
+}
+
 static Cell *row_of(u32 abs)
 {
-    return s_grid + (abs % SCROLLBACK) * TERM_COLS;
+    return s_grid + (abs % SCROLLBACK) * STRIDE;
 }
 
 static void clear_row(u32 abs)
 {
     Cell *r = row_of(abs);
     int i;
-    for (i = 0; i < TERM_COLS; i++) { r[i].ch = ' '; r[i].col = 0; }
+    for (i = 0; i < STRIDE; i++) { r[i].ch = ' '; r[i].col = 0; }
 }
 
 void term_init(void)
 {
     u32 i;
-    s_grid = (Cell *)halloc(SCROLLBACK * TERM_COLS * sizeof(Cell));
+    s_grid = (Cell *)halloc(SCROLLBACK * STRIDE * sizeof(Cell));
     for (i = 0; i < SCROLLBACK; i++) clear_row(i);
     s_line = 0;
     s_col = 0;
@@ -129,7 +154,7 @@ void term_putc(int c)
         do { term_putc(' '); } while (s_col & 7);
         return;
     }
-    if (s_col >= TERM_COLS) term_newline();
+    if (s_col >= COLS) term_newline();
 
     r = row_of(s_line);
     r[s_col].ch  = (u8)c;
@@ -163,7 +188,7 @@ int  term_at_origin(void) { return s_line == 0 && s_col == 0; }
 void term_set_cursor_col(int c)
 {
     if (c < 0) c = 0;
-    if (c > TERM_COLS) c = TERM_COLS;
+    if (c > COLS) c = COLS;
     s_col = c;
 }
 
@@ -172,16 +197,84 @@ void term_rule(void)
     int i;
     u8 save = s_colour;
     s_colour = C_GREY;
-    for (i = 0; i < TERM_COLS - 2; i++) term_putc('-');
+    for (i = 0; i < COLS - 2; i++) term_putc(FR_H);
     s_colour = save;
+    term_newline();
+}
+
+/* ---- frames ----------------------------------------------------------- *
+ * The terminal is a stream, not a surface, so a frame here is three calls
+ * that print their own rows into it rather than something drawn at a
+ * coordinate.  That is enough to put a border round a block of text, which
+ * is where every text interface starts, and it needs no cursor addressing
+ * to go wrong.
+ */
+static void frame_run(int w, int left, int mid, int right)
+{
+    int i;
+    term_putc(left);
+    for (i = 0; i < w - 2; i++) term_putc(mid);
+    term_putc(right);
+}
+
+void term_frame_top(int w, const char *title, int dbl)
+{
+    int base = dbl ? CH_FRAME2 : CH_FRAME;
+    int i, n = 0;
+
+    if (w > COLS) w = COLS;
+    if (w < 4) w = 4;
+    if (title) while (title[n]) n++;
+    if (n > w - 6) n = w - 6;
+
+    term_putc(base | FR_DOWN | FR_RIGHT);
+    if (n > 0) {
+        term_putc(base | FR_LEFT | FR_RIGHT);
+        term_putc(' ');
+        for (i = 0; i < n; i++) term_putc((u8)title[i]);
+        term_putc(' ');
+    }
+    for (i = 0; i < w - 2 - (n > 0 ? n + 3 : 0); i++)
+        term_putc(base | FR_LEFT | FR_RIGHT);
+    term_putc(base | FR_DOWN | FR_LEFT);
+    term_newline();
+}
+
+void term_frame_row(int w, const char *text, int dbl)
+{
+    int base = dbl ? CH_FRAME2 : CH_FRAME;
+    int i, n = 0;
+
+    if (w > COLS) w = COLS;
+    if (w < 4) w = 4;
+    if (text) while (text[n]) n++;
+    if (n > w - 4) n = w - 4;
+
+    term_putc(base | FR_UP | FR_DOWN);
+    term_putc(' ');
+    for (i = 0; i < n; i++) term_putc((u8)text[i]);
+    for (i = n; i < w - 4; i++) term_putc(' ');
+    term_putc(' ');
+    term_putc(base | FR_UP | FR_DOWN);
+    term_newline();
+}
+
+void term_frame_bottom(int w, int dbl)
+{
+    int base = dbl ? CH_FRAME2 : CH_FRAME;
+    if (w > COLS) w = COLS;
+    if (w < 4) w = 4;
+    frame_run(w, base | FR_UP | FR_RIGHT,
+                 base | FR_LEFT | FR_RIGHT,
+                 base | FR_UP | FR_LEFT);
     term_newline();
 }
 
 /* ---- scrollback ------------------------------------------------------- */
 void term_scroll_view(int lines)
 {
-    int max = (int)(s_line > (u32)(SCROLLBACK - TERM_ROWS)
-                    ? (u32)(SCROLLBACK - TERM_ROWS) : s_line);
+    int max = (int)(s_line > (u32)(SCROLLBACK - ROWS)
+                    ? (u32)(SCROLLBACK - ROWS) : s_line);
     s_view += lines;
     if (s_view < 0) s_view = 0;
     if (s_view > max) s_view = max;
@@ -199,7 +292,7 @@ int  term_scrolled(void) { return s_view; }
 void term_input_line(int from_col, const char *s, int caret, u8 colour)
 {
     Cell *r = row_of(s_line);
-    int avail = TERM_COLS - from_col;
+    int avail = COLS - from_col;
     int len = 0, off = 0, i;
 
     if (avail <= 0) return;
@@ -214,7 +307,7 @@ void term_input_line(int from_col, const char *s, int caret, u8 colour)
         r[from_col + i].col = (src < len) ? colour : 0;
     }
     s_col = from_col + (caret - off);
-    if (s_col > TERM_COLS) s_col = TERM_COLS;
+    if (s_col > COLS) s_col = COLS;
 }
 
 
@@ -249,7 +342,7 @@ static void zalgo_marks(u8 *dst, int x, int y, int ch, int col, int row, u32 t)
         u8 ink;
 
         h = h * 1664525u + 1013904223u;
-        mx  = x + (int)((h >> 7) % 5);
+        mx  = x + (int)((h >> 7) % (u32)s_face->w);
         up  = (int)(h & 1);
         d   = 1 + (int)((h >> 9) % 7);
         len = 1 + (int)((h >> 13) % 3);
@@ -263,7 +356,7 @@ static void zalgo_marks(u8 *dst, int x, int y, int ch, int col, int row, u32 t)
 
         if (mx < 0 || mx >= SCR_W) continue;
         for (k = 0; k < len; k++) {
-            int my = up ? (y - d - k) : (y + 7 + d + k);
+            int my = up ? (y - d - k) : (y + s_face->pitch - 1 + d + k);
             if (my < 0 || my >= SCR_H) break;
             dst[my * SCR_W + mx] = ink;
         }
@@ -280,23 +373,32 @@ static void zalgo_marks(u8 *dst, int x, int y, int ch, int col, int row, u32 t)
  */
 static void rune_cols(int letter, u8 *cols)
 {
-    int i;
-    for (i = 0; i < 5; i++) cols[i] = 0;
+    int w = s_face->w, h = s_face->h;
+    int mid = w / 2;
+    int t = 1, b = h - 3;                /* the stem's extent              */
+    int md = (t + b) / 2;
+    int l1 = mid - 1, l2 = mid >= 2 ? mid - 2 : 0;
+    int r1 = mid + 1, r2 = mid + 2 < w ? mid + 2 : w - 1;
+    int i, k;
 
-    cols[2] = 0x3E;                      /* the stem                       */
+    for (i = 0; i < w; i++) cols[i] = 0;
+    for (k = t; k <= b; k++) cols[mid] |= (u8)(1 << k);
 
-    if (letter & 1)  { cols[1] |= 0x04; cols[0] |= 0x08; }
-    if (letter & 2)  { cols[3] |= 0x04; cols[4] |= 0x02; }
-    if (letter & 4)  { cols[1] |= 0x20; cols[0] |= 0x20; }
-    if (letter & 8)  { cols[3] |= 0x10; cols[4] |= 0x20; }
-    if (letter & 16) { cols[1] |= 0x02; cols[3] |= 0x02; }
-    if (letter >= 16) cols[2] |= 0x41;   /* a longer stem for the back half */
+    if (letter & 1)  { cols[l1] |= (u8)(1 << md); cols[l2] |= (u8)(1 << (md + 1)); }
+    if (letter & 2)  { cols[r1] |= (u8)(1 << md); cols[r2] |= (u8)(1 << (md - 1)); }
+    if (letter & 4)  { cols[l1] |= (u8)(1 << b);  cols[l2] |= (u8)(1 << b); }
+    if (letter & 8)  { cols[r1] |= (u8)(1 << t);  cols[r2] |= (u8)(1 << t); }
+    if (letter & 16) { cols[l1] |= (u8)(1 << t);  cols[r1] |= (u8)(1 << t); }
+    if (letter >= 16) {                  /* a longer stem for the back half */
+        cols[mid] |= (u8)(1 << (t - 1 > 0 ? t - 1 : 0));
+        cols[mid] |= (u8)(1 << (b + 1 < h ? b + 1 : h - 1));
+    }
 }
 
 static void blit_cols(u8 *dst, int x, int y, const u8 *g, u8 colour)
 {
     int col;
-    for (col = 0; col < GLYPH_W; col++) {
+    for (col = 0; col < s_face->w; col++) {
         u8 bits = g[col];
         u8 *q = dst + y * SCR_W + x + col;
         if (x + col < 0 || x + col >= SCR_W) continue;
@@ -355,7 +457,7 @@ static int style_cell(u8 st, int c, u32 abs, u32 t,
         break;
 
     case ST_FADE: {
-        int k = (PAL_TEXT_N - 1) - (c * (PAL_TEXT_N - 1)) / TERM_COLS;
+        int k = (PAL_TEXT_N - 1) - (c * (PAL_TEXT_N - 1)) / COLS;
         if (k < 2) k = 2;
         *colour = (u8)(PAL_TEXT + k);
         break;
@@ -367,13 +469,87 @@ static int style_cell(u8 st, int c, u32 abs, u32 t,
     return 0;
 }
 
+static void hrun(u8 *dst, int x0, int x1, int y, u8 colour)
+{
+    if (y < 0 || y >= SCR_H) return;
+    if (x0 < 0) x0 = 0;
+    if (x1 >= SCR_W) x1 = SCR_W - 1;
+    while (x0 <= x1) dst[y * SCR_W + x0++] = colour;
+}
+
+static void vrun(u8 *dst, int x, int y0, int y1, u8 colour)
+{
+    if (x < 0 || x >= SCR_W) return;
+    if (y0 < 0) y0 = 0;
+    if (y1 >= SCR_H) y1 = SCR_H - 1;
+    while (y0 <= y1) { dst[y0 * SCR_W + x] = colour; y0++; }
+}
+
+/* Frames, rules and shading are drawn to the cell instead of being carried
+ * in a glyph.  A stroke the width of the ink cannot reach the stroke in the
+ * next cell, and a frame with a seam every few pixels is not a frame; and
+ * doing it as geometry means every face gets frames for free, at whatever
+ * size it happens to be, with no art to redraw.
+ *
+ * The low four bits say which arms the cell puts out, so a corner is two
+ * of them, a tee is three, and there is no table to keep straight. */
+static void blit_cell(u8 *dst, int x, int y, int ch, u8 colour)
+{
+    int w = s_face->adv, h = s_face->pitch;
+    int mx = x + (w - 1) / 2, my = y + (h - 1) / 2;
+    int m = ch & 15;
+    int px, py;
+
+    if (ch >= CH_SHADE1) {
+        for (py = 0; py < h; py++) {
+            int ay = y + py;
+            if (ay < 0 || ay >= SCR_H) continue;
+            for (px = 0; px < w; px++) {
+                int ax = x + px, on;
+                if (ax < 0 || ax >= SCR_W) continue;
+                /* Keyed to absolute position, not to the cell, so that
+                 * neighbouring cells of the same shade tile seamlessly. */
+                switch (ch) {
+                case CH_SHADE1: on = !(ax & 1) && !(ay & 1);  break;
+                case CH_SHADE2: on = ((ax ^ ay) & 1) == 0;    break;
+                case CH_SHADE3: on = (ax & 1) || (ay & 1);    break;
+                default:        on = 1;                       break;
+                }
+                if (on) dst[ay * SCR_W + ax] = colour;
+            }
+        }
+        return;
+    }
+
+    if ((ch & 0xF0) == CH_FRAME2) {
+        /* Two strokes a pixel either side of where the single one goes.
+         * Each runs a pixel past the centre, so a corner closes instead of
+         * leaving its elbow hanging open. */
+        if (m & FR_LEFT)  { hrun(dst, x, mx + 1, my - 1, colour);
+                            hrun(dst, x, mx + 1, my + 1, colour); }
+        if (m & FR_RIGHT) { hrun(dst, mx - 1, x + w - 1, my - 1, colour);
+                            hrun(dst, mx - 1, x + w - 1, my + 1, colour); }
+        if (m & FR_UP)    { vrun(dst, mx - 1, y, my + 1, colour);
+                            vrun(dst, mx + 1, y, my + 1, colour); }
+        if (m & FR_DOWN)  { vrun(dst, mx - 1, my - 1, y + h - 1, colour);
+                            vrun(dst, mx + 1, my - 1, y + h - 1, colour); }
+        return;
+    }
+
+    if (m & FR_LEFT)  hrun(dst, x, mx, my, colour);
+    if (m & FR_RIGHT) hrun(dst, mx, x + w - 1, my, colour);
+    if (m & FR_UP)    vrun(dst, mx, y, my, colour);
+    if (m & FR_DOWN)  vrun(dst, mx, my, y + h - 1, colour);
+}
+
 static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
 {
-    const u8 *g = g_font5x8[glyph_index(c)];
+    const Face *f = s_face;
+    const u8 *g = f->glyphs + glyph_index(c) * f->w;
     u8 *p = dst + y * SCR_W + x;
     int col;
 
-    for (col = 0; col < GLYPH_W; col++) {
+    for (col = 0; col < f->w; col++) {
         u8 bits = g[col];
         u8 *q = p + col;
         while (bits) {
@@ -386,16 +562,17 @@ static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
 
 void term_render(u8 *dst, u32 t)
 {
+    const Face *f = s_face;
     u32 base;
     int r;
     int cursor_row = -1;
     u8 st;
 
-    base = (s_line >= (u32)(TERM_ROWS - 1)) ? s_line - (TERM_ROWS - 1) : 0;
+    base = (s_line >= (u32)(ROWS - 1)) ? s_line - (ROWS - 1) : 0;
     if ((u32)s_view <= base) base -= (u32)s_view;
     else base = 0;
 
-    for (r = 0; r < TERM_ROWS; r++) {
+    for (r = 0; r < ROWS; r++) {
         u32 abs = base + (u32)r;
         Cell *row;
         int c, y;
@@ -404,21 +581,30 @@ void term_render(u8 *dst, u32 t)
         if (abs + SCROLLBACK <= s_line) continue;   /* aged out of the ring */
 
         row = row_of(abs);
-        y = r * LINE_PITCH;
+        y = r * f->pitch;
         if (abs == s_line) cursor_row = r;
 
         st = s_quirks ? s_style[abs % SCROLLBACK] : ST_PLAIN;
 
-        for (c = 0; c < TERM_COLS; c++) {
+        for (c = 0; c < COLS; c++) {
             int ch = row[c].ch;
             int x, dx = 0, dy = 0, as_rune = 0;
             u8 col = row[c].col;
-            u8 runes[5];
+            u8 runes[GLYPH_W];
             if (ch == ' ' || ch == 0) continue;
 
-            if (st != ST_PLAIN)
+            /* A frame is never afflicted.  The quirks are there to make
+             * the prose uneasy, and a border that shivers is just broken. */
+            if (st != ST_PLAIN && !CH_IS_CELL(ch))
                 as_rune = style_cell(st, c, abs, t, &ch, &col, &dx, &dy, runes);
-            x = TEXT_X0 + c * GLYPH_ADV + dx;
+            x = f->x0 + c * f->adv + dx;
+
+            if (CH_IS_CELL(ch)) {
+                if (f->shadow && ch < CH_SHADE1)
+                    blit_cell(dst, x + 1, y + 1, ch, C_SHADOW);
+                blit_cell(dst, x, y, ch, col);
+                continue;
+            }
             if (as_rune) {
                 blit_cols(dst, x + 1, y + dy + 1, runes, C_SHADOW);
                 blit_cols(dst, x, y + dy, runes, col);
@@ -432,30 +618,30 @@ void term_render(u8 *dst, u32 t)
                 if ((j & 7) == 0) x += (int)((j >> 3) & 1) ? 1 : -1;
                 zalgo_marks(dst, x, y + dy, ch, c, (int)abs, t);
             }
-            blit_glyph(dst, x + 1, y + dy + 1, ch, C_SHADOW);
+            if (f->shadow) blit_glyph(dst, x + 1, y + dy + 1, ch, C_SHADOW);
             blit_glyph(dst, x, y + dy, ch, col);
         }
     }
 
     /* The cursor: a soft block that breathes, with the character under it
      * punched back out in black so you can still read what you typed. */
-    if (cursor_row >= 0 && s_view == 0 && s_col < TERM_COLS) {
-        int x = TEXT_X0 + s_col * GLYPH_ADV;
-        int y = cursor_row * LINE_PITCH;
+    if (cursor_row >= 0 && s_view == 0 && s_col < COLS) {
+        int x = f->x0 + s_col * f->adv;
+        int y = cursor_row * f->pitch;
         int phase = (int)((t >> 3) & (SINLEN - 1));
         int lvl = (SIN(phase * 2) + 4096) * (PAL_CURSOR_N - 1) >> 13;
         u8 col = (u8)(PAL_CURSOR + lvl);
         int ch = row_of(s_line)[s_col].ch;
         int i;
 
-        for (i = 0; i < LINE_PITCH - 1; i++)
-            memset8(dst + (y + i) * SCR_W + x, col, 5);
+        for (i = 0; i < f->pitch - 1; i++)
+            memset8(dst + (y + i) * SCR_W + x, col, f->w);
         if (ch != ' ' && ch != 0) blit_glyph(dst, x, y, ch, 0);
     }
 
     /* A thumb on the right edge while looking back through history. */
     if (s_view > 0) {
-        int span = SCROLLBACK - TERM_ROWS;
+        int span = SCROLLBACK - ROWS;
         int pos = span > 0 ? (SCR_H - 24) * (span - s_view) / span : 0;
         int i;
         for (i = 0; i < 24; i++) {

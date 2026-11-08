@@ -229,7 +229,8 @@ static void cmd_sys(void)
     else
         term_printf("panel   no flat panel controller answered");
     term_newline();
-    term_printf("screen  %u columns by %u rows", TERM_COLS, TERM_ROWS);
+    term_printf("screen  %u by %u, the %s face",
+                term_cols(), term_rows(), term_face()->name);
     term_newline();
     term_printf("audio   pc speaker%s",
                 snd_has_fm() ? " and opl2 fm" : ", no fm chip answered");
@@ -556,6 +557,57 @@ static void cmd_quirks(void)
                          : "Held still.");
 }
 
+/* The grid is a matter of eyesight and of what is being built, so it is a
+ * command rather than a build-time decision.  Cycles, because there are
+ * only two and there will be more. */
+static void cmd_squint(void)
+{
+    int n = term_set_face(term_face_index() + 1 >= FACE_COUNT
+                          ? 0 : term_face_index() + 1);
+    term_colour(C_ACCENT);
+    term_printf("%u by %u now.", term_cols(), term_rows());
+    term_newline();
+    say_dim(n == 0 ? "Easier on the eyes." : "More room to build in.");
+}
+
+/* A test card.  Everything a text interface is made of, at whatever size
+ * the current face happens to be, so a frame that does not meet its
+ * neighbour shows up here and nowhere else. */
+static void cmd_frames(void)
+{
+    int w = term_cols() - 2;
+    int i;
+
+    term_frame_top(w, "frames", 0);
+    term_frame_row(w, "single stroke, and the shades below", 0);
+    term_frame_bottom(w, 0);
+
+    term_frame_top(w, "frames", 1);
+    term_frame_row(w, "double stroke", 1);
+    term_frame_bottom(w, 1);
+
+    term_colour(C_TEXT);
+    for (i = 0; i < w; i++) term_putc(CH_SHADE1);
+    term_newline();
+    for (i = 0; i < w; i++) term_putc(CH_SHADE2);
+    term_newline();
+    for (i = 0; i < w; i++) term_putc(CH_SHADE3);
+    term_newline();
+    for (i = 0; i < w; i++) term_putc(CH_FILL);
+    term_newline();
+
+    /* Tees and a crossing, which is where the geometry is easiest to get
+     * wrong and hardest to notice. */
+    term_putc(FR_TL); term_putc(FR_H); term_putc(FR_TEE_D); term_putc(FR_H);
+    term_putc(FR_TR); term_putc(' ');
+    term_putc(FR_TEE_L); term_putc(FR_CROSS); term_putc(FR_TEE_R);
+    term_putc(' ');
+    term_putc(FR_BL); term_putc(FR_H); term_putc(FR_TEE_U); term_putc(FR_H);
+    term_putc(FR_BR);
+    term_newline();
+    say_dim("the pieces, at this size");
+}
+
 static void cmd_version(void)
 {
     term_colour(C_BRIGHT);
@@ -624,6 +676,8 @@ static const Cmd s_cmds[] = {
     { "sound",   "turn the sound on",            cmd_sound   },
     { "quiet",   "turn the sound off",           cmd_quiet   },
     { "quirks",  "steady the text, or let it go",cmd_quirks  },
+    { "squint",  "fit more on the screen",       cmd_squint  },
+    { "frames",  "what a frame is made of",      cmd_frames  },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
     { "speed",   "where the time goes",          cmd_speed   },

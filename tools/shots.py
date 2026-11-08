@@ -105,6 +105,8 @@ def main():
                     help="extra -device for QEMU, e.g. adlib")
     ap.add_argument("--talk", action="store_true",
                     help="run the conversation script instead")
+    ap.add_argument("--grid", action="store_true",
+                    help="both text grids and the frame test card")
     args = ap.parse_args()
 
     os.makedirs(OUT, exist_ok=True)
@@ -130,6 +132,21 @@ def main():
     tag = ("-" + args.tag) if args.tag else ""
     try:
         mon = Monitor(qemu)
+
+        if args.grid:
+            time.sleep(12.0)             # through the arrival sequence
+            for name, keys in (
+                ("grid-1-roomy",  ["frames\n"]),
+                ("grid-2-close",  ["goaway\n", "squint\n", "frames\n"]),
+                ("grid-3-help",   ["goaway\n", "help\n"]),
+                ("grid-4-sys",    ["goaway\n", "sys\n", "whoami\n",
+                                   "look\n", "version\n"]),
+            ):
+                for k in keys:
+                    type_text(mon, k)
+                    time.sleep(0.5)
+                mon.shot(name + tag)
+            return
 
         if args.talk:
             # The phrases that were actually typed at the real machine,

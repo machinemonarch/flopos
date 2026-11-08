@@ -198,11 +198,68 @@ int    rnd_range(int lo, int hi);
 int    isqrt32(u32 v);
 int    iatan2(int y, int x);
 
-/* --- term.c ------------------------------------------------------------ */
-#define TERM_COLS 53
-#define TERM_ROWS 25
-#define GLYPH_ADV  6                     /* 5 pixels wide, 1 of air         */
-#define LINE_PITCH 8                     /* row 7 is the gap, and descends  */
+/* --- term.c ------------------------------------------------------------ *
+ * The terminal's grid is not a constant.  Two faces are compiled in and
+ * either can be under the terminal while it runs, because the only person
+ * who can judge how small text may get is the one looking at the panel.
+ *
+ *   roomy   53 columns by 25 rows   -- generous, and what FLOPOS grew up in
+ *   close   80 columns by 33 rows   -- the grid every text interface
+ *                                      worth copying was designed on
+ *
+ * adv and pitch are the cell: what one character occupies, ink plus air.
+ * Anything drawn to the cell rather than to the ink -- rules, frames,
+ * shading -- uses those, which is what lets a frame actually join up.
+ */
+typedef struct {
+    const u8   *glyphs;              /* FONT_GLYPHS entries, w bytes each */
+    u8          w, h;                /* the ink box                       */
+    u8          adv, pitch;          /* the cell                          */
+    u8          cols, rows;          /* what fits in 320x200 from x0      */
+    u8          x0;                  /* left margin                       */
+    u8          shadow;              /* a drop shadow under every glyph    */
+    const char *name;
+} Face;
+
+extern const Face g_faces[FACE_COUNT];
+
+const Face *term_face(void);
+int    term_face_index(void);
+int    term_set_face(int n);             /* clamps, returns what took     */
+int    term_cols(void);
+int    term_rows(void);
+
+/* Frames, rules and shading, drawn to the cell instead of the ink so they
+ * meet their neighbours with no seam.  The low four bits of a frame code
+ * are the arms it puts out, so a corner is just two of them ORed together
+ * and there is no table to keep straight. */
+#define CH_FRAME    0x90                 /* 0x90 | arms, single stroke     */
+#define CH_FRAME2   0xA0                 /* 0xA0 | arms, double stroke     */
+#define FR_UP       0x01
+#define FR_DOWN     0x02
+#define FR_LEFT     0x04
+#define FR_RIGHT    0x08
+
+#define FR_H        (CH_FRAME | FR_LEFT | FR_RIGHT)
+#define FR_V        (CH_FRAME | FR_UP   | FR_DOWN)
+#define FR_TL       (CH_FRAME | FR_DOWN | FR_RIGHT)
+#define FR_TR       (CH_FRAME | FR_DOWN | FR_LEFT)
+#define FR_BL       (CH_FRAME | FR_UP   | FR_RIGHT)
+#define FR_BR       (CH_FRAME | FR_UP   | FR_LEFT)
+#define FR_TEE_L    (CH_FRAME | FR_UP   | FR_DOWN | FR_RIGHT)
+#define FR_TEE_R    (CH_FRAME | FR_UP   | FR_DOWN | FR_LEFT)
+#define FR_TEE_D    (CH_FRAME | FR_DOWN | FR_LEFT | FR_RIGHT)
+#define FR_TEE_U    (CH_FRAME | FR_UP   | FR_LEFT | FR_RIGHT)
+#define FR_CROSS    (CH_FRAME | 0x0F)
+
+#define CH_SHADE1   0xB0                 /* a quarter of the cell          */
+#define CH_SHADE2   0xB1                 /* half, chequered                */
+#define CH_SHADE3   0xB2                 /* three quarters                 */
+#define CH_FILL     0xB3                 /* the whole cell                 */
+
+/* True for everything the terminal draws geometrically rather than from a
+ * glyph, which is also everything that must reach the edge of its cell. */
+#define CH_IS_CELL(c) ((c) >= CH_FRAME && (c) <= CH_FILL)
 
 void   term_init(void);
 void   term_clear(void);
@@ -212,6 +269,9 @@ void   term_print(const char *s);
 void   term_printf(const char *fmt, ...);
 void   term_newline(void);
 void   term_render(u8 *dst, u32 t);
+void   term_frame_top(int w, const char *title, int dbl);
+void   term_frame_row(int w, const char *text, int dbl);
+void   term_frame_bottom(int w, int dbl);
 void   term_scroll_view(int lines);      /* +ve looks back through history  */
 void   term_scroll_home(void);
 int    term_scrolled(void);

@@ -172,8 +172,8 @@ void kmain(void)
         while ((ev = kbd_event()) >= 0) {
             int sc = KEV_SCAN(ev);
 
-            if (sc == SC_PGUP) { term_scroll_view(+(TERM_ROWS - 2)); continue; }
-            if (sc == SC_PGDN) { term_scroll_view(-(TERM_ROWS - 2)); continue; }
+            if (sc == SC_PGUP) { term_scroll_view(+(term_rows() - 2)); continue; }
+            if (sc == SC_PGDN) { term_scroll_view(-(term_rows() - 2)); continue; }
 
             /* Any other key means you are done looking back: snap to the
              * bottom so what you type is where you can see it. */
