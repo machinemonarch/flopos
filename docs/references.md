@@ -12,7 +12,7 @@ was copied from any of them.
 | Standard | What it is | Used in |
 |---|---|---|
 | [RFC 8446](https://www.rfc-editor.org/rfc/rfc8446) | TLS 1.3 | `tls.c` |
-| [draft-ietf-tls-ecdhe-mlkem](https://datatracker.ietf.org/doc/draft-ietf-tls-ecdhe-mlkem/) | The X25519MLKEM768 hybrid key exchange for TLS 1.3 | `tls.c` |
+| [draft-ietf-tls-ecdhe-mlkem](https://datatracker.ietf.org/doc/draft-ietf-tls-ecdhe-mlkem/) | The hybrid X25519MLKEM768 key exchange | `tls.c` |
 | [FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) | ML-KEM, the post-quantum key agreement | `mlkem.c` |
 | [FIPS 202](https://csrc.nist.gov/pubs/fips/202/final) | SHA-3 and SHAKE | `sha3.c` |
 | [FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) | SHA-256 | `sha256.c` |
@@ -22,7 +22,7 @@ was copied from any of them.
 | [FIPS 197](https://csrc.nist.gov/pubs/fips/197/final) | AES | `aes.c` |
 | [NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final) | GCM, the mode AES runs in for TLS | `aes.c` |
 | [RFC 7748](https://www.rfc-editor.org/rfc/rfc7748) | X25519 | `x25519.c` |
-| [IANA TLS parameters](https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml) | The numbers for cipher suites and key exchange groups | `tls.c` |
+| [IANA TLS parameters](https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml) | Cipher suite and key group numbers | `tls.c` |
 
 ### The network
 
@@ -42,8 +42,8 @@ was copied from any of them.
 
 | Document | Used in |
 |---|---|
-| Microsoft's FAT specification ("FAT: General Overview of On-Disk Format", fatgen103) | `fs.c`, `tools/mkimage.py` |
-| [CommonMark](https://commonmark.org/) and [Markdown](https://daringfireball.net/projects/markdown/) | the document format in `apps/write/doc.c` |
+| Microsoft's FAT specification (fatgen103) | `fs.c`, `tools/mkimage.py` |
+| [CommonMark](https://commonmark.org/) and [Markdown](https://daringfireball.net/projects/markdown/) | `apps/write/doc.c` |
 
 ## The PC and its chips
 
@@ -66,13 +66,13 @@ for decades:
 
 | Document | Used for |
 |---|---|
-| Intel 82365SL PC Card Interface Controller (PCIC) datasheet: the "ExCA" register set | `pcic.c`: powering the slots, memory and I/O windows |
-| PC Card Standard (PCMCIA), the Card Information Structure (CIS) | `pcic.c`: reading what a card says it is |
-| 3Com EtherLink III technical reference (3C5x9 family) | `el3.c`: the 3C589's registers and how to bring it up |
-| National Semiconductor DP8390 / NE2000 | `ne2000.c`: the card QEMU emulates |
-| Chips & Technologies 65550 flat-panel registers | `panel.c`: stretching 320×200 to fill the panel |
-| VEXP 1.3 by Adrian Gradwell (freeware, 1997), notes on the 65550's panel stretching | `panel.c`: `wide`, and why it is set after the mode change |
-| [Scale2x](https://www.scale2x.it/) | Smoothing the letters at 800×600 (`term.c`) |
+| Intel 82365SL datasheet (ExCA registers) | `pcic.c`: the slots |
+| PC Card Standard: Card Information Structure | `pcic.c`: what a card is |
+| 3Com EtherLink III technical reference | `el3.c`: the 3C589 |
+| National Semiconductor DP8390 / NE2000 | `ne2000.c`: QEMU's card |
+| Chips & Technologies 65550 panel registers | `panel.c`: `wide` |
+| VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
+| [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
 
 ## Toshiba's material (consulted, not included)
 
@@ -96,17 +96,17 @@ and no Toshiba code, firmware or text is in FLOPOS.
 
 | Tool | Used for |
 |---|---|
-| [NIST ACVP test vectors](https://github.com/usnistgov/ACVP-Server) | The official answers ML-KEM-768 is checked against |
-| [OpenSSL](https://www.openssl.org/) | Checking SHA-256, HMAC, HKDF, ChaCha20-Poly1305, X25519 and AES-GCM against thousands of random inputs, and as a local TLS 1.3 test server (`openssl s_server`) |
-| [Python](https://www.python.org/) `hashlib` | Checking SHA-3 and SHAKE |
-| [QEMU](https://www.qemu.org/) | Running FLOPOS without the laptop, including its NE2000 network card |
-| [QEMU's PC Card code](https://github.com/proxmox/qemu/blob/master/hw/pcmcia/pcmcia.c) | Looked at to see whether QEMU could emulate the 3Com card. It can't on a PC. |
-| [86Box](https://86box.net/) | Looked at as an emulator closer to 1990s hardware |
-| [mtools](https://www.gnu.org/software/mtools/) | Building and reading the floppy image |
-| [picocom](https://github.com/npat-efault/picocom) | The serial line from the Linux PC |
+| [NIST ACVP test vectors](https://github.com/usnistgov/ACVP-Server) | Official ML-KEM-768 test answers |
+| [OpenSSL](https://www.openssl.org/) | Cross-checking the encryption; a local TLS test server |
+| [Python](https://www.python.org/) `hashlib` | Cross-checking SHA-3 and SHAKE |
+| [QEMU](https://www.qemu.org/) | Running FLOPOS without the laptop |
+| [QEMU's PC Card code](https://github.com/proxmox/qemu/blob/master/hw/pcmcia/pcmcia.c) | Whether QEMU could emulate the 3Com card (no) |
+| [86Box](https://86box.net/) | An emulator closer to 1990s hardware |
+| [mtools](https://www.gnu.org/software/mtools/) | Building the floppy image |
+| [picocom](https://github.com/npat-efault/picocom) | The serial line |
 
 ## Services browzer uses
 
 | Service | Used for |
 |---|---|
-| [FrogFind](http://frogfind.com/) | Searching, when words are typed instead of an address. Made by Action Retro for vintage computers. |
+| [FrogFind](http://frogfind.com/) | Searching. Made by Action Retro. |
