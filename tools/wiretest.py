@@ -58,9 +58,11 @@ try:
     print("\n--- what came down the wire while it booted ---")
     print(boot.strip() or "(nothing)")
 
-    for cmd in ["disk\r"]:
+    # Every boot stops at the wizard's riddle first.  Any answer will do,
+    # and the way into the shell takes a few seconds.
+    for cmd, wait in [("a turnip\r", 6.0), ("disk\r", 2.0)]:
         send(cmd)
-        reply = read_all(2.0)
+        reply = read_all(wait)
         print("\n--- after sending %r ---" % cmd)
         print(reply.strip() or "(nothing)")
 finally:

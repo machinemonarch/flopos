@@ -41,7 +41,7 @@ On a Linux PC:
 | `tools/release.py`, `tools/changelog.py` | Version numbers and release notes |
 | `tools/shots.py` | Screenshots from the emulator |
 | `tools/wire.py` | Talks to FLOPOS over the serial line and keeps a transcript |
-| `tools/wiretest.py`, `tools/persisttest.py` | Boot it in QEMU and check that the serial line works and that saved things survive a reboot |
+| `tools/wiretest.py`, `tools/persisttest.py` | Boot it in QEMU and check that the serial line works and that saved things survive a reboot. Like `shots.py`, they answer the wizard's riddle first ("a turnip"). |
 | `docs/` | This documentation |
 | `CHANGELOG.md` | Every release and what changed |
 | `releases/` | Every released image and its notes (not in git) |

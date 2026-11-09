@@ -35,6 +35,25 @@ source files involved; every file opens with a comment explaining itself.
    told just after, in order. From the serial line's own step onward, each
    line also goes down the cable as `[boot] ...`.
 
+5. **The wizard** (`kernel/wizard.c`). Saffran fades out and the gate
+   comes up: a riddle, built by taking one of twenty shapes ("Where do %A
+   %P go to %V?") and filling it from lists of adjectives, nouns and verbs,
+   with plurals, "it" forms and "a"/"an" worked out by rule. Which shape
+   and which words is decided by the CMOS clock, the date and the
+   processor's cycle counter, folded together (FNV-1a) and then drawn with
+   a xorshift. The wizard is character art in a window with no paper
+   (`term_win_bare`), so the moving background shows around him. Any
+   answer is accepted, and the riddle and answer go into the journal.
+6. **The way in** (`kernel/cyberdelia.c`). An original chip-tune jingle on
+   the PC speaker (a real square wave) doubled on FM, then about three
+   seconds of ripple: every row of the finished frame slid sideways along
+   two sine waves, through a hook (`g_frame_fx`) the main loop applies
+   after the text is drawn, so it works at either screen size. The palette
+   glows and drifts between cyan and magenta, gently: one smooth rise and
+   fall every 0.8 seconds, at most a ninth of the way to white, nothing
+   red. Bells climb an A minor pentatonic run on two FM channels the music
+   never uses.
+
    Then the main loop runs forever: read keys, run commands, draw a
    frame.
 
@@ -133,6 +152,10 @@ apps.
 `kernel/sound.c` is a step sequencer. It plays rhythms on the OPL2 FM chip
 when there is one, and on the PC speaker when there isn't, driven from the
 timer interrupt so it keeps time whatever else is happening.
+
+It steps aside for effects. `whaaat` slides one voice across four octaves;
+the way into cyberdelia plays square-wave notes and bells (`snd_fx_*`) on
+FM channels 3 to 5, which the music never uses.
 
 ## The floppy
 

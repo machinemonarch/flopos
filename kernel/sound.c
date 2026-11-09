@@ -476,6 +476,88 @@ void snd_sweep_end(void)
     s_sweeping = 0;
 }
 
+/* --- effects: chip-tune notes and bells -------------------------------- *
+ * For the way into cyberdelia.  The sequencer steps aside, as it does for
+ * the sweep, and the effects get three FM channels the music never uses.
+ *
+ * A square note is the PC speaker, which is a genuine square wave -- the
+ * same kind of sound a Game Boy makes -- doubled on FM with a buzzing,
+ * sustained patch for body.  A bell is FM only: a fast attack, a long
+ * decay and a little vibrato, two channels taking turns so each one rings
+ * on under the next.  Without FM a bell is the speaker, and whoever rang
+ * it stops it again.  `quiet` silences all of it.
+ */
+static int s_bell_ch;
+
+static void opl_hz(int ch, int hz, int on)
+{
+    u32 fn = 1023;
+    int block;
+
+    if (hz < 20) hz = 20;
+    if (hz > 4000) hz = 4000;
+    for (block = 0; block < 8; block++) {
+        fn = ((u32)hz << (20 - block)) / 49716u;
+        if (fn < 1024) break;
+    }
+    if (block > 7) { block = 7; fn = 1023; }
+    opl_write((u8)(0xA0 + ch), (u8)(fn & 0xFF));
+    opl_write((u8)(0xB0 + ch), (u8)((on ? 0x20 : 0) | (block << 2) | (fn >> 8)));
+}
+
+void snd_fx_begin(void)
+{
+    s_sweeping = 1;
+    spk_off();
+    s_bell_ch = 0;
+    if (s_fm) {
+        opl_note_off(0); opl_note_off(1); opl_note_off(2);
+        /* 3: square-ish, sustained while held. */
+        opl_voice(3, 0x21, 0x14, 0xF0, 0x0F, 0x00,
+                     0x21, 0x04, 0xF0, 0x0F, 0x00, 0x0E);
+        /* 4, 5: bells. */
+        opl_voice(4, 0x47, 0x1A, 0xF3, 0x05, 0x00,
+                     0x41, 0x02, 0xF2, 0x04, 0x00, 0x04);
+        opl_voice(5, 0x47, 0x1A, 0xF3, 0x05, 0x00,
+                     0x41, 0x02, 0xF2, 0x04, 0x00, 0x04);
+    }
+}
+
+void snd_fx_square(int hz)
+{
+    if (!s_sweeping) return;
+    if (hz <= 0 || !s_on) {
+        spk_off();
+        if (s_fm) opl_hz(3, 440, 0);
+        return;
+    }
+    spk_on((u16)(1193182u / (u32)hz));
+    if (s_fm) { opl_hz(3, hz, 0); opl_hz(3, hz, 1); }
+}
+
+void snd_fx_bell(int hz)
+{
+    if (!s_sweeping || !s_on || hz <= 0) return;
+    if (s_fm) {
+        int ch = 4 + s_bell_ch;
+        s_bell_ch ^= 1;
+        opl_hz(ch, hz, 0);               /* off first, so it strikes again */
+        opl_hz(ch, hz, 1);
+    } else
+        spk_on((u16)(1193182u / (u32)hz));
+}
+
+void snd_fx_end(void)
+{
+    spk_off();
+    if (s_fm) {
+        opl_hz(3, 440, 0);
+        opl_hz(4, 440, 0);               /* the bells ring out on release   */
+        opl_hz(5, 440, 0);
+    }
+    s_sweeping = 0;
+}
+
 /* --- the sequencer, called at TICK_HZ ---------------------------------- */
 void snd_tick(void)
 {

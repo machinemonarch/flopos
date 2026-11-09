@@ -60,7 +60,18 @@ Put the floppy in the laptop and switch it on. You will see:
    the screen switches to 800×600, the panel's own resolution, with
    Saffran still up. Any key skips the typing; the steps still all
    happen.
-4. Saffran fading out and the prompt fading in:
+4. Saffran fading out, and **the wizard** coming up out of the dark: a
+   very tired wizard sitting on top of the login box, who says
+
+   > Hold, explorer! For you must answer this riddle before you can enter
+   > cyberdelia!
+
+   and asks a riddle made up on the spot ("Where is the holy keyboard that
+   forgets?"). Type any answer and press Enter. Every answer is correct,
+   even none at all.
+5. A little chip-tune jingle (a secret, found), then the screen ripples and
+   glows softly while bells climb, and you are in **cyberdelia**, the
+   shell:
 
         FLOPOS
         a place to be, on one floppy disk
@@ -80,7 +91,8 @@ bits, no parity, 1 stop bit. On the Linux PC:
     sudo picocom -b 115200 /dev/ttyUSB0
 
 Anything you type there is typed into FLOPOS, and everything it says
-appears there too. To leave picocom, press **Ctrl-A** then **Ctrl-X**.
+appears there too, the wizard's riddle included, so you can answer it
+from there. To leave picocom, press **Ctrl-A** then **Ctrl-X**.
 
 A few keys can't cross a serial line, because a terminal sends the same
 byte for two different keys:

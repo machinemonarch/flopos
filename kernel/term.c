@@ -41,6 +41,7 @@ static int   s_zalgo;
 static u8    s_style[SCROLLBACK];        /* one quirk per line of history  */
 static int   s_quirks = 1;
 static int   s_mute;                     /* say it down the wire only      */
+static int   s_nocursor;                 /* nothing to type into here      */
 
 static void style_birth(u32 abs);
 
@@ -222,6 +223,7 @@ void term_newline(void)
  * for me, and there is no reason to make somebody sit and watch it
  * scroll past on the machine itself. */
 void term_mute(int on) { s_mute = on; }
+void term_cursor(int on) { s_nocursor = !on; }
 
 void term_putc(int c)
 {
@@ -683,6 +685,7 @@ static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
 static u8  s_win_ch[WIN_H][WIN_W], s_win_fg[WIN_H][WIN_W], s_win_bg[WIN_H][WIN_W];
 static u8  s_win_at[WIN_H][WIN_W];        /* bold, italic, underline        */
 static int s_win_on, s_win_c, s_win_r, s_win_w, s_win_h;
+static int s_win_bare;                   /* no paper, no shadow             */
 
 
 int term_win_open(int w, int h)
@@ -706,7 +709,19 @@ int term_win_open(int w, int h)
             s_win_at[y][x] = 0;
         }
     s_win_on = 1;
+    s_win_bare = 0;
     return w;
+}
+
+/* A window with nothing behind it: every cell starts clear, so the screen
+ * shows through wherever nothing is put, and the window casts no shadow.
+ * Cells given a paper of their own still get it. */
+void term_win_bare(void)
+{
+    int x, y;
+    for (y = 0; y < s_win_h; y++)
+        for (x = 0; x < s_win_w; x++) s_win_at[y][x] = ATTR_CLEAR;
+    s_win_bare = 1;
 }
 
 void term_win_close(void) { s_win_on = 0; }
@@ -813,14 +828,25 @@ static void render_window(u8 *dst)
 
     /* A shadow down the right and along the bottom, half a cell deep, so
      * the window sits on the screen rather than in it. */
-    fill_rect(dst, ox + s_win_w * cw, oy + ch / 2, cw / 2, s_win_h * ch, PAL_SHADOW);
-    fill_rect(dst, ox + cw / 2, oy + s_win_h * ch, s_win_w * cw, ch / 2, PAL_SHADOW);
+    if (!s_win_bare) {
+        fill_rect(dst, ox + s_win_w * cw, oy + ch / 2, cw / 2, s_win_h * ch, PAL_SHADOW);
+        fill_rect(dst, ox + cw / 2, oy + s_win_h * ch, s_win_w * cw, ch / 2, PAL_SHADOW);
+    }
 
     for (y = 0; y < s_win_h; y++) {
         for (x = 0; x < s_win_w; x++) {
             int px = ox + x * cw, py = oy + y * ch;
             int c = s_win_ch[y][x];
             u8 at = s_win_at[y][x], fg = s_win_fg[y][x];
+            if (at & ATTR_CLEAR) {
+                /* Over the moving background: a drop shadow, as the
+                 * terminal's own text has, or it sinks into the colours. */
+                if (c == ' ' || c == 0) continue;
+                if (CH_IS_CELL(c)) { blit_cell(dst, px, py, c, fg); continue; }
+                blit_styled(dst, px + s_scale, py + s_scale, c, C_SHADOW, at);
+                blit_styled(dst, px, py, c, fg, at);
+                continue;
+            }
             fill_rect(dst, px, py, cw, ch, s_win_bg[y][x]);
             /* Underline: a line under the letters, the width of the cell,
              * so an underlined word is one line rather than dashes. */
@@ -900,7 +926,7 @@ void term_render(u8 *dst, u32 t)
 
     /* The cursor: a soft block that breathes, with the character under it
      * punched back out in black so you can still read what you typed. */
-    if (cursor_row >= 0 && s_view == 0 && s_col < COLS) {
+    if (cursor_row >= 0 && s_view == 0 && s_col < COLS && !s_nocursor) {
         int x = (f->x0 + s_col * f->adv) * s_scale;
         int y = cursor_row * f->pitch * s_scale;
         int phase = (int)((t >> 3) & (SINLEN - 1));

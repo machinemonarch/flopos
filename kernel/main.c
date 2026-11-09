@@ -85,6 +85,8 @@ static void commit_line(void)
     term_newline();
 }
 
+void (*g_frame_fx)(u8 *canvas, int w, int h, u32 t);
+
 static void draw_frame_now(u32 t)
 {
     u32 a, b;
@@ -103,6 +105,7 @@ static void draw_frame_now(u32 t)
     if (!s_pumping)
         term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
     term_render(vga_canvas(), t);
+    if (g_frame_fx) g_frame_fx(vga_canvas(), vga_width(), vga_height(), t);
     b = perf_clock(); perf_add(PERF_TEXT, b - a); a = b;
 
     if (!vga_is_big()) vga_wait_retrace();
@@ -264,8 +267,12 @@ void kmain(void)
     boot_step("Being generally cool.");
     boot_end();
 
-    /* Arrive out of black rather than snapping on. */
+    /* Then the wizard, up out of the dark.  Nobody reaches the shell --
+     * cyberdelia -- without answering his riddle, and every answer is the
+     * right one.  He leaves the palette as the mood's own. */
     vga_set_palette(black);
+    wizard_gate();
+
     shell_banner();
     shell_prompt();
     after_prompt();

@@ -1,5 +1,8 @@
 # Commands
 
+This is cyberdelia, the shell, where you land once the wizard at the gate
+has had his riddle answered (see [Getting started](getting-started.md#booting)).
+
 Type a word at `here>` and press Enter. Capital letters don't matter. A word
 FLOPOS doesn't know gets "I don't know that word." and goes into the journal,
 so it can be considered for next time.

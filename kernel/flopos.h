@@ -271,6 +271,7 @@ void   term_printf(const char *fmt, ...);
 void   term_newline(void);
 void   term_render(u8 *dst, u32 t);
 void   term_mute(int on);
+void   term_cursor(int on);              /* the terminal's own, on or off   */
 void   term_plain(int on);
 int    term_win_open(int w, int h);
 void   term_win_close(void);
@@ -281,6 +282,8 @@ void   term_win_put_at(int x, int y, int ch, u8 fg, u8 bg, u8 attr);
 #define ATTR_BOLD      0x01
 #define ATTR_ITALIC    0x02
 #define ATTR_UNDERLINE 0x04
+#define ATTR_CLEAR     0x10              /* no paper: the screen shows through */
+void   term_win_bare(void);              /* every cell clear, and no shadow */
 int    term_win_text(int x, int y, const char *t, u8 fg, u8 bg);
 void   term_win_band(int y, int x0, int x1, u8 bg);
 void   term_win_frame(const char *title, u8 fg);
@@ -328,6 +331,15 @@ void   boot_begin(void);                    /* the clock is running: start   */
 void   boot_step(const char *fmt, ...);     /* a step is about to happen     */
 void   boot_result(const char *fmt, ...);   /* ...and what it found          */
 void   boot_end(void);                      /* hold, then fade out           */
+
+/* --- wizard.c, cyberdelia.c: the way into the shell -------------------- */
+void   wizard_gate(void);                   /* until a riddle is answered    */
+void   cyberdelia_jingle(void (*each)(void));  /* a secret, found          */
+void   cyberdelia_enter(void (*each)(void));   /* the screen ripples you in */
+
+/* Applied to every finished frame, after the text and before it goes to
+ * the screen, while set.  w and h are the canvas's own size. */
+extern void (*g_frame_fx)(u8 *canvas, int w, int h, u32 t);
 
 /* --- banana.c ---------------------------------------------------------- */
 void   banana_draw(u8 *dst, u32 t);
@@ -441,6 +453,10 @@ void   snd_silence(void);
 void   snd_sweep_begin(void);
 void   snd_sweep_set(int hz);
 void   snd_sweep_end(void);
+void   snd_fx_begin(void);               /* the music steps aside           */
+void   snd_fx_square(int hz);            /* a chip-tune note; 0 stops it    */
+void   snd_fx_bell(int hz);              /* a bell, struck and left to ring */
+void   snd_fx_end(void);
 extern volatile u8  g_beat;
 extern volatile u8  g_bar;
 extern volatile u32 g_step;

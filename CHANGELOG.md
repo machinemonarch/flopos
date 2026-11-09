@@ -6,6 +6,22 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.13.0 — 2026-11-09
+
+- **The wizard.** Before the shell there is now a very tired wizard,
+  sitting on top of the login box: "Hold, explorer! For you must answer
+  this riddle before you can enter cyberdelia!" The riddle is made up on
+  the spot from word lists, chosen by the clock, so no two boots ask the
+  same thing. Every answer is correct. He has stopped checking.
+- **Cyberdelia**, the shell, has an entrance: a little chip-tune jingle (a
+  secret, found), then the screen ripples, glows softly and drifts through
+  cyan and magenta while bells climb. The glow is gentle on purpose: slow,
+  never close to white, never red.
+- The riddle and your answer go into the journal.
+- The riddle comes down the serial line too, and can be answered from
+  there.
+- Tools: the test scripts answer the riddle ("a turnip").
+
 ## 1.12.0 — 2026-11-09
 
 - **Saffran shows while the machine really loads.** The coloured stripes

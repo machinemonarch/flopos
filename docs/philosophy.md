@@ -101,5 +101,10 @@ you, not how they work: `goaway` clears the screen, `remember` saves,
   off the floppy and appears as fast as the drive delivers him. The machine
   then tells him, step by step, everything it is really doing to get
   ready.
+- **The wizard** at the gate to the shell, which is called cyberdelia. He
+  is very tired, he asks a riddle assembled from word lists by the clock,
+  and he accepts every answer. Getting in plays a chip-tune jingle, then
+  the screen ripples and glows while bells climb. The glow is kept gentle
+  on purpose, for anyone sensitive to flashing light.
 - **whaaat**: the whole screen pulled through a hole in itself and turned
   inside out.

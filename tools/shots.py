@@ -82,6 +82,13 @@ NAMED = {
 }
 
 
+def answer_the_wizard(mon, settle=5.5):
+    """Every boot stops at the wizard's riddle.  Any answer will do; then
+    the jingle and the way into the shell take a few seconds."""
+    type_text(mon, "a turnip\n")
+    time.sleep(settle)
+
+
 def type_text(mon, text, settle=0.06):
     for ch in text:
         if ch in NAMED:
@@ -134,7 +141,8 @@ def main():
         mon = Monitor(qemu)
 
         if args.grid:
-            time.sleep(12.0)             # through the arrival sequence
+            time.sleep(12.0)             # through the boot
+            answer_the_wizard(mon)
             for name, keys in (
                 ("grid-1-close-frames", ["frames\n"]),
                 ("grid-2-close-help",   ["goaway\n", "help\n"]),
@@ -154,7 +162,8 @@ def main():
         if args.talk:
             # The phrases that were actually typed at the real machine,
             # plus the ones it is obviously going to be asked next.
-            time.sleep(2.6)
+            time.sleep(12.0)
+            answer_the_wizard(mon)
             script = [
                 (["whoareyou", "\n"], None),
                 (["who are you", "?", "\n"], None),
@@ -191,8 +200,11 @@ def main():
         time.sleep(2.2)
         mon.shot("00c-arrive" + tag)
         time.sleep(4.0)
-        mon.shot("01-boot" + tag)          # mid-fade, straight after arrival
-        time.sleep(1.5)
+        mon.shot("01-wizard" + tag)        # the riddle at the gate
+        type_text(mon, "a turnip\n")
+        time.sleep(1.6)
+        mon.shot("01b-cyberdelia" + tag)   # rippling on the way in
+        time.sleep(4.0)
         mon.shot("02-prompt" + tag)
 
         type_text(mon, "whoami\n")
