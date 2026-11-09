@@ -77,8 +77,21 @@ the rest.
 | `r` | Load the page again |
 | `h` | Home |
 | `b` | Bookmark this page |
+| `s` | Stop the music |
 | `m` | Your bookmarks |
 | Esc | Cancel a page that is taking too long, or leave |
+
+### Music
+
+A link to a tracker song plays it: **.mod** (ProTracker, from the Amiga) and
+**.xm** (FastTracker 2), such as the ones on
+[modarchive.org](https://modarchive.org/). browzer downloads the song (2 MB
+at most), shows what it is, and plays it through the Sound Blaster. It goes
+on playing while you browse; the top edge shows what is playing and for how
+long, and **s** stops it. Leaving browzer stops it too.
+
+Songs play in mono, once through. The FM music steps aside while they do.
+mp3 files and radio are next.
 
 ### Bookmarks
 

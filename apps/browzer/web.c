@@ -955,6 +955,18 @@ static int stop_asked(void) { return ui_key() == UK_ESC; }
  * writes the same way either way. */
 static int s_secure;
 static int s_status;                     /* the last answer's status       */
+
+int  (*web_media_start)(const char *ctype, const char *url, u32 length, u32 metaint, const char *station);
+int  (*web_media_bytes)(const u8 *p, int n);
+void (*web_media_end)(int whole);
+
+static u32 number_at(const char *v)
+{
+    u32 x = 0;
+    while (*v == ' ') v++;
+    while (*v >= '0' && *v <= '9') x = x * 10 + (u32)(*v++ - '0');
+    return x;
+}
 static int conn_write(const u8 *d, int n) { return A->conn_write(d, n); }
 static int conn_read(u8 *b, int n, int w) { return A->conn_read(b, n, w); }
 static void conn_close(void) { A->conn_close(); }
@@ -967,12 +979,15 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     static u8 buf[1024];
     static char head[2048];
     char req[PAGE_HREF_MAX + 200], line[96];
-    int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0;
+    int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0;
+    u32 clen = 0, metaint = 0;
+    char station[48];
     u32 body = 0, said = 0;
     char ctype[48];
 
     ctype[0] = 0;
     moved[0] = 0;
+    station[0] = 0;
 
     s_secure = u->secure;
     if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->who[0] = 0; }
@@ -1027,7 +1042,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
     for (;;) {
         n = conn_read(buf, sizeof buf, 15000);
-        if (n == 0) break;                               /* they finished  */
+        if (n == 0) { whole = 1; break; }                /* they finished  */
         if (n < 0) {
             flush_word();
             if (n == -1) note("It went quiet, so I stopped waiting.", C_ACCENT);
@@ -1039,6 +1054,11 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
         }
 
         for (i = 0; i < n; i++) {
+            if (in_body && media) {                      /* not a page: handed on whole */
+                body += (u32)(n - i);
+                if (!web_media_bytes(buf + i, n - i)) stopped = 1;
+                break;
+            }
             if (in_body) {
                 body++;
                 if (!counting) body_byte(buf[i]);
@@ -1064,6 +1084,15 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                         while (*v == ' ') v++;
                         while (v < end && *v != '\r' && k < moved_max - 1) moved[k++] = *v++;
                         moved[k] = 0;
+                    } else if (lower_eq(ln, "content-length:", 15)) {
+                        clen = number_at(ln + 15);
+                    } else if (lower_eq(ln, "icy-metaint:", 12)) {
+                        metaint = number_at(ln + 12);
+                    } else if (lower_eq(ln, "icy-name:", 9)) {
+                        char *v = ln + 9; int k = 0;
+                        while (*v == ' ') v++;
+                        while (v < end && *v != '\r' && k < 47) station[k++] = *v++;
+                        station[k] = 0;
                     } else if (lower_eq(ln, "content-type:", 13)) {
                         char *v = ln + 13; int k = 0;
                         while (*v == ' ') v++;
@@ -1084,7 +1113,17 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
                 html = lower_eq(ctype, "text/html", 9) ||
                        lower_eq(ctype, "application/xhtml", 17);
-                if (!html && !lower_eq(ctype, "text/", 5) && ctype[0]) {
+                if (lower_eq(head, "ICY", 3) && !ctype[0])        /* old radio */
+                    fmt_str(ctype, sizeof ctype, "audio/mpeg");
+                if (!html && !lower_eq(ctype, "text/", 5) && ctype[0] && s_pg && web_media_start &&
+                    status >= 200 && status < 300) {
+                    char where[PAGE_HREF_MAX + 16];
+                    url_text(u, where, (int)sizeof where);
+                    media = web_media_start(ctype, where, clen, metaint, station);
+                }
+                if (media) {
+                    /* handed on from the next byte */
+                } else if (!html && !lower_eq(ctype, "text/", 5) && ctype[0]) {
                     note("Not text, so not shown. Counting the bytes instead.", C_DIM);
                     counting = 1;
                 } else {
@@ -1101,6 +1140,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                 note(line, C_DIM);
             }
         }
+        if (stopped) break;
         if (stop_asked()) {
             flush_word();
             note("Stopped.", C_ACCENT);
@@ -1111,6 +1151,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
     flush_word();
     conn_close();
+    if (media) web_media_end(whole && !stopped);
     if (!s_pg) {
         if (s_col) term_newline();
         fmt_str(line, sizeof line, "%u bytes.", body);

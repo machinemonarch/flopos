@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 2
+#define APP_API_VERSION 3
 #define APP_BASE        0x00A00000u      /* 10MB, clear of the kernel heap */
 #define APP_MAX         0x00400000u      /* 4MB: code, data and buffers    */
 
@@ -160,6 +160,17 @@ typedef struct {
     const char *(*conn_why)(void);
     void (*conn_info)(ConnInfo *ci);
     void (*conn_check)(int on);
+
+    /* ---- version 3 ------------------------------------------------------ */
+    /* Recorded sound: 8-bit unsigned mono samples, queued and played by
+     * the Sound Blaster.  audio_open asks for a rate and returns the one
+     * it got (0: no card that plays samples).  The queue holds about six
+     * seconds; audio_write takes what fits and says how much that was. */
+    int  (*audio_open)(int rate);
+    int  (*audio_space)(void);
+    int  (*audio_queued)(void);
+    int  (*audio_write)(const u8 *p, int n);
+    void (*audio_close)(void);
 } Api;
 
 typedef int (*AppMain)(const Api *api, int argc, char **argv);

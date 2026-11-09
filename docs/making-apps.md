@@ -138,6 +138,34 @@ so an app only reads and writes:
 One connection at a time. Anything above it is the app's own: browzer
 speaks HTTP and reads HTML itself, in `apps/browzer/`.
 
+### Added in version 3: sound
+
+| Function | What it does |
+|---|---|
+| `audio_open(rate)` | Start the Sound Blaster playing 8-bit unsigned mono samples. Returns the rate it got (22050 asked for gives 22222), or 0 if there is no card that plays samples. The FM music steps aside. |
+| `audio_write(p, n)` | Queue samples. Takes what fits and returns how many that was. The queue holds about six seconds. |
+| `audio_space()` | How many samples would fit now |
+| `audio_queued()` | How many are still waiting to be played |
+| `audio_close()` | Stop, and let the FM music back |
+
+Keep the queue topped up whenever the app is waiting for anything else.
+
+## Libraries apps share
+
+Code more than one app could use lives in `apps/lib/<name>/` and is built
+into each app that asks for it in the Makefile:
+
+    APPLIBS_browzer := audio
+
+| Library | What it does |
+|---|---|
+| `audio` | `tracker.c`: turns a .mod or .xm song into samples (`tracker_load`, `tracker_render`), ready for `audio_write` |
+
+An app that uses floating point (the audio library does) also needs the
+Pentium's FPU switched on for it in the Makefile (`APPFLAGS_browzer :=
+-m80387 -mhard-float`) and an `fninit` when it starts. Nothing in the system
+uses the FPU, so an app has it to itself.
+
 Colours (`A_TEXT`, `A_DIM`, `A_BRIGHT`, `A_ACCENT`, `A_GREY`, `A_PAPER`,
 `A_HILITE`, `A_SELECT`), frame pieces (`A_FR_*`) and the Swedish letters
 (`A_CH_ARING` and so on) are named in `app.h`.

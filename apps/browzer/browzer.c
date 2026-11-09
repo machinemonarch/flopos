@@ -26,6 +26,7 @@
  * ===========================================================================
  */
 #include "web.h"
+#include "tracker.h"
 
 #define MAX_LINES  1500
 #define MAX_WIDTH  98
@@ -44,6 +45,67 @@ static u16       s_link_field[PAGE_LINKS + 1];
 static u8        s_body[PAGE_POOL * 3];  /* a form, ready to send          */
 static int  s_ready;
 static int  s_typing = -1;               /* the field being typed into     */
+
+/* ---- music ------------------------------------------------------------------
+ * A link that is not a page comes here instead: downloaded whole into
+ * memory, and if it turns out to be a song, played.  A song keeps playing
+ * while you browse -- the queue is topped up whenever browzer is waiting
+ * for anything -- until it ends or s stops it. */
+#define DL_MAX (2u << 20)
+static u8   s_dl[DL_MAX];
+static u32  s_dl_len;
+static int  s_dl_state;                  /* 0 none, 1 coming, 2 came, 3 broke off, 4 too big */
+static char s_dl_type[48], s_dl_url[PAGE_HREF_MAX + 16];
+static int  s_music;                     /* 0 quiet, 1 playing, 2 the end is queued */
+static int  s_rate;
+
+static void music_stop(void)
+{
+    if (s_music) A->audio_close();
+    s_music = 0;
+}
+
+/* Keep the sound card's queue full.  Called whenever browzer waits. */
+static void music_feed(void)
+{
+    static u8 buf[4096];
+    if (s_music == 1) {
+        while (A->audio_space() >= (int)sizeof buf) {
+            int n = tracker_render(buf, (int)sizeof buf);
+            A->audio_write(buf, n);
+            if (n < (int)sizeof buf) { s_music = 2; break; }
+        }
+    }
+    if (s_music == 2 && A->audio_queued() == 0) music_stop();
+}
+
+static int media_start(const char *ctype, const char *url, u32 length, u32 metaint, const char *station)
+{
+    int i;
+    (void)metaint; (void)station;
+    music_stop();                        /* its memory is about to be used  */
+    for (i = 0; ctype[i] && i < (int)sizeof s_dl_type - 1; i++) s_dl_type[i] = ctype[i];
+    s_dl_type[i] = 0;
+    for (i = 0; url[i] && i < (int)sizeof s_dl_url - 1; i++) s_dl_url[i] = url[i];
+    s_dl_url[i] = 0;
+    s_dl_len = 0;
+    s_dl_state = length > DL_MAX ? 4 : 1;
+    return 1;
+}
+
+static int media_bytes(const u8 *p, int n)
+{
+    if (s_dl_state != 1) return 0;
+    if (s_dl_len + (u32)n > DL_MAX) { s_dl_state = 4; return 0; }
+    memcpy(s_dl + s_dl_len, p, (u32)n);
+    s_dl_len += (u32)n;
+    return 1;
+}
+
+static void media_end(int whole)
+{
+    if (s_dl_state == 1) s_dl_state = whole ? 2 : 3;
+}
 
 int ui_key(void)
 {
@@ -110,6 +172,19 @@ static void draw(void)
 
     term_win_open(s_w, s_h);
     term_win_frame(0, C_GREY);
+
+    /* What is playing, at the right of the top edge. */
+    if (s_music) {
+        char m[60];
+        /* What has been heard: made, less what is still queued, less
+         * the sound card's own loop. */
+        u32 made = tracker_samples(), behind = (u32)A->audio_queued() + 16384;
+        u32 t = s_rate ? (made > behind ? made - behind : 0) / (u32)s_rate : 0;
+        int ml;
+        fmt_str(m, sizeof m, " playing %s %u:%02u ", tracker_title()[0] ? tracker_title() : "a song", t / 60, t % 60);
+        for (ml = 0; m[ml]; ml++) { }
+        if (ml < s_w - 30) term_win_text(s_w - 2 - ml, 0, m, C_ACCENT, pp);
+    }
 
     /* The name, with the z in banana. */
     term_win_put(2, 0, ' ', C_GREY, pp);
@@ -218,6 +293,7 @@ static void draw(void)
 
 static void progress(void)
 {
+    music_feed();
     draw();
     main_pump(1);
 }
@@ -442,6 +518,7 @@ static void mark_change(int key)
 /* A page, or the answer to a form sent to url (post, of postlen bytes). */
 static void go_with(const char *url, const u8 *post, int postlen)
 {
+    int loaded;
     s_top = 0;
     s_sel = 0;
     s_typing = -1;
@@ -457,7 +534,45 @@ static void go_with(const char *url, const u8 *post, int postlen)
         s_loading = 0;
         return;
     }
-    if (!http_load(url, &s_pg, post, postlen) && s_pg.lines <= 1 && s_pg.col == 0) {
+    s_dl_state = 0;
+    loaded = http_load(url, &s_pg, post, postlen);
+    if (loaded && s_dl_state) {
+        /* Not a page: what came instead. */
+        static char html[700];
+        const char *what;
+        int i, ok = 0;
+        if (s_dl_state == 4) what = "<p>It is too big to keep here: 2 MB at most.</p>";
+        else if (s_dl_state == 3) what = "<p>It stopped coming before it was all here.</p>";
+        else if (tracker_load(s_dl, s_dl_len, 22050)) {
+            s_rate = A->audio_open(22050);
+            if (s_rate) {
+                (void)tracker_load(s_dl, s_dl_len, s_rate);
+                s_music = 1;
+                music_feed();
+                ok = 1;
+            }
+            what = 0;
+        } else what = "<p>browzer cannot show it or play it.</p>";
+        if (ok)
+            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>A %u-channel %s song, playing.</p>"
+                    "<p>It goes on playing while you browse. s stops it.</p>",
+                    tracker_title()[0] ? tracker_title() : "a song", tracker_title()[0] ? tracker_title() : "A song",
+                    (u32)tracker_channels(), tracker_kind());
+        else if (!what)
+            fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A %s song -- but this machine has "
+                    "no sound card that plays recordings, so it cannot be heard.</p>",
+                    tracker_title(), tracker_kind());
+        else
+            fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>That is %s, %u bytes.</p>%s",
+                    s_dl_type, s_dl_len, what);
+        http_page_html(html, &s_pg);
+        for (i = 0; s_dl_url[i]; i++) s_pg.url[i] = s_dl_url[i];
+        s_pg.url[i] = 0;
+        s_dl_state = 0;
+        s_loading = 0;
+        return;
+    }
+    if (!loaded && s_pg.lines <= 1 && s_pg.col == 0) {
         /* Nothing came: say why on the page itself, not only in the
          * status line, and keep the address so r can try again. */
         static char html[600];
@@ -717,6 +832,9 @@ void browzer_run(const char *start)
         s_pg.link_field = s_link_field;
         s_pg.max_lines = MAX_LINES;
         s_pg.progress = progress;
+        web_media_start = media_start;
+        web_media_bytes = media_bytes;
+        web_media_end = media_end;
         s_ready = 1;
         s_pg.width = 0;
     }
@@ -737,7 +855,7 @@ void browzer_run(const char *start)
     for (;;) {
         draw();
         k = ui_key();
-        if (k < 0) { main_pump(0); continue; }
+        if (k < 0) { music_feed(); main_pump(0); continue; }
 
         if (s_typing >= 0) {             /* into a box on the page          */
             PageField *f = &s_pg.fields[s_typing];
@@ -769,6 +887,7 @@ void browzer_run(const char *start)
         if (k != 'd') s_del_armed = 0;
         switch (k) {
         case UK_ESC: case 'q':
+            music_stop();
             term_win_close();
             return;
         case UK_UP:    scroll(-1); break;
@@ -786,6 +905,9 @@ void browzer_run(const char *start)
                       for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
                       u[i] = 0; go(u); } break;
         case 'h': push_history(); home(); break;
+        case 's':
+            if (s_music) { music_stop(); say("The music has stopped.", C_DIM); }
+            break;
         case 'b': mark_this(); break;
         case 'm': push_history(); marks_page(); s_top = 0; s_sel = 0; break;
         case 'p': case 'd':
@@ -815,6 +937,7 @@ int app_main(const Api *api, int argc, char **argv)
     int a, i, n = 0;
 
     A = api;
+    __asm__ __volatile__("fninit");      /* the songs use the FPU; nothing else here does */
     for (a = 1; a < argc; a++) {
         if (a > 1 && n < PAGE_HREF_MAX - 1) start[n++] = ' ';
         for (i = 0; argv[a][i] && n < PAGE_HREF_MAX - 1; i++) start[n++] = argv[a][i];

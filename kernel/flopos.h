@@ -441,6 +441,16 @@ void   snd_init(void);
 void   snd_tick(void);
 void   snd_toggle(void);
 int    snd_enabled(void);
+
+/* --- audio.c: samples through the Sound Blaster ------------------------- */
+int    audio_probe(void);
+int    audio_open(int rate);              /* -> the rate it got, 0: none   */
+int    audio_space(void);
+int    audio_queued(void);
+int    audio_write(const u8 *p, int n);
+void   audio_close(void);
+void   audio_tick(void);
+void   audio_report(void);
 int    snd_has_fm(void);
 void   snd_set_tempo(int bpm);
 int    snd_tempo(void);

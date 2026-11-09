@@ -1473,6 +1473,8 @@ static void cmd_stall(void)
 /* The instruments.  They all still work if you type them, and none of
  * them is in the list: they are questions I ask the machine, not words
  * anybody should have to wade through to find "look". */
+static void cmd_dsp(void) { audio_report(); }
+
 static const Cmd s_diag[] = {
     { "vesa",    "what the video card can do",   cmd_vesa    },
     { "card",    "what is in the PC Card slots", cmd_card    },
@@ -1482,6 +1484,7 @@ static const Cmd s_diag[] = {
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "dump",    "show me what is at an address",cmd_dump    },
     { "net",     "wake the network card up",     cmd_net     },
+    { "dsp",     "the sound card's sample player", cmd_dsp   },
 #ifdef FLOPOS_TEST
     { "stall",   "reproduce the freeze",         cmd_stall   },
 #endif

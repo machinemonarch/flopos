@@ -77,6 +77,8 @@ static const Api s_api = {
     api_version, term_putc, term_plain, api_wire,
     net_online, conn_open, conn_write, conn_read, conn_close, conn_why, conn_info,
     tls_check,
+    /* version 3 */
+    audio_open, audio_space, audio_queued, audio_write, audio_close,
 };
 
 static int memory_for_apps(void)

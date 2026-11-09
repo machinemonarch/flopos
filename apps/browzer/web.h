@@ -18,6 +18,8 @@
 
 extern const Api *A;
 typedef u32 usize;
+void *memcpy(void *d, const void *s, u32 n);    /* crt.c */
+void *memset(void *d, int c, u32 n);
 
 /* ---- the kernel's names, as the app interface has them ------------------ */
 #define C_TEXT     A_TEXT
@@ -152,5 +154,14 @@ void   http_fetch(const char *url);      /* into the terminal, as text      */
 void   page_field_show(Page *pg, int f); /* redraw a box after typing       */
 
 void   browzer_run(const char *start);
+
+/* What a page that is not a page is handed to.  browzer sets these; the
+ * reader calls them.  start: its type, address, length if the server
+ * said (else 0), and for radio the metadata interval and station name;
+ * 1 to take the bytes.  bytes: 0 to stop.  end: 1 if all of it came. */
+extern int  (*web_media_start)(const char *ctype, const char *url, u32 length,
+                               u32 metaint, const char *station);
+extern int  (*web_media_bytes)(const u8 *p, int n);
+extern void (*web_media_end)(int whole);
 
 #endif

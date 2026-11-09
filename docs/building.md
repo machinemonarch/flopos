@@ -33,6 +33,7 @@ On a Linux PC:
 | `boot/roots.dat` | The 119 authorities secure sites are checked against, made by `tools/mkroots.py` |
 | `kernel/` | The system: one file per job, each explaining itself at the top |
 | `apps/` | Programs that live on the floppy beside the system (see [Making apps](making-apps.md)) |
+| `apps/lib/` | Code apps share, built into each app that asks for it (`audio`: songs into samples) |
 | `linker.ld` | Where the kernel sits in memory, with checks that it fits |
 | `tools/mkimage.py` | Builds the floppy image: a real FAT12 disk that also boots |
 | `tools/mkfont.py` | Generates the text faces from readable glyph art |

@@ -42,9 +42,17 @@ IMG     := $(BUILD)/flopos.img
 # Apps: every folder under apps/ is one, built into its own file and put on
 # the floppy beside the kernel.  They share the kernel's compiler flags but
 # none of its code -- only apps/app.h.
-APPNAMES  := $(patsubst apps/%/,%,$(wildcard apps/*/))
+APPNAMES  := $(filter-out lib,$(patsubst apps/%/,%,$(wildcard apps/*/)))
 APPFILES  := $(patsubst %,$(BUILD)/apps/%.app,$(APPNAMES))
 APPCFLAGS := $(filter-out -Ikernel,$(CFLAGS)) -Iapps
+# browzer plays songs and mp3s, which want the Pentium's FPU; nothing in the
+# kernel uses it, so an app has it to itself.
+APPFLAGS_browzer := -m80387 -mhard-float
+
+# Libraries apps share: apps/lib/<name>/, built into each app that lists
+# it.  audio turns songs into samples, for browzer and whatever plays sound
+# next.
+APPLIBS_browzer := audio
 
 .PHONY: all clean run shot write size release
 all: $(IMG)
@@ -69,10 +77,13 @@ $(BUILD)/kernel.bin: $(KOBJ) linker.ld
 	@echo "   kernel.bin: $$(stat -c%s $@) bytes"
 
 .SECONDEXPANSION:
-$(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) apps/crt.c apps/app.h apps/app.ld
+$(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) \
+                     $$(foreach l,$$(APPLIBS_$$*),$$(wildcard apps/lib/$$(l)/*.[ch])) \
+                     apps/crt.c apps/app.h apps/app.ld
 	@mkdir -p $(BUILD)/apps
-	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld \
-	      -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $(wildcard apps/$*/*.c)
+	$(CC) $(APPCFLAGS) $(APPFLAGS_$*) $(foreach l,$(APPLIBS_$*),-Iapps/lib/$(l)) \
+	      -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ \
+	      apps/crt.c $(wildcard apps/$*/*.c) $(foreach l,$(APPLIBS_$*),$(wildcard apps/lib/$(l)/*.c))
 	@echo "   $*.app: $$(stat -c%s $@) bytes"
 
 $(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/roots.dat tools/mkimage.py README.md

@@ -116,6 +116,7 @@ cable, so normally you only ever need `report`.
 | `vesa` | What the video card can do: its memory and screen modes. |
 | `card` | What is in the two PC Card slots, as the cards describe themselves. `card raw` shows their raw bytes. |
 | `net` | Switches the network card on and reports what it found. |
+| `dsp` | Finds the Sound Blaster's sample player, plays a short chime through it, and measures how fast the card really takes samples. |
 | `ip` | The address, mask, way out (gateway) and name server. `ip 192.168.1.50 255.255.255.0 192.168.1.1` sets them by hand. |
 | `crypto` | Checks every piece of the encryption code against known answers, and times the slow parts. |
 | `wire` | The serial line: its settings and how much has gone each way. |

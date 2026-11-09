@@ -6,6 +6,18 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.17.0 — 2026-11-09
+
+- **Music in browzer.** A link to a .mod or .xm song (modarchive.org has
+  thousands) downloads it and plays it through the Sound Blaster, and it
+  keeps playing while you browse. The top edge says what is playing; s
+  stops it.
+- **The Sound Blaster's sample player is driven now**, not just its FM
+  chip: anything can play recorded sound (app interface version 3). `dsp`
+  checks it and measures it, and `report` includes that.
+- The song player lives in a library apps share (apps/lib/audio), so the
+  next program that makes sound can use it too.
+
 - browzer's home page heads your pinned bookmarks "Your bookmarks", and
   says plainly how to add them.
 

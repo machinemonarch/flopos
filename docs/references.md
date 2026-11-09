@@ -77,6 +77,10 @@ for decades:
 | 3Com EtherLink III technical reference | `el3.c`: the 3C589 |
 | National Semiconductor DP8390 / NE2000 | `ne2000.c`: QEMU's card |
 | Chips & Technologies 65550 panel registers | `panel.c`: `wide` |
+| Creative Sound Blaster hardware programming guide | `audio.c`: the DSP |
+| Intel 8237A DMA controller datasheet | `audio.c`: channel 1, auto-init |
+| ProTracker MOD format notes | `apps/lib/audio/tracker.c` |
+| XM format notes (XM.TXT, Triton) | `apps/lib/audio/tracker.c` |
 | VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
 

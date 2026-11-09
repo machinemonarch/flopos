@@ -153,7 +153,15 @@ apps.
 when there is one, and on the PC speaker when there isn't, driven from the
 timer interrupt so it keeps time whatever else is happening.
 
-It steps aside for effects. `whaaat` slides one voice across four octaves;
+Recorded sound is `kernel/audio.c`: the Sound Blaster's DSP plays 8-bit
+samples from a 16 KB buffer it reads by itself, by DMA on channel 1, looping
+forever. Nothing waits on the card's interrupt: 250 times a second the
+system timer asks the DMA controller where the card is reading, and fills
+the part it has just finished from a queue apps write into (about six
+seconds), or with silence. So it doesn't matter which IRQ the card was
+given. Apps reach it through the app interface's `audio_*` calls.
+
+The sequencer steps aside for effects. `whaaat` slides one voice across four octaves;
 the way into cyberdelia plays square-wave notes and bells (`snd_fx_*`) on
 FM channels 3 to 5, which the music never uses.
 
