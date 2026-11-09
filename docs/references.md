@@ -76,7 +76,7 @@ for decades:
 
 ## Toshiba's material (consulted, not included)
 
-Max supplied this material for the Satellite Pro 430CDT:
+Material on the Satellite Pro 430CDT:
 
 - two Toshiba Atlas support CDs (1995 and April 1997)
 - the Satellite Pro 430/435 driver collection
@@ -100,7 +100,7 @@ and no Toshiba code, firmware or text is in FLOPOS.
 | [OpenSSL](https://www.openssl.org/) | Checking SHA-256, HMAC, HKDF, ChaCha20-Poly1305, X25519 and AES-GCM against thousands of random inputs, and as a local TLS 1.3 test server (`openssl s_server`) |
 | [Python](https://www.python.org/) `hashlib` | Checking SHA-3 and SHAKE |
 | [QEMU](https://www.qemu.org/) | Running FLOPOS without the laptop, including its NE2000 network card |
-| [QEMU's PC Card code](https://github.com/proxmox/qemu/blob/master/hw/pcmcia/pcmcia.c) | Looked at (Max's find) to see whether QEMU could emulate the 3Com card. It can't on a PC. |
+| [QEMU's PC Card code](https://github.com/proxmox/qemu/blob/master/hw/pcmcia/pcmcia.c) | Looked at to see whether QEMU could emulate the 3Com card. It can't on a PC. |
 | [86Box](https://86box.net/) | Looked at as an emulator closer to 1990s hardware |
 | [mtools](https://www.gnu.org/software/mtools/) | Building and reading the floppy image |
 | [picocom](https://github.com/npat-efault/picocom) | The serial line from the Linux PC |
