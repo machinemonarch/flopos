@@ -147,6 +147,16 @@ static const char *s_exc_name[32] = {
     "reserved", "reserved", "reserved", "reserved"
 };
 
+/* The address a page fault was reaching for.  There is no paging here, so
+ * this is only ever meaningful for the faults that carry it, but it costs
+ * one instruction and a fault we cannot explain is worth every scrap. */
+static u32 read_cr2(void)
+{
+    u32 v;
+    __asm__ __volatile__("movl %%cr2, %0" : "=r"(v));
+    return v;
+}
+
 static int s_in_panic = 0;
 
 static void panic(Regs *r)
@@ -158,6 +168,18 @@ static void panic(Regs *r)
     if (s_in_panic) { for (;;) { cli(); hlt(); } }
     s_in_panic = 1;
     cli();
+
+    /* Down the wire first, before anything is drawn.  A panic screen is
+     * only a panic screen if somebody can see it, and the one case where
+     * that is least likely is a fault in the code that draws -- which is
+     * exactly when a fault is most likely.  This costs nothing and makes
+     * it impossible for the machine to die without saying so. */
+    serial_print("\n\n*** FLOPOS HAS LOST THE THREAD ***\n");
+    serial_printf("trap %u (%s)  err %x\n", r->vector,
+                  r->vector < 32 ? s_exc_name[r->vector] : "hardware", r->err);
+    serial_printf("eip %x  eflags %x  cr2 %x\n", r->eip, r->eflags, read_cr2());
+    serial_printf("eax %x ebx %x ecx %x edx %x\n", r->eax, r->ebx, r->ecx, r->edx);
+    serial_printf("esi %x edi %x ebp %x  cs %x\n", r->esi, r->edi, r->ebp, r->cs);
 
     /* A loud, legible palette of our own -- whatever the scene left in the
      * DAC is no use for reading an error message. */

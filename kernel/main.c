@@ -65,6 +65,15 @@ static void after_prompt(void)
  * notice anything else -- including the keyboard, which is how a working
  * machine comes to look like a dead one. */
 static u32 s_last_frame;
+static int s_stages;
+
+static void stage(char c)
+{
+    if (!vga_is_big() || s_stages > 40) return;
+    serial_putc(c);
+    if (c == '.') serial_putc('\n');
+    s_stages++;
+}
 
 static int frame_due(void)
 {
@@ -78,15 +87,23 @@ static void draw_frame_now(u32 t)
 {
     u32 a, b;
 
+    /* For the first few frames of a big screen, say which part of drawing
+     * one we are in.  Four characters a frame, ten frames, and then it
+     * stops -- and if the machine dies in there, the wire ends on the
+     * letter of the thing that killed it instead of on a silence that
+     * could mean anything. */
+    stage('m');
     a = tsc32();
     mood_draw(g_back, t);
     banana_draw(g_back, t);              /* over the background, always    */
+    stage('c');
     vga_compose();                       /* and blown up, if we are big    */
     b = tsc32(); perf_add(PERF_ROOM, b - a); a = b;
 
     /* The text goes on last and at the real size, which is the whole point
      * of the bigger screen: the background can be stretched because it is
      * a gradient, and a letter cannot. */
+    stage('t');
     term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
     term_render(vga_canvas(), t);
     b = tsc32(); perf_add(PERF_TEXT, b - a); a = b;
@@ -94,7 +111,9 @@ static void draw_frame_now(u32 t)
     if (!vga_is_big()) vga_wait_retrace();
     b = tsc32(); perf_add(PERF_WAIT, b - a); a = b;
 
+    stage('p');
     vga_present();
+    stage('.');
     b = tsc32(); perf_add(PERF_BLIT, b - a);
 
     s_frames++;
