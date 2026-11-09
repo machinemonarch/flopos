@@ -557,6 +557,95 @@ static void cmd_quirks(void)
                          : "Held still.");
 }
 
+/* ---- what the video card says it can do -------------------------------
+ * Reads the VESA tables and prints them.  It changes nothing: the mode
+ * this is running in is the mode it stays in.  The question it answers is
+ * which of the bigger modes actually exist on this machine and which of
+ * those have a linear frame buffer, because that one bit decides how the
+ * whole of the drawing code has to be written.
+ */
+static void cmd_vesa(void)
+{
+    VbeMode m;
+    int i, shown = 0, best = -1, bw = 0;
+
+    if (!vbe_probe()) {
+        say("The video BIOS does not answer VESA calls.");
+        say_dim("Then it is mode 13h or nothing, and 13h it is.");
+        return;
+    }
+
+    term_colour(C_BRIGHT);
+    term_printf("vesa    %u.%u", (u32)(vbe_version() >> 8),
+                (u32)(vbe_version() & 0xFF));
+    term_newline();
+    term_colour(C_TEXT);
+    term_printf("memory  %u kb on the card", vbe_vram_kb());
+    term_newline();
+    if (vbe_oem()[0]) {
+        term_printf("card    %s", vbe_oem());
+        term_newline();
+    }
+
+    term_colour(C_DIM);
+    say_dim("mode   size         colours  frame buffer");
+    term_colour(C_TEXT);
+
+    for (i = 0; i < 128; i++) {
+        int mode = vbe_mode_at(i);
+        if (mode < 0) break;
+        if (!vbe_mode_info((u16)mode, &m)) continue;
+        if (!vbe_is_graphics(&m)) continue;
+        /* 256 colours, because everything FLOPOS draws is a palette index,
+         * and nothing wider than the panel, because a mode bigger than the
+         * screen it has to end up on is no use to anyone. */
+        if (m.bpp != 8) continue;
+        if (m.width < 640 || m.width > 1024) continue;
+
+        term_printf("%03x    %ux%u", (u32)m.mode, (u32)m.width, (u32)m.height);
+        {   /* pad the size column, which is not a fixed width */
+            int n = 0, v = m.width;
+            while (v) { n++; v /= 10; }
+            v = m.height;
+            while (v) { n++; v /= 10; }
+            while (n < 12) { term_putc(' '); n++; }
+        }
+        term_printf("   %2u     %s", (u32)m.bpp,
+                    vbe_has_lfb(&m) ? "linear at " : "banked, 64k window");
+        if (vbe_has_lfb(&m)) term_printf("%x", m.lfb);
+        term_newline();
+        shown++;
+
+        /* The one we are after is the panel's own 800x600: at that size
+         * nothing is scaled and every pixel is a pixel.  Failing that, the
+         * biggest that still fits inside it. */
+        {
+            int score = (m.width == 800 && m.height == 600) ? 10000
+                                                            : (int)m.width;
+            if (score > bw) { bw = score; best = m.mode; }
+        }
+    }
+
+    if (!shown) {
+        say_dim("Nothing bigger than 640 wide. We stay where we are.");
+        return;
+    }
+
+    term_colour(C_ACCENT);
+    if (best >= 0) {
+        vbe_mode_info((u16)best, &m);
+        term_printf("%ux%u is mode %x%s", (u32)m.width, (u32)m.height,
+                    (u32)m.mode,
+                    vbe_has_lfb(&m) ? ", with a flat frame buffer."
+                                    : ", through the window only.");
+        term_newline();
+        term_colour(C_DIM);
+        say_dim(m.width == 800 && m.height == 600
+                ? "That is the panel's own size. Nothing would be scaled."
+                : "Smaller than the panel, so it would still be stretched.");
+    }
+}
+
 /* ---- what is in the PC Card slots ------------------------------------
  * The first half of a network stack is finding out what hardware is
  * actually there, in its own words, on the machine itself -- not from a
@@ -569,7 +658,7 @@ typedef struct {
     int  vlen;
     u16  manf, prod;
     int  func;
-    u16  cfg_base;
+    u32  cfg_base;                       /* three bytes wide on a 3C589   */
     u8   cfg[8];                         /* the CONFIG body, as it came   */
     int  cfglen;
     int  codes[20];
@@ -623,7 +712,7 @@ static int cis_tuple(u8 code, const u8 *body, int len, void *ctx)
             u32 base = 0;
             for (i = 0; i < nb && 2 + i < len; i++)
                 base |= (u32)body[2 + i] << (8 * i);
-            ci->cfg_base = (u16)base;
+            ci->cfg_base = base;
         }
         /* And the body itself.  This came back as zero on the first card
          * ever put in front of it, which is either a card that really does
@@ -697,8 +786,18 @@ static void card_socket(int sock, int w)
                 (u32)ci.manf, (u32)ci.prod, func_name(ci.func));
         term_frame_row(w, line, 0);
         fmt_str(line, sizeof line, "%u tuples, config registers at %x",
-                (u32)n, (u32)ci.cfg_base);
+                (u32)n, ci.cfg_base);
         term_frame_row(w, line, 0);
+        /* And what is actually in them.  The first is the register that
+         * switches the card on; reading it back is the only way to know
+         * the window reached that far at all. */
+        if (ci.cfg_base) {
+            u8 cor[4];
+            pcic_cis_read(sock, ci.cfg_base, cor, 4);
+            fmt_str(line, sizeof line, "option %x  status %x",
+                    (u32)cor[0], (u32)cor[2]);
+            term_frame_row(w, line, 0);
+        }
         if (ci.cfglen) {
             char *p = line;
             int left = (int)sizeof line - 1;
@@ -932,6 +1031,7 @@ static const Cmd s_cmds[] = {
     { "squint",  "fit more on the screen",       cmd_squint  },
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "card",    "what is in the PC Card slots",  cmd_card    },
+    { "vesa",    "what the video card can do",   cmd_vesa    },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
     { "speed",   "where the time goes",          cmd_speed   },

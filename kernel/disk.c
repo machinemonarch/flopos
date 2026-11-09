@@ -64,7 +64,7 @@ static int transfer(u32 lba, int count, int write)
         u16 dx = (u16)(((head & 0xFF) << 8) | BOOTINFO_DRIVE);
 
         pic_to_bios();
-        r = bios_int(0x13, ax, 0, cx, dx, DISK_BUF_SEG);
+        r = bios_int(0x13, ax, 0, cx, dx, DISK_BUF_SEG, 0);
         pic_to_kernel();
         time_init();                     /* see below                      */
         kbd_resync();                    /* and see kbd_resync             */
@@ -75,7 +75,7 @@ static int transfer(u32 lba, int count, int write)
         /* Recalibrate and try again; a drive that has been idle often
          * fails the first seek and succeeds on the second. */
         pic_to_bios();
-        (void)bios_int(0x13, 0x0000, 0, 0, (u16)BOOTINFO_DRIVE, DISK_BUF_SEG);
+        (void)bios_int(0x13, 0x0000, 0, 0, (u16)BOOTINFO_DRIVE, DISK_BUF_SEG, 0);
         pic_to_kernel();
         time_init();
         kbd_resync();

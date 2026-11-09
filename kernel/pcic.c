@@ -235,19 +235,35 @@ void pcic_power_down(int sock)
  * So a window mapped at CIS_HOST shows the CIS stretched to twice its
  * length, and reading it means taking every other byte.
  */
-static void map_attr(int sock)
+/* Which part of attribute memory the window is currently showing.  The
+ * CIS starts at zero, but the configuration registers do not have to:
+ * a 3C589 keeps its at attribute offset 0x10000, which is past the end of
+ * anything a window parked at zero can see. */
+static u32 s_win_base;
+
+static void map_attr(int sock, u32 attr_off)
 {
     u32 start = CIS_HOST >> 12;
     u32 stop  = (CIS_HOST + (CIS_PAGES << 12) - 1) >> 12;
+    u32 card;
 
     pc_set(sock, R_MEM(0) + 0, (u8)(start & 0xFF));
     pc_set(sock, R_MEM(0) + 1, (u8)((start >> 8) & 0x0F));
     pc_set(sock, R_MEM(0) + 2, (u8)(stop & 0xFF));
     pc_set(sock, R_MEM(0) + 3, (u8)((stop >> 8) & 0x0F));
-    /* Card address zero under host address CIS_HOST: the offset the chip
-     * wants is the difference, in pages, truncated to its fourteen bits. */
-    pc_set(sock, R_MEM(0) + 4, (u8)((-(s32)start) & 0xFF));
-    pc_set(sock, R_MEM(0) + 5, (u8)((((-(s32)start) >> 8) & 0x3F) | MO_REG));
+    /* Only the even bytes of attribute memory are wired, so attribute
+     * offset N lives at card address 2N and a 64K window spans 32K of the
+     * CIS.  Park the window on the 32K block the caller wants. */
+    s_win_base = attr_off & ~0x7FFFu;
+    card = s_win_base * 2;
+
+    /* The offset the chip wants is card address minus host address, in
+     * pages, truncated to its fourteen bits. */
+    {
+        s32 delta = (s32)(card >> 12) - (s32)start;
+        pc_set(sock, R_MEM(0) + 4, (u8)(delta & 0xFF));
+        pc_set(sock, R_MEM(0) + 5, (u8)(((delta >> 8) & 0x3F) | MO_REG));
+    }
     pc_set(sock, R_WINDOWS, WIN_MEM(0));
 }
 
@@ -258,8 +274,9 @@ static void unmap(int sock)
 
 static u8 attr_byte(u32 off)
 {
-    /* Even bytes only, so the nth byte of the CIS is at twice n. */
-    return *(volatile u8 *)(CIS_HOST + off * 2);
+    /* Even bytes only, so the nth byte of the CIS is at twice n -- counted
+     * from wherever the window happens to be parked. */
+    return *(volatile u8 *)(CIS_HOST + (off - s_win_base) * 2);
 }
 
 /* The CIS as bytes, for when it is the interpretation that is in doubt and
@@ -270,7 +287,7 @@ int pcic_cis_read(int sock, u32 off, u8 *buf, int len)
 
     if (!s_index || !pcic_present(sock)) return 0;
 
-    map_attr(sock);
+    map_attr(sock, off);
     for (i = 0; i < len; i++) buf[i] = attr_byte(off + (u32)i);
     unmap(sock);
     return len;
@@ -289,7 +306,7 @@ int pcic_cis_walk(int sock, CisFn fn, void *ctx)
 
     if (!s_index || !pcic_present(sock)) return -1;
 
-    map_attr(sock);
+    map_attr(sock, 0);
 
     while (n < 64 && off < 0x800) {
         u8 code = attr_byte(off++);

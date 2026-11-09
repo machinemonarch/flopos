@@ -421,6 +421,26 @@ extern volatile u8  g_beat;
 extern volatile u8  g_bar;
 extern volatile u32 g_step;
 
+/* --- vbe.c ------------------------------------------------------------- */
+typedef struct {
+    u16 mode;
+    u16 attr;
+    u16 width, height, pitch;
+    u8  bpp, planes, model;
+    u16 win_seg;
+    u32 lfb;
+} VbeMode;
+
+int    vbe_probe(void);
+int    vbe_present(void);
+u16    vbe_version(void);
+u32    vbe_vram_kb(void);
+const char *vbe_oem(void);
+int    vbe_mode_at(int n);
+int    vbe_mode_info(u16 mode, VbeMode *out);
+int    vbe_is_graphics(const VbeMode *m);
+int    vbe_has_lfb(const VbeMode *m);
+
 /* --- serial.c ---------------------------------------------------------- */
 void   serial_init(void);
 int    serial_present(void);
@@ -438,7 +458,7 @@ void   serial_set_echo(int on);
  * BIOS's AX, with bit 16 set if it reported failure.  Interrupts are off
  * for the duration, so this is not cheap -- but it is the machine's own
  * disk code, which is the point. */
-u32    bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es);
+u32    bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di);
 void   pic_to_bios(void);
 void   pic_to_kernel(void);
 
@@ -446,6 +466,8 @@ void   pic_to_kernel(void);
 #define DISK_BUF_SEG 0x7000              /* 0x70000: below 1MB, and clear
                                           * of a 64K boundary             */
 #define DISK_BUF     ((volatile u8 *)0x70000)
+#define VBE_BUF_SEG  0x7200              /* 0x72000: clear of the disk    */
+#define VBE_BUF      ((volatile u8 *)0x72000)
 int    disk_read(u32 lba, int count);    /* -> 1 on success               */
 int    disk_write(u32 lba, int count);
 u8     disk_last_status(void);

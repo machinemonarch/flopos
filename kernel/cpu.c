@@ -128,12 +128,12 @@ int power_off(void)
     snd_silence();
 
     pic_to_bios();
-    r = bios_int(0x15, 0x5300, 0x0000, 0, 0, 0);   /* is APM there?       */
+    r = bios_int(0x15, 0x5300, 0x0000, 0, 0, 0, 0);   /* is APM there?       */
     if (!(r & 0x10000)) {
-        (void)bios_int(0x15, 0x5301, 0x0000, 0, 0, 0);      /* connect    */
-        (void)bios_int(0x15, 0x530E, 0x0000, 0x0102, 0, 0); /* version 1.2 */
-        (void)bios_int(0x15, 0x5308, 0x0001, 0x0001, 0, 0); /* enable      */
-        (void)bios_int(0x15, 0x5307, 0x0001, 0x0003, 0, 0); /* and off     */
+        (void)bios_int(0x15, 0x5301, 0x0000, 0, 0, 0, 0);      /* connect    */
+        (void)bios_int(0x15, 0x530E, 0x0000, 0x0102, 0, 0, 0); /* version 1.2 */
+        (void)bios_int(0x15, 0x5308, 0x0001, 0x0001, 0, 0, 0); /* enable      */
+        (void)bios_int(0x15, 0x5307, 0x0001, 0x0003, 0, 0, 0); /* and off     */
     }
     pic_to_kernel();
 

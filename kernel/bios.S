@@ -52,9 +52,13 @@
         .set    RM_SEG,     0x1000       /* KBASE >> 4                     */
         .set    RM_STACK,   0x7C00       /* the boot sector is long done   */
 
-/* u32 bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es)
+/* u32 bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di)
  *
- * which is 0x13 for the disk or 0x15 for the services APM lives behind.
+ * which is 0x13 for the disk, 0x15 for the services APM lives behind, or
+ * 0x10 for video -- which is how VESA is asked what this card can do, and
+ * the reason ES:DI is carried through at all: every VBE call that returns
+ * anything returns it into a buffer the caller points at.
+ *
  * Returns the BIOS's AX, with bit 16 set if it reported carry -- so a
  * non-zero high half means the call failed.
  */
@@ -78,6 +82,8 @@ bios_int:
         movw    %ax, blk_dx
         movw    28(%ebp), %ax
         movw    %ax, blk_es
+        movw    32(%ebp), %ax
+        movw    %ax, blk_di
         movw    $0, blk_flags
 
         /* The far pointer that puts us in real mode, built by hand because
@@ -131,15 +137,19 @@ real_mode:
         movw    8(%bx),  %dx
         movw    10(%bx), %si
         movw    %si, %es
-        movw    36(%bx), %si             /* what BX should be for the call */
-        movw    38(%bx), %di             /* and which interrupt            */
+        movw    40(%bx), %di             /* ES:DI, for anything VESA      */
+        movw    38(%bx), %si             /* which interrupt               */
         pushw   %bx
-        movw    %si, %bx
-        cmpw    $0x15, %di
+        movw    36(%bx), %bx             /* BX last: it is how we got here */
+        cmpw    $0x15, %si
         je      call15
+        cmpw    $0x10, %si
+        je      call10
         int     $0x13
         jmp     called
 call15: int     $0x15
+        jmp     called
+call10: int     $0x10
 called: popw    %bx
 
         movw    %ax, 4(%bx)
@@ -201,3 +211,4 @@ blk_pm_idt:   .word 0                    /* 26 */
 blk_pm_esp:   .long 0                    /* 32 */
 blk_bx:       .word 0                    /* 36 */
 blk_which:    .word 0                    /* 38 */
+blk_di:       .word 0                    /* 40 */
