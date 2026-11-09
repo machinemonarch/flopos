@@ -293,6 +293,63 @@ int pcic_cis_read(int sock, u32 off, u8 *buf, int len)
     return len;
 }
 
+/* Writing one byte of attribute memory.  This is how a card is switched
+ * on: its configuration option register lives in attribute memory, and
+ * putting the index of one of its configurations into it is what makes it
+ * stop being a lump and start decoding addresses. */
+void pcic_attr_write(int sock, u32 off, u8 val)
+{
+    if (!s_index || !pcic_present(sock)) return;
+    map_attr(sock, off);
+    *(volatile u8 *)(CIS_HOST + (off - s_win_base) * 2) = val;
+    unmap(sock);
+}
+
+u8 pcic_attr_read(int sock, u32 off)
+{
+    u8 v;
+    if (!s_index || !pcic_present(sock)) return 0xFF;
+    map_attr(sock, off);
+    v = attr_byte(off);
+    unmap(sock);
+    return v;
+}
+
+/* Give the card a stretch of the machine's I/O addresses.  The card
+ * decodes only the few lowest address lines it was built for; the window
+ * decides which part of the address space those land in. */
+int pcic_map_io(int sock, u16 base, int len)
+{
+    u16 stop = (u16)(base + len - 1);
+    u8 win;
+
+    if (!s_index || !pcic_present(sock)) return 0;
+
+    pc_set(sock, R_IO(0) + 0, (u8)(base & 0xFF));
+    pc_set(sock, R_IO(0) + 1, (u8)(base >> 8));
+    pc_set(sock, R_IO(0) + 2, (u8)(stop & 0xFF));
+    pc_set(sock, R_IO(0) + 3, (u8)(stop >> 8));
+
+    /* Sixteen bits wide, and let the card say so for itself rather than
+     * taking our word for it. */
+    pc_set(sock, R_IOCTL, 0x01);
+
+    win = pc_get(sock, R_WINDOWS);
+    pc_set(sock, R_WINDOWS, (u8)(win | WIN_IO(0)));
+    return 1;
+}
+
+/* Which interrupt line the socket should pull.  Zero means none, which is
+ * what polling wants. */
+void pcic_set_irq(int sock, int irq)
+{
+    u8 v = pc_get(sock, R_INTCTL);
+    v = (u8)((v & ~IC_IRQ_MASK) | (irq & IC_IRQ_MASK));
+    if (irq) v |= IC_INTR_ENA;
+    else     v &= (u8)~IC_INTR_ENA;
+    pc_set(sock, R_INTCTL, v);
+}
+
 /* Walk the tuple chain, handing each one to the caller.  A tuple is a code
  * byte, a length byte, and that many bytes of body; 0xFF ends the chain and
  * 0x00 is padding.  The cap on the walk is there because a card that is

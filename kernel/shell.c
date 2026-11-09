@@ -125,6 +125,7 @@ static int s_cmd_count(void);
 static const Cmd s_diag[];
 static int s_diag_count(void);
 static void cmd_report(void);
+static void cmd_net(void);
 
 static void cmd_whoami(void)
 {
@@ -1018,6 +1019,88 @@ static void cmd_card(void)
     say_dim("card raw  prints the bytes instead of my reading of them");
 }
 
+/* ---- the network card -------------------------------------------------
+ * Finds the 3Com card in whichever socket it is in, reads its
+ * configuration register address out of its own CIS rather than being
+ * told, switches it on and asks it for its address.
+ *
+ * Getting the address back is the whole point of this step.  It is the
+ * first thing that can only have come from the card: the maker and model
+ * are printed in a table on the card, but the address is unique to the
+ * one in your hand, and reading it means every layer underneath -- socket
+ * power, the configuration register, the I/O window, the command register
+ * and the EEPROM -- is right.
+ */
+static int net_cor(int sock, u32 *cor, int *is_net)
+{
+    CardInfo ci;
+
+    memset8((u8 *)&ci, 0, sizeof ci);
+    ci.func = -1;
+    if (pcic_cis_walk(sock, cis_tuple, &ci) <= 0) return 0;
+    *cor = ci.cfg_base;
+    *is_net = (ci.func == 6);
+    return ci.cfg_base != 0;
+}
+
+static void cmd_net(void)
+{
+    int n = pcic_probe();
+    int sock, is_net = 0;
+    u32 cor = 0;
+    int found = -1;
+    const u8 *m;
+    int i;
+
+    if (!n) { say("No PC Card adapter answered."); return; }
+
+    for (sock = 0; sock < n; sock++) {
+        if (!pcic_present(sock)) continue;
+        if (!pcic_power_up(sock, 1)) continue;
+        if (net_cor(sock, &cor, &is_net) && is_net) { found = sock; break; }
+        pcic_power_down(sock);
+    }
+
+    if (found < 0) {
+        say("No network card in either socket.");
+        return;
+    }
+
+    term_colour(C_DIM);
+    term_printf("socket %u, switch-on register at %x", (u32)found, cor);
+    term_newline();
+
+    if (!el3_start(found, cor, 0x300)) {
+        term_colour(C_ACCENT);
+        say("It would not come up.");
+        term_colour(C_DIM);
+        term_printf("io %x, status %x", (u32)0x300,
+                    (u32)pcic_status(found));
+        term_newline();
+        term_printf("option register reads back %x",
+                    (u32)pcic_attr_read(found, cor));
+        term_newline();
+        pcic_power_down(found);
+        return;
+    }
+
+    m = el3_mac();
+    term_colour(C_BRIGHT);
+    term_print("address ");
+    for (i = 0; i < 6; i++) {
+        if (i) term_putc(':');
+        term_printf("%02x", (u32)m[i]);
+    }
+    term_newline();
+    term_colour(C_TEXT);
+    term_printf("maker %x  product %x  at io %x",
+                (u32)el3_maker(), (u32)el3_product(), (u32)el3_io());
+    term_newline();
+    term_colour(C_DIM);
+    say_dim("It is awake. It cannot say anything yet.");
+}
+
+
 /* The grid is a matter of eyesight and of what is being built, so it is a
  * command rather than a build-time decision.  Cycles, because there are
  * only two and there will be more. */
@@ -1166,6 +1249,7 @@ static const Cmd s_diag[] = {
     { "disk",    "read a sector, to prove we can", cmd_disk  },
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "dump",    "show me what is at an address",cmd_dump    },
+    { "net",     "wake the network card up",     cmd_net     },
 };
 
 static int s_diag_count(void)
@@ -1218,10 +1302,10 @@ static void cmd_report(void)
     serial_printf("version %s\n", FLOPOS_VERSION);
 
     for (i = 0; i < n; i++) {
+        if (eq_ci(s_diag[i].name, "dump")) continue;   /* needs an address */
         serial_printf("\n--- %s ---\n", s_diag[i].name);
         s_argc = 1;
         s_argv[0] = (char *)s_diag[i].name;
-        if (eq_ci(s_diag[i].name, "dump")) continue;   /* needs an address */
         s_diag[i].fn();
     }
 

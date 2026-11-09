@@ -373,6 +373,10 @@ int    pcic_power_up(int sock, int io_card);
 void   pcic_power_down(int sock);
 int    pcic_cis_walk(int sock, CisFn fn, void *ctx);
 int    pcic_cis_read(int sock, u32 off, u8 *buf, int len);
+void   pcic_attr_write(int sock, u32 off, u8 val);
+u8     pcic_attr_read(int sock, u32 off);
+int    pcic_map_io(int sock, u16 base, int len);
+void   pcic_set_irq(int sock, int irq);
 
 /* The tuples worth knowing by name. */
 #define CISTPL_VERS_1       0x15         /* who made it, in words          */
@@ -421,6 +425,16 @@ void   snd_sweep_end(void);
 extern volatile u8  g_beat;
 extern volatile u8  g_bar;
 extern volatile u32 g_step;
+
+/* --- el3.c -------------------------------------------------------------- */
+int    el3_start(int sock, u32 cor, u16 io);
+void   el3_stop(void);
+int    el3_up(void);
+u16    el3_io(void);
+int    el3_socket(void);
+u16    el3_product(void);
+u16    el3_maker(void);
+const u8 *el3_mac(void);
 
 /* --- vbe.c ------------------------------------------------------------- */
 typedef struct {
