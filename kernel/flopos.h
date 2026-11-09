@@ -441,6 +441,16 @@ int    vbe_mode_info(u16 mode, VbeMode *out);
 int    vbe_is_graphics(const VbeMode *m);
 int    vbe_has_lfb(const VbeMode *m);
 
+int    vga_go_big(void);
+int    vga_is_big(void);
+void   vga_compose(void);
+u8    *vga_canvas(void);
+int    vga_width(void);
+int    vga_height(void);
+int    vga_pitch(void);
+int    vga_scale(void);
+u16    vga_big_mode(void);
+
 /* --- serial.c ---------------------------------------------------------- */
 void   serial_init(void);
 int    serial_present(void);

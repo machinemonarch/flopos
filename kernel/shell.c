@@ -221,7 +221,11 @@ static void cmd_sys(void)
         term_newline();
         term_colour(C_TEXT);
     }
-    term_printf("video   vga mode 13h, 320x200, 256 colours");
+    if (vga_is_big())
+        term_printf("video   vesa mode %x, %ux%u, 256 colours",
+                    (u32)vga_big_mode(), (u32)vga_width(), (u32)vga_height());
+    else
+        term_printf("video   vga mode 13h, 320x200, 256 colours");
     term_newline();
     if (panel_present())
         term_printf("panel   flat panel found, %s",
@@ -564,6 +568,91 @@ static void cmd_quirks(void)
  * those have a linear frame buffer, because that one bit decides how the
  * whole of the drawing code has to be written.
  */
+/* ---- the whole panel --------------------------------------------------
+ * 320x200 has to be stretched by two and a half across and three down to
+ * reach an 800x600 panel, and neither is a whole number, so every line
+ * lands on one row here and two there.  At 800x600 nothing is stretched.
+ * The background still comes from the small buffer, because it is a
+ * gradient and blowing it up costs nothing anybody can see; the text is
+ * drawn at the full size, where a letter has four times the pixels.
+ */
+static u32 parse_hex(const char *s)
+{
+    u32 v = 0;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+    while (*s) {
+        int d;
+        if (*s >= '0' && *s <= '9')      d = *s - '0';
+        else if (*s >= 'a' && *s <= 'f') d = *s - 'a' + 10;
+        else if (*s >= 'A' && *s <= 'F') d = *s - 'A' + 10;
+        else break;
+        v = v * 16 + (u32)d;
+        s++;
+    }
+    return v;
+}
+
+/* ---- hand me the bytes ------------------------------------------------
+ * Everything I know about this machine, I know because it told me.  This
+ * is the general form of that: name an address and a length and it prints
+ * what is there, which goes down the serial line with everything else.
+ * The video BIOS at c0000, the BIOS data area, a card's registers -- it is
+ * all just memory, and reading it changes nothing.
+ */
+static void cmd_dump(void)
+{
+    u32 at, len = 256, i;
+    const volatile u8 *p;
+
+    if (s_argc < 2) {
+        say("Say where, in hex, and how many bytes.");
+        say_dim("  dump c0000 128");
+        return;
+    }
+    at = parse_hex(s_argv[1]);
+    if (s_argc >= 3) len = parse_hex(s_argv[2]);
+    if (len > 4096) len = 4096;
+
+    p = (const volatile u8 *)at;
+    term_colour(C_TEXT);
+    for (i = 0; i < len; i += 16) {
+        u32 j;
+        term_printf("%05x ", at + i);
+        for (j = 0; j < 16; j++) term_printf("%02x ", p[i + j]);
+        term_newline();
+    }
+}
+
+static void cmd_big(void)
+{
+    if (vga_is_big()) {
+        say("Already there.");
+        term_colour(C_DIM);
+        term_printf("800x600, mode %x, %u by %u characters",
+                    (u32)vga_big_mode(), term_cols(), term_rows());
+        term_newline();
+        return;
+    }
+
+    term_colour(C_DIM);
+    say_dim("Asking the card for 800x600...");
+
+    if (!vga_go_big()) {
+        say("It would not give me 800x600 with a flat frame buffer.");
+        say_dim("Try vesa to see what it does offer.");
+        return;
+    }
+
+    /* The roomy face at double size: bigger than the small face is now,
+     * smoother than either, and 66 by 37 on the screen. */
+    term_set_face(0);
+    term_colour(C_BRIGHT);
+    term_printf("%u by %u, and nothing is being stretched.",
+                term_cols(), term_rows());
+    term_newline();
+    say_dim("There is no way back without a reboot.");
+}
+
 static void cmd_vesa(void)
 {
     VbeMode m;
@@ -1032,6 +1121,8 @@ static const Cmd s_cmds[] = {
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "card",    "what is in the PC Card slots",  cmd_card    },
     { "vesa",    "what the video card can do",   cmd_vesa    },
+    { "big",     "use the whole panel, properly",cmd_big     },
+    { "dump",    "show me what is at an address", cmd_dump    },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
     { "speed",   "where the time goes",          cmd_speed   },

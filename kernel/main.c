@@ -65,17 +65,21 @@ static void draw_frame_now(u32 t)
 
     a = tsc32();
     mood_draw(g_back, t);
+    banana_draw(g_back, t);              /* over the background, always    */
+    vga_compose();                       /* and blown up, if we are big    */
     b = tsc32(); perf_add(PERF_ROOM, b - a); a = b;
 
+    /* The text goes on last and at the real size, which is the whole point
+     * of the bigger screen: the background can be stretched because it is
+     * a gradient, and a letter cannot. */
     term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
-    term_render(g_back, t);
-    banana_draw(g_back, t);              /* over everything, always        */
+    term_render(vga_canvas(), t);
     b = tsc32(); perf_add(PERF_TEXT, b - a); a = b;
 
-    vga_wait_retrace();
+    if (!vga_is_big()) vga_wait_retrace();
     b = tsc32(); perf_add(PERF_WAIT, b - a); a = b;
 
-    memcpy32((void *)VGA_FB, g_back, SCR_PIX / 4);
+    vga_present();
     b = tsc32(); perf_add(PERF_BLIT, b - a);
 
     s_frames++;

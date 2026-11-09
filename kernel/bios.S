@@ -67,6 +67,7 @@ bios_int:
         pushl   %ebp
         movl    %esp, %ebp
         pushal
+        pushfl                           /* see the note at the bottom     */
 
         /* Fill the scratch block while 32-bit flat addressing still makes
          * that trivial. */
@@ -130,8 +131,19 @@ real_mode:
         movw    $RM_STACK, %sp
 
         lidtl   14(%bx)                  /* the BIOS vector table at 0     */
-        sti
 
+        /* Interrupts stay off for video.  The 8259s are remapped to 0x20
+         * and 0x28 for protected mode, so anything that arrives down here
+         * vectors through a real-mode table that knows nothing about them
+         * and the machine is gone.  The disk calls get away with it twice
+         * over: the BIOS wants IRQ6, and the window is a millisecond.  A
+         * VESA enumeration is a hundred calls that need no interrupt at
+         * all, and a timer tick inside one of them is a certainty. */
+        movw    38(%bx), %ax
+        cmpw    $0x10, %ax
+        je      noints
+        sti
+noints:
         movw    4(%bx),  %ax
         movw    6(%bx),  %cx
         movw    8(%bx),  %dx
@@ -177,6 +189,17 @@ back32:
         movl    blk_pm_esp, %esp
         lidt    blk_pm_idt
 
+        /* The flags, and with them whether interrupts are allowed.  pushal
+         * does not carry them, so without this every call came back with
+         * interrupts off -- no clock, no keyboard, a machine that looks
+         * exactly like one that has crashed.  It never showed up because
+         * the calls made during start-up are followed by the kernel
+         * turning interrupts on anyway; the first one made with the shell
+         * already running killed it on the spot.  Restored after the
+         * interrupt table, never before: letting one in while the table
+         * still points at the BIOS would be the same bug the other way
+         * round. */
+        popfl
         popal
         movzwl  blk_ax, %eax
         cmpw    $0, blk_flags
@@ -212,3 +235,7 @@ blk_pm_esp:   .long 0                    /* 32 */
 blk_bx:       .word 0                    /* 36 */
 blk_which:    .word 0                    /* 38 */
 blk_di:       .word 0                    /* 40 */
+
+/* The stack on the way in: EBP, then the eight registers, then the flags.
+ * blk_pm_esp is taken after all three, so the way back has to undo them in
+ * that order or the register values come back shifted by one. */

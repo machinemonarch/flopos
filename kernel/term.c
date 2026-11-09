@@ -22,7 +22,9 @@
 #include "io.h"
 
 #define SCROLLBACK 200
-#define STRIDE     TERM_MAX_COLS         /* every row is allocated wide    */
+/* Wide enough for the densest face on the biggest screen, since the grid
+ * is allocated once and the screen can change under it. */
+#define STRIDE     100
 
 typedef struct {
     u8 ch;
@@ -41,12 +43,78 @@ static int   s_quirks = 1;
 
 static void style_birth(u32 abs);
 
-#define COLS (s_face->cols)
-#define ROWS (s_face->rows)
+/* Where the picture currently is and how big a glyph is drawn.  All of it
+ * can change while the machine is running, so none of it is a constant. */
+static int s_pitch = SCR_W, s_vw = SCR_W, s_vh = SCR_H, s_scale = 1;
+
+/* Every glyph again at double size, built once.  Doing the smoothing per
+ * glyph per frame would be a million comparisons a second for a picture
+ * that never changes; doing it once costs two kilobytes. */
+static u16 s_big[FONT_GLYPHS][10];
+static int s_big_for = -1;
+
+static void build_big(void)
+{
+    const Face *f = s_face;
+    int w = f->w, h = f->h, g, col, row;
+
+    for (g = 0; g < FONT_GLYPHS; g++) {
+        const u8 *src = f->glyphs + g * w;
+        for (col = 0; col < w * 2; col++) s_big[g][col] = 0;
+
+        for (col = 0; col < w; col++) {
+            for (row = 0; row < h; row++) {
+#define ON(cx, cy) ((cx) >= 0 && (cx) < w && (cy) >= 0 && (cy) < h && \
+                    ((src[cx] >> (cy)) & 1))
+                int p = ON(col, row);
+                int a = ON(col, row - 1), b = ON(col + 1, row);
+                int c = ON(col - 1, row), d = ON(col, row + 1);
+                int e0 = p, e1 = p, e2 = p, e3 = p;
+#undef ON
+                /* Where a diagonal steps, fill the inside corner.  Blowing
+                 * a letter up without this just makes bigger staircases. */
+                if (c == a && c != d && a != b) e0 = a;
+                if (a == b && a != c && b != d) e1 = b;
+                if (d == c && d != b && c != a) e2 = c;
+                if (b == d && b != a && d != c) e3 = d;
+
+                if (e0) s_big[g][col * 2]     |= (u16)(1u << (row * 2));
+                if (e1) s_big[g][col * 2 + 1] |= (u16)(1u << (row * 2));
+                if (e2) s_big[g][col * 2]     |= (u16)(1u << (row * 2 + 1));
+                if (e3) s_big[g][col * 2 + 1] |= (u16)(1u << (row * 2 + 1));
+            }
+        }
+    }
+    s_big_for = (int)(s_face - &g_faces[0]);
+}
+
+static void geometry(void)
+{
+    s_pitch = vga_pitch();
+    s_vw    = vga_width();
+    s_vh    = vga_height();
+    s_scale = vga_scale();
+    if (s_scale > 1 && s_big_for != (int)(s_face - &g_faces[0])) build_big();
+}
+
+static int cols_now(void)
+{
+    int n = (s_vw - s_face->x0 * s_scale) / (s_face->adv * s_scale);
+    return n > STRIDE ? STRIDE : n;
+}
+
+static int rows_now(void)
+{
+    int n = s_vh / (s_face->pitch * s_scale);
+    return n > SCROLLBACK ? SCROLLBACK : n;
+}
+
+#define COLS cols_now()
+#define ROWS rows_now()
 
 const Face *term_face(void) { return s_face; }
-int  term_cols(void) { return COLS; }
-int  term_rows(void) { return ROWS; }
+int  term_cols(void) { geometry(); return COLS; }
+int  term_rows(void) { geometry(); return ROWS; }
 int  term_face_index(void) { return (int)(s_face - &g_faces[0]); }
 
 int term_set_face(int n)
@@ -54,6 +122,8 @@ int term_set_face(int n)
     if (n < 0) n = 0;
     if (n >= FACE_COUNT) n = FACE_COUNT - 1;
     s_face = &g_faces[n];
+    geometry();
+    if (s_scale > 1) build_big();
     if (s_col > COLS) s_col = COLS;
     s_view = 0;
     return n;
@@ -354,11 +424,11 @@ static void zalgo_marks(u8 *dst, int x, int y, int ch, int col, int row, u32 t)
          * contrasts wherever it lands. */
         ink = ((h >> 21) & 3) ? C_DIM : C_TEXT;
 
-        if (mx < 0 || mx >= SCR_W) continue;
+        if (mx < 0 || mx >= s_pitch) continue;
         for (k = 0; k < len; k++) {
             int my = up ? (y - d - k) : (y + s_face->pitch - 1 + d + k);
-            if (my < 0 || my >= SCR_H) break;
-            dst[my * SCR_W + mx] = ink;
+            if (my < 0 || my >= s_vh) break;
+            dst[my * s_pitch + mx] = ink;
         }
     }
 }
@@ -397,17 +467,21 @@ static void rune_cols(int letter, u8 *cols)
 
 static void blit_cols(u8 *dst, int x, int y, const u8 *g, u8 colour)
 {
-    int col;
+    int col, row, sx, sy, h = s_face->h;
+
     for (col = 0; col < s_face->w; col++) {
         u8 bits = g[col];
-        u8 *q = dst + y * SCR_W + x + col;
-        if (x + col < 0 || x + col >= SCR_W) continue;
-        while (bits) {
-            if (bits & 1) {
-                if (q >= dst && q < dst + SCR_PIX) *q = colour;
+        for (row = 0; row < h; row++) {
+            if (!((bits >> row) & 1)) continue;
+            for (sy = 0; sy < s_scale; sy++) {
+                int py = y + row * s_scale + sy;
+                if (py < 0 || py >= s_vh) continue;
+                for (sx = 0; sx < s_scale; sx++) {
+                    int px = x + col * s_scale + sx;
+                    if (px < 0 || px >= s_vw) continue;
+                    dst[py * s_pitch + px] = colour;
+                }
             }
-            bits >>= 1;
-            q += SCR_W;
         }
     }
 }
@@ -471,18 +545,18 @@ static int style_cell(u8 st, int c, u32 abs, u32 t,
 
 static void hrun(u8 *dst, int x0, int x1, int y, u8 colour)
 {
-    if (y < 0 || y >= SCR_H) return;
+    if (y < 0 || y >= s_vh) return;
     if (x0 < 0) x0 = 0;
-    if (x1 >= SCR_W) x1 = SCR_W - 1;
-    while (x0 <= x1) dst[y * SCR_W + x0++] = colour;
+    if (x1 >= s_pitch) x1 = s_pitch - 1;
+    while (x0 <= x1) dst[y * s_pitch + x0++] = colour;
 }
 
 static void vrun(u8 *dst, int x, int y0, int y1, u8 colour)
 {
-    if (x < 0 || x >= SCR_W) return;
+    if (x < 0 || x >= s_pitch) return;
     if (y0 < 0) y0 = 0;
-    if (y1 >= SCR_H) y1 = SCR_H - 1;
-    while (y0 <= y1) { dst[y0 * SCR_W + x] = colour; y0++; }
+    if (y1 >= s_vh) y1 = s_vh - 1;
+    while (y0 <= y1) { dst[y0 * s_pitch + x] = colour; y0++; }
 }
 
 /* Frames, rules and shading are drawn to the cell instead of being carried
@@ -495,7 +569,7 @@ static void vrun(u8 *dst, int x, int y0, int y1, u8 colour)
  * of them, a tee is three, and there is no table to keep straight. */
 static void blit_cell(u8 *dst, int x, int y, int ch, u8 colour)
 {
-    int w = s_face->adv, h = s_face->pitch;
+    int w = s_face->adv * s_scale, h = s_face->pitch * s_scale;
     int mx = x + (w - 1) / 2, my = y + (h - 1) / 2;
     int m = ch & 15;
     int px, py;
@@ -503,10 +577,10 @@ static void blit_cell(u8 *dst, int x, int y, int ch, u8 colour)
     if (ch >= CH_SHADE1) {
         for (py = 0; py < h; py++) {
             int ay = y + py;
-            if (ay < 0 || ay >= SCR_H) continue;
+            if (ay < 0 || ay >= s_vh) continue;
             for (px = 0; px < w; px++) {
                 int ax = x + px, on;
-                if (ax < 0 || ax >= SCR_W) continue;
+                if (ax < 0 || ax >= s_pitch) continue;
                 /* Keyed to absolute position, not to the cell, so that
                  * neighbouring cells of the same shade tile seamlessly. */
                 switch (ch) {
@@ -515,7 +589,7 @@ static void blit_cell(u8 *dst, int x, int y, int ch, u8 colour)
                 case CH_SHADE3: on = (ax & 1) || (ay & 1);    break;
                 default:        on = 1;                       break;
                 }
-                if (on) dst[ay * SCR_W + ax] = colour;
+                if (on) dst[ay * s_pitch + ax] = colour;
             }
         }
         return;
@@ -545,17 +619,33 @@ static void blit_cell(u8 *dst, int x, int y, int ch, u8 colour)
 static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
 {
     const Face *f = s_face;
-    const u8 *g = f->glyphs + glyph_index(c) * f->w;
-    u8 *p = dst + y * SCR_W + x;
+    u8 *p = dst + y * s_pitch + x;
     int col;
 
-    for (col = 0; col < f->w; col++) {
-        u8 bits = g[col];
-        u8 *q = p + col;
-        while (bits) {
-            if (bits & 1) *q = colour;
-            bits >>= 1;
-            q += SCR_W;
+    if (s_scale > 1) {
+        const u16 *g = s_big[glyph_index(c)];
+        for (col = 0; col < f->w * 2; col++) {
+            u16 bits = g[col];
+            u8 *q = p + col;
+            while (bits) {
+                if (bits & 1) *q = colour;
+                bits >>= 1;
+                q += s_pitch;
+            }
+        }
+        return;
+    }
+
+    {
+        const u8 *g = f->glyphs + glyph_index(c) * f->w;
+        for (col = 0; col < f->w; col++) {
+            u8 bits = g[col];
+            u8 *q = p + col;
+            while (bits) {
+                if (bits & 1) *q = colour;
+                bits >>= 1;
+                q += s_pitch;
+            }
         }
     }
 }
@@ -568,6 +658,7 @@ void term_render(u8 *dst, u32 t)
     int cursor_row = -1;
     u8 st;
 
+    geometry();
     base = (s_line >= (u32)(ROWS - 1)) ? s_line - (ROWS - 1) : 0;
     if ((u32)s_view <= base) base -= (u32)s_view;
     else base = 0;
@@ -581,7 +672,7 @@ void term_render(u8 *dst, u32 t)
         if (abs + SCROLLBACK <= s_line) continue;   /* aged out of the ring */
 
         row = row_of(abs);
-        y = r * f->pitch;
+        y = r * f->pitch * s_scale;
         if (abs == s_line) cursor_row = r;
 
         st = s_quirks ? s_style[abs % SCROLLBACK] : ST_PLAIN;
@@ -597,16 +688,16 @@ void term_render(u8 *dst, u32 t)
              * the prose uneasy, and a border that shivers is just broken. */
             if (st != ST_PLAIN && !CH_IS_CELL(ch))
                 as_rune = style_cell(st, c, abs, t, &ch, &col, &dx, &dy, runes);
-            x = f->x0 + c * f->adv + dx;
+            x = (f->x0 + c * f->adv) * s_scale + dx;
 
             if (CH_IS_CELL(ch)) {
                 if (f->shadow && ch < CH_SHADE1)
-                    blit_cell(dst, x + 1, y + 1, ch, C_SHADOW);
+                    blit_cell(dst, x + s_scale, y + s_scale, ch, C_SHADOW);
                 blit_cell(dst, x, y, ch, col);
                 continue;
             }
             if (as_rune) {
-                blit_cols(dst, x + 1, y + dy + 1, runes, C_SHADOW);
+                blit_cols(dst, x + s_scale, y + dy + s_scale, runes, C_SHADOW);
                 blit_cols(dst, x, y + dy, runes, col);
                 continue;
             }
@@ -618,7 +709,8 @@ void term_render(u8 *dst, u32 t)
                 if ((j & 7) == 0) x += (int)((j >> 3) & 1) ? 1 : -1;
                 zalgo_marks(dst, x, y + dy, ch, c, (int)abs, t);
             }
-            if (f->shadow) blit_glyph(dst, x + 1, y + dy + 1, ch, C_SHADOW);
+            if (f->shadow)
+                blit_glyph(dst, x + s_scale, y + dy + s_scale, ch, C_SHADOW);
             blit_glyph(dst, x, y + dy, ch, col);
         }
     }
@@ -626,26 +718,26 @@ void term_render(u8 *dst, u32 t)
     /* The cursor: a soft block that breathes, with the character under it
      * punched back out in black so you can still read what you typed. */
     if (cursor_row >= 0 && s_view == 0 && s_col < COLS) {
-        int x = f->x0 + s_col * f->adv;
-        int y = cursor_row * f->pitch;
+        int x = (f->x0 + s_col * f->adv) * s_scale;
+        int y = cursor_row * f->pitch * s_scale;
         int phase = (int)((t >> 3) & (SINLEN - 1));
         int lvl = (SIN(phase * 2) + 4096) * (PAL_CURSOR_N - 1) >> 13;
         u8 col = (u8)(PAL_CURSOR + lvl);
         int ch = row_of(s_line)[s_col].ch;
         int i;
 
-        for (i = 0; i < f->pitch - 1; i++)
-            memset8(dst + (y + i) * SCR_W + x, col, f->w);
+        for (i = 0; i < f->pitch * s_scale - s_scale; i++)
+            memset8(dst + (y + i) * s_pitch + x, col, f->w * s_scale);
         if (ch != ' ' && ch != 0) blit_glyph(dst, x, y, ch, 0);
     }
 
     /* A thumb on the right edge while looking back through history. */
     if (s_view > 0) {
         int span = SCROLLBACK - ROWS;
-        int pos = span > 0 ? (SCR_H - 24) * (span - s_view) / span : 0;
+        int pos = span > 0 ? (s_vh - 24) * (span - s_view) / span : 0;
         int i;
         for (i = 0; i < 24; i++) {
-            u8 *p = dst + (pos + i) * SCR_W + (SCR_W - 2);
+            u8 *p = dst + (pos + i) * s_pitch + (s_pitch - 2);
             p[0] = C_ACCENT;
             p[1] = C_ACCENT;
         }
