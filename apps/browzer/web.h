@@ -20,6 +20,7 @@ extern const Api *A;
 typedef u32 usize;
 void *memcpy(void *d, const void *s, u32 n);    /* crt.c */
 void *memset(void *d, int c, u32 n);
+void *memmove(void *d, const void *s, u32 n);
 
 /* ---- the kernel's names, as the app interface has them ------------------ */
 #define C_TEXT     A_TEXT

@@ -6,6 +6,21 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.18.0 — 2026-11-09
+
+- **mp3 and radio in browzer.** mp3 files play (MPEG-1, -2 and -2.5, any
+  bitrate), and so does internet radio: mp3 streams from Shoutcast and
+  Icecast stations, followed from the .m3u and .pls playlists stations link
+  to. Radio gets a player screen with the station, what it says is on now,
+  and how long you have been listening; esc stops it. Small files play in
+  the background while you browse, like songs.
+- **.wav files play** too.
+- The mp3 decoder is written here, for a 120 MHz Pentium: mono, and at half
+  rate for 44.1 and 48 kHz files, since the Sound Blaster plays 22 kHz
+  anyway. Checked against mpg123: the same sound, to within rounding.
+- Apps have 8 MB of memory now (they need 18 MB in the machine; the laptop
+  has 32).
+
 ## 1.17.0 — 2026-11-09
 
 - **Music in browzer.** A link to a .mod or .xm song (modarchive.org has

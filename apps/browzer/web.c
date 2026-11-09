@@ -1030,7 +1030,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     else
         fmt_str(req, sizeof req,
                 "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
-                "Accept: text/html, text/plain, */*\r\nConnection: close\r\n\r\n",
+                "Accept: text/html, text/plain, */*\r\nIcy-MetaData: 1\r\nConnection: close\r\n\r\n",
                 u->path, u->host, A->os_version());
     for (n = 0; req[n]; n++) { }
     conn_write((const u8 *)req, n);
@@ -1115,6 +1115,14 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                        lower_eq(ctype, "application/xhtml", 17);
                 if (lower_eq(head, "ICY", 3) && !ctype[0])        /* old radio */
                     fmt_str(ctype, sizeof ctype, "audio/mpeg");
+                {
+                    /* A playlist is often sent as plain text; it is still
+                     * for playing, not for reading. */
+                    int k = 0, pl;
+                    while (u->path[k] && u->path[k] != '?') k++;
+                    pl = (k > 4 && lower_eq(u->path + k - 4, ".m3u", 4)) || (k > 4 && lower_eq(u->path + k - 4, ".pls", 4));
+                    if (pl && s_pg) { html = 0; fmt_str(ctype, sizeof ctype, "audio/x-mpegurl"); }
+                }
                 if (!html && !lower_eq(ctype, "text/", 5) && ctype[0] && s_pg && web_media_start &&
                     status >= 200 && status < 300) {
                     char where[PAGE_HREF_MAX + 16];
@@ -1134,7 +1142,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
         if (s_pg) {
             s_pg->bytes = body;
-            if (body - said >= 2048) {
+            if (body - said >= 2048 && !media) {
                 said = body;
                 fmt_str(line, sizeof line, "loading... %u bytes", body);
                 note(line, C_DIM);

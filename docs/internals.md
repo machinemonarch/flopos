@@ -66,7 +66,7 @@ source files involved; every file opens with a comment explaining itself.
 | 0x70000 | The disk buffer: below 1MB, where the BIOS can reach it |
 | below 640KB | The kernel's code, data and stack |
 | 0x100000 (1MB) and up | The heap: screen buffers, lookup tables, network buffers. A simple allocator that only ever hands out more. Capped below 9MB. |
-| 0xA00000 (10MB) to 14MB | The app area (see [Making apps](making-apps.md)) |
+| 0xA00000 (10MB) to 18MB | The app area (see [Making apps](making-apps.md)) |
 | 0x7000000 | The video card's frame buffer, at 800×600 |
 
 If the BIOS admits to no memory above 1MB, the heap moves into

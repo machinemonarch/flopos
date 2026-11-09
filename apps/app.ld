@@ -14,6 +14,6 @@ SECTIONS
     .bss (NOLOAD) : { *(.bss) *(.bss.*) *(COMMON) }
     . = ALIGN(16);
     _app_bss_end = .;
-    ASSERT(_app_bss_end - 0x00A00000 <= 0x00400000, "app is bigger than its 4MB")
+    ASSERT(_app_bss_end - 0x00A00000 <= 0x00800000, "app is bigger than its 8MB")
     /DISCARD/ : { *(.comment*) *(.note*) *(.eh_frame*) }
 }

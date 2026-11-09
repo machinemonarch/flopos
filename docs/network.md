@@ -81,17 +81,33 @@ the rest.
 | `m` | Your bookmarks |
 | Esc | Cancel a page that is taking too long, or leave |
 
-### Music
+### Music and radio
 
-A link to a tracker song plays it: **.mod** (ProTracker, from the Amiga) and
-**.xm** (FastTracker 2), such as the ones on
-[modarchive.org](https://modarchive.org/). browzer downloads the song (2 MB
-at most), shows what it is, and plays it through the Sound Blaster. It goes
-on playing while you browse; the top edge shows what is playing and for how
-long, and **s** stops it. Leaving browzer stops it too.
+Links to sound play it, through the Sound Blaster:
 
-Songs play in mono, once through. The FM music steps aside while they do.
-mp3 files and radio are next.
+| What | How |
+|---|---|
+| **.mp3** | MPEG-1, -2 and -2.5 layer III, any bitrate |
+| **.wav** | plain PCM, 8 to 32 bits, any rate, any number of channels |
+| **.mod**, **.xm** | tracker songs (ProTracker, FastTracker 2), such as the ones on [modarchive.org](https://modarchive.org/) |
+| **radio** | mp3 streams (Shoutcast, Icecast), and the **.m3u** and **.pls** playlists stations link to |
+
+**A file of 2 MB or less** is downloaded first, then plays in the background
+while you go on browsing. The top edge shows what is playing and for how
+long, and **s** stops it.
+
+**Radio, and anything bigger,** plays as it arrives, on a player screen with
+the station's name, what the station says is on now, and how long you have
+been listening. **Esc** stops it.
+
+Everything plays in mono, at about 22 kHz, which is what the laptop's Sound
+Blaster plays. To keep up on a 120 MHz Pentium, mp3s at 44.1 or 48 kHz are
+decoded at half rate, which skips everything above 11 kHz that the card
+couldn't play anyway. The FM music steps aside while anything plays, and
+leaving browzer stops it all.
+
+Not yet: Ogg Vorbis and FLAC (next), and AAC, which some stations use
+instead of mp3.
 
 ### Bookmarks
 

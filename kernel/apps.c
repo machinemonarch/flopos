@@ -109,7 +109,7 @@ int app_run(const char *word, int argc, char **argv)
 
     term_colour(C_ACCENT);
     if (!memory_for_apps()) {
-        term_print("Apps need 14MB of memory; this machine has less.");
+        term_print("Apps need 18MB of memory; this machine has less.");
         term_newline();
         return 1;
     }

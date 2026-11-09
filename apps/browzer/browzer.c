@@ -27,6 +27,7 @@
  */
 #include "web.h"
 #include "tracker.h"
+#include "decode.h"
 
 #define MAX_LINES  1500
 #define MAX_WIDTH  98
@@ -47,17 +48,38 @@ static int  s_ready;
 static int  s_typing = -1;               /* the field being typed into     */
 
 /* ---- music ------------------------------------------------------------------
- * A link that is not a page comes here instead: downloaded whole into
- * memory, and if it turns out to be a song, played.  A song keeps playing
- * while you browse -- the queue is topped up whenever browzer is waiting
- * for anything -- until it ends or s stops it. */
+ * A link that is not a page comes here instead.  Two ways:
+ *
+ *   A file of 2 MB or less is downloaded whole, then looked at.  A song
+ *   (.mod, .xm) or a recording (mp3, wav) plays in the background: the
+ *   sound card's queue is topped up whenever browzer waits for anything,
+ *   so it goes on while you browse, until it ends or s stops it.  A
+ *   playlist (.m3u, .pls) is followed to the stream it names.
+ *
+ *   Radio, and recordings too big to keep, are played as they arrive:
+ *   the player screen shows the station and what it says is on, and esc
+ *   stops it.  The bytes come into a buffer that is decoded as the sound
+ *   card makes room; when it is full, browzer simply stops reading, and
+ *   the server waits. */
 #define DL_MAX (2u << 20)
-static u8   s_dl[DL_MAX];
+#define ST_MAX (256u << 10)
+static u8   s_dl[DL_MAX];                /* a whole file, or a stream's bytes */
 static u32  s_dl_len;
-static int  s_dl_state;                  /* 0 none, 1 coming, 2 came, 3 broke off, 4 too big */
-static char s_dl_type[48], s_dl_url[PAGE_HREF_MAX + 16];
+enum { DL_NONE, DL_COMING, DL_CAME, DL_BROKE, DL_BIG, DL_STREAM, DL_STREAM_END, DL_UNPLAYABLE, DL_NOCARD };
+static int  s_dl_state;
+static int  s_esc;                       /* esc stopped a stream            */
+static char s_dl_type[48], s_dl_url[PAGE_HREF_MAX + 16], s_station[48], s_now[100], s_title[64];
 static int  s_music;                     /* 0 quiet, 1 playing, 2 the end is queued */
-static int  s_rate;
+static int  s_src;                       /* 1 a song, 2 a recording         */
+static int  s_rate;                      /* the card's                      */
+static u32  s_written;                   /* samples given to the card       */
+static Decoder   s_dec;
+static AudioIn   s_in;
+static Resampler s_rs;
+static u32  s_metaint, s_meta_count;     /* radio: song titles in the stream */
+static int  s_meta_len, s_meta_got;
+static char s_meta[512];
+static u32  s_drawn;
 
 static void music_stop(void)
 {
@@ -65,46 +87,246 @@ static void music_stop(void)
     s_music = 0;
 }
 
+static u32 heard_seconds(void)
+{
+    u32 behind = (u32)A->audio_queued() + 16384;
+    return s_rate ? (s_written > behind ? s_written - behind : 0) / (u32)s_rate : 0;
+}
+
+/* Decode a recording into the card's queue as far as it has room.  0 when
+ * the recording has ended; 1 otherwise (including: needs more bytes). */
+static int decode_some(void)
+{
+    static s16 pcm[1152];
+    static u8 out[3400];
+    while (A->audio_space() >= (int)sizeof out) {
+        int n = s_dec.decode(&s_dec, &s_in, pcm, 1152), k;
+        if (n == AUDIO_MORE) return 1;
+        if (n <= 0) return 0;
+        k = rs_run(&s_rs, pcm, n, out);
+        A->audio_write(out, k);
+        s_written += (u32)k;
+    }
+    return 1;
+}
+
 /* Keep the sound card's queue full.  Called whenever browzer waits. */
 static void music_feed(void)
 {
     static u8 buf[4096];
-    if (s_music == 1) {
+    if (s_music == 1 && s_src == 1) {
         while (A->audio_space() >= (int)sizeof buf) {
             int n = tracker_render(buf, (int)sizeof buf);
             A->audio_write(buf, n);
+            s_written += (u32)n;
             if (n < (int)sizeof buf) { s_music = 2; break; }
         }
+    } else if (s_music == 1 && s_src == 2 && s_dl_state != DL_STREAM) {
+        if (!decode_some()) s_music = 2;
     }
     if (s_music == 2 && A->audio_queued() == 0) music_stop();
 }
 
+static int music_start(int src, int rate_in)
+{
+    s_rate = A->audio_open(22050);
+    if (!s_rate) return 0;
+    s_src = src;
+    s_written = 0;
+    if (src == 2) rs_init(&s_rs, rate_in, s_rate);
+    s_music = 1;
+    return 1;
+}
+
+static int ends_with(const char *u, const char *ext)
+{
+    int a = 0, b = 0, i;
+    while (u[a] && u[a] != '?' && u[a] != '#') a++;
+    while (ext[b]) b++;
+    if (a < b) return 0;
+    for (i = 0; i < b; i++) {
+        char c = u[a - b + i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        if (c != ext[i]) return 0;
+    }
+    return 1;
+}
+
+static int type_is(const char *t, const char *p)
+{
+    while (*p) {
+        char c = *t++;
+        if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        if (c != *p++) return 0;
+    }
+    return 1;
+}
+
+static int is_playlist(void)
+{
+    return type_is(s_dl_type, "audio/x-mpegurl") || type_is(s_dl_type, "audio/mpegurl") ||
+           type_is(s_dl_type, "audio/x-scpls") || type_is(s_dl_type, "application/pls") ||
+           ends_with(s_dl_url, ".m3u") || ends_with(s_dl_url, ".pls");
+}
+
 static int media_start(const char *ctype, const char *url, u32 length, u32 metaint, const char *station)
 {
-    int i;
-    (void)metaint; (void)station;
+    int i, audio;
     music_stop();                        /* its memory is about to be used  */
     for (i = 0; ctype[i] && i < (int)sizeof s_dl_type - 1; i++) s_dl_type[i] = ctype[i];
     s_dl_type[i] = 0;
     for (i = 0; url[i] && i < (int)sizeof s_dl_url - 1; i++) s_dl_url[i] = url[i];
     s_dl_url[i] = 0;
+    for (i = 0; station[i] && i < (int)sizeof s_station - 1; i++) s_station[i] = station[i];
+    s_station[i] = 0;
+    s_now[0] = 0;
+    s_title[0] = 0;
     s_dl_len = 0;
-    s_dl_state = length > DL_MAX ? 4 : 1;
+    s_esc = 0;
+    audio = type_is(ctype, "audio/") || type_is(ctype, "application/ogg");
+    if (!is_playlist() && audio && (metaint || !length || length > DL_MAX)) {
+        s_dl_state = DL_STREAM;
+        s_metaint = metaint; s_meta_count = metaint; s_meta_len = -1;
+        s_in.buf = s_dl; s_in.len = 0; s_in.pos = 0; s_in.done = 0;
+        s_dec.decode = 0;
+        s_drawn = 0;
+        return 1;
+    }
+    s_dl_state = length > DL_MAX ? DL_BIG : DL_COMING;
+    return 1;
+}
+
+static void draw(void);
+
+/* Radio sends what is playing between the audio: every metaint bytes, a
+ * length byte, then that many times 16 bytes of StreamTitle='...';. */
+static void meta_done(void)
+{
+    const char *k = "StreamTitle='";
+    int i = 0, j, n = 0;
+    s_meta[s_meta_got] = 0;
+    for (i = 0; s_meta[i]; i++) {
+        for (j = 0; k[j] && s_meta[i + j] == k[j]; j++) { }
+        if (!k[j]) {
+            i += j;
+            while (s_meta[i] && !(s_meta[i] == '\'' && (s_meta[i + 1] == ';' || !s_meta[i + 1])) && n < (int)sizeof s_now - 1)
+                s_now[n++] = s_meta[i++];
+            s_now[n] = 0;
+            return;
+        }
+    }
+}
+
+static int stream_play(void)
+{
+    if (!s_dec.decode) {
+        int r = audio_detect(&s_in, &s_dec, s_dl_type);
+        if (r == AUDIO_MORE && s_in.len < 65536) return 1;
+        if (r != 1) { s_dl_state = DL_UNPLAYABLE; return 0; }
+        if (!music_start(2, s_dec.rate)) { s_dl_state = DL_NOCARD; return 0; }
+    }
+    if (!decode_some()) { s_music = 2; return 1; }
+    if (A->ms() - s_drawn > 400) { s_drawn = A->ms(); draw(); }
+    return 1;
+}
+
+/* Into the stream's buffer, decoding as it fills; when it is full, wait
+ * for the sound card to make room.  0 to stop. */
+static int stream_take(const u8 *p, int n)
+{
+    while (n > 0) {
+        u32 room, take;
+        if (s_in.pos > ST_MAX / 2) {                    /* keep the unread part */
+            u32 left = s_in.len - s_in.pos;
+            memmove(s_dl, s_dl + s_in.pos, left);
+            s_in.len = left; s_in.pos = 0;
+        }
+        room = ST_MAX - s_in.len;
+        if (!room) {
+            if (!stream_play()) return 0;
+            if (ui_key() == UK_ESC) { s_esc = 1; return 0; }
+            A->pump(0);
+            continue;
+        }
+        take = (u32)n < room ? (u32)n : room;
+        memcpy(s_dl + s_in.len, p, take);
+        s_in.len += take; p += take; n -= (int)take;
+        if (!stream_play()) return 0;
+    }
     return 1;
 }
 
 static int media_bytes(const u8 *p, int n)
 {
-    if (s_dl_state != 1) return 0;
-    if (s_dl_len + (u32)n > DL_MAX) { s_dl_state = 4; return 0; }
+    if (s_dl_state == DL_STREAM) {
+        /* Take the song titles out, if the station puts them in. */
+        while (n > 0 && s_metaint) {
+            if (s_meta_len >= 0) {                      /* inside a title block */
+                while (n > 0 && s_meta_got < s_meta_len) {
+                    if (s_meta_got < (int)sizeof s_meta - 1) s_meta[s_meta_got] = (char)*p;
+                    s_meta_got++; p++; n--;
+                }
+                if (s_meta_got >= s_meta_len) {
+                    if (s_meta_got > (int)sizeof s_meta - 1) s_meta_got = (int)sizeof s_meta - 1;
+                    if (s_meta_len) meta_done();
+                    s_meta_len = -1; s_meta_count = s_metaint;
+                }
+                continue;
+            }
+            if (!s_meta_count) { s_meta_len = *p * 16; s_meta_got = 0; p++; n--; continue; }
+            {
+                u32 take = (u32)n < s_meta_count ? (u32)n : s_meta_count;
+                if (!stream_take(p, (int)take)) return 0;
+                p += take; n -= (int)take; s_meta_count -= take;
+            }
+        }
+        if (n > 0 && !s_metaint) return stream_take(p, n);
+        return 1;
+    }
+    if (s_dl_state != DL_COMING) return 0;
+    if (s_dl_len + (u32)n > DL_MAX) { s_dl_state = DL_BIG; return 0; }
     memcpy(s_dl + s_dl_len, p, (u32)n);
     s_dl_len += (u32)n;
+    music_feed();
     return 1;
 }
 
 static void media_end(int whole)
 {
-    if (s_dl_state == 1) s_dl_state = whole ? 2 : 3;
+    if (s_dl_state == DL_COMING) s_dl_state = whole ? DL_CAME : DL_BROKE;
+    else if (s_dl_state == DL_STREAM) {
+        s_dl_state = DL_STREAM_END;
+        s_in.done = 1;
+        if (s_esc || !whole) music_stop();
+        else if (s_music) {                             /* play out what is left */
+            while (decode_some() && s_music == 1 && A->audio_space() < 3400) { }
+            s_music = 2;
+        }
+    }
+}
+
+/* The first address in a playlist: .pls says File1=..., .m3u just lists them. */
+static int playlist_url(char *out, int cap)
+{
+    u32 i = 0;
+    while (i < s_dl_len) {
+        u32 e = i, a;
+        int k = 0;
+        while (e < s_dl_len && s_dl[e] != '\n' && s_dl[e] != '\r') e++;
+        a = i;
+        if (s_dl[a] == 'F' && s_dl[a + 1] == 'i' && s_dl[a + 2] == 'l' && s_dl[a + 3] == 'e') {
+            while (a < e && s_dl[a] != '=') a++;
+            if (a < e) a++;
+        }
+        while (a < e && (s_dl[a] == ' ' || s_dl[a] == '\t')) a++;
+        if (e - a > 7 && s_dl[a] == 'h' && s_dl[a + 1] == 't' && s_dl[a + 2] == 't' && s_dl[a + 3] == 'p') {
+            while (a < e && k < cap - 1 && s_dl[a] > ' ') out[k++] = (char)s_dl[a++];
+            out[k] = 0;
+            return 1;
+        }
+        i = e + 1;
+    }
+    return 0;
 }
 
 int ui_key(void)
@@ -178,10 +400,11 @@ static void draw(void)
         char m[60];
         /* What has been heard: made, less what is still queued, less
          * the sound card's own loop. */
-        u32 made = tracker_samples(), behind = (u32)A->audio_queued() + 16384;
-        u32 t = s_rate ? (made > behind ? made - behind : 0) / (u32)s_rate : 0;
+        u32 t = heard_seconds();
         int ml;
-        fmt_str(m, sizeof m, " playing %s %u:%02u ", tracker_title()[0] ? tracker_title() : "a song", t / 60, t % 60);
+        const char *what = s_src == 1 ? (tracker_title()[0] ? tracker_title() : "a song")
+                         : s_now[0] ? s_now : s_station[0] ? s_station : s_title[0] ? s_title : s_dec.kind;
+        fmt_str(m, sizeof m, " playing %s %u:%02u ", what, t / 60, t % 60);
         for (ml = 0; m[ml]; ml++) { }
         if (ml < s_w - 30) term_win_text(s_w - 2 - ml, 0, m, C_ACCENT, pp);
     }
@@ -221,6 +444,21 @@ static void draw(void)
     term_win_put(0, 2, FR_TEE_L, C_GREY, pp);       term_win_put(s_w - 1, 2, FR_TEE_R, C_GREY, pp);
     term_win_put(0, s_h - 3, FR_TEE_L, C_GREY, pp); term_win_put(s_w - 1, s_h - 3, FR_TEE_R, C_GREY, pp);
 
+    /* A stream playing: its own screen instead of the page. */
+    if (s_dl_state == DL_STREAM) {
+        char t[120];
+        u32 secs = heard_seconds();
+        term_win_text(4, 4, s_station[0] ? s_station : "A stream", C_BRIGHT, pp);
+        if (s_now[0]) { term_win_text(4, 6, "now:", C_DIM, pp); put_text_clipped(9, 6, s_now, C_TEXT, pp, s_w - 3); }
+        if (s_dec.decode) {
+            fmt_str(t, sizeof t, "%s, %u kbps, mono, %u Hz", s_dec.kind, (u32)s_dec.kbps, (u32)s_dec.rate);
+            term_win_text(4, 8, t, C_DIM, pp);
+            fmt_str(t, sizeof t, "listening for %u:%02u", secs / 60, secs % 60);
+            term_win_text(4, 10, t, C_ACCENT, pp);
+        } else
+            term_win_text(4, 8, "listening for the first of it...", C_DIM, pp);
+        term_win_text(4, 12, "esc stops it", C_DIM, pp);
+    } else
     /* The page. */
     for (y = 0; y < s_vh; y++) {
         int ln = s_top + y;
@@ -536,39 +774,72 @@ static void go_with(const char *url, const u8 *post, int postlen)
     }
     s_dl_state = 0;
     loaded = http_load(url, &s_pg, post, postlen);
-    if (loaded && s_dl_state) {
+    if (s_dl_state) {
         /* Not a page: what came instead. */
-        static char html[700];
-        const char *what;
-        int i, ok = 0;
-        if (s_dl_state == 4) what = "<p>It is too big to keep here: 2 MB at most.</p>";
-        else if (s_dl_state == 3) what = "<p>It stopped coming before it was all here.</p>";
-        else if (tracker_load(s_dl, s_dl_len, 22050)) {
-            s_rate = A->audio_open(22050);
-            if (s_rate) {
+        static char html[900];
+        char name[64];
+        const char *what = 0, *u;
+        int i, k = 0, st = s_dl_state;
+        s_dl_state = DL_NONE;
+        for (u = s_dl_url, i = 0; s_dl_url[i]; i++) if (s_dl_url[i] == '/') u = s_dl_url + i + 1;
+        while (u[k] && u[k] != '?' && u[k] != '#' && k < 63) { name[k] = u[k]; k++; }
+        name[k] = 0;
+        if (!name[0]) fmt_str(name, sizeof name, "%s", s_station[0] ? s_station : "this");
+
+        if (st == DL_CAME && is_playlist()) {
+            char next[PAGE_HREF_MAX + 16];
+            if (playlist_url(next, (int)sizeof next)) { go_with(next, 0, 0); return; }
+            what = "<p>A playlist, but with no address in it that browzer can follow.</p>";
+        }
+        if (what) {
+            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1>%s", name, name, what);
+        } else if (st == DL_CAME && tracker_load(s_dl, s_dl_len, 22050)) {
+            if (music_start(1, 0)) {
                 (void)tracker_load(s_dl, s_dl_len, s_rate);
-                s_music = 1;
                 music_feed();
-                ok = 1;
-            }
-            what = 0;
-        } else what = "<p>browzer cannot show it or play it.</p>";
-        if (ok)
-            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>A %u-channel %s song, playing.</p>"
-                    "<p>It goes on playing while you browse. s stops it.</p>",
-                    tracker_title()[0] ? tracker_title() : "a song", tracker_title()[0] ? tracker_title() : "A song",
-                    (u32)tracker_channels(), tracker_kind());
-        else if (!what)
-            fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A %s song -- but this machine has "
-                    "no sound card that plays recordings, so it cannot be heard.</p>",
-                    tracker_title(), tracker_kind());
-        else
-            fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>That is %s, %u bytes.</p>%s",
-                    s_dl_type, s_dl_len, what);
+                fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>A %u-channel %s song, playing.</p>"
+                        "<p>It goes on playing while you browse. s stops it.</p>",
+                        tracker_title()[0] ? tracker_title() : name, tracker_title()[0] ? tracker_title() : name,
+                        (u32)tracker_channels(), tracker_kind());
+            } else
+                fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A song -- but this machine has "
+                        "no sound card that plays recordings.</p>", name);
+        } else if (st == DL_CAME) {
+            s_in.buf = s_dl; s_in.len = s_dl_len; s_in.pos = 0; s_in.done = 1;
+            if (audio_detect(&s_in, &s_dec, s_dl_type) == 1) {
+                if (music_start(2, s_dec.rate)) {
+                    fmt_str(s_title, sizeof s_title, "%s", name);
+                    music_feed();
+                    fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s, %u kbps, playing.</p>"
+                            "<p>It goes on playing while you browse. s stops it.</p>",
+                            name, name, s_dec.kind, (u32)s_dec.kbps);
+                } else
+                    fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A recording -- but this "
+                            "machine has no sound card that plays recordings.</p>", name);
+            } else
+                fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>That is %s, %u bytes, "
+                        "and browzer cannot show it or play it.</p>", s_dl_type, s_dl_len);
+        } else if (st == DL_STREAM_END) {
+            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s</p>%s%s%s",
+                    s_station[0] ? s_station : name, s_station[0] ? s_station : name,
+                    s_esc ? "Stopped." : s_music ? "That was all of it; the last of it is still playing." : "The stream ended.",
+                    s_now[0] ? "<p>Last playing: " : "", s_now[0] ? s_now : "", s_now[0] ? "</p>" : "");
+        } else if (st == DL_UNPLAYABLE) {
+            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is %s, which browzer cannot play "
+                    "(mp3, wav, .mod and .xm it can).</p>", name, name, s_dl_type);
+        } else if (st == DL_NOCARD) {
+            fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>This machine has no sound card "
+                    "that plays recordings.</p>", name);
+        } else if (st == DL_BIG) {
+            fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>That is %s, too big to keep "
+                    "here: 2 MB at most.</p>", s_dl_type);
+        } else {
+            fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>It stopped coming before "
+                    "it was all here.</p>");
+        }
         http_page_html(html, &s_pg);
         for (i = 0; s_dl_url[i]; i++) s_pg.url[i] = s_dl_url[i];
         s_pg.url[i] = 0;
-        s_dl_state = 0;
         s_loading = 0;
         return;
     }

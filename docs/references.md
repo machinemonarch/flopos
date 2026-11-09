@@ -81,6 +81,9 @@ for decades:
 | Intel 8237A DMA controller datasheet | `audio.c`: channel 1, auto-init |
 | ProTracker MOD format notes | `apps/lib/audio/tracker.c` |
 | XM format notes (XM.TXT, Triton) | `apps/lib/audio/tracker.c` |
+| ISO/IEC 11172-3 and 13818-3 (MPEG audio) | `apps/lib/audio/mp3.c` |
+| [PDMP3](https://github.com/technosaurus/PDMP3), public domain | `mp3tab.h`: the standard's tables |
+| SHOUTcast/Icecast metadata (ICY) | browzer: station titles |
 | VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
 
@@ -107,6 +110,7 @@ and no Toshiba code, firmware or text is in FLOPOS.
 | Tool | Used for |
 |---|---|
 | [NIST ACVP test vectors](https://github.com/usnistgov/ACVP-Server) | Official ML-KEM-768 test answers |
+| mpg123, LAME, libvorbis, libFLAC | Reference decodes, test audio |
 | [OpenSSL](https://www.openssl.org/) | Cross-checking the encryption; a local TLS test server |
 | [Python](https://www.python.org/) `hashlib` | Cross-checking SHA-3, SHAKE, SHA-384, SHA-512 |
 | [pyca/cryptography](https://cryptography.io/) | Test signatures and test certificate chains |

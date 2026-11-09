@@ -10,7 +10,7 @@ Why apps live outside the system:
 - The system stays small and boots just as fast however many programs
   there are.
 - An app can be added, replaced or removed without touching the system.
-- Apps get their own 4MB of memory instead of squeezing into the 640KB
+- Apps get their own 8MB of memory instead of squeezing into the 640KB
   the system lives in.
 
 ## Running one
@@ -19,7 +19,7 @@ Type its name. When FLOPOS doesn't know a word as a command, it looks on
 the floppy for a file of that name ending in `.APP`. `apps` lists them.
 Anything after the name is passed to the app: `write 3`.
 
-Apps need at least 14MB of memory, which the 430CDT has.
+Apps need at least 18MB of memory, which the 430CDT (32MB) has.
 
 ## How an app is built
 
@@ -54,7 +54,7 @@ or better, no floating point, and no C library. `crt.c` provides `memset`,
 ## Where an app sits
 
 Every app is linked to run at address 0x00A00000 (10MB) and may use up to
-4MB from there. The file starts with a header, which FLOPOS checks before
+8MB from there. The file starts with a header, which FLOPOS checks before
 running anything:
 
 | Field | Meaning |
@@ -159,7 +159,7 @@ into each app that asks for it in the Makefile:
 
 | Library | What it does |
 |---|---|
-| `audio` | `tracker.c`: turns a .mod or .xm song into samples (`tracker_load`, `tracker_render`), ready for `audio_write` |
+| `audio` | `tracker.c`: .mod and .xm songs into samples (`tracker_load`, `tracker_render`). `decode.c`, `mp3.c`: recordings (mp3, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a resampler to the card's rate. |
 
 An app that uses floating point (the audio library does) also needs the
 Pentium's FPU switched on for it in the Makefile (`APPFLAGS_browzer :=
