@@ -140,11 +140,11 @@ void kmain(void)
     line_init();
     shell_init();
 
-    /* The panel is 800x600 and so, from here on, is the picture: mode 13h
-     * has to be stretched by two and a half across and three down to reach
-     * it, which is what makes every line look chewed.  If the card will
-     * not do it, nothing happens and we stay at 320x200. */
-    if (vga_go_big()) term_set_face(0);
+    /* 800x600 is NOT switched on here, and the reason is written down so
+     * nobody turns it back on without reading it: on the machine this is
+     * for, doing it before the boot screen froze it solid.  Until that is
+     * understood, `screen big` asks for it from the keyboard, where a
+     * mistake is one reboot rather than a dead floppy. */
 
     /* Saffran first, out of black and back into it. */
     splash_show();

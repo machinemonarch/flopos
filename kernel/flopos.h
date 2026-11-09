@@ -426,6 +426,33 @@ extern volatile u8  g_beat;
 extern volatile u8  g_bar;
 extern volatile u32 g_step;
 
+/* --- net.c -------------------------------------------------------------- */
+#define NET_MTU 1514                     /* the biggest ethernet frame     */
+
+typedef struct {
+    const char *name;
+    int  (*start)(void);
+    void (*stop)(void);
+    const u8 *(*mac)(void);
+    int  (*send)(const u8 *frame, int len);
+    int  (*recv)(u8 *frame, int max);
+    const char *(*why)(void);            /* why it did not come up         */
+} Nic;
+
+extern const Nic g_nic_el3;
+extern const Nic g_nic_ne2000;
+extern const u8  g_mac_broadcast[6];
+
+int          net_up(void);
+void         net_down(void);
+int          net_ready(void);
+const char  *net_name(void);
+const char  *net_why(void);
+const u8    *net_mac(void);
+int          net_send(const u8 *frame, int len);
+int          net_recv(u8 *frame, int max);
+int          net_frame_begin(u8 *f, const u8 *to, u16 type);
+
 /* --- el3.c -------------------------------------------------------------- */
 int    el3_start(int sock, u32 cor, u16 io);
 void   el3_stop(void);
