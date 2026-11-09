@@ -42,6 +42,8 @@ static volatile u8 *s_lfb;               /* where the card displays it     */
 static u16  s_hmode;
 static int  s_composed;          /* the background is already up    */
 static u32  s_frames;            /* how many have reached the card  */
+static u32  s_worst;             /* the slowest one of them         */
+static u32  s_said;              /* when we last mentioned it       */
 #define HI_W 800
 #define HI_H 600
 
@@ -197,6 +199,8 @@ int vga_go_big(void)
     vga_set_palette(s_current);          /* the mode change cleared it     */
     say_step("up");
     s_frames = 0;
+    s_worst = 0;
+    s_said = 0;
     return 1;
 }
 
@@ -225,10 +229,33 @@ void vga_present(void)
         /* The first three frames each say so before and after.  If the
          * machine dies on the way to the screen, the wire ends mid-pair
          * and names the frame it died on. */
-        if (s_frames < 3) serial_printf("[vga] frame %u out\n", s_frames);
-        memcpy32((void *)s_lfb, s_hi, (HI_W * HI_H) / 4);
-        if (s_frames < 3) serial_printf("[vga] frame %u done\n", s_frames++);
-        else s_frames++;
+        /* Time it.  Three frames reaching the card and then silence is
+         * what a machine doing this too slowly to use looks like from the
+         * other end, and it is indistinguishable from one that died --
+         * unless somebody is counting. */
+        {
+            u32 a = ms_now(), took;
+
+            memcpy32((void *)s_lfb, s_hi, (HI_W * HI_H) / 4);
+            took = ms_now() - a;
+            s_frames++;
+
+            if (took > s_worst) s_worst = took;
+            if (s_frames <= 4 || ms_now() - s_said > 2000) {
+                serial_printf("[vga] frame %u took %u ms\n", s_frames, took);
+                s_said = ms_now();
+            }
+
+            /* Half a megabyte a frame is a lot to ask of a 1996 laptop,
+             * and if it cannot do it there is no sense pretending.  Three
+             * frames is enough to tell, and dropping back is better than
+             * leaving somebody in front of a machine that looks hung. */
+            if (s_frames >= 3 && s_worst > 400) {
+                serial_printf("[vga] %u ms a frame is unusable, going back\n",
+                              s_worst);
+                vga_go_small();
+            }
+        }
         return;
     }
     vga_wait_retrace();

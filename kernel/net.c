@@ -16,12 +16,27 @@
 #include "flopos.h"
 
 static const Nic *s_nic;
-static const char *s_why = "nothing has been tried yet";
+static char s_why[160] = "nothing has been tried yet";
 
 /* In order of preference: the real card first, since on the machine this
  * is for, the real card is the one that is there. */
 static const Nic *const s_cards[] = { &g_nic_el3, &g_nic_ne2000 };
 #define NCARDS ((int)(sizeof s_cards / sizeof s_cards[0]))
+
+/* Every card's reason, not just the last one's.  When nothing comes up,
+ * "no network card" is the least useful sentence available: which card
+ * refused and why is the whole of the information. */
+static void note_why(const char *card, const char *why)
+{
+    int n = 0, i;
+
+    while (s_why[n] && n < (int)sizeof s_why - 2) n++;
+    if (n) { s_why[n++] = ';'; s_why[n++] = ' '; }
+    for (i = 0; card[i] && n < (int)sizeof s_why - 2; i++) s_why[n++] = card[i];
+    s_why[n++] = ':'; s_why[n++] = ' ';
+    for (i = 0; why[i] && n < (int)sizeof s_why - 1; i++) s_why[n++] = why[i];
+    s_why[n] = 0;
+}
 
 int net_up(void)
 {
@@ -29,9 +44,10 @@ int net_up(void)
 
     if (s_nic) return 1;
 
+    s_why[0] = 0;
     for (i = 0; i < NCARDS; i++) {
         if (s_cards[i]->start()) { s_nic = s_cards[i]; return 1; }
-        s_why = s_cards[i]->why();
+        note_why(s_cards[i]->name, s_cards[i]->why());
     }
     return 0;
 }

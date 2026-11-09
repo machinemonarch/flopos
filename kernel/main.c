@@ -59,6 +59,21 @@ static void after_prompt(void)
     s_input_col = term_cursor_col();
 }
 
+/* How often the screen is actually pushed to the card.  At 320x200 that
+ * is 64000 bytes and may as well be every time round; at 800x600 it is
+ * 480000, and doing that flat out leaves the machine with no time to
+ * notice anything else -- including the keyboard, which is how a working
+ * machine comes to look like a dead one. */
+static u32 s_last_frame;
+
+static int frame_due(void)
+{
+    u32 every = vga_is_big() ? 50 : 0;
+    if (ms_now() - s_last_frame < every) return 0;
+    s_last_frame = ms_now();
+    return 1;
+}
+
 static void draw_frame_now(u32 t)
 {
     u32 a, b;
@@ -204,6 +219,6 @@ void kmain(void)
             }
         }
 
-        draw_frame_now(t);
+        if (frame_due()) draw_frame_now(t);
     }
 }

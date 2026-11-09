@@ -124,6 +124,21 @@ static int ne_start(void)
         if (rd(R_ISR) & ISR_RST) break;
     if (guard >= 10000) { s_why = "nothing answers at 300"; return 0; }
 
+    /* An empty address floats, and a floating bus reads as all ones --
+     * which has the reset bit set, so the check above passes on a machine
+     * with nothing there at all.  Writing a value somewhere harmless and
+     * reading it back is the only honest test: a bus that is not driven
+     * cannot remember anything. */
+    wr(R_CMD, CMD_RD_ABORT | CMD_STOP);
+    wr(R_RBCR0, 0x5A);
+    wr(R_RBCR1, 0xA5);
+    if (rd(R_RBCR0) == 0x5A && rd(R_RBCR1) == 0xA5) {
+        /* Those two are write-only on a real part, so reading the value
+         * back means nothing is decoding the address at all. */
+        s_why = "nothing at 300 (the bus is floating)";
+        return 0;
+    }
+
     wr(R_CMD, CMD_PAGE1 * 0 | CMD_RD_ABORT | CMD_STOP);
     wr(R_DCR, 0x49);                     /* sixteen bits at a time         */
     wr(R_RBCR0, 0); wr(R_RBCR1, 0);
@@ -136,9 +151,25 @@ static int ne_start(void)
     dma_in(0, prom, 32);
     for (i = 0; i < 6; i++) s_mac[i] = prom[i * 2];
 
-    if ((s_mac[0] | s_mac[1] | s_mac[2]) == 0 && s_mac[3] == 0) {
-        s_why = "the card has no address";
-        return 0;
+    {
+        int ones = 0, zeros = 0;
+        for (i = 0; i < 6; i++) {
+            if (s_mac[i] == 0xFF) ones++;
+            if (s_mac[i] == 0x00) zeros++;
+        }
+        /* All ones is a bus with nothing on it; all zeros is a card that
+         * has not been programmed.  Neither is an address, and neither
+         * should ever be reported as one. */
+        if (ones == 6 || zeros == 6) {
+            s_why = "nothing at 300 (no address to read)";
+            return 0;
+        }
+        /* And the first bit of the first byte means "this is a group, not
+         * a machine", which no card's own address ever has set. */
+        if (s_mac[0] & 1) {
+            s_why = "what is at 300 is not a network card";
+            return 0;
+        }
     }
 
     wr(R_TPSR, TX_PAGE);
