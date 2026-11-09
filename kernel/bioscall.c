@@ -15,8 +15,13 @@
  *     timer tick arriving inside a video BIOS call, landing on a vector
  *     the BIOS never meant for hardware, and stopping the clock for good.
  *
- *   - The timer is set back to our rate afterwards.  The BIOS puts it
- *     back to its own 18.2Hz for disk work.
+ *   - The timer runs at the BIOS's own 18.2Hz while the BIOS has the
+ *     machine, and at ours again afterwards.  Ours is 250Hz.  Its timer
+ *     handler counts ticks to time things -- a floppy motor spinning up, a
+ *     flat panel being powered on in the right order -- and at our rate
+ *     every one of those waits would be thirteen times too short.  The
+ *     disk code set it back for itself; the video BIOS never did, and a
+ *     laptop panel sequenced thirteen times too fast is a black panel.
  *
  *   - Our clock is credited with the time the BIOS had the machine, from
  *     the cycle counter, because our timer handler did not run for any of
@@ -43,6 +48,9 @@ u32 bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di)
     if (g_cpu_mhz) t0 = tsc32();
 
     pic_to_bios();
+    outb(0x43, 0x36);                    /* ch0, lo/hi, square wave        */
+    outb(0x40, 0x00);                    /* 65536: the BIOS's 18.2Hz       */
+    outb(0x40, 0x00);
     r = bios_int_raw(which, ax, bx, cx, dx, es, di);
     pic_to_kernel();
 

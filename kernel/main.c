@@ -64,6 +64,7 @@ static void after_prompt(void)
  * leaving the loop free to look at the network and the serial line in
  * between. */
 static u32 s_last_frame;
+static int s_pumping;                    /* a menu has the keyboard        */
 
 static int frame_due(void)
 {
@@ -97,7 +98,10 @@ static void draw_frame_now(u32 t)
     /* The text goes on last and at the real size, which is the whole point
      * of the bigger screen: the background can be stretched because it is
      * a gradient, and a letter cannot. */
-    term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
+    /* While something else has the keyboard, the line being typed is not
+     * the thing being typed into, so it is not drawn. */
+    if (!s_pumping)
+        term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
     term_render(vga_canvas(), t);
     b = perf_clock(); perf_add(PERF_TEXT, b - a); a = b;
 
@@ -116,6 +120,20 @@ static void draw_frame_now(u32 t)
             s_fps_at = now;
         }
     }
+}
+
+/* For anything that takes over the keyboard for a while -- a menu, a
+ * long fetch -- but should leave the machine alive underneath: the
+ * network answered, the clock refereed, the screen drawn when a frame is
+ * due.  `now` draws one regardless, for putting up a message before
+ * something slow starts. */
+void main_pump(int now)
+{
+    u32 t = ms_now();
+    if (net_ready()) ip_poll();
+    s_pumping = 1;
+    if (now || frame_due()) draw_frame_now(t);
+    s_pumping = 0;
 }
 
 void kmain(void)

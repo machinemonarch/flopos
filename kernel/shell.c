@@ -145,6 +145,26 @@ static void screen_now(void)
     vga_present();
 }
 
+/* A web page, read out as text.  Plain http for now; secure pages need
+ * TLS, which is being built. */
+static void cmd_fetch(void)
+{
+    if (s_argc < 2) {
+        say("Fetch what?");
+        say_dim("  fetch example.com    or    fetch info.cern.ch");
+        return;
+    }
+    if (!net_ready_here(1)) return;
+    http_fetch(s_argv[1]);
+}
+
+static void cmd_crypto(void) { (void)crypto_selftest(); }
+
+static void cmd_network(void)
+{
+    netui_run();
+}
+
 static void cmd_whoami(void)
 {
     say(voice(V_WHOAMI));
@@ -775,6 +795,14 @@ static void cmd_screen(void)
         }
     }
 
+    /* Asked for big while big: do the switch again.  It is the cure for a
+     * panel that came up black, and costs nothing when it did not. */
+    if (want_big && vga_is_big() && s_argc >= 2) {
+        if (vga_redo_big()) term_set_face(0);
+        else term_set_face(1);
+        screen_say();
+        return;
+    }
     if (want_big == vga_is_big()) { screen_say(); return; }
 
     if (!want_big) {
@@ -1179,6 +1207,7 @@ static int net_ready_here(int chatty)
         return 0;
     }
     if (ip_addr()) return 1;
+    if (ip_apply_saved()) return 1;      /* set by hand, kept on the disk  */
 
     if (chatty) {
         term_colour(C_DIM);
@@ -1352,7 +1381,9 @@ static const Cmd s_cmds[] = {
     { "learned", "what you have taught me",      cmd_learned },
     { "remember","write it all to the disk",     cmd_remember},
     { "journal", "what I have written down",     cmd_journal },
+    { "network", "how this machine is connected",cmd_network },
     { "ping",    "is anybody out there",         cmd_ping    },
+    { "fetch",   "read a web page",              cmd_fetch   },
     { "report",  "tell Claude how you are",      cmd_report  },
     { "bye",     "write everything down and stop", cmd_bye   },
     { "reboot",  "start the machine again",      cmd_reboot  },
@@ -1443,6 +1474,7 @@ static const Cmd s_diag[] = {
     { "stall",   "reproduce the freeze",         cmd_stall   },
 #endif
     { "ip",      "where we think we are",        cmd_ip      },
+    { "crypto",  "check the encryption code",    cmd_crypto  },
 };
 
 static int s_diag_count(void)

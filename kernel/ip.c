@@ -34,6 +34,7 @@
 
 #define PROTO_ICMP  1
 #define PROTO_UDP   17
+#define PROTO_TCP   6
 
 #define ICMP_ECHO_REPLY   0
 #define ICMP_ECHO_REQUEST 8
@@ -88,6 +89,17 @@ u32  ip_gateway(void) { return s_gw; }
 u32  ip_netmask(void) { return s_mask; }
 
 u32  ip_dns(void)     { return s_dns; }
+
+/* Settings made by hand in the network menu are kept on the disk; this
+ * puts them back when the network is first wanted after a boot. */
+int ip_apply_saved(void)
+{
+    u32 how, a, m, g, d;
+    if (!store_net_get(&how, &a, &m, &g, &d) || how != 1 || !a) return 0;
+    ip_configure(a, m, g);
+    ip_set_dns(d, 53);
+    return 1;
+}
 
 /* Who to ask about names, when DHCP named nobody or named somebody wrong. */
 void ip_set_dns(u32 addr, u16 port)
@@ -239,6 +251,23 @@ static int ip_header(u8 *f, int n, u8 proto, u32 to, int payload)
     put32(f + n + 16, to);
     put16(f + n + 10, checksum(f + n, 20));
     return n + 20;
+}
+
+/* Any protocol's payload, wrapped and sent: what TCP uses.  The payload
+ * is copied in after the headers; the caller's checksum, if its protocol
+ * has one, has already been worked out. */
+int ip_send(u8 proto, u32 to, const u8 *payload, int len)
+{
+    u8 f[NET_MTU];
+    const u8 *mac;
+    int n, i;
+
+    if (!s_ip || len < 0 || len > NET_MTU - 14 - 20) return 0;
+    if (!(mac = ip_route(to, 1500))) return 0;
+    n = net_frame_begin(f, mac, ET_IPV4);
+    n = ip_header(f, n, proto, to, len);
+    for (i = 0; i < len; i++) f[n + i] = payload[i];
+    return net_send(f, n + len);
 }
 
 static int udp_send(u32 to, u16 sport, u16 dport, const u8 *data, int len)
@@ -507,6 +536,7 @@ void ip_poll(void)
     for (guard = 0; guard < 8; guard++) {
         len = net_recv(f, (int)sizeof f);
         if (len < 14) return;
+        rand_add((u32)len ^ ((u32)f[len - 1] << 16));
 
         switch (get16(f + 12)) {
         case ET_ARP: {
@@ -542,6 +572,8 @@ void ip_poll(void)
                     take_icmp(h, h + hl, tot - hl);
                 else if (h[9] == PROTO_UDP)
                     take_udp(h, h + hl, tot - hl);
+                else if (h[9] == PROTO_TCP && s_ip && dst == s_ip)
+                    tcp_input(get32(h + 12), h + hl, tot - hl);
             }
             break;
         }

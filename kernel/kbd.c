@@ -83,6 +83,7 @@ void kbd_irq(void)
     st = inb(0x64);
     if (!(st & 1)) return;
     sc = inb(0x60);
+    rand_add(sc);                        /* when a key goes down is chance */
 
     /* A byte from the pointing stick, not the keyboard.  It has to be read
      * -- the controller holds one byte and passes on nothing else until it

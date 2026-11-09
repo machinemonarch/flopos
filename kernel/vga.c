@@ -37,7 +37,8 @@ static u8 s_current[768];                /* what the DAC is holding now    */
  * source pixels to five across and one row to three down, which is a
  * handful of stores and no arithmetic at all per pixel.
  */
-static u8  *s_hi;                        /* the 800x600 canvas             */
+static u8  *s_hi;                        /* the 800x600 canvas, when big   */
+static u8  *s_hibuf;                     /* allocated once, kept for good  */
 static volatile u8 *s_lfb;               /* where the card displays it     */
 static u16  s_hmode;
 static int  s_composed;          /* the background is already up    */
@@ -165,16 +166,24 @@ int vga_go_big(void)
      * the room has to be checked before asking for it.  Half a megabyte is
      * nothing against 32MB and everything against a machine that fell back
      * to conventional memory. */
-    if (heap_total() - heap_used() < HI_W * HI_H + 2048) return 0;
-    s_hi = (u8 *)halloc(HI_W * HI_H + 1024);
+    /* Allocated once and kept: every trip up and down used to take
+     * another half megabyte, and the allocator gives nothing back. */
+    if (!s_hibuf) {
+        if (heap_total() - heap_used() < HI_W * HI_H + 2048) return 0;
+        s_hibuf = (u8 *)halloc(HI_W * HI_H + 1024);
+    }
+    s_hi = s_hibuf;
     memset8(s_hi, 0, HI_W * HI_H);
 
-    /* Stop the panel stretching before changing mode, not after.  At
-     * 800x600 the picture is already the size of the screen, so there is
-     * nothing to stretch, and a Chips part left holding a ratio that no
-     * longer describes anything is a good way to wedge the part that
-     * drives the screen -- which is also the part we are about to write
-     * half a megabyte to. */
+    /* Start from the BIOS's own 320x200, freshly set, every time.  The
+     * one switch to 800x600 seen to fail -- a black panel with the machine
+     * running and frames going out -- came after a long session with the
+     * panel stretching 13h up; the ones that worked came straight after a
+     * fresh mode set by the BIOS.  So the state the chip is in when it is
+     * asked for 800x600 is now always that one, whatever happened before.
+     * Stretching is off in it, which is right: at 800x600 the picture is
+     * the size of the screen and there is nothing to stretch. */
+    bios_int(0x10, 0x0013, 0, 0, 0, 0, 0);
     if (panel_present()) panel_set_wide(0);
 
     /* 0x4000 on the mode number is what asks for the flat stretch. */
@@ -232,6 +241,16 @@ void vga_go_small(void)
     if (panel_present()) panel_set_wide(1);   /* 13h needs it again       */
     s_retrace_ok = 1;
     vga_set_palette(s_current);
+}
+
+/* Down and straight back up.  If the panel ever comes up black -- the
+ * machine running, the picture going out, nothing to see -- asking for
+ * 800x600 again is the cure, and this is what `screen big` does when the
+ * screen already thinks it is big. */
+int vga_redo_big(void)
+{
+    vga_go_small();
+    return vga_go_big();
 }
 
 void vga_present(void)

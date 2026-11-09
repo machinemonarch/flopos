@@ -185,9 +185,15 @@ int  term_zalgo_on(void) { return s_zalgo; }
 #define ST_FADE    7
 #define ST_COUNT   8
 
+/* Text that came from somewhere else -- a web page -- is for reading, so
+ * lines born while this is on are plain whatever the quirks are doing. */
+static int s_plain;
+void term_plain(int on) { s_plain = on; }
+
 static void style_birth(u32 abs)
 {
     u32 r = rnd();
+    if (s_plain) { s_style[abs % SCROLLBACK] = ST_PLAIN; return; }
     /* Plain is weighted heavily. Every line being peculiar is just noise;
      * it is the ordinary ones in between that make the rest land. */
     s_style[abs % SCROLLBACK] =
@@ -660,6 +666,132 @@ static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
     }
 }
 
+/* ---- a window over the terminal ----------------------------------------
+ * The terminal is a stream: things are printed into it and scroll away.
+ * A window is the other thing a text interface needs -- a block of cells
+ * at fixed places that can be drawn, changed and redrawn while the stream
+ * carries on underneath.  It is drawn on top of the terminal every frame,
+ * opaque, with a shadow, at whatever size the current face and screen are,
+ * so it looks the same at 320x200 and 800x600.
+ *
+ * One at a time, which is all a modal menu needs.  Cells carry their own
+ * background as well as their own colour, so a highlighted row is just a
+ * row of cells with a lighter background.
+ */
+#define WIN_W 100
+#define WIN_H 50
+static u8  s_win_ch[WIN_H][WIN_W], s_win_fg[WIN_H][WIN_W], s_win_bg[WIN_H][WIN_W];
+static int s_win_on, s_win_c, s_win_r, s_win_w, s_win_h;
+
+
+int term_win_open(int w, int h)
+{
+    int x, y;
+
+    geometry();
+    if (w > COLS - 2) w = COLS - 2;
+    if (h > ROWS - 1) h = ROWS - 1;
+    if (w > WIN_W) w = WIN_W;
+    if (h > WIN_H) h = WIN_H;
+    s_win_w = w;
+    s_win_h = h;
+    s_win_c = (COLS - w) / 2;
+    s_win_r = (ROWS - h) / 2;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            s_win_ch[y][x] = ' ';
+            s_win_fg[y][x] = C_TEXT;
+            s_win_bg[y][x] = WIN_PAPER;
+        }
+    s_win_on = 1;
+    return w;
+}
+
+void term_win_close(void) { s_win_on = 0; }
+int  term_win_width(void)  { return s_win_w; }
+int  term_win_height(void) { return s_win_h; }
+
+void term_win_put(int x, int y, int ch, u8 fg, u8 bg)
+{
+    if (x < 0 || y < 0 || x >= s_win_w || y >= s_win_h) return;
+    s_win_ch[y][x] = (u8)ch;
+    s_win_fg[y][x] = fg;
+    s_win_bg[y][x] = bg;
+}
+
+int term_win_text(int x, int y, const char *t, u8 fg, u8 bg)
+{
+    while (*t && x < s_win_w) term_win_put(x++, y, (u8)*t++, fg, bg);
+    return x;
+}
+
+/* A row cleared to one background, from x to the right edge less one. */
+void term_win_band(int y, int x0, int x1, u8 bg)
+{
+    int x;
+    for (x = x0; x <= x1; x++) term_win_put(x, y, ' ', C_TEXT, bg);
+}
+
+/* The border, with a title let into the top edge. */
+void term_win_frame(const char *title, u8 fg)
+{
+    int x, y, w = s_win_w, h = s_win_h;
+
+    for (x = 1; x < w - 1; x++) {
+        term_win_put(x, 0, FR_H, fg, WIN_PAPER);
+        term_win_put(x, h - 1, FR_H, fg, WIN_PAPER);
+    }
+    for (y = 1; y < h - 1; y++) {
+        term_win_put(0, y, FR_V, fg, WIN_PAPER);
+        term_win_put(w - 1, y, FR_V, fg, WIN_PAPER);
+    }
+    term_win_put(0, 0, FR_TL, fg, WIN_PAPER);
+    term_win_put(w - 1, 0, FR_TR, fg, WIN_PAPER);
+    term_win_put(0, h - 1, FR_BL, fg, WIN_PAPER);
+    term_win_put(w - 1, h - 1, FR_BR, fg, WIN_PAPER);
+    if (title && *title) {
+        term_win_put(2, 0, ' ', fg, WIN_PAPER);
+        x = term_win_text(3, 0, title, C_BRIGHT, WIN_PAPER);
+        term_win_put(x, 0, ' ', fg, WIN_PAPER);
+    }
+}
+
+static void fill_rect(u8 *dst, int x, int y, int w, int h, u8 colour)
+{
+    int r;
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > s_vw) w = s_vw - x;
+    if (y + h > s_vh) h = s_vh - y;
+    if (w <= 0 || h <= 0) return;
+    for (r = 0; r < h; r++) memset8(dst + (y + r) * s_pitch + x, colour, (usize)w);
+}
+
+static void render_window(u8 *dst)
+{
+    const Face *f = s_face;
+    int cw = f->adv * s_scale, ch = f->pitch * s_scale;
+    int ox = (f->x0 + s_win_c * f->adv) * s_scale;
+    int oy = s_win_r * f->pitch * s_scale;
+    int x, y;
+
+    /* A shadow down the right and along the bottom, half a cell deep, so
+     * the window sits on the screen rather than in it. */
+    fill_rect(dst, ox + s_win_w * cw, oy + ch / 2, cw / 2, s_win_h * ch, PAL_SHADOW);
+    fill_rect(dst, ox + cw / 2, oy + s_win_h * ch, s_win_w * cw, ch / 2, PAL_SHADOW);
+
+    for (y = 0; y < s_win_h; y++) {
+        for (x = 0; x < s_win_w; x++) {
+            int px = ox + x * cw, py = oy + y * ch;
+            int c = s_win_ch[y][x];
+            fill_rect(dst, px, py, cw, ch, s_win_bg[y][x]);
+            if (c == ' ' || c == 0) continue;
+            if (CH_IS_CELL(c)) blit_cell(dst, px, py, c, s_win_fg[y][x]);
+            else               blit_glyph(dst, px, py, c, s_win_fg[y][x]);
+        }
+    }
+}
+
 void term_render(u8 *dst, u32 t)
 {
     const Face *f = s_face;
@@ -740,6 +872,8 @@ void term_render(u8 *dst, u32 t)
             memset8(dst + (y + i) * s_pitch + x, col, f->w * s_scale);
         if (ch != ' ' && ch != 0) blit_glyph(dst, x, y, ch, 0);
     }
+
+    if (s_win_on) render_window(dst);
 
     /* A thumb on the right edge while looking back through history. */
     if (s_view > 0) {

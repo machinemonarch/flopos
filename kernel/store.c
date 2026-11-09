@@ -218,6 +218,46 @@ typedef struct {
 static u32 s_boots;
 u32 store_boots(void) { return s_boots; }
 
+/* Settings live at the far end of STATE.BIN, well clear of the taught
+ * words, with their own mark and checksum.  An older floppy has zeros
+ * there and so simply has no settings; nothing about the words changes. */
+typedef struct {
+    char magic[4];                       /* "SETS"                         */
+    u32  net_how;                        /* 0 automatic, 1 by hand         */
+    u32  ip, mask, gw, dns;
+    u32  sum;
+} Settings;
+
+static Settings *s_set;
+
+static u32 settings_sum(const Settings *t)
+{
+    return 0x5E7u ^ t->net_how ^ t->ip ^ (t->mask * 3) ^ (t->gw * 5) ^ (t->dns * 7);
+}
+
+int store_net_get(u32 *how, u32 *ip, u32 *mask, u32 *gw, u32 *dns)
+{
+    if (!s_ready || !s_set) return 0;
+    if (s_set->magic[0] != 'S' || s_set->magic[1] != 'E' ||
+        s_set->magic[2] != 'T' || s_set->magic[3] != 'S') return 0;
+    if (settings_sum(s_set) != s_set->sum) return 0;
+    *how = s_set->net_how; *ip = s_set->ip; *mask = s_set->mask;
+    *gw = s_set->gw; *dns = s_set->dns;
+    return 1;
+}
+
+int store_net_set(u32 how, u32 ip, u32 mask, u32 gw, u32 dns)
+{
+    if (!s_ready || !s_set) return 0;
+    s_set->magic[0] = 'S'; s_set->magic[1] = 'E';
+    s_set->magic[2] = 'T'; s_set->magic[3] = 'S';
+    s_set->net_how = how; s_set->ip = ip; s_set->mask = mask;
+    s_set->gw = gw; s_set->dns = dns;
+    s_set->sum = settings_sum(s_set);
+    s_taught_dirty = 1;
+    return store_save();
+}
+
 void store_init(void)
 {
     StateHdr *h;
@@ -231,6 +271,7 @@ void store_init(void)
     s_journal = (u8 *)halloc(s_journal_cap);
     statebuf  = (u8 *)halloc(g_diskmap.state_sectors * SECTOR);
     s_taught  = (Taught *)(statebuf + sizeof(StateHdr));
+    s_set     = (Settings *)(statebuf + g_diskmap.state_sectors * SECTOR - 64);
 
     if (!read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
         return;

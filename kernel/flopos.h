@@ -270,6 +270,17 @@ void   term_printf(const char *fmt, ...);
 void   term_newline(void);
 void   term_render(u8 *dst, u32 t);
 void   term_mute(int on);
+void   term_plain(int on);
+int    term_win_open(int w, int h);
+void   term_win_close(void);
+int    term_win_width(void);
+int    term_win_height(void);
+void   term_win_put(int x, int y, int ch, u8 fg, u8 bg);
+int    term_win_text(int x, int y, const char *t, u8 fg, u8 bg);
+void   term_win_band(int y, int x0, int x1, u8 bg);
+void   term_win_frame(const char *title, u8 fg);
+#define WIN_PAPER  (PAL_SHADOW + 1)
+#define WIN_HILITE (PAL_GREY + 4)
 void   term_frame_top(int w, const char *title, int dbl);
 void   term_frame_row(int w, const char *text, int dbl);
 void   term_frame_bottom(int w, int dbl);
@@ -471,6 +482,57 @@ void   ip_set_dns(u32 addr, u16 port);
 int    ip_how(void);
 int    ip_dhcp(void);
 u32    ip_lookup(const char *name);
+int    ip_send(u8 proto, u32 to, const u8 *payload, int len);
+
+/* --- tcp.c --------------------------------------------------------------- */
+void   tcp_input(u32 from, const u8 *seg, int len);
+int    tcp_connect(u32 to, u16 port, int wait_ms);
+int    tcp_write(const u8 *data, int len);
+int    tcp_read(u8 *buf, int max, int wait_ms);
+void   tcp_close(void);
+int    tcp_open(void);
+int    tcp_done(void);
+const char *tcp_why(void);
+void   http_fetch(const char *url);
+
+/* --- sha256.c ------------------------------------------------------------ */
+typedef struct { u32 h[8]; u32 len; u8 buf[64]; int fill; } Sha256;
+void   sha256_init(Sha256 *c);
+void   sha256_update(Sha256 *c, const u8 *p, u32 n);
+void   sha256_final(Sha256 *c, u8 out[32]);
+void   sha256(const u8 *p, u32 n, u8 out[32]);
+void   hmac_sha256(const u8 *key, u32 klen, const u8 *msg, u32 mlen, u8 out[32]);
+void   hkdf_extract(const u8 *salt, u32 slen, const u8 *ikm, u32 ilen, u8 prk[32]);
+void   hkdf_expand(const u8 prk[32], const u8 *info, u32 ilen, u8 *out, u32 olen);
+
+/* --- chacha.c ------------------------------------------------------------ */
+typedef struct { u32 r[5], h[5], pad[4]; u8 buf[16]; int fill; } Poly1305;
+void   chacha20_block(const u8 key[32], u32 counter, const u8 nonce[12], u8 out[64]);
+void   chacha20_xor(const u8 key[32], u32 counter, const u8 nonce[12],
+                    const u8 *in, u8 *out, u32 len);
+void   poly1305_init(Poly1305 *p, const u8 key[32]);
+void   poly1305_update(Poly1305 *p, const u8 *m, u32 n);
+void   poly1305_final(Poly1305 *p, u8 tag[16]);
+void   aead_seal(const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
+                 const u8 *pt, u32 len, u8 *ct, u8 tag[16]);
+int    aead_open(const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
+                 const u8 *ct, u32 len, const u8 tag[16], u8 *pt);
+
+/* --- x25519.c ------------------------------------------------------------ */
+void   x25519(u8 out[32], const u8 scalar[32], const u8 point[32]);
+void   x25519_public(u8 out[32], const u8 secret[32]);
+int    crypto_selftest(void);
+
+/* --- random.c ------------------------------------------------------------ */
+void   rand_add(u32 v);
+void   rand_bytes(u8 *out, int n);
+
+/* --- tls.c --------------------------------------------------------------- */
+int    tls_connect(const char *host);
+int    tls_write(const u8 *data, int len);
+int    tls_read(u8 *buf, int max, int wait_ms);
+void   tls_close(void);
+const char *tls_why(void);
 
 /* --- el3.c -------------------------------------------------------------- */
 int    el3_start(int sock, u32 cor, u16 io);
@@ -505,6 +567,7 @@ int    vbe_has_lfb(const VbeMode *m);
 
 int    vga_go_big(void);
 void   vga_go_small(void);
+int    vga_redo_big(void);
 int    vga_is_big(void);
 void   vga_compose(void);
 void   vga_shrink(void);
@@ -581,6 +644,22 @@ void   store_init(void);
 int    store_ready(void);
 int    store_save(void);                 /* -> 1 if everything landed      */
 int    store_unsaved(void);
+int    store_net_get(u32 *how, u32 *ip, u32 *mask, u32 *gw, u32 *dns);
+int    store_net_set(u32 how, u32 ip, u32 mask, u32 gw, u32 dns);
+void   main_pump(int now);
+
+/* --- ui.c --------------------------------------------------------------- */
+#define UK_UP    0x101
+#define UK_DOWN  0x102
+#define UK_LEFT  0x103
+#define UK_RIGHT 0x104
+#define UK_ENTER 0x105
+#define UK_ESC   0x106
+#define UK_BKSP  0x107
+int    ui_key(void);
+int    ui_wait_key(void);
+void   netui_run(void);
+int    ip_apply_saved(void);
 u32    store_boots(void);
 
 void   store_journal_line(const char *s);
