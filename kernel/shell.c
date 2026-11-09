@@ -122,6 +122,9 @@ typedef struct {
 
 static const Cmd s_cmds[];
 static int s_cmd_count(void);
+static const Cmd s_diag[];
+static int s_diag_count(void);
+static void cmd_report(void);
 
 static void cmd_whoami(void)
 {
@@ -339,7 +342,8 @@ static void cmd_speed(void)
     term_printf("wait    %4u us   waiting on the screen",
                 perf_us(3));
     term_newline();
-    term_printf("blit    %4u us   64000 bytes to the card", perf_us(2));
+    term_printf("blit    %4u us   %u bytes to the card", perf_us(2),
+                (u32)vga_width() * (u32)vga_height());
     term_newline();
     term_colour(C_DIM);
     if (!vga_retrace_works())
@@ -1127,23 +1131,16 @@ static const Cmd s_cmds[] = {
     { "look",    "what is around",               cmd_look    },
     { "here",    "where you are",                cmd_here    },
     { "mood",    "change the light",             cmd_mood    },
-    { "wide",    "stop filling the screen",      cmd_wide    },
     { "whaaat",  "whaaat",                       cmd_whaaat  },
     { "listen",  "a different rhythm",           cmd_listen  },
     { "sound",   "turn the sound on",            cmd_sound   },
     { "quiet",   "turn the sound off",           cmd_quiet   },
     { "quirks",  "steady the text, or let it go",cmd_quirks  },
     { "squint",  "fit more on the screen",       cmd_squint  },
-    { "frames",  "what a frame is made of",      cmd_frames  },
-    { "card",    "what is in the PC Card slots",  cmd_card    },
-    { "vesa",    "what the video card can do",   cmd_vesa    },
     { "screen",  "how big the picture is",       cmd_screen  },
-    { "dump",    "show me what is at an address", cmd_dump    },
+    { "wide",    "stop filling the screen",      cmd_wide    },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
-    { "speed",   "where the time goes",          cmd_speed   },
-    { "wire",    "the serial line out of here",  cmd_wire    },
-    { "disk",    "read a sector, to prove we can", cmd_disk   },
     { "goaway",  "wipe the screen",              cmd_clear   },
     { "echo",    "say something back",           cmd_echo    },
     { "version", "which FLOPOS this is",         cmd_version },
@@ -1153,9 +1150,28 @@ static const Cmd s_cmds[] = {
     { "learned", "what you have taught me",      cmd_learned },
     { "remember","write it all to the disk",     cmd_remember},
     { "journal", "what I have written down",     cmd_journal },
+    { "report",  "tell Claude how you are",      cmd_report  },
     { "bye",     "write everything down and stop", cmd_bye   },
     { "reboot",  "start the machine again",      cmd_reboot  },
 };
+
+/* The instruments.  They all still work if you type them, and none of
+ * them is in the list: they are questions I ask the machine, not words
+ * anybody should have to wade through to find "look". */
+static const Cmd s_diag[] = {
+    { "vesa",    "what the video card can do",   cmd_vesa    },
+    { "card",    "what is in the PC Card slots", cmd_card    },
+    { "wire",    "the serial line out of here",  cmd_wire    },
+    { "speed",   "where the time goes",          cmd_speed   },
+    { "disk",    "read a sector, to prove we can", cmd_disk  },
+    { "frames",  "what a frame is made of",      cmd_frames  },
+    { "dump",    "show me what is at an address",cmd_dump    },
+};
+
+static int s_diag_count(void)
+{
+    return (int)(sizeof s_diag / sizeof s_diag[0]);
+}
 
 static int s_cmd_count(void)
 {
@@ -1177,6 +1193,50 @@ static int run_word(const char *name)
         }
     }
     return 0;
+}
+
+/* ---- the report -------------------------------------------------------
+ * One word that asks the machine everything at once and says all of it
+ * down the serial line, where I can read it, and almost nothing on the
+ * screen, where it would only be in the way.
+ */
+static void cmd_report(void)
+{
+    int i, n = s_diag_count();
+
+    if (!serial_present()) {
+        say("There is no wire to say it down.");
+        say_dim("Plug the serial lead in and ask me again.");
+        return;
+    }
+
+    term_colour(C_DIM);
+    say_dim("Telling Claude everything...");
+
+    term_mute(1);
+    serial_print("\n===== FLOPOS report =====\n");
+    serial_printf("version %s\n", FLOPOS_VERSION);
+
+    for (i = 0; i < n; i++) {
+        serial_printf("\n--- %s ---\n", s_diag[i].name);
+        s_argc = 1;
+        s_argv[0] = (char *)s_diag[i].name;
+        if (eq_ci(s_diag[i].name, "dump")) continue;   /* needs an address */
+        s_diag[i].fn();
+    }
+
+    /* The card's own bytes, which is the one thing worth having in full. */
+    serial_print("\n--- card raw ---\n");
+    s_argc = 2;
+    s_argv[0] = (char *)"card";
+    s_argv[1] = (char *)"raw";
+    cmd_card();
+
+    serial_print("\n===== end of report =====\n");
+    term_mute(0);
+
+    term_colour(C_BRIGHT);
+    say("Told.");
 }
 
 /* ---- the shell proper ------------------------------------------------- */
@@ -1238,6 +1298,15 @@ void shell_submit(const char *line)
     for (i = 0; i < n; i++) {
         if (eq_ci(s_argv[0], s_cmds[i].name)) {
             s_cmds[i].fn();
+            goto tail;
+        }
+    }
+
+    /* 1b. Or one of the instruments, which work the same way but are not
+     * in the list and are not meant to be found by browsing. */
+    for (i = 0; i < s_diag_count(); i++) {
+        if (eq_ci(s_argv[0], s_diag[i].name)) {
+            s_diag[i].fn();
             goto tail;
         }
     }

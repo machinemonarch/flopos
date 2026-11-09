@@ -269,6 +269,7 @@ void   term_print(const char *s);
 void   term_printf(const char *fmt, ...);
 void   term_newline(void);
 void   term_render(u8 *dst, u32 t);
+void   term_mute(int on);
 void   term_frame_top(int w, const char *title, int dbl);
 void   term_frame_row(int w, const char *text, int dbl);
 void   term_frame_bottom(int w, int dbl);

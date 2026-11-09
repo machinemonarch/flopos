@@ -40,6 +40,7 @@ static int   s_view;                     /* rows scrolled back, 0 = bottom */
 static int   s_zalgo;
 static u8    s_style[SCROLLBACK];        /* one quirk per line of history  */
 static int   s_quirks = 1;
+static int   s_mute;                     /* say it down the wire only      */
 
 static void style_birth(u32 abs);
 
@@ -201,6 +202,7 @@ void term_newline(void)
     /* The mirror lives here rather than in term_putc, because almost
      * nothing writes a newline as a character -- they call this. */
     if (serial_echo()) serial_putc('\n');
+    if (s_mute) return;
 
     s_line++;
     s_col = 0;
@@ -208,6 +210,12 @@ void term_newline(void)
     clear_row(s_line);
     style_birth(s_line);
 }
+
+/* While muted, everything still goes down the wire and nothing lands on
+ * the screen.  The report is a page of hex and register values written
+ * for me, and there is no reason to make somebody sit and watch it
+ * scroll past on the machine itself. */
+void term_mute(int on) { s_mute = on; }
 
 void term_putc(int c)
 {
@@ -218,6 +226,8 @@ void term_putc(int c)
     /* Everything FLOPOS says to itself, it also says down the wire, so a
      * session can be watched live from another machine. */
     if (serial_echo()) serial_putc(c);
+
+    if (s_mute) return;                  /* the report is not for here     */
 
     if (c == '\r') { s_col = 0; return; }
     if (c == '\t') {
