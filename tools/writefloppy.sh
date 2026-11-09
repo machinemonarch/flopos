@@ -261,7 +261,7 @@ fi
 # contents are removed one named file at a time -- never with a wildcard
 # on a variable, which with an empty variable is "rm -f /*".
 KEEP_FILES="JOURNAL.TXT STATE.BIN WRITE1.MD WRITE2.MD WRITE3.MD WRITE4.MD
-            WRITE5.MD WRITE6.MD WRITE7.MD WRITE8.MD"
+            WRITE5.MD WRITE6.MD WRITE7.MD WRITE8.MD BOOKMARK.TXT"
 KEEPDIR=""
 if [ "$FRESH" -ne 1 ] && command -v mcopy >/dev/null 2>&1; then
     KEEPDIR="$(mktemp -d "${TMPDIR:-/tmp}/flopos-keep.XXXXXX" 2>/dev/null)" || KEEPDIR=""

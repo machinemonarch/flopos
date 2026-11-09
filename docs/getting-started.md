@@ -28,8 +28,9 @@ The script:
    green letters. It will not write to anything that isn't exactly the size
    of a floppy, so a typo can't hit a hard disk.
 2. **Asks you to type `YES`.**
-3. **Keeps what you made.** Documents, the journal and taught words already
-   on the floppy are copied into the new version before it is written. Add
+3. **Keeps what you made.** Documents, bookmarks, the journal and taught
+   words already on the floppy are copied into the new version before it
+   is written. Add
    `--fresh` to start clean instead.
 4. **Writes only the part of the disk that is in use**, which takes about
    16 seconds instead of over a minute.

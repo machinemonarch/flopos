@@ -84,6 +84,7 @@ static const char s_home[] =
     "</ul>"
     "<p>tab picks a link, enter follows it, backspace goes back, esc leaves. "
     "Boxes on a page are typed into the same way: tab to one, enter, type, enter sends.</p>"
+    "<p>b keeps a page in your bookmarks, m shows them, and p there puts one up above.</p>"
     "<p>Secure pages are encrypted, and the site has to prove who it is.</p>";
 
 /* ---- drawing ------------------------------------------------------------ */
@@ -206,6 +207,7 @@ static void draw(void)
     /* Keys, let into the bottom of the frame. */
     {
         const char *keys = s_typing >= 0 ? " type  enter send  tab done  esc stop "
+                         : s_w >= 66 ? " tab link  enter go  bksp back  g go to  b mark  m marks  esc "
                          : s_w >= 60 ? " tab link  enter go  bksp back  g go to  esc leave "
                                      : " tab enter bksp g esc ";
         int kl = 0;
@@ -237,12 +239,204 @@ static void push_history(void)
     s_hist_n++;
 }
 
+/* ---- bookmarks -------------------------------------------------------------
+ * BOOKMARK.TXT on the floppy, plain text, one a line: the address, a
+ * space, the page's title.  A line that starts with "* " is also on the
+ * home page.  Written whole, in place, every time one changes. */
+#define MARKS 48
+typedef struct { char url[PAGE_HREF_MAX]; char title[64]; u8 home; } Mark;
+static Mark s_mark[MARKS];
+static int  s_nmarks, s_marks_read, s_del_armed;
+static u8   s_mfile[8192];
+
+static void marks_read(void)
+{
+    AppFile f;
+    int n, i = 0;
+    if (s_marks_read) return;
+    s_marks_read = 1;
+    s_nmarks = 0;
+    if (!A->file_find("BOOKMARK.TXT", &f)) return;
+    n = A->file_read(&f, s_mfile, sizeof s_mfile);
+    while (i < n && s_mfile[i] != 0x1A && s_mfile[i] && s_nmarks < MARKS) {
+        Mark *m = &s_mark[s_nmarks];
+        int k = 0;
+        m->home = 0;
+        if (s_mfile[i] == '*' && i + 1 < n && s_mfile[i + 1] == ' ') { m->home = 1; i += 2; }
+        while (i < n && s_mfile[i] > ' ' && k < PAGE_HREF_MAX - 1) m->url[k++] = (char)s_mfile[i++];
+        m->url[k] = 0;
+        while (i < n && s_mfile[i] == ' ') i++;
+        k = 0;
+        while (i < n && s_mfile[i] != '\n' && s_mfile[i] != '\r' && s_mfile[i] != 0x1A && s_mfile[i]) {
+            if (k < 63) m->title[k++] = (char)s_mfile[i];
+            i++;
+        }
+        m->title[k] = 0;
+        while (i < n && (s_mfile[i] == '\n' || s_mfile[i] == '\r')) i++;
+        if (m->url[0]) s_nmarks++;
+    }
+}
+
+static int marks_write(void)
+{
+    AppFile f;
+    int n = 0, i, k;
+    if (!A->file_find("BOOKMARK.TXT", &f) || f.size > sizeof s_mfile) return 0;
+    for (i = 0; i < s_nmarks; i++) {
+        Mark *m = &s_mark[i];
+        if (n + PAGE_HREF_MAX + 70 > (int)f.size - 1) break;
+        if (m->home) { s_mfile[n++] = '*'; s_mfile[n++] = ' '; }
+        for (k = 0; m->url[k]; k++) s_mfile[n++] = (u8)m->url[k];
+        s_mfile[n++] = ' ';
+        for (k = 0; m->title[k]; k++) s_mfile[n++] = (u8)m->title[k];
+        s_mfile[n++] = '\r'; s_mfile[n++] = '\n';
+    }
+    s_mfile[n++] = 0x1A;                         /* where DOS stops reading */
+    while (n < (int)f.size) s_mfile[n++] = 0;
+    return A->file_write(&f, s_mfile);
+}
+
+static int mark_find(const char *url)
+{
+    int i, k;
+    for (i = 0; i < s_nmarks; i++) {
+        for (k = 0; url[k] && url[k] == s_mark[i].url[k]; k++) { }
+        if (!url[k] && !s_mark[i].url[k]) return i;
+    }
+    return -1;
+}
+
+static void say(const char *t, u8 col)
+{
+    fmt_str(s_pg.note, sizeof s_pg.note, "%s", t);
+    s_pg.note_col = col;
+}
+
+/* Text safe to put into a page we write ourselves. */
+static int html_text(char *out, int n, int cap, const char *t)
+{
+    for (; *t && n < cap - 8; t++) {
+        if (*t == '<') { out[n++] = '&'; out[n++] = 'l'; out[n++] = 't'; out[n++] = ';'; }
+        else if (*t == '&') { out[n++] = '&'; out[n++] = 'a'; out[n++] = 'm'; out[n++] = 'p'; out[n++] = ';'; }
+        else if (*t == '"') { out[n++] = '&'; out[n++] = '#'; out[n++] = '3'; out[n++] = '4'; out[n++] = ';'; }
+        else out[n++] = *t;
+    }
+    return n;
+}
+
+static int put(char *out, int n, int cap, const char *t)
+{
+    while (*t && n < cap - 1) out[n++] = *t++;
+    return n;
+}
+
 static void home(void)
 {
-    http_page_html(s_home, &s_pg);
+    static char page[sizeof s_home + MARKS * (PAGE_HREF_MAX + 120) + 200];
+    int n = 0, i, cap = (int)sizeof page, any = 0;
+    const char *at = s_home;
+
+    marks_read();
+    /* The home page, with your pinned bookmarks first. */
+    while (*at && !(at[0] == '<' && at[1] == 'h' && at[2] == '2')) page[n++] = *at++;
+    for (i = 0; i < s_nmarks; i++) if (s_mark[i].home) any = 1;
+    if (any) {
+        n = put(page, n, cap, "<h2>Yours</h2><ul>");
+        for (i = 0; i < s_nmarks; i++) {
+            if (!s_mark[i].home) continue;
+            n = put(page, n, cap, "<li><a href=\"");
+            n = html_text(page, n, cap, s_mark[i].url);
+            n = put(page, n, cap, "\">");
+            n = html_text(page, n, cap, s_mark[i].title[0] ? s_mark[i].title : s_mark[i].url);
+            n = put(page, n, cap, "</a></li>");
+        }
+        n = put(page, n, cap, "</ul>");
+    }
+    n = put(page, n, cap, at);
+    page[n] = 0;
+    http_page_html(page, &s_pg);
     fmt_str(s_pg.url, sizeof s_pg.url, "flopos:home");
     s_top = 0;
     s_sel = 0;
+}
+
+/* The list of them, as a page: pick one with tab, then p or d. */
+static void marks_page(void)
+{
+    static char page[MARKS * (PAGE_HREF_MAX * 2 + 140) + 600];
+    int n = 0, i, cap = (int)sizeof page;
+
+    marks_read();
+    n = put(page, n, cap, "<title>bookmarks</title><h1>Bookmarks</h1>");
+    if (!s_nmarks)
+        n = put(page, n, cap, "<p>None yet. On any page, b keeps it here.</p>");
+    else {
+        n = put(page, n, cap, "<p>tab picks one, enter goes there, p puts it on the home page "
+                              "or takes it off, d deletes it.</p><ul>");
+        for (i = 0; i < s_nmarks; i++) {
+            n = put(page, n, cap, "<li>");
+            if (s_mark[i].home) n = put(page, n, cap, "<b>home</b> ");
+            n = put(page, n, cap, "<a href=\"");
+            n = html_text(page, n, cap, s_mark[i].url);
+            n = put(page, n, cap, "\">");
+            n = html_text(page, n, cap, s_mark[i].title[0] ? s_mark[i].title : s_mark[i].url);
+            n = put(page, n, cap, "</a> <i>");
+            n = html_text(page, n, cap, s_mark[i].url);
+            n = put(page, n, cap, "</i></li>");
+        }
+        n = put(page, n, cap, "</ul>");
+    }
+    page[n] = 0;
+    http_page_html(page, &s_pg);
+    fmt_str(s_pg.url, sizeof s_pg.url, "flopos:bookmarks");
+}
+
+static int on_marks_page(void)
+{
+    return s_pg.url[0] == 'f' && s_pg.url[7] == 'b';            /* flopos:bookmarks */
+}
+
+static void mark_this(void)
+{
+    Mark *m;
+    int i;
+    marks_read();
+    if (s_pg.url[0] == 'f' && s_pg.url[1] == 'l') { say("That is one of mine; there is nothing to keep.", C_ACCENT); return; }
+    if (mark_find(s_pg.url) >= 0) { say("Already in your bookmarks. m shows them.", C_DIM); return; }
+    if (s_nmarks >= MARKS) { say("The bookmarks are full. d on one in m makes room.", C_ACCENT); return; }
+    m = &s_mark[s_nmarks];
+    for (i = 0; s_pg.url[i] && i < PAGE_HREF_MAX - 1; i++) m->url[i] = s_pg.url[i];
+    m->url[i] = 0;
+    for (i = 0; s_pg.title[i] && i < 63; i++) m->title[i] = s_pg.title[i] == '\n' ? ' ' : s_pg.title[i];
+    m->title[i] = 0;
+    m->home = 0;
+    s_nmarks++;
+    say(marks_write() ? "Kept in your bookmarks. m shows them; p there puts it on the home page."
+                      : "Could not write BOOKMARK.TXT to the floppy.", C_ACCENT);
+}
+
+/* p or d on the bookmarks page, for the bookmark picked. */
+static void mark_change(int key)
+{
+    char url[PAGE_HREF_MAX + 16];
+    int i, top = s_top;
+    if (!s_sel || field_of(s_sel)) { say("Pick one with tab first.", C_ACCENT); return; }
+    for (i = 0; s_pg.href[s_sel - 1][i] && i < (int)sizeof url - 1; i++) url[i] = s_pg.href[s_sel - 1][i];
+    url[i] = 0;
+    i = mark_find(url);
+    if (i < 0) return;
+    if (key == 'd') {
+        if (!s_del_armed) { s_del_armed = 1; say("d again deletes it.", C_ACCENT); return; }
+        s_del_armed = 0;
+        for (; i < s_nmarks - 1; i++) s_mark[i] = s_mark[i + 1];
+        s_nmarks--;
+    } else {
+        s_mark[i].home = !s_mark[i].home;
+    }
+    if (!marks_write()) { say("Could not write BOOKMARK.TXT to the floppy.", C_ACCENT); return; }
+    marks_page();
+    s_top = top;
+    say(key == 'd' ? "Deleted." : "Changed. h shows the home page.", C_DIM);
 }
 
 /* A page, or the answer to a form sent to url (post, of postlen bytes). */
@@ -572,6 +766,7 @@ void browzer_run(const char *start)
             continue;
         }
 
+        if (k != 'd') s_del_armed = 0;
         switch (k) {
         case UK_ESC: case 'q':
             term_win_close();
@@ -591,6 +786,11 @@ void browzer_run(const char *start)
                       for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
                       u[i] = 0; go(u); } break;
         case 'h': push_history(); home(); break;
+        case 'b': mark_this(); break;
+        case 'm': push_history(); marks_page(); s_top = 0; s_sel = 0; break;
+        case 'p': case 'd':
+            if (on_marks_page()) mark_change(k);
+            break;
         case 'a':                        /* anyway: past a failed proof     */
             if (s_pg.untrusted && s_pg.url[0]) {
                 char u[PAGE_HREF_MAX + 16]; int i;

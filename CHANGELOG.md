@@ -6,6 +6,13 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.16.0 — 2026-11-09
+
+- **Bookmarks in browzer.** b keeps the page you are on, m lists them, and
+  on the list p puts one on the home page (under "Yours") and d twice
+  deletes it. They live in BOOKMARK.TXT on the floppy, readable anywhere,
+  and survive writing a new version to the floppy.
+
 ## 1.15.0 — 2026-11-09
 
 - **Forms in browzer.** Text boxes, big text areas, hidden values and

@@ -60,6 +60,7 @@ can be read by DOS, Windows, Linux or a Mac. On it:
 | `KERNEL.BIN` | The system, read second. Also in one unbroken run, and both positions are written into the boot sector. |
 | `WRITE.APP` | The word processor |
 | `BROWZER.APP` | The web browser, which `fetch` also runs |
+| `BOOKMARK.TXT` | browzer's bookmarks, 8 KB |
 | `ROOTS.DAT` | The authorities secure sites are checked against (55 KB) |
 | `JOURNAL.TXT`, `STATE.BIN` | What FLOPOS remembers. Made at full size so they can be written in place. |
 | `WRITE1.MD` … `WRITE8.MD` | Documents, 16KB each |

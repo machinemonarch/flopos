@@ -32,6 +32,7 @@ STATE_BYTES = 8192
 # pages of text apiece, and a size a floppy writes in a second or two.
 DOC_SLOTS = 8
 DOC_BYTES = 16384
+BOOKMARK_BYTES = 8192
 
 JOURNAL_HEADER = (
     "FLOPOS journal\r\n"
@@ -140,6 +141,12 @@ def main():
         dpath = os.path.join(tmpdir, "WRITE%d.MD" % n)
         open(dpath, "wb").write(b"\x1A" + b"\x00" * (DOC_BYTES - 1))
         run("mcopy", "-i", out_path, dpath, "::WRITE%d.MD" % n)
+
+    # browzer's bookmarks: plain text, one a line, made at full size for
+    # the same reason as the documents.
+    bpath = os.path.join(tmpdir, "BOOKMARK.TXT")
+    open(bpath, "wb").write(b"\x1A" + b"\x00" * (BOOKMARK_BYTES - 1))
+    run("mcopy", "-i", out_path, bpath, "::BOOKMARK.TXT")
 
     img = bytearray(open(out_path, "rb").read())
 
