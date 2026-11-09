@@ -83,9 +83,6 @@ Max supplied this material for the Satellite Pro 430CDT:
   product page
 - the 430CDT page from [minus zero degrees](https://www.minuszerodegrees.net/),
   with photographs of the machine
-- VEXP 1.3, a freeware video expansion utility for Toshiba Tecra laptops,
-  consulted for how these machines stretch a small picture to fill the
-  panel
 
 They were read for **facts only**: which chips are in the machine, which
 ports they sit on, that the serial port is 16550 compatible, and how the
@@ -93,6 +90,28 @@ floppy and panel are wired.
 
 They are copyrighted. They live in `reference/`, which is never committed,
 and no Toshiba code, firmware or text is in FLOPOS.
+
+## Credit: Adrian Gradwell and VEXP
+
+**VEXP**, by **Adrian Gradwell**, is a small freeware DOS utility for
+Toshiba laptops built on the Chips & Technologies 65550 video chip. He
+wrote it in 1996 because, in his words, Toshiba didn't provide one, and
+kept improving it into 1997 (version 1.3, 20 August 1997). His site at the
+time was www.dil.u-net.com.
+
+VEXP turns on the chip's hidden ability to stretch a small DOS picture to
+fill the whole laptop panel. Its notes also record what he found out the
+hard way: the BIOS rewrites the stretching registers every time the
+video mode changes, so the setting quietly reverts. That is why VEXP grew a
+memory-resident part to put it back.
+
+That one observation shaped `wide` in FLOPOS. FLOPOS sets its video mode
+once and writes the panel registers afterwards, so they stay. VEXP itself
+is not included, and none of its code is in FLOPOS. A copy was consulted
+from `reference/` for what it explains about the hardware.
+
+Thank you, Adrian. Nearly thirty years on, your notes are still the
+clearest account of how this panel works.
 
 ## Checking the work
 

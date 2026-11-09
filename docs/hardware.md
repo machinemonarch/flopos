@@ -45,6 +45,12 @@ and graphics stretching is two values: FR40 from 0x07 to 0x3F and FR48 from
 0x13 to 0x1F. `wide` does this, reading the old values first so it can put
 them back.
 
+The BIOS rewrites these registers whenever the video mode changes. That was
+first written down by Adrian Gradwell in the notes to VEXP, his 1996
+freeware stretching utility for these Toshibas (see
+[References](references.md#credit-adrian-gradwell-and-vexp)). FLOPOS gets
+around it by setting the mode once and writing the registers after.
+
 ## The PC Card cards, as they describe themselves
 
 Every PC Card carries a description of itself (its "CIS"). `card` reads and
