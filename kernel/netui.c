@@ -246,10 +246,12 @@ void netui_run(void)
         case UK_ESC:
             term_win_close();
             return;
+        case UK_BTAB:
         case UK_UP:
             if (s_sel >= B_APPLY) s_sel = R_DNS;
             else if (s_sel > 0) s_sel--;
             break;
+        case UK_TAB:
         case UK_DOWN:
             if (s_sel < R_DNS) s_sel++;
             else if (s_sel == R_DNS) s_sel = B_APPLY;

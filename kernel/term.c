@@ -689,8 +689,8 @@ int term_win_open(int w, int h)
     int x, y;
 
     geometry();
-    if (w > COLS - 2) w = COLS - 2;
-    if (h > ROWS - 1) h = ROWS - 1;
+    if (w > COLS) w = COLS;              /* the whole screen, if asked     */
+    if (h > ROWS) h = ROWS;
     if (w > WIN_W) w = WIN_W;
     if (h > WIN_H) h = WIN_H;
     s_win_w = w;

@@ -160,6 +160,19 @@ static void cmd_fetch(void)
 
 static void cmd_crypto(void) { (void)crypto_selftest(); }
 
+/* The browser.  An address or some words after it go straight there. */
+static void cmd_browzer(void)
+{
+    static char start[PAGE_HREF_MAX];
+    int i, n = 0, a;
+    for (a = 1; a < s_argc; a++) {
+        if (a > 1 && n < PAGE_HREF_MAX - 1) start[n++] = ' ';
+        for (i = 0; s_argv[a][i] && n < PAGE_HREF_MAX - 1; i++) start[n++] = s_argv[a][i];
+    }
+    start[n] = 0;
+    browzer_run(start);
+}
+
 static void cmd_network(void)
 {
     netui_run();
@@ -1384,6 +1397,7 @@ static const Cmd s_cmds[] = {
     { "network", "how this machine is connected",cmd_network },
     { "ping",    "is anybody out there",         cmd_ping    },
     { "fetch",   "read a web page",              cmd_fetch   },
+    { "browzer", "a small web browser",          cmd_browzer },
     { "report",  "tell Claude how you are",      cmd_report  },
     { "bye",     "write everything down and stop", cmd_bye   },
     { "reboot",  "start the machine again",      cmd_reboot  },
