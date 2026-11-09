@@ -9,9 +9,16 @@
  * the other -- a hash of every message so far, signed with a key only the
  * two of them could have.
  *
- * One suite, one group: TLS_CHACHA20_POLY1305_SHA256 and x25519.  Both
- * are what a machine without fast multiplication or AES instructions
- * should want, and almost every server on the internet offers both.
+ * Two suites, ChaCha20-Poly1305 first because it is much the faster on
+ * this processor, and AES-128-GCM because every TLS 1.3 server has to
+ * speak it and some speak nothing else.
+ *
+ * Two key exchanges, offered together.  X25519MLKEM768 first: X25519 and
+ * ML-KEM-768 at once, the secret the two of them agree on, so a recording
+ * of the conversation stays private even from a future quantum computer
+ * that could break X25519 alone.  Plain X25519 as well, for servers that
+ * do not do the post-quantum one yet -- they simply pick that instead, no
+ * extra round trip.
  *
  * WHAT THIS DOES NOT DO YET: check the server's certificate.  The
  * connection is encrypted and sealed, and nobody who is only listening
@@ -40,6 +47,18 @@
 
 typedef struct { u8 key[32], iv[12]; u32 seq; } Dir;
 
+#define SUITE_CHACHA 0x1303
+#define SUITE_AES128 0x1301
+#define GROUP_X25519 0x001d
+#define GROUP_HYBRID 0x11ec              /* X25519MLKEM768                  */
+
+static u32 s_suite, s_group;
+static int s_offer_pq = 1;               /* offer the hybrid at all        */
+static int s_pq_broke;                   /* it was chosen, and then failed  */
+
+void tls_offer_pq(int on) { s_offer_pq = on; }
+int  tls_pq_broke(void)   { return s_pq_broke; }
+
 static u8 *s_rec;                        /* one record as it arrived        */
 static u8 *s_plain;                      /* one record, decrypted           */
 static u8 *s_hsbuf;                      /* handshake messages, gathered    */
@@ -51,6 +70,8 @@ static int s_up, s_eof;
 static char s_why[64];
 
 const char *tls_why(void) { return s_why; }
+int tls_post_quantum(void) { return s_group == GROUP_HYBRID; }
+const char *tls_cipher(void) { return s_suite == SUITE_AES128 ? "AES-128-GCM" : "ChaCha20-Poly1305"; }
 
 static void why(const char *t)
 {
@@ -105,7 +126,7 @@ static void derive(const u8 secret[32], const char *label, u8 out[32])
 
 static void set_keys(Dir *d, const u8 secret[32])
 {
-    expand_label(secret, "key", 0, 0, d->key, 32);
+    expand_label(secret, "key", 0, 0, d->key, s_suite == SUITE_AES128 ? 16 : 32);
     expand_label(secret, "iv", 0, 0, d->iv, 12);
     d->seq = 0;
 }
@@ -118,14 +139,22 @@ static void nonce_for(const Dir *d, u8 nonce[12])
 }
 
 /* ---- records ------------------------------------------------------------ */
+/* Fifteen seconds of silence is a server that is not going to answer.
+ * Esc gives up sooner: a handshake waiting on a server that never replies
+ * should never be something to sit and watch. */
+static int s_cancelled;
+
 static int read_exact(u8 *buf, int n)
 {
     int got = 0, r;
+    u32 until = ms_now() + 15000;
     while (got < n) {
-        r = tcp_read(buf + got, n - got, 15000);
+        r = tcp_read(buf + got, n - got, 200);
         if (r == 0) return 0;
-        if (r < 0) return -1;
-        got += r;
+        if (r == -2) return -1;
+        if (r > 0) { got += r; until = ms_now() + 15000; continue; }
+        if (ui_key() == UK_ESC) { s_cancelled = 1; return -1; }
+        if ((s32)(ms_now() - until) >= 0) return -1;
     }
     return n;
 }
@@ -134,7 +163,10 @@ static int read_exact(u8 *buf, int n)
 static int read_record(u8 *type, int *len)
 {
     int r = read_exact(s_rec, 5);
-    if (r <= 0) { why(r == 0 ? "the server hung up" : "the server went quiet"); return 0; }
+    if (r <= 0) {
+        why(r == 0 ? "the server hung up" : s_cancelled ? "stopped" : "the server never answered");
+        return 0;
+    }
     *type = s_rec[0];
     *len = (int)get16(s_rec + 3);
     if (*len > REC_MAX - 5) { why("the server sent a record too big to be real"); return 0; }
@@ -151,7 +183,9 @@ static int open_record(int len, int *plen)
 
     if (n < 1) return 0;
     nonce_for(&s_rd, nonce);
-    if (!aead_open(s_rd.key, nonce, s_rec, 5, s_rec + 5, (u32)n, s_rec + 5 + n, s_plain))
+    if (s_suite == SUITE_AES128
+        ? !aesgcm_open(s_rd.key, nonce, s_rec, 5, s_rec + 5, (u32)n, s_rec + 5 + n, s_plain)
+        : !aead_open(s_rd.key, nonce, s_rec, 5, s_rec + 5, (u32)n, s_rec + 5 + n, s_plain))
         return 0;
     s_rd.seq++;
     while (n > 0 && s_plain[n - 1] == 0) n--;   /* padding                 */
@@ -172,7 +206,10 @@ static int send_record(u8 type, const u8 *data, int len)
     for (i = 0; i < len; i++) out[5 + i] = data[i];
     out[5 + len] = type;                 /* the real type, hidden inside   */
     nonce_for(&s_wr, nonce);
-    aead_seal(s_wr.key, nonce, out, 5, out + 5, (u32)(len + 1), out + 5, out + 5 + len + 1);
+    if (s_suite == SUITE_AES128)
+        aesgcm_seal(s_wr.key, nonce, out, 5, out + 5, (u32)(len + 1), out + 5, out + 5 + len + 1);
+    else
+        aead_seal(s_wr.key, nonce, out, 5, out + 5, (u32)(len + 1), out + 5, out + 5 + len + 1);
     s_wr.seq++;
     return tcp_write(out, 5 + len + 1 + 16) == 5 + len + 1 + 16;
 }
@@ -197,9 +234,9 @@ static const char *alert_name(int d)
 
 /* ---- the handshake ------------------------------------------------------ */
 static int client_hello(const char *host, const u8 random[32], const u8 session[32],
-                        const u8 pub[32])
+                        const u8 pub[32], const u8 *mlkem_ek)
 {
-    static u8 m[512];
+    static u8 m[2048];
     int n, hl = 0, i, ext_at, sni_len;
 
     while (host[hl]) hl++;
@@ -208,8 +245,9 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
     for (i = 0; i < 32; i++) m[n++] = random[i];
     m[n++] = 32;                         /* a session id, for middleboxes  */
     for (i = 0; i < 32; i++) m[n++] = session[i];
-    put16(m + n, 2); n += 2;
-    m[n++] = 0x13; m[n++] = 0x03;        /* TLS_CHACHA20_POLY1305_SHA256   */
+    put16(m + n, 4); n += 2;
+    put16(m + n, SUITE_CHACHA); n += 2;  /* the fast one here, first       */
+    put16(m + n, SUITE_AES128); n += 2;  /* the one every server has       */
     m[n++] = 1; m[n++] = 0;              /* no compression                 */
 
     ext_at = n; n += 2;
@@ -230,9 +268,11 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
         for (i = 0; i < sni_len; i++) m[n++] = (u8)host[i];
     }
 
-    /* supported_groups: x25519 only. */
-    put16(m + n, 0x000a); n += 2; put16(m + n, 4); n += 2;
-    put16(m + n, 2); n += 2; put16(m + n, 0x001d); n += 2;
+    /* supported_groups: the post-quantum hybrid, then plain x25519. */
+    put16(m + n, 0x000a); n += 2; put16(m + n, s_offer_pq ? 6 : 4); n += 2;
+    put16(m + n, s_offer_pq ? 4 : 2); n += 2;
+    if (s_offer_pq) { put16(m + n, GROUP_HYBRID); n += 2; }
+    put16(m + n, GROUP_X25519); n += 2;
 
     /* signature_algorithms: what the server may sign with.  Not checked
      * yet, but a server will refuse a client that names none it has. */
@@ -250,11 +290,20 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
     put16(m + n, 0x002b); n += 2; put16(m + n, 3); n += 2;
     m[n++] = 2; m[n++] = 3; m[n++] = 4;
 
-    /* key_share: our half of the secret. */
-    put16(m + n, 0x0033); n += 2; put16(m + n, 38); n += 2;
-    put16(m + n, 36); n += 2;
-    put16(m + n, 0x001d); n += 2; put16(m + n, 32); n += 2;
-    for (i = 0; i < 32; i++) m[n++] = pub[i];
+    /* key_share: our half of the secret, both ways.  The hybrid share is
+     * the ML-KEM encapsulation key followed by the X25519 public key. */
+    {
+        int share = (s_offer_pq ? 4 + MLKEM_EK + 32 : 0) + 4 + 32;
+        put16(m + n, 0x0033); n += 2; put16(m + n, (u32)(share + 2)); n += 2;
+        put16(m + n, (u32)share); n += 2;
+        if (s_offer_pq) {
+            put16(m + n, GROUP_HYBRID); n += 2; put16(m + n, MLKEM_EK + 32); n += 2;
+            for (i = 0; i < MLKEM_EK; i++) m[n++] = mlkem_ek[i];
+            for (i = 0; i < 32; i++) m[n++] = pub[i];
+        }
+        put16(m + n, GROUP_X25519); n += 2; put16(m + n, 32); n += 2;
+        for (i = 0; i < 32; i++) m[n++] = pub[i];
+    }
 
     put16(m + ext_at, (u32)(n - ext_at - 2));
 
@@ -268,6 +317,8 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
 }
 
 /* The server's half of the secret, out of its ServerHello. */
+static u8 s_mlkem_ct[MLKEM_CT], s_mlkem_ek[MLKEM_EK], s_mlkem_dk[MLKEM_DK];
+
 static int server_hello(const u8 *b, int len, u8 server_pub[32])
 {
     static const u8 hrr[32] = {
@@ -282,7 +333,11 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
     sid = b[p++];
     p += sid;
     if (p + 3 > len) { why("its hello did not add up"); return 0; }
-    if (get16(b + p) != 0x1303) { why("it chose a cipher we did not offer"); return 0; }
+    s_suite = get16(b + p);
+    if (s_suite != SUITE_CHACHA && s_suite != SUITE_AES128) {
+        why("it chose a cipher we did not offer");
+        return 0;
+    }
     p += 3;
     if (p + 2 > len) { why("its hello had no extensions"); return 0; }
     end = p + 2 + (int)get16(b + p);
@@ -293,9 +348,19 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
         const u8 *e = b + p + 4;
         if (p + 4 + (int)elen > end) break;
         if (type == 0x002b && elen == 2 && get16(e) == 0x0304) got_ver = 1;
-        if (type == 0x0033 && elen == 36 && get16(e) == 0x001d && get16(e + 2) == 32) {
+        if (type == 0x0033 && elen == 36 && get16(e) == GROUP_X25519 && get16(e + 2) == 32) {
             int i;
             for (i = 0; i < 32; i++) server_pub[i] = e[4 + i];
+            s_group = GROUP_X25519;
+            got_key = 1;
+        }
+        /* The hybrid: the ML-KEM ciphertext, then the X25519 public key. */
+        if (type == 0x0033 && elen == 4 + MLKEM_CT + 32 && get16(e) == GROUP_HYBRID &&
+            get16(e + 2) == MLKEM_CT + 32) {
+            int i;
+            for (i = 0; i < MLKEM_CT; i++) s_mlkem_ct[i] = e[4 + i];
+            for (i = 0; i < 32; i++) server_pub[i] = e[4 + MLKEM_CT + i];
+            s_group = GROUP_HYBRID;
             got_key = 1;
         }
         p += 4 + (int)elen;
@@ -343,7 +408,11 @@ static int more_handshake(void)
         break;
     }
     ct = open_record(len, &plen);
-    if (!ct) { why("a handshake record failed its seal"); return 0; }
+    if (!ct) {
+        why("a handshake record failed its seal");
+        if (s_group == GROUP_HYBRID) s_pq_broke = 1;
+        return 0;
+    }
     if (ct == CT_ALERT) { why(alert_name(plen >= 2 ? s_plain[1] : 0)); return 0; }
     if (ct != CT_HANDSHAKE) { why("it sent data before finishing its hello"); return 0; }
     if (s_hsbuf_len + plen > HS_MAX) { why("its certificates were too big for us"); return 0; }
@@ -355,7 +424,7 @@ static int more_handshake(void)
 int tls_connect(const char *host)
 {
     u8 secret[32], pub[32], random[32], session[32], server_pub[32];
-    u8 shared[32], early[32], derived[32], hs_secret[32], master[32];
+    u8 shared[64], early[32], derived[32], hs_secret[32], master[32];
     u8 cli_hs[32], srv_hs[32], cli_ap[32], srv_ap[32], zero[32], h_empty[32];
     u8 h[32], fkey[32], mac[32], fin[4 + 32];
     u8 type;
@@ -377,9 +446,18 @@ int tls_connect(const char *host)
     rand_bytes(random, 32);
     rand_bytes(session, 32);
     x25519_public(pub, secret);
+    {
+        u8 d[32], z[32];
+        rand_bytes(d, 32);
+        rand_bytes(z, 32);
+        mlkem_keygen(d, z, s_mlkem_ek, s_mlkem_dk);
+    }
+    s_cancelled = 0;
+    s_group = 0;
+    s_pq_broke = 0;
 
     sha256_init(&s_transcript);
-    if (!client_hello(host, random, session, pub)) { why("could not send our hello"); return 0; }
+    if (!client_hello(host, random, session, pub, s_mlkem_ek)) { why("could not send our hello"); return 0; }
 
     /* ServerHello arrives in the clear; a ChangeCipherSpec sent for the
      * benefit of old middleboxes is skipped. */
@@ -398,13 +476,19 @@ int tls_connect(const char *host)
     if (!server_hello(s_rec + 9, ml, server_pub)) return 0;
     sha256_update(&s_transcript, s_rec + 5, (u32)(ml + 4));
 
-    /* The shared secret, and the ladder of keys from it. */
-    x25519(shared, secret, server_pub);
+    /* The shared secret -- for the hybrid, the ML-KEM secret and then the
+     * X25519 one, sixty-four bytes -- and the ladder of keys from it. */
+    if (s_group == GROUP_HYBRID) {
+        mlkem_decaps(s_mlkem_dk, s_mlkem_ct, shared);
+        x25519(shared + 32, secret, server_pub);
+    } else {
+        x25519(shared, secret, server_pub);
+    }
     for (i = 0; i < 32; i++) zero[i] = 0;
     sha256(0, 0, h_empty);
     hkdf_extract(0, 0, zero, 32, early);
     expand_label(early, "derived", h_empty, 32, derived, 32);
-    hkdf_extract(derived, 32, shared, 32, hs_secret);
+    hkdf_extract(derived, 32, shared, s_group == GROUP_HYBRID ? 64 : 32, hs_secret);
     derive(hs_secret, "c hs traffic", cli_hs);
     derive(hs_secret, "s hs traffic", srv_hs);
     set_keys(&s_rd, srv_hs);
@@ -428,6 +512,7 @@ int tls_connect(const char *host)
             hmac_sha256(fkey, 32, h, 32, mac);
             if (ml != 32 || !same(mac, body, 32)) {
                 why("its proof of the handshake did not match");
+                if (s_group == GROUP_HYBRID) s_pq_broke = 1;
                 return 0;
             }
             drop_message(ml);

@@ -225,7 +225,8 @@ static void go(const char *url)
     }
     s_loading = 0;
     if (s_pg.status >= 200 && s_pg.status < 300) {
-        if (s_pg.secure) fmt_str(s_pg.note, sizeof s_pg.note, "encrypted -- the site's identity is not checked yet");
+        if (s_pg.secure) fmt_str(s_pg.note, sizeof s_pg.note, "%s -- identity not checked yet",
+                                 s_pg.pq ? "encrypted, post-quantum" : "encrypted");
         else             fmt_str(s_pg.note, sizeof s_pg.note, "%u bytes", s_pg.bytes);
         s_pg.note_col = C_DIM;
     }

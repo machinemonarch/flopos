@@ -518,7 +518,7 @@ typedef struct {
     char  url[PAGE_HREF_MAX + 16];
     char  note[72];
     u8    note_col;
-    int   status, secure;
+    int   status, secure, pq;
     u32   bytes;
     void  (*progress)(void);
 } Page;
@@ -549,10 +549,34 @@ void   aead_seal(const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
 int    aead_open(const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
                  const u8 *ct, u32 len, const u8 tag[16], u8 *pt);
 
+/* --- aes.c ---------------------------------------------------------------- */
+void   aesgcm_seal(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
+                   const u8 *pt, u32 len, u8 *ct, u8 tag[16]);
+int    aesgcm_open(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
+                   const u8 *ct, u32 len, const u8 tag[16], u8 *pt);
+
 /* --- x25519.c ------------------------------------------------------------ */
 void   x25519(u8 out[32], const u8 scalar[32], const u8 point[32]);
 void   x25519_public(u8 out[32], const u8 secret[32]);
 int    crypto_selftest(void);
+
+/* --- sha3.c --------------------------------------------------------------- */
+typedef struct { u64 s[25]; int rate, pos, squeezing; u8 pad; } Keccak;
+void   keccak_init(Keccak *k, int rate, u8 pad);
+void   keccak_absorb(Keccak *k, const u8 *in, u32 len);
+void   keccak_squeeze(Keccak *k, u8 *out, u32 len);
+void   sha3_256(const u8 *in, u32 len, u8 out[32]);
+void   sha3_512(const u8 *in, u32 len, u8 out[64]);
+void   shake128(const u8 *in, u32 len, u8 *out, u32 olen);
+void   shake256(const u8 *in, u32 len, u8 *out, u32 olen);
+
+/* --- mlkem.c -------------------------------------------------------------- */
+#define MLKEM_EK 1184
+#define MLKEM_DK 2400
+#define MLKEM_CT 1088
+void   mlkem_keygen(const u8 d[32], const u8 z[32], u8 ek[MLKEM_EK], u8 dk[MLKEM_DK]);
+void   mlkem_encaps(const u8 ek[MLKEM_EK], const u8 m[32], u8 c[MLKEM_CT], u8 key[32]);
+void   mlkem_decaps(const u8 dk[MLKEM_DK], const u8 c[MLKEM_CT], u8 key[32]);
 
 /* --- random.c ------------------------------------------------------------ */
 void   rand_add(u32 v);
@@ -564,6 +588,10 @@ int    tls_write(const u8 *data, int len);
 int    tls_read(u8 *buf, int max, int wait_ms);
 void   tls_close(void);
 const char *tls_why(void);
+int    tls_post_quantum(void);
+void   tls_offer_pq(int on);
+int    tls_pq_broke(void);
+const char *tls_cipher(void);
 
 /* --- el3.c -------------------------------------------------------------- */
 int    el3_start(int sock, u32 cor, u16 io);

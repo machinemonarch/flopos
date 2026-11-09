@@ -32,6 +32,7 @@ static void note(const char *t, u8 col)
 {
     int i;
     if (!s_pg) { term_colour(col); term_print(t); term_newline(); return; }
+    serial_printf("[web] %s\n", t);    /* browzer's status, for the wire  */
     for (i = 0; t[i] && i < (int)sizeof s_pg->note - 1; i++) s_pg->note[i] = t[i];
     s_pg->note[i] = 0;
     s_pg->note_col = col;
@@ -84,6 +85,7 @@ void page_clear(Page *pg)
     pg->bytes = 0;
     pg->status = 0;
     pg->secure = 0;
+    pg->pq = 0;
     s_pg = keep;
 }
 
@@ -112,6 +114,7 @@ static int  s_aname_len;
 static char s_quote;
 static char s_href[PAGE_HREF_MAX];
 static char s_alt[60];
+static char s_wattr[8], s_hattr[8];      /* an image's width and height    */
 static char *s_aval;
 static int  s_aval_len, s_aval_max;
 
@@ -229,6 +232,73 @@ static void rule(void)
     s_newlines = 1;
 }
 
+/* A number of pixels out of a width= or height=, or -1 for none or for a
+ * percentage, which says nothing about size on its own. */
+static int pixels(const char *a)
+{
+    int v = 0, i;
+    if (!a[0]) return -1;
+    for (i = 0; a[i] >= '0' && a[i] <= '9'; i++) v = v * 10 + (a[i] - '0');
+    if (i == 0 || a[i] == '%') return -1;
+    return v;
+}
+
+/* An image, as a box the size it would have been, saying what it is.
+ * Width and height come from the tag where it gives them, turned from
+ * pixels into character cells; tiny ones -- icons, tracking pixels --
+ * are not worth a box, and get their description in brackets, or
+ * nothing at all if they have none. */
+static void image(void)
+{
+    int pw = pixels(s_wattr), ph = pixels(s_hattr), w = out_width();
+    int cw, rows, x, y, tl, i;
+    char label[80];
+
+    if ((pw >= 0 && pw < 48) || (ph >= 0 && ph < 32)) {
+        if (s_alt[0]) {
+            s_dim = 1;
+            emit_text("[", C_DIM); emit_text(s_alt, C_DIM); emit_text("]", C_DIM);
+            flush_word();
+            s_dim = 0;
+            s_space = 1;
+        }
+        return;
+    }
+
+    if (s_alt[0]) fmt_str(label, sizeof label, "Image of %s", s_alt);
+    else          fmt_str(label, sizeof label, "Image");
+    for (tl = 0; label[tl]; tl++) { }
+
+    cw = pw > 0 ? pw / 12 : tl + 6;      /* a cell is about 12 pixels wide */
+    if (cw < tl + 4) cw = tl + 4;
+    if (cw < 16) cw = 16;
+    if (cw > w) cw = w;
+    rows = ph > 0 ? ph / 16 : 3;         /* and 16 high                    */
+    if (rows < 3) rows = 3;
+    if (rows > 9) rows = 9;
+    if (tl > cw - 4) tl = cw - 4;
+
+    newline(1);
+    for (y = 0; y < rows; y++) {
+        for (x = 0; x < cw; x++) {
+            u8 ch;
+            if (y == 0)             ch = x == 0 ? FR_TL : x == cw - 1 ? FR_TR : FR_H;
+            else if (y == rows - 1) ch = x == 0 ? FR_BL : x == cw - 1 ? FR_BR : FR_H;
+            else                    ch = (x == 0 || x == cw - 1) ? FR_V : ' ';
+            if (y == rows / 2 && x >= (cw - tl) / 2 && x < (cw - tl) / 2 + tl) {
+                i = x - (cw - tl) / 2;
+                out_char((u8)label[i], C_DIM, s_linkid);
+            } else {
+                out_char(ch, C_GREY, s_linkid);
+            }
+        }
+        out_newline();
+    }
+    s_col = 0;
+    s_newlines = 1;
+    s_space = 0;
+}
+
 static int tag_is(const char *t)
 {
     int i;
@@ -267,8 +337,7 @@ static void tag_ended(void)
         "dt", "dd", "form", "main", "center", "aside", "figure", 0 };
     int i;
 
-    if (tag_is("script") || tag_is("style") || tag_is("noscript") ||
-        tag_is("svg") || tag_is("template")) {
+    if (tag_is("script") || tag_is("style") || tag_is("svg") || tag_is("template")) {
         if (!s_tag_close) {
             for (i = 0; s_tag[i]; i++) s_skip_until[i] = s_tag[i];
             s_skip_until[i] = 0;
@@ -294,18 +363,7 @@ static void tag_ended(void)
         else if (s_href[0]) { flush_word(); s_link = 1; s_linkid = add_link(); }
         return;
     }
-    if (tag_is("img")) {
-        if (s_alt[0]) {
-            s_dim = 1;
-            emit_text("[", C_DIM);
-            emit_text(s_alt, C_DIM);
-            emit_text("]", C_DIM);
-            flush_word();
-            s_dim = 0;
-            s_space = 1;
-        }
-        return;
-    }
+    if (tag_is("img")) { image(); return; }
     if (tag_is("hr")) { rule(); return; }
     if (tag_is("br")) { newline(1); s_newlines = 0; return; }
     if (tag_is("li")) {
@@ -362,6 +420,12 @@ static void attr_begin_value(void)
     } else if (s_aname_len == 3 && s_aname[0] == 'a' && s_aname[1] == 'l' &&
                s_aname[2] == 't') {
         s_aval = s_alt; s_aval_max = (int)sizeof s_alt;
+    } else if (s_aname_len == 5 && s_aname[0] == 'w' && s_aname[1] == 'i' &&
+               s_aname[2] == 'd' && s_aname[3] == 't' && s_aname[4] == 'h') {
+        s_aval = s_wattr; s_aval_max = (int)sizeof s_wattr;
+    } else if (s_aname_len == 6 && s_aname[0] == 'h' && s_aname[1] == 'e' &&
+               s_aname[2] == 'i' && s_aname[3] == 'g' && s_aname[4] == 'h' && s_aname[5] == 't') {
+        s_aval = s_hattr; s_aval_max = (int)sizeof s_hattr;
     }
     s_aval_len = 0;
     if (s_aval) s_aval[0] = 0;
@@ -381,6 +445,7 @@ static void tag_start(void)
     s_astate = A_NONE;
     s_href[0] = 0;
     s_alt[0] = 0;
+    s_wattr[0] = s_hattr[0] = 0;
     s_hstate = H_TAG;
 }
 
@@ -600,13 +665,37 @@ static int fetch_once(const Url *u, char *moved, int moved_max)
         note("agreeing on a key...", C_DIM);
         if (!s_pg) main_pump(1);
         if (!tls_connect(u->host)) {
-            fmt_str(line, sizeof line, "The secure handshake failed: %s.", tls_why());
-            note(line, C_ACCENT);
-            tcp_close();
-            return -1;
+            int ok = 0;
+            /* The post-quantum handshake was chosen and then failed: that
+             * is ours to fix, not the site's, so try once more without it
+             * and say so -- down the wire as well, where it can be read. */
+            if (tls_pq_broke()) {
+                serial_printf("[tls] post-quantum handshake with %s failed (%s); retrying with X25519 alone\n",
+                              u->host, tls_why());
+                tcp_close();
+                if (tcp_connect(to, u->port, 6000)) {
+                    tls_offer_pq(0);
+                    ok = tls_connect(u->host);
+                    tls_offer_pq(1);
+                }
+            }
+            if (!ok) {
+                fmt_str(line, sizeof line, "The secure handshake failed: %s.", tls_why());
+                note(line, C_ACCENT);
+                tcp_close();
+                return -1;
+            }
         }
-        if (!s_pg) note("encrypted -- but who is at the other end is not checked yet", C_DIM);
-        else s_pg->secure = 1;
+        serial_printf("[tls] %s: %s, %s\n", u->host, tls_cipher(),
+                      tls_post_quantum() ? "X25519MLKEM768 (post-quantum)" : "X25519");
+        if (!s_pg) {
+            fmt_str(line, sizeof line, "encrypted%s -- but who is at the other end is not checked yet",
+                    tls_post_quantum() ? ", post-quantum" : "");
+            note(line, C_DIM);
+        } else {
+            s_pg->secure = 1;
+            s_pg->pq = tls_post_quantum();
+        }
     }
 
     fmt_str(req, sizeof req,
