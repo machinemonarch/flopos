@@ -16,4 +16,14 @@ typedef struct { DCell c[DOC_MAX]; int len; } Doc;
 void doc_empty(Doc *d);
 int  doc_to_text(const Doc *d, u8 *out, int cap);        /* bytes, or -1 */
 void doc_from_text(Doc *d, const u8 *in, int len);
+
+/* The same, following one place across the change: the cell at want comes
+ * out as a byte offset in *got, or the byte at want as a cell. */
+int  doc_to_text_at(const Doc *d, u8 *out, int cap, int want, int *got);
+void doc_from_text_at(Doc *d, const u8 *in, int len, int want, int *got);
+
+/* Plain: the text exactly as written, marks and all, one paragraph a line.
+ * doc_from_plain returns 0 if it did not all fit. */
+int  doc_to_plain(const Doc *d, u8 *out, int cap, int want, int *got);
+int  doc_from_plain(Doc *d, const u8 *in, int len, int want, int *got);
 #endif

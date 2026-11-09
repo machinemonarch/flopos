@@ -6,6 +6,18 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.11.0 — 2026-11-09
+
+- **write: a Markdown view.** Ctrl-M shows the document as the Markdown it
+  is saved as, and you can edit it there: the marks are dim, and the words
+  between them already look bold, slanted, underlined or like headings.
+  Ctrl-M again goes back to the page, with the cursor on the same word.
+  Ctrl-B, I and U put the marks in for you, or take them out.
+- **Documentation**, in `docs/`: the philosophy, every command, write, the
+  network, the hardware, how it works inside, making apps, building and
+  releasing, and the references consulted. The README is rewritten to match
+  what FLOPOS is now.
+
 ## 1.10.0 — 2026-11-09
 
 - **`write`, a small word processor**: bold, italic and underline (Ctrl-B, I,

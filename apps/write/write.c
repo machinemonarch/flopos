@@ -11,6 +11,8 @@
  *   ctrl-b  bold        ctrl-i  italic       ctrl-u  underline
  *   ctrl-p  next paragraph style, or ctrl-0 body, ctrl-1..4 headings,
  *           ctrl-t title
+ *   ctrl-m  Markdown: the same document as the text it is kept as, marks
+ *           and all, to read or edit directly; ctrl-m again for the page
  *   ctrl-s  save        ctrl-o  open         ctrl-n  new
  *   esc     leave (twice, if there is something unsaved)
  *
@@ -35,6 +37,12 @@ static int  W, H, TW, TH;
 static char s_msg[80];
 static u8   s_msg_col;
 static u8   s_file[FILE_MAX];
+static int  s_md;                        /* showing the Markdown, not the page */
+static Doc  s_tmp;
+static u8   s_look_fg[DOC_MAX], s_look_at[DOC_MAX];   /* Markdown colouring */
+static u8   s_look_own[DOC_MAX];        /* ...and the character's own styling */
+
+static void md_look(void);
 
 typedef struct { int start, len, x0; u8 style; } Line;
 static Line s_line[DOC_MAX + 1];
@@ -85,6 +93,64 @@ static void layout(void)
             ls += take;
         } while (ls < e);
         i = e + 1;
+    }
+    if (s_md) md_look();
+}
+
+/* ---- Markdown ------------------------------------------------------------- */
+/* The marks at the start of a Markdown paragraph, and the style they give. */
+static int md_prefix(int ps, int *st)
+{
+    static const char *pre[ST_COUNT] = { "", "% ", "# ", "## ", "### ", "#### " };
+    int s, k;
+    for (s = ST_H4; s > ST_BODY; s--) {
+        for (k = 0; pre[s][k] && s_doc.c[ps + k].ch == (u8)pre[s][k]; k++) { }
+        if (!pre[s][k]) { if (st) *st = s; return k; }
+    }
+    if (st) *st = ST_BODY;
+    return 0;
+}
+
+static int cells_are(int p, int e, const char *t)
+{
+    for (; *t; t++, p++) if (p >= e || s_doc.c[p].ch != (u8)*t) return 0;
+    return 1;
+}
+
+static u8 style_fg(u8 st);
+static u8 style_at(u8 st);
+
+/* Colour the Markdown the way it will look: the marks dim, the words
+ * between them already bold, slanted, underlined or a heading.  The same
+ * reading doc.c gives the file, so what is shown is what will come back. */
+static void md_look(void)
+{
+    int ps = 0;
+    while (ps < s_doc.len) {
+        int e = para_end(ps), st, p = ps + md_prefix(ps, &st), k;
+        u8 at = 0, fg = style_fg((u8)st), sat = style_at((u8)st);
+        for (k = ps; k < p; k++) { s_look_fg[k] = A_DIM; s_look_at[k] = 0; }
+        while (p < e) {
+            u8 ch = s_doc.c[p].ch;
+            int n = 0;
+            if (ch == '\\' && p + 1 < e) n = 1;
+            else if (cells_are(p, e, "<u>"))  { n = 3; at |= AT_UNDERLINE; }
+            else if (cells_are(p, e, "</u>")) { n = 4; at &= (u8)~AT_UNDERLINE; }
+            else if (ch == '*') {
+                while (p + n < e && s_doc.c[p + n].ch == '*') n++;
+                if ((n / 2) & 1) at ^= AT_BOLD;
+                if (n & 1) at ^= AT_ITALIC;
+            }
+            for (k = 0; k < n; k++) { s_look_fg[p + k] = A_DIM; s_look_at[p + k] = 0; s_look_own[p + k] = at; }
+            p += n;
+            if (n && ch != '\\') continue;
+            s_look_fg[p] = fg;
+            s_look_at[p] = (u8)(at | sat);
+            s_look_own[p] = at;
+            p++;
+        }
+        s_look_fg[e] = A_DIM; s_look_at[e] = 0;
+        ps = e + 1;
     }
 }
 
@@ -178,8 +244,126 @@ static void new_paragraph(void)
     if (at_end) s_doc.c[para_end(s_cur)].at = ST_BODY;
 }
 
+/* Raw cells in and out, for the Markdown keys.  Positions after the change
+ * move along with the text. */
+static int moved(int p, int at, int by)
+{
+    if (p < 0) return p;
+    if (by > 0) return p >= at ? p + by : p;
+    return p >= at - by ? p + by : p > at ? at : p;
+}
+
+static int cells_put(int pos, const char *t, int *a, int *b)
+{
+    int n = slen(t), k;
+    if (s_doc.len + n >= DOC_MAX) { say("The document is as long as it can be.", A_ACCENT); return 0; }
+    for (k = s_doc.len - 1; k >= pos; k--) s_doc.c[k + n] = s_doc.c[k];
+    for (k = 0; k < n; k++) { s_doc.c[pos + k].ch = (u8)t[k]; s_doc.c[pos + k].at = 0; }
+    s_doc.len += n;
+    s_cur = moved(s_cur, pos, n); s_anchor = moved(s_anchor, pos, n);
+    if (a) *a = moved(*a, pos, n);
+    if (b) *b = moved(*b, pos, n);
+    s_dirty = 1;
+    return 1;
+}
+
+static void cells_cut(int pos, int n, int *a, int *b)
+{
+    int k;
+    for (k = pos + n; k < s_doc.len; k++) s_doc.c[k - n] = s_doc.c[k];
+    s_doc.len -= n;
+    s_cur = moved(s_cur, pos, -n); s_anchor = moved(s_anchor, pos, -n);
+    if (a) *a = moved(*a, pos, -n);
+    if (b) *b = moved(*b, pos, -n);
+    s_dirty = 1;
+}
+
+static int stars_before(int p) { int n = 0; while (p - n > 0 && s_doc.c[p - n - 1].ch == '*') n++; return n; }
+static int stars_after(int p)  { int n = 0; while (s_doc.c[p + n].ch == '*') n++; return n; }
+
+/* In Markdown, ^B ^I ^U put the marks around the selection, or take them
+ * off if they are already there; with nothing selected they put down an
+ * empty pair with the cursor inside. */
+static void md_toggle(u8 attr)
+{
+    const char *open = attr == AT_BOLD ? "**" : attr == AT_ITALIC ? "*" : "<u>";
+    const char *close = attr == AT_UNDERLINE ? "</u>" : open;
+    int a = have_sel() ? sel_from() : s_cur, b = have_sel() ? sel_to() : s_cur;
+    int lo = slen(open), lc = slen(close), on;
+
+    if (attr == AT_UNDERLINE)
+        on = a >= 3 && cells_are(a - 3, a, "<u>") && cells_are(b, s_doc.len, "</u>");
+    else {
+        int l = stars_before(a), r = stars_after(b);
+        on = attr == AT_BOLD ? (((l / 2) & 1) && ((r / 2) & 1)) : ((l & 1) && (r & 1));
+    }
+    s_anchor = -1;
+    if (on) {                                    /* the close first: it is later */
+        cells_cut(b, lc, 0, 0);
+        cells_cut(a - lo, lo, 0, 0);
+        a -= lo; b -= lo;
+    } else {
+        if (!cells_put(b, close, 0, 0)) return;
+        if (!cells_put(a, open, 0, 0)) return;
+        a += lo; b += lo;
+    }
+    if (a == b) { s_cur = a; s_anchor = -1; }
+    else        { s_anchor = a; s_cur = b; }
+}
+
+/* And ^P, ^T, ^0 to ^4 change the marks at the start of the paragraph. */
+static void md_style(int st, int cycle)
+{
+    static const char *pre[ST_COUNT] = { "", "% ", "# ", "## ", "### ", "#### " };
+    int a = have_sel() ? sel_from() : s_cur, b = have_sel() ? sel_to() : s_cur, p;
+    for (p = para_start(a); p <= b && p < s_doc.len; p = para_end(p) + 1) {
+        int old, n = md_prefix(p, &old);
+        int want = cycle ? (old + 1) % ST_COUNT : st;
+        if (n) cells_cut(p, n, &a, &b);
+        if (pre[want][0]) cells_put(p, pre[want], &a, &b);
+        st = want;
+    }
+    say(s_style_name[st], A_DIM);
+}
+
+/* Between the page and its Markdown.  The cursor stays where it was. */
+static int to_markdown(void)
+{
+    int n, at;
+    n = doc_to_text_at(&s_doc, s_file, FILE_MAX, s_cur, &at);
+    if (n < 0 || !doc_from_plain(&s_tmp, s_file, n, at, &at)) {
+        say("Too long to show as Markdown.", A_ACCENT);
+        return 0;
+    }
+    s_doc = s_tmp;
+    s_cur = at;
+    return 1;
+}
+
+static int to_page(void)
+{
+    int n, at;
+    n = doc_to_plain(&s_doc, s_file, FILE_MAX, s_cur, &at);
+    if (n < 0) { say("Too long to read back.", A_ACCENT); return 0; }
+    doc_from_text_at(&s_tmp, s_file, n, at, &at);
+    s_doc = s_tmp;
+    s_cur = at;
+    return 1;
+}
+
+static void flip(void)
+{
+    if (s_md ? !to_page() : !to_markdown()) return;
+    s_md = !s_md;
+    s_anchor = -1;
+    s_pen = 0;
+    if (!s_md) pen_from_cursor();
+    say(s_md ? "Markdown: type the marks. ^M for the page." : "The page.", A_DIM);
+}
+
 static void toggle(u8 attr)
 {
+    if (s_md) { md_toggle(attr); return; }
     if (have_sel()) {
         int a = sel_from(), b = sel_to(), k, all = 1;
         for (k = a; k < b; k++) if (s_doc.c[k].ch != '\n' && !(s_doc.c[k].at & attr)) all = 0;
@@ -196,6 +380,7 @@ static void toggle(u8 attr)
 static void set_style(int st)
 {
     int a = have_sel() ? sel_from() : s_cur, b = have_sel() ? sel_to() : s_cur, p;
+    if (s_md) { md_style(st < 0 ? 0 : st, st < 0); return; }
     for (p = para_start(a); p <= b && p < s_doc.len; p = para_end(p) + 1)
         s_doc.c[para_end(p)].at = (u8)st;
     s_dirty = 1;
@@ -219,6 +404,8 @@ static int load(int slot)
     if (n < 0) { say("The floppy would not give it up.", A_ACCENT); return 0; }
     doc_from_text(&s_doc, s_file, n);
     s_cur = 0; s_anchor = -1; s_top = 0; s_slot = slot; s_dirty = 0;
+    if (s_md && !to_markdown()) s_md = 0;
+    s_cur = 0;
     pen_from_cursor();
     {
         char m[40];
@@ -245,7 +432,8 @@ static int save(int slot)
 
     if (!slot_file(slot, &f)) { say("That document is not on this floppy.", A_ACCENT); return 0; }
     if (f.size > FILE_MAX) f.size = FILE_MAX;
-    n = doc_to_text(&s_doc, s_file, (int)f.size - 1);
+    n = s_md ? doc_to_plain(&s_doc, s_file, (int)f.size - 1, -1, 0)
+             : doc_to_text(&s_doc, s_file, (int)f.size - 1);
     if (n < 0) {
         A->format(m, sizeof m, "Too long to keep: a document holds %u bytes.", f.size);
         say(m, A_ACCENT);
@@ -266,8 +454,12 @@ static int save(int slot)
 /* ---- drawing ---------------------------------------------------------------- */
 static void doc_name(char *out, int cap)
 {
-    int e = para_end(0), k, n = 0;
-    for (k = 0; k < e && n < cap - 1; k++) out[n++] = (char)s_doc.c[k].ch;
+    int e = para_end(0), k = s_md ? md_prefix(0, 0) : 0, n = 0;
+    for (; k < e && n < cap - 1; k++) {
+        if (s_md && cells_are(k, e, "<u>"))  { k += 2; continue; }
+        if (s_md && cells_are(k, e, "</u>")) { k += 3; continue; }
+        if (!s_md || (s_doc.c[k].ch != '*' && s_doc.c[k].ch != '\\')) out[n++] = (char)s_doc.c[k].ch;
+    }
     out[n] = 0;
     if (!n) A->format(out, (u32)cap, "%s", "untitled");
 }
@@ -299,7 +491,7 @@ static void draw(int blink)
     {
         static const char *lab[3] = { "B", "I", "U" };
         static const u8 bit[3] = { AT_BOLD, AT_ITALIC, AT_UNDERLINE };
-        u8 cur_at = s_pen;
+        u8 cur_at = s_md ? (u8)(s_cur > 0 && s_doc.c[s_cur - 1].ch != '\n' ? s_look_own[s_cur - 1] : 0) : s_pen;
         for (i = 0; i < 3; i++) {
             int on = cur_at & bit[i];
             u8 bg = on ? A_HILITE : pp;
@@ -307,8 +499,14 @@ static void draw(int blink)
             A->win_put(3 + i * 4, 1, (u8)lab[i][0], on ? A_BRIGHT : A_DIM, bg, bit[i]);
             A->win_put(4 + i * 4, 1, ']', A_DIM, bg, 0);
         }
-        A->win_text(15, 1, s_style_name[s_doc.c[para_end(s_cur)].at % ST_COUNT],
-                    A_BRIGHT, pp);
+        if (s_md) {
+            int st;
+            md_prefix(para_start(s_cur), &st);
+            A->win_text(15, 1, s_style_name[st], A_BRIGHT, pp);
+            A->win_text(W - 12, 1, "Markdown", A_ACCENT, pp);
+        } else
+            A->win_text(15, 1, s_style_name[s_doc.c[para_end(s_cur)].at % ST_COUNT],
+                        A_BRIGHT, pp);
     }
     for (x = 1; x < W - 1; x++) { A->win_put(x, 2, A_FR_H, A_GREY, pp, 0); A->win_put(x, H - 3, A_FR_H, A_GREY, pp, 0); }
     A->win_put(0, 2, A_FR_TEE_L, A_GREY, pp, 0);     A->win_put(W - 1, 2, A_FR_TEE_R, A_GREY, pp, 0);
@@ -323,8 +521,10 @@ static void draw(int blink)
             int pos = L->start + i;
             DCell *c = &s_doc.c[pos];
             int sel = pos >= a && pos < b;
-            A->win_put(2 + L->x0 + i, 3 + y, c->ch, sel ? A_BRIGHT : fg,
-                       sel ? A_SELECT : pp, (u8)((c->at & ATTRS) | sat));
+            u8 cfg = s_md ? s_look_fg[pos] : fg;
+            u8 cat = s_md ? s_look_at[pos] : (u8)((c->at & ATTRS) | sat);
+            A->win_put(2 + L->x0 + i, 3 + y, c->ch, sel ? A_BRIGHT : cfg,
+                       sel ? A_SELECT : pp, cat);
         }
     }
 
@@ -344,8 +544,12 @@ static void draw(int blink)
     else        A->format(m, sizeof m, "not saved yet");
     A->win_text(W - 2 - slen(m), H - 2, m, A_DIM, pp);
 
-    put_hint(H - 1, W >= 72 ? " ^B bold  ^I italic  ^U underline  ^P style  ^S save  ^O open  esc "
-                            : " ^B ^I ^U  ^P style  ^S save  ^O open  esc ");
+    if (s_md)
+        put_hint(H - 1, W >= 76 ? " **bold**  *italic*  <u>underline</u>  # heading  % title  ^M the page "
+                                : " **bold** *italic* <u>under</u>  # head  % title  ^M page ");
+    else
+        put_hint(H - 1, W >= 84 ? " ^B bold  ^I italic  ^U underline  ^P style  ^M markdown  ^S save  ^O open  esc "
+                                : " ^B ^I ^U  ^P style  ^M markdown  ^S save  ^O open  esc ");
 }
 
 static void keep_cursor_visible(void)
@@ -463,7 +667,8 @@ int app_main(const Api *api, int argc, char **argv)
             case 'b': toggle(AT_BOLD); break;
             case 'i': toggle(AT_ITALIC); break;
             case 'u': toggle(AT_UNDERLINE); break;
-            case 'p': set_style((s_doc.c[para_end(s_cur)].at + 1) % ST_COUNT); break;
+            case 'p': set_style(s_md ? -1 : (s_doc.c[para_end(s_cur)].at + 1) % ST_COUNT); break;
+            case 'm': flip(); break;
             case 't': set_style(ST_TITLE); break;
             case '0': set_style(ST_BODY); break;
             case '1': set_style(ST_H1); break;

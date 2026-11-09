@@ -31,7 +31,8 @@ typedef struct { u8 *p; int n, cap, over; } Out;
 static void put(Out *o, u8 b) { if (o->n < o->cap) o->p[o->n++] = b; else o->over = 1; }
 static void puts_(Out *o, const char *s) { while (*s) put(o, (u8)*s++); }
 
-static void put_char(Out *o, u8 ch)
+/* A Swedish letter goes out as UTF-8; returns 0 for anything else. */
+static int put_swedish(Out *o, u8 ch)
 {
     u32 cp = 0;
     switch (ch) {
@@ -39,7 +40,15 @@ static void put_char(Out *o, u8 ch)
     case A_CH_ADIA:  cp = 0xC4; break;   case A_CH_ADIA_L:  cp = 0xE4; break;
     case A_CH_ODIA:  cp = 0xD6; break;   case A_CH_ODIA_L:  cp = 0xF6; break;
     }
-    if (cp) { put(o, (u8)(0xC0 | (cp >> 6))); put(o, (u8)(0x80 | (cp & 0x3F))); return; }
+    if (!cp) return 0;
+    put(o, (u8)(0xC0 | (cp >> 6)));
+    put(o, (u8)(0x80 | (cp & 0x3F)));
+    return 1;
+}
+
+static void put_char(Out *o, u8 ch)
+{
+    if (put_swedish(o, ch)) return;
     if (ch == '*' || ch == '<' || ch == '\\') put(o, '\\');
     put(o, ch);
 }
@@ -57,11 +66,17 @@ static void switch_to(Out *o, u8 from, u8 to)
 
 int doc_to_text(const Doc *d, u8 *out, int cap)
 {
+    return doc_to_text_at(d, out, cap, -1, 0);
+}
+
+int doc_to_text_at(const Doc *d, u8 *out, int cap, int want, int *got)
+{
     static const char *prefix[ST_COUNT] = { "", "% ", "# ", "## ", "### ", "#### " };
     Out o;
     int i = 0;
 
     o.p = out; o.n = 0; o.cap = cap; o.over = 0;
+    if (got) *got = -1;
     while (i < d->len) {
         int e = i, first = 1;
         u8 state = 0, style;
@@ -70,15 +85,18 @@ int doc_to_text(const Doc *d, u8 *out, int cap)
         puts_(&o, prefix[style]);
         for (; i < e; i++) {
             u8 at = (u8)(d->c[i].at & (AT_BOLD | AT_ITALIC | AT_UNDERLINE));
+            if (i == want && got) *got = o.n;
             if (at != state) { switch_to(&o, state, at); state = at; }
             if (first && (d->c[i].ch == '#' || d->c[i].ch == '%')) put(&o, '\\');
             put_char(&o, d->c[i].ch);
             first = 0;
         }
+        if (e == want && got) *got = o.n;
         if (state) switch_to(&o, state, 0);
         put(&o, '\n');
         i = e + 1;
     }
+    if (got && *got < 0) *got = o.n;
     return o.over ? -1 : o.n;
 }
 
@@ -98,12 +116,41 @@ static int starts(const u8 *p, const u8 *end, const char *s)
     return 1;
 }
 
+/* A two-byte UTF-8 letter at p becomes the font's Swedish letter, or '?'.
+ * Returns the bytes it used, 0 if p is not the start of one. */
+static int get_swedish(const u8 *p, const u8 *eol, u8 *g)
+{
+    u32 cp;
+    if (!(p[0] >= 0xC2 && p[0] <= 0xDF && p + 1 < eol && (p[1] & 0xC0) == 0x80)) return 0;
+    cp = ((u32)(p[0] & 0x1F) << 6) | (p[1] & 0x3F);
+    *g = cp == 0xC5 ? A_CH_ARING : cp == 0xE5 ? A_CH_ARING_L :
+         cp == 0xC4 ? A_CH_ADIA  : cp == 0xE4 ? A_CH_ADIA_L  :
+         cp == 0xD6 ? A_CH_ODIA  : cp == 0xF6 ? A_CH_ODIA_L  : '?';
+    return 2;
+}
+
+static int text_end(const u8 *in, int len)
+{
+    int n = 0;
+    while (n < len && in[n] != 0x1A && in[n] != 0) n++;     /* DOS EOF */
+    return n;
+}
+
+#define MARK(q) do { if (got && *got < 0 && (q) - in >= want) *got = d->len; } while (0)
+
 void doc_from_text(Doc *d, const u8 *in, int len)
+{
+    doc_from_text_at(d, in, len, -1, 0);
+}
+
+void doc_from_text_at(Doc *d, const u8 *in, int len, int want, int *got)
 {
     const u8 *p = in, *end = in + len;
     const u8 *stop = in;
 
-    while (stop < end && *stop != 0x1A && *stop != 0) stop++;   /* DOS EOF */
+    if (got) *got = want < 0 ? 0 : -1;
+
+    stop = in + text_end(in, len);
     end = stop;
     d->len = 0;
 
@@ -113,6 +160,7 @@ void doc_from_text(Doc *d, const u8 *in, int len)
         while (eol < end && *eol != '\n') eol++;
         if (eol == end && p == end) break;
 
+        MARK(p);
         if      (starts(p, eol, "#### ")) { style = ST_H4; p += 5; }
         else if (starts(p, eol, "### "))  { style = ST_H3; p += 4; }
         else if (starts(p, eol, "## "))   { style = ST_H2; p += 3; }
@@ -120,7 +168,8 @@ void doc_from_text(Doc *d, const u8 *in, int len)
         else if (starts(p, eol, "% "))    { style = ST_TITLE; p += 2; }
 
         while (p < eol) {
-            u8 b = *p;
+            u8 b = *p, g;
+            MARK(p);
             if (b == '\r') { p++; continue; }
             if (b == '\\' && p + 1 < eol) { add(d, p[1], at); p += 2; continue; }
             if (starts(p, eol, "<u>"))  { at |= AT_UNDERLINE; p += 3; continue; }
@@ -132,15 +181,7 @@ void doc_from_text(Doc *d, const u8 *in, int len)
                 if (n & 1) at ^= AT_ITALIC;
                 continue;
             }
-            if (b >= 0xC2 && b <= 0xDF && p + 1 < eol && (p[1] & 0xC0) == 0x80) {
-                u32 cp = ((u32)(b & 0x1F) << 6) | (p[1] & 0x3F);
-                u8 g = cp == 0xC5 ? A_CH_ARING : cp == 0xE5 ? A_CH_ARING_L :
-                       cp == 0xC4 ? A_CH_ADIA  : cp == 0xE4 ? A_CH_ADIA_L  :
-                       cp == 0xD6 ? A_CH_ODIA  : cp == 0xF6 ? A_CH_ODIA_L  : '?';
-                add(d, g, at);
-                p += 2;
-                continue;
-            }
+            if (get_swedish(p, eol, &g)) { add(d, g, at); p += 2; continue; }
             if (b >= 0x80) {                 /* longer UTF-8, or anything else */
                 p++;
                 while (p < eol && (*p & 0xC0) == 0x80) p++;
@@ -151,6 +192,7 @@ void doc_from_text(Doc *d, const u8 *in, int len)
             if (b >= 32) add(d, b, at);
             p++;
         }
+        MARK(p);
         d->c[d->len].ch = '\n';
         d->c[d->len].at = style;
         d->len++;
@@ -158,4 +200,54 @@ void doc_from_text(Doc *d, const u8 *in, int len)
         if (eol >= end) break;
     }
     if (d->len == 0) doc_empty(d);
+    if (got && (*got < 0 || *got > d->len - 1)) *got = d->len - 1;
+}
+
+/* ---- plain ---------------------------------------------------------------- */
+/* What the Markdown view edits: every character as it is in the file, the
+ * marks included, nothing interpreted except the Swedish letters. */
+int doc_to_plain(const Doc *d, u8 *out, int cap, int want, int *got)
+{
+    Out o;
+    int i;
+    o.p = out; o.n = 0; o.cap = cap; o.over = 0;
+    if (got) *got = -1;
+    for (i = 0; i < d->len; i++) {
+        if (i == want && got) *got = o.n;
+        if (!put_swedish(&o, d->c[i].ch)) put(&o, d->c[i].ch);
+    }
+    if (got && *got < 0) *got = o.n;
+    return o.over ? -1 : o.n;
+}
+
+int doc_from_plain(Doc *d, const u8 *in, int len, int want, int *got)
+{
+    const u8 *p = in, *end = in + text_end(in, len);
+    int fits = 1;
+
+    d->len = 0;
+    if (got) *got = want < 0 ? 0 : -1;
+    while (p < end) {
+        u8 b = *p, g;
+        MARK(p);
+        if (d->len >= DOC_MAX - 1) { fits = 0; break; }
+        if (b == '\n') { d->c[d->len].ch = '\n'; d->c[d->len].at = ST_BODY; d->len++; p++; continue; }
+        if (b == '\r') { p++; continue; }
+        if (get_swedish(p, end, &g)) { add(d, g, 0); p += 2; continue; }
+        if (b >= 0x80) {
+            p++;
+            while (p < end && (*p & 0xC0) == 0x80) p++;
+            add(d, '?', 0);
+            continue;
+        }
+        if (b == '\t') b = ' ';
+        if (b >= 32) add(d, b, 0);
+        p++;
+    }
+    MARK(p);
+    if (!d->len || d->c[d->len - 1].ch != '\n') {          /* always ends in an end */
+        d->c[d->len].ch = '\n'; d->c[d->len].at = ST_BODY; d->len++;
+    }
+    if (got && (*got < 0 || *got > d->len - 1)) *got = d->len - 1;
+    return fits;
 }
