@@ -105,12 +105,51 @@ protocol that puts the padlock in a browser.
   site prefers.
 - **Every piece is checked against published test answers.** `crypto` runs
   those checks on the laptop and times the slow parts. One X25519 key
-  exchange takes about 0.3 seconds on the 430CDT.
+  exchange takes about 0.3 seconds on the 430CDT. Checking a site's
+  certificates takes a few signature checks more, and `crypto` times those
+  too.
 
-**What it doesn't do yet: check the site's certificate.** The connection is
-encrypted, but FLOPOS can't yet tell the real site from an impostor sitting
-in between. Reading is fine. Don't type a password into anything over it
-until certificate checking exists. FLOPOS says this on the screen too.
+- **The site has to prove who it is.** It sends its certificate and the
+  certificates of the authorities that vouch for it, and FLOPOS checks the
+  chain up to one of the 119 authorities it trusts. These are Mozilla's
+  list, the same one Firefox and most Linux systems use, kept on the floppy
+  as `ROOTS.DAT`. Then the site has to sign the handshake with the key in
+  its own certificate, which proves the certificate is really its own.
+
+  `fetch` says who vouched ("Let's Encrypt vouches for it"), and so does
+  browzer's status line.
+
+### When a site can't prove who it is
+
+FLOPOS refuses the page and says why:
+
+| What it says | What it means |
+|---|---|
+| its certificate is for a different site | the certificate names some other site |
+| its certificate ran out on 2026-01-27 / is not valid until … | out of date, or the laptop's clock is wrong |
+| nobody this machine trusts vouches for it | a self-made certificate, an unknown authority, or a site that forgot to send its authority's certificate |
+| a signature in its certificate chain does not check out | something in the chain was altered |
+| it could not prove the certificate is its own | it showed a certificate but couldn't sign with its key |
+| this laptop's clock says 1995 … | the CMOS clock is wrong, so nothing can be dated; fix it in the BIOS setup |
+
+Any of these can mean somebody is pretending to be the site. In browzer, the
+refusal page offers **a** to go there anyway. The page then loads with
+"NOT checked, could be anybody" in the status line. Type nothing private
+into it.
+
+**Dates come from the laptop's own clock**, so it needs to be roughly right.
+A clock an hour off makes no difference; a clock years off makes every
+site fail.
+
+**Not done:** asking whether a certificate has been revoked (that would
+mean another connection, to the authority, for every site), and fetching an
+authority's certificate that a badly set-up site forgot to send.
+
+**Keeping the list up to date:** `tools/mkroots.py` rebuilds
+`boot/roots.dat` from a Linux PC's trusted list
+(`/etc/ssl/certs/ca-certificates.crt`). The current file was made from
+Ubuntu's ca-certificates 20260816. Authorities with keys FLOPOS can't
+check (one, on the P-521 curve) are left out.
 
 Sites that only speak older versions of TLS won't open.
 

@@ -51,7 +51,7 @@ static const char s_home[] =
     "<li><a href=\"http://example.com/\">example.com</a></li>"
     "</ul>"
     "<p>tab picks a link, enter follows it, backspace goes back, esc leaves.</p>"
-    "<p>Secure pages are encrypted, but the site's identity is not checked yet.</p>";
+    "<p>Secure pages are encrypted, and the site has to prove who it is.</p>";
 
 /* ---- drawing ------------------------------------------------------------ */
 static int link_line(int id)
@@ -206,18 +206,30 @@ static void go(const char *url)
     if (!http_page(url, &s_pg) && s_pg.lines <= 1 && s_pg.col == 0) {
         /* Nothing came: say why on the page itself, not only in the
          * status line, and keep the address so r can try again. */
-        static char html[400];
-        char why[72], where[PAGE_HREF_MAX + 16];
+        static char html[600];
+        char why[128], where[PAGE_HREF_MAX + 16];
         int i;
         for (i = 0; s_pg.note[i]; i++) why[i] = s_pg.note[i];
         why[i] = 0;
         for (i = 0; s_pg.url[i]; i++) where[i] = s_pg.url[i];
         where[i] = 0;
-        fmt_str(html, sizeof html,
-                "<title>could not open it</title><h2>That page did not come.</h2>"
-                "<p>%s</p><p>r tries again, backspace goes back, g goes somewhere else.</p>",
-                why[0] ? why : "Nothing answered.");
-        http_page_html(html, &s_pg);
+        if (s_pg.untrusted)
+            fmt_str(html, sizeof html,
+                    "<title>who is this?</title><h2>This site could not prove who it is.</h2>"
+                    "<p>%s</p><p>That can mean somebody is pretending to be it, or that the "
+                    "site is set up wrong, or that this laptop's clock is.</p>"
+                    "<p>a goes there anyway, unchecked -- type nothing private. "
+                    "backspace goes back.</p>", why);
+        else
+            fmt_str(html, sizeof html,
+                    "<title>could not open it</title><h2>That page did not come.</h2>"
+                    "<p>%s</p><p>r tries again, backspace goes back, g goes somewhere else.</p>",
+                    why[0] ? why : "Nothing answered.");
+        {
+            int untrusted = s_pg.untrusted;
+            http_page_html(html, &s_pg);
+            s_pg.untrusted = untrusted;  /* so a can still go anyway        */
+        }
         for (i = 0; where[i]; i++) s_pg.url[i] = where[i];
         s_pg.url[i] = 0;
         fmt_str(s_pg.note, sizeof s_pg.note, "%s", why);
@@ -225,10 +237,15 @@ static void go(const char *url)
     }
     s_loading = 0;
     if (s_pg.status >= 200 && s_pg.status < 300) {
-        if (s_pg.secure) fmt_str(s_pg.note, sizeof s_pg.note, "%s -- identity not checked yet",
-                                 s_pg.pq ? "encrypted, post-quantum" : "encrypted");
-        else             fmt_str(s_pg.note, sizeof s_pg.note, "%u bytes", s_pg.bytes);
-        s_pg.note_col = C_DIM;
+        if (s_pg.secure && s_pg.checked)
+            fmt_str(s_pg.note, sizeof s_pg.note, "%s, vouched for by %s",
+                    s_pg.pq ? "encrypted, post-quantum" : "encrypted", s_pg.who);
+        else if (s_pg.secure)
+            fmt_str(s_pg.note, sizeof s_pg.note, "%s -- NOT checked, could be anybody",
+                    s_pg.pq ? "encrypted, post-quantum" : "encrypted");
+        else
+            fmt_str(s_pg.note, sizeof s_pg.note, "%u bytes, not encrypted", s_pg.bytes);
+        s_pg.note_col = s_pg.secure && !s_pg.checked ? C_ACCENT : C_DIM;
     }
 }
 
@@ -397,6 +414,16 @@ void browzer_run(const char *start)
                       for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
                       u[i] = 0; go(u); } break;
         case 'h': push_history(); home(); break;
+        case 'a':                        /* anyway: past a failed proof     */
+            if (s_pg.untrusted && s_pg.url[0]) {
+                char u[PAGE_HREF_MAX + 16]; int i;
+                for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
+                u[i] = 0;
+                tls_check(0);
+                go(u);
+                tls_check(1);
+            }
+            break;
         default: break;
         }
     }

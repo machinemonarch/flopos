@@ -41,6 +41,14 @@ static void note(const char *t, u8 col)
 
 static int out_width(void) { return s_pg ? s_pg->width : term_cols() - 1; }
 
+/* What the handshake says while it checks a certificate, which on this
+ * machine takes a moment worth knowing about. */
+static void tls_note(const char *t)
+{
+    note(t, C_DIM);
+    if (!s_pg) main_pump(1);
+}
+
 static void page_line_clear(int line)
 {
     int i;
@@ -661,7 +669,9 @@ static int fetch_once(const Url *u, char *moved, int moved_max)
     }
 
     s_secure = u->secure;
+    if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->who[0] = 0; }
     if (s_secure) {
+        tls_set_note(tls_note);
         note("agreeing on a key...", C_DIM);
         if (!s_pg) main_pump(1);
         if (!tls_connect(u->host)) {
@@ -680,21 +690,34 @@ static int fetch_once(const Url *u, char *moved, int moved_max)
                 }
             }
             if (!ok) {
-                fmt_str(line, sizeof line, "The secure handshake failed: %s.", tls_why());
+                if (tls_untrusted()) {
+                    fmt_str(line, sizeof line, "It could not prove it is %s: %s.", u->host, tls_why());
+                    if (s_pg) s_pg->untrusted = 1;
+                } else
+                    fmt_str(line, sizeof line, "The secure handshake failed: %s.", tls_why());
                 note(line, C_ACCENT);
                 tcp_close();
                 return -1;
             }
         }
-        serial_printf("[tls] %s: %s, %s\n", u->host, tls_cipher(),
-                      tls_post_quantum() ? "X25519MLKEM768 (post-quantum)" : "X25519");
+        serial_printf("[tls] %s: %s, %s, %s\n", u->host, tls_cipher(),
+                      tls_post_quantum() ? "X25519MLKEM768 (post-quantum)" : "X25519",
+                      tls_checked() ? tls_who() : "NOT CHECKED");
         if (!s_pg) {
-            fmt_str(line, sizeof line, "encrypted%s -- but who is at the other end is not checked yet",
-                    tls_post_quantum() ? ", post-quantum" : "");
-            note(line, C_DIM);
+            if (tls_checked())
+                fmt_str(line, sizeof line, "encrypted%s, and it is who it says: %s vouches for it",
+                        tls_post_quantum() ? ", post-quantum" : "", tls_who());
+            else
+                fmt_str(line, sizeof line, "encrypted%s -- but NOT checked: it could be anybody",
+                        tls_post_quantum() ? ", post-quantum" : "");
+            note(line, tls_checked() ? C_DIM : C_ACCENT);
         } else {
+            int i;
             s_pg->secure = 1;
             s_pg->pq = tls_post_quantum();
+            s_pg->checked = tls_checked();
+            for (i = 0; tls_who()[i] && i < (int)sizeof s_pg->who - 1; i++) s_pg->who[i] = tls_who()[i];
+            s_pg->who[i] = 0;
         }
     }
 

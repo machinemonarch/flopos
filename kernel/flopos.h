@@ -538,7 +538,9 @@ typedef struct {
     char  (*href)[PAGE_HREF_MAX];
     int   nlinks;
     char  url[PAGE_HREF_MAX + 16];
-    char  note[72];
+    char  note[128];
+    char  who[48];                       /* who vouched for a secure page   */
+    int   checked, untrusted;
     u8    note_col;
     int   status, secure, pq;
     u32   bytes;
@@ -554,6 +556,52 @@ void   sha256_init(Sha256 *c);
 void   sha256_update(Sha256 *c, const u8 *p, u32 n);
 void   sha256_final(Sha256 *c, u8 out[32]);
 void   sha256(const u8 *p, u32 n, u8 out[32]);
+
+/* --- sha512.c: SHA-512 and SHA-384, for checking certificates ---------- */
+typedef struct { u64 h[8]; u32 len; u8 buf[128]; int fill, out; } Sha512;
+void   sha512_init(Sha512 *c, int is384);
+void   sha512_update(Sha512 *c, const u8 *p, u32 n);
+void   sha512_final(Sha512 *c, u8 *out);
+#define HASH_SHA256 1
+#define HASH_SHA384 2
+#define HASH_SHA512 3
+int    hash_len(int alg);
+void   hash_buf(int alg, const u8 *p, u32 n, u8 *out);
+
+/* --- bignum.c: modular arithmetic for signatures ------------------------ */
+#define BN_LIMBS 130                     /* 4096 bits, and a word to spare   */
+typedef struct { int n, bits; u32 m[BN_LIMBS], rr[BN_LIMBS], one[BN_LIMBS], minv; } Mont;
+int    bn_from_be(u32 *a, int n, const u8 *be, int len);
+void   bn_to_be(u8 *be, int len, const u32 *a, int n);
+int    bn_cmp(const u32 *a, const u32 *b, int n);
+int    bn_is_zero(const u32 *a, int n);
+u32    bn_add(u32 *r, const u32 *a, const u32 *b, int n);
+u32    bn_sub(u32 *r, const u32 *a, const u32 *b, int n);
+int    bn_bits(const u32 *a, int n);
+int    mont_init(Mont *M, const u8 *mod_be, int len);
+void   mont_mul(const Mont *M, u32 *r, const u32 *a, const u32 *b);
+void   mont_to(const Mont *M, u32 *r, const u32 *a);
+void   mont_from(const Mont *M, u32 *r, const u32 *a);
+void   mont_pow(const Mont *M, u32 *r, const u32 *base, const u8 *exp, int elen);
+void   mod_add(const Mont *M, u32 *r, const u32 *a, const u32 *b);
+void   mod_sub(const Mont *M, u32 *r, const u32 *a, const u32 *b);
+
+/* --- rsa.c, ecdsa.c: is this signature good? ---------------------------- */
+int    rsa_verify_pkcs1(const u8 *n, int nlen, const u8 *e, int elen,
+                        const u8 *sig, int slen, int alg, const u8 *hash);
+int    rsa_verify_pss(const u8 *n, int nlen, const u8 *e, int elen,
+                      const u8 *sig, int slen, int alg, const u8 *hash, int salt);
+#define CURVE_P256 0
+#define CURVE_P384 1
+int    ecdsa_verify(int curve, const u8 *pub, int publen,
+                    const u8 *sig, int siglen, const u8 *hash, int hlen);
+
+/* --- x509.c: is a secure site who it says it is? ------------------------ */
+int    x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
+                  char *why, int whycap);
+int    x509_check_handshake(int scheme, const u8 *content, int clen, const u8 *sig, int slen);
+const char *x509_who(void);              /* who vouched, after a good check */
+int    x509_roots(void);                 /* how many authorities are trusted */
 void   hmac_sha256(const u8 *key, u32 klen, const u8 *msg, u32 mlen, u8 out[32]);
 void   hkdf_extract(const u8 *salt, u32 slen, const u8 *ikm, u32 ilen, u8 prk[32]);
 void   hkdf_expand(const u8 prk[32], const u8 *info, u32 ilen, u8 *out, u32 olen);
@@ -614,6 +662,11 @@ int    tls_post_quantum(void);
 void   tls_offer_pq(int on);
 int    tls_pq_broke(void);
 const char *tls_cipher(void);
+void   tls_check(int on);                /* 0: go on without the proof      */
+int    tls_untrusted(void);              /* the failure: it could not prove */
+int    tls_checked(void);                /* this connection was proved      */
+const char *tls_who(void);               /* the authority that vouched      */
+void   tls_set_note(void (*fn)(const char *));
 
 /* --- el3.c -------------------------------------------------------------- */
 int    el3_start(int sock, u32 cor, u16 io);

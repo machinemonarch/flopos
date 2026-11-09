@@ -75,7 +75,7 @@ $(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) apps/crt.c 
 	      -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $(wildcard apps/$*/*.c)
 	@echo "   $*.app: $$(stat -c%s $@) bytes"
 
-$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix tools/mkimage.py README.md
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/roots.dat tools/mkimage.py README.md
 	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 
 size: $(BUILD)/kernel.bin

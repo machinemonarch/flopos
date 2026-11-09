@@ -123,6 +123,9 @@ def main():
     if os.path.exists(readme):
         run("mcopy", "-i", out_path, readme, "::README.TXT")
 
+    # The authorities secure sites are checked against (tools/mkroots.py).
+    run("mcopy", "-i", out_path, "boot/roots.dat", "::ROOTS.DAT")
+
     # Apps, each its own file: WRITE.APP for `write`.  The kernel finds
     # them by name when they are asked for, so where they land is theirs.
     for app in app_paths:

@@ -20,15 +20,16 @@
  * do not do the post-quantum one yet -- they simply pick that instead, no
  * extra round trip.
  *
- * WHAT THIS DOES NOT DO YET: check the server's certificate.  The
- * connection is encrypted and sealed, and nobody who is only listening
- * can read it -- but nothing yet establishes that the far end is the site
- * it says it is, so somebody able to intercept and answer in its place
- * could.  That needs signature checking (RSA and ECDSA) and a set of
- * trusted roots, and until it exists every fetch says so.
+ * And the server has to prove who it is.  It sends its certificate chain,
+ * which x509.c checks up to an authority in ROOTS.DAT, and then signs the
+ * handshake so far with the key in its own certificate, which is checked
+ * here.  Without both, the connection is refused and says why -- unless
+ * the person asked to go on anyway (tls_check(0)), and then everything
+ * after says it was not checked.
  * ===========================================================================
  */
 #include "flopos.h"
+#include "io.h"
 
 #define REC_MAX   (16384 + 256 + 16 + 5)
 #define HS_MAX    32768
@@ -67,7 +68,19 @@ static int s_plain_len, s_plain_pos;     /* application data not yet read   */
 static Dir s_rd, s_wr;
 static Sha256 s_transcript;
 static int s_up, s_eof;
-static char s_why[64];
+static char s_why[128];
+
+static int  s_check = 1;                 /* make the server prove itself   */
+static int  s_untrusted;                 /* the last failure was about that */
+static int  s_checked;                   /* this connection: proved        */
+static u8  *s_certmsg;                   /* its Certificate message, kept  */
+static void (*s_note)(const char *);
+
+void tls_check(int on)       { s_check = on; }
+int  tls_untrusted(void)     { return s_untrusted; }
+int  tls_checked(void)       { return s_checked; }
+const char *tls_who(void)    { return s_checked ? x509_who() : ""; }
+void tls_set_note(void (*fn)(const char *)) { s_note = fn; }
 
 const char *tls_why(void) { return s_why; }
 int tls_post_quantum(void) { return s_group == GROUP_HYBRID; }
@@ -274,11 +287,12 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
     if (s_offer_pq) { put16(m + n, GROUP_HYBRID); n += 2; }
     put16(m + n, GROUP_X25519); n += 2;
 
-    /* signature_algorithms: what the server may sign with.  Not checked
-     * yet, but a server will refuse a client that names none it has. */
+    /* signature_algorithms: what the server may sign with, which is what
+     * this machine can check -- ECDSA on P-256 and P-384, RSA-PSS for the
+     * handshake, and RSA PKCS#1 for the certificates above it. */
     {
-        static const u16 sa[] = { 0x0403, 0x0804, 0x0401, 0x0503, 0x0805,
-                                  0x0501, 0x0806, 0x0601, 0x0807 };
+        static const u16 sa[] = { 0x0403, 0x0804, 0x0503, 0x0805, 0x0806,
+                                  0x0401, 0x0501, 0x0601 };
         int k, cnt = (int)(sizeof sa / sizeof sa[0]);
         put16(m + n, 0x000d); n += 2;
         put16(m + n, (u32)(2 + 2 * cnt)); n += 2;
@@ -394,6 +408,67 @@ static void drop_message(int len)
     s_hsbuf_len -= n;
 }
 
+/* The server's certificates: copied out of the handshake buffer (which
+ * moves on), split into the chain, and checked for host. */
+static int check_certs(const char *host, const u8 *body, int len)
+{
+    const u8 *certs[8];
+    int lens[8], n = 0, at, end;
+    char reason[120];
+
+    if (!s_certmsg) s_certmsg = (u8 *)halloc(HS_MAX);
+    if (!s_certmsg || len > HS_MAX) { why("its certificates were too big for us"); return 0; }
+    memcpy8(s_certmsg, body, (usize)len);
+    body = s_certmsg;
+
+    if (len < 4) goto bad;
+    at = 1 + body[0];                            /* request context      */
+    if (at + 3 > len) goto bad;
+    end = at + 3 + (int)get24(body + at);
+    at += 3;
+    if (end > len) goto bad;
+    while (at < end && n < 8) {
+        int cl;
+        if (at + 3 > end) goto bad;
+        cl = (int)get24(body + at);
+        at += 3;
+        if (at + cl + 2 > end) goto bad;
+        certs[n] = body + at;
+        lens[n++] = cl;
+        at += cl;
+        at += 2 + (int)get16(body + at);        /* its extensions       */
+    }
+    if (s_note) s_note("checking who it is...");
+    if (!x509_check(certs, lens, n, host, reason, (int)sizeof reason)) {
+        why(reason);
+        serial_printf("[tls] %s could not prove who it is: %s\n", host, reason);
+        return 0;
+    }
+    return 1;
+bad:
+    why("its certificate message was malformed");
+    return 0;
+}
+
+/* Its signature over the handshake so far, with its certificate's key:
+ * the proof that the certificate is its own and not one it copied. */
+static int check_verify(const u8 *body, int len)
+{
+    static const char ctx[] = "TLS 1.3, server CertificateVerify";
+    u8 content[64 + 33 + 1 + 32];
+    int i, scheme, sl;
+
+    if (len < 4) return 0;
+    scheme = (int)get16(body);
+    sl = (int)get16(body + 2);
+    if (4 + sl > len) return 0;
+    for (i = 0; i < 64; i++) content[i] = 0x20;
+    for (i = 0; i < 33; i++) content[64 + i] = (u8)ctx[i];
+    content[97] = 0;
+    transcript_now(content + 98);
+    return x509_check_handshake(scheme, content, (int)sizeof content, body + 4, sl);
+}
+
 /* One more encrypted handshake record into s_hsbuf. */
 static int more_handshake(void)
 {
@@ -428,10 +503,12 @@ int tls_connect(const char *host)
     u8 cli_hs[32], srv_hs[32], cli_ap[32], srv_ap[32], zero[32], h_empty[32];
     u8 h[32], fkey[32], mac[32], fin[4 + 32];
     u8 type;
-    int len, i, mt, ml, done = 0;
+    int len, i, mt, ml, done = 0, have_cert = 0, proved = 0;
     const u8 *body;
 
     s_up = 0;
+    s_untrusted = 0;
+    s_checked = 0;
     s_eof = 0;
     s_hsbuf_len = 0;
     s_plain_len = s_plain_pos = 0;
@@ -504,6 +581,11 @@ int tls_connect(const char *host)
             continue;
         }
         if (mt == HS_FINISHED) {
+            if (s_check && (!have_cert || !proved)) {
+                why("it never proved who it is");
+                s_untrusted = 1;
+                return 0;
+            }
             /* Its proof: an HMAC, keyed from its handshake secret, of the
              * hash of every message before this one.  It matching means
              * nobody changed a byte of the handshake on the way. */
@@ -517,8 +599,24 @@ int tls_connect(const char *host)
             }
             drop_message(ml);
             done = 1;
-        } else if (mt == HS_ENC_EXT || mt == HS_CERT || mt == HS_CERT_VERIFY) {
-            drop_message(ml);            /* certificate not checked: see top */
+        } else if (mt == HS_CERT) {
+            if (s_check) {
+                if (!check_certs(host, body, ml)) { s_untrusted = 1; return 0; }
+                have_cert = 1;
+            }
+            drop_message(ml);
+        } else if (mt == HS_CERT_VERIFY) {
+            if (s_check) {
+                if (!have_cert || !check_verify(body, ml)) {
+                    why("it could not prove the certificate is its own");
+                    s_untrusted = 1;
+                    return 0;
+                }
+                proved = 1;
+            }
+            drop_message(ml);
+        } else if (mt == HS_ENC_EXT) {
+            drop_message(ml);
         } else {
             why("it sent a handshake message out of turn");
             return 0;
@@ -543,6 +641,7 @@ int tls_connect(const char *host)
     set_keys(&s_rd, srv_ap);
     set_keys(&s_wr, cli_ap);
     s_up = 1;
+    s_checked = s_check;
     return 1;
 }
 

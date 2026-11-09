@@ -23,6 +23,12 @@ was copied from any of them.
 | [NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final) | GCM, the mode AES runs in for TLS | `aes.c` |
 | [RFC 7748](https://www.rfc-editor.org/rfc/rfc7748) | X25519 | `x25519.c` |
 | [IANA TLS parameters](https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml) | Cipher suite and key group numbers | `tls.c` |
+| [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280) | X.509 certificates and chains | `x509.c` |
+| [RFC 6125](https://www.rfc-editor.org/rfc/rfc6125) | A certificate's names against a host | `x509.c` |
+| [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017) | RSA signatures, PKCS#1 and PSS | `rsa.c` |
+| [FIPS 186-5](https://csrc.nist.gov/pubs/fips/186-5/final) | ECDSA | `ecdsa.c` |
+| [SEC 2](https://www.secg.org/sec2-v2.pdf) | The P-256 and P-384 curves | `ecdsa.c` |
+| [Mozilla's CA program](https://wiki.mozilla.org/CA) | The trusted authorities | `boot/roots.dat` |
 
 ### The network
 
@@ -98,7 +104,8 @@ and no Toshiba code, firmware or text is in FLOPOS.
 |---|---|
 | [NIST ACVP test vectors](https://github.com/usnistgov/ACVP-Server) | Official ML-KEM-768 test answers |
 | [OpenSSL](https://www.openssl.org/) | Cross-checking the encryption; a local TLS test server |
-| [Python](https://www.python.org/) `hashlib` | Cross-checking SHA-3 and SHAKE |
+| [Python](https://www.python.org/) `hashlib` | Cross-checking SHA-3, SHAKE, SHA-384, SHA-512 |
+| [pyca/cryptography](https://cryptography.io/) | Test signatures and test certificate chains |
 | [QEMU](https://www.qemu.org/) | Running FLOPOS without the laptop |
 | [QEMU's PC Card code](https://github.com/proxmox/qemu/blob/master/hw/pcmcia/pcmcia.c) | Whether QEMU could emulate the 3Com card (no) |
 | [86Box](https://86box.net/) | An emulator closer to 1990s hardware |

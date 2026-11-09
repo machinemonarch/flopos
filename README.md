@@ -35,8 +35,10 @@ proxies, no JavaScript.
   and **browzer**, a small web browser that shows images as captioned
   boxes and searches through FrogFind.
 - **Speaks TLS 1.3** with X25519MLKEM768, ML-KEM-768, ChaCha20-Poly1305 and
-  AES-128-GCM, all written from the standards and checked against official
-  test vectors on the machine itself.
+  AES-128-GCM, and makes every site prove who it is: certificate chains
+  checked with RSA and ECDSA up to Mozilla's trusted authorities. All of it
+  is written from the standards and checked against official test vectors
+  on the machine itself.
 - **`write`**, a word processor with bold, italic, underline, a title and
   four headings, saving Markdown documents to the floppy, with a view for
   editing the Markdown directly.

@@ -6,6 +6,23 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.14.0 — 2026-11-09
+
+- **Secure sites have to prove who they are.** FLOPOS now checks a site's
+  certificate chain up to one of 119 trusted authorities (Mozilla's list,
+  on the floppy as ROOTS.DAT), checks the name and the dates, and makes the
+  site sign the handshake with its own key. Before, a secure page was
+  encrypted but could have been anybody.
+- `fetch` and browzer say who vouched for a site ("Let's Encrypt vouches
+  for it").
+- A site that can't prove itself is refused, with the reason. In browzer,
+  **a** goes there anyway, and the page is marked "NOT checked".
+- New code for it, all written here: RSA (both kinds of signature), ECDSA
+  on P-256 and P-384, SHA-384 and SHA-512, and a certificate reader.
+  `crypto` checks and times all of it, so the laptop can say what a check
+  costs.
+- The laptop's clock matters now: certificates are dated by it.
+
 ## 1.13.0 — 2026-11-09
 
 - **The wizard.** Before the shell there is now a very tired wizard,
