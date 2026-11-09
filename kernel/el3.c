@@ -75,12 +75,27 @@
 
 #define MANF_3COM   0x6D50               /* "3Com", as a number            */
 
+/* What to listen to. */
+#define RXF_STATION   0x01
+#define RXF_MULTICAST 0x02
+#define RXF_BROADCAST 0x04
+#define RXF_ALL       0x08
+
+/* The receive status word, and the one status bit that means "still
+ * chewing on the last command you gave me". */
+#define RX_INCOMPLETE 0x8000
+#define RX_ERROR      0x4000
+#define S_CMD_BUSY    0x1000
+
 static int  s_up;
+static const char *s_why = "not tried";
 static int  s_sock;
 static u16  s_io;
 static u8   s_mac[6];
 static u16  s_prod;
 static u16  s_manf;
+
+static void el3_discard(void);
 
 static void win(int n)
 {
@@ -113,6 +128,16 @@ static int ee_read(int addr, u16 *out)
     return 0;
 }
 
+/* Throwing the top frame away is a command, and the card is busy while it
+ * does it. */
+static void el3_discard(void)
+{
+    int guard;
+    outw((u16)(s_io + EL3_CMD), C_RX_DISCARD);
+    for (guard = 0; guard < 10000; guard++)
+        if (!(st() & S_CMD_BUSY)) return;
+}
+
 int  el3_up(void)        { return s_up; }
 u16  el3_io(void)        { return s_io; }
 int  el3_socket(void)    { return s_sock; }
@@ -130,6 +155,56 @@ const u8 *el3_mac(void)  { return s_mac; }
  * memory -- that is the card's job.  Neither works without the other, and
  * getting only one right gives a card that is there and silent.
  */
+/* The two things worth keeping out of a card's own description: where its
+ * switch-on register is, and whether it claims to be a network card. */
+typedef struct { u32 cor; int func; } Found;
+
+static int el3_tuple(u8 code, const u8 *body, int len, void *ctx)
+{
+    Found *f = (Found *)ctx;
+    int i;
+
+    if (code == CISTPL_FUNCID && len >= 1) f->func = body[0];
+    if (code == CISTPL_CONFIG && len >= 3) {
+        int nb = (body[0] & 3) + 1;
+        u32 base = 0;
+        for (i = 0; i < nb && 2 + i < len; i++)
+            base |= (u32)body[2 + i] << (8 * i);
+        f->cor = base;
+    }
+    return 0;
+}
+
+#define FUNC_NETWORK 6
+#define EL3_IO_BASE  0x300               /* Toshiba's own known-good slot  */
+
+/* Look in every socket for something that says it is a network card, and
+ * take the first one.  Which socket it happens to be in is the card
+ * owner's business, not ours. */
+static int el3_find(void)
+{
+    int n = pcic_probe(), sock;
+
+    if (!n) { s_why = "no PC Card adapter answered"; return 0; }
+
+    for (sock = 0; sock < n; sock++) {
+        Found f;
+        if (!pcic_present(sock)) continue;
+        if (!pcic_power_up(sock, 1)) { pcic_power_down(sock); continue; }
+
+        f.cor = 0; f.func = -1;
+        if (pcic_cis_walk(sock, el3_tuple, &f) > 0 &&
+            f.func == FUNC_NETWORK && f.cor) {
+            return el3_start(sock, f.cor, EL3_IO_BASE);
+        }
+        pcic_power_down(sock);
+    }
+    s_why = "no network card in either socket";
+    return 0;
+}
+
+const char *el3_why(void) { return s_why; }
+
 int el3_start(int sock, u32 cor, u16 io)
 {
     u16 w;
@@ -139,8 +214,11 @@ int el3_start(int sock, u32 cor, u16 io)
     s_sock = sock;
     s_io = io;
 
-    if (!pcic_present(sock)) return 0;
-    if (!pcic_power_up(sock, 1)) return 0;
+    if (!pcic_present(sock)) { s_why = "the socket is empty"; return 0; }
+    if (!pcic_power_up(sock, 1)) {
+        s_why = "the card never came ready after power";
+        return 0;
+    }
 
     /* Reset the card through its own configuration register first, so it
      * does not matter what state anything left it in. */
@@ -149,7 +227,10 @@ int el3_start(int sock, u32 cor, u16 io)
     pcic_attr_write(sock, cor, 0x00);
     delay_ms(20);
 
-    if (!pcic_map_io(sock, io, 16)) return 0;
+    if (!pcic_map_io(sock, io, 16)) {
+        s_why = "the socket would not take an I/O window";
+        return 0;
+    }
     pcic_set_irq(sock, 0);               /* polled, for now                */
 
     /* Configuration one: the entry the card marked as its default. */
@@ -165,17 +246,23 @@ int el3_start(int sock, u32 cor, u16 io)
     /* If nothing is there the bus floats and every read is 0xFFFF.  That
      * is the one answer that means "no card", and it has to be checked
      * before anything is believed. */
-    if (st() == 0xFFFF) return 0;
+    if (st() == 0xFFFF) {
+        s_why = "nothing answers at the I/O address";
+        return 0;
+    }
 
-    if (!ee_read(EE_MANF_ID, &s_manf)) return 0;
-    if (!ee_read(EE_PROD_ID, &s_prod)) return 0;
-    if (s_manf != MANF_3COM) return 0;
+    if (!ee_read(EE_MANF_ID, &s_manf)) { s_why = "its eeprom never answered"; return 0; }
+    if (!ee_read(EE_PROD_ID, &s_prod)) { s_why = "its eeprom stopped halfway"; return 0; }
+    if (s_manf != MANF_3COM) { s_why = "the eeprom says it is not a 3Com"; return 0; }
 
     /* The address, three words of it, most significant byte first inside
      * each word -- which is the opposite way round from everything else on
      * this machine, so it is spelled out rather than cast. */
     for (i = 0; i < 3; i++) {
-        if (!ee_read(EE_ADDR0 + i, &w)) return 0;
+        if (!ee_read(EE_ADDR0 + i, &w)) {
+            s_why = "it would not give up its address";
+            return 0;
+        }
         s_mac[i * 2]     = (u8)(w >> 8);
         s_mac[i * 2 + 1] = (u8)(w & 0xFF);
     }
@@ -186,20 +273,97 @@ int el3_start(int sock, u32 cor, u16 io)
     for (i = 0; i < 6; i++)
         outb((u16)(s_io + W2_ADDR + i), s_mac[i]);
 
-    /* Quiet everything down and leave it in the window it runs in.  No
-     * interrupts, no statistics, nothing being received yet -- that is the
-     * next piece of work, and a card that is receiving into a FIFO nobody
-     * empties is a card that wedges. */
+    /* No interrupts and no statistics: everything is polled, so an
+     * interrupt would only be something else to get wrong. */
     outw((u16)(s_io + EL3_CMD), C_SET_MASK | 0);
     outw((u16)(s_io + EL3_CMD), C_SET_ZERO | 0);
     outw((u16)(s_io + EL3_CMD), C_ACK_INTR | 0x7FF);
     outw((u16)(s_io + EL3_CMD), C_STATS_DIS);
-    outw((u16)(s_io + EL3_CMD), C_RX_DIS);
-    outw((u16)(s_io + EL3_CMD), C_TX_DIS);
+
+    /* Listen for things addressed to us and for things addressed to
+     * everybody, and nothing else.  Promiscuous would be easier and is
+     * exactly the sort of easier that ends up shipped. */
+    outw((u16)(s_io + EL3_CMD), C_RX_FILTER | RXF_STATION | RXF_BROADCAST);
+    outw((u16)(s_io + EL3_CMD), C_RX_RESET);
+    delay_ms(2);
+    outw((u16)(s_io + EL3_CMD), C_TX_RESET);
+    delay_ms(2);
+    outw((u16)(s_io + EL3_CMD), C_RX_ENA);
+    outw((u16)(s_io + EL3_CMD), C_TX_ENA);
     win(1);
+    s_why = "up";
 
     s_up = 1;
     return 1;
+}
+
+/* ---- sending ----------------------------------------------------------
+ * The transmit FIFO wants four bytes of preamble before the frame -- the
+ * length, and two bytes of nothing -- and then the frame itself padded out
+ * to a multiple of four.  Everything goes through one port.
+ */
+static int el3_send(const u8 *frame, int len)
+{
+    int words = (len + 1) / 2;
+    int i, guard;
+
+    if (!s_up) return 0;
+    win(1);
+
+    /* Room for the frame and its preamble, or wait until there is.  The
+     * card frees space as the wire drains, so this is short or never. */
+    for (guard = 0; guard < 10000; guard++) {
+        if (inw((u16)(s_io + W1_TX_FREE)) >= len + 4) break;
+        if (guard > 2000) return 0;
+    }
+
+    outw((u16)(s_io + W1_TX_FIFO), (u16)len);
+    outw((u16)(s_io + W1_TX_FIFO), 0);
+    outsw((u16)(s_io + W1_TX_FIFO), frame, words);
+    /* Pad to a whole number of four-byte units, which is what the FIFO
+     * counts in whatever the length said. */
+    for (i = words * 2; i & 3; i += 2) outw((u16)(s_io + W1_TX_FIFO), 0);
+
+    /* The transmit status is a stack of one byte per attempt; read until
+     * it stops giving them, and clear each as it comes. */
+    for (guard = 0; guard < 32; guard++) {
+        u8 ts = inb((u16)(s_io + W1_TX_STAT));
+        if (!(ts & 0x80)) break;
+        outb((u16)(s_io + W1_TX_STAT), 0);
+        if (ts & 0x38) {                 /* jabber, underrun, max collisions */
+            outw((u16)(s_io + EL3_CMD), C_TX_RESET);
+            outw((u16)(s_io + EL3_CMD), C_TX_ENA);
+            return 0;
+        }
+    }
+    return len;
+}
+
+/* ---- receiving --------------------------------------------------------
+ * One status word says whether a whole frame is waiting and how long it
+ * is.  The frame comes out of the same single port it went in, and then
+ * the card has to be told to throw it away before the next one appears.
+ */
+static int el3_recv(u8 *frame, int max)
+{
+    u16 rs;
+    int len, guard;
+
+    if (!s_up) return 0;
+    win(1);
+
+    rs = inw((u16)(s_io + W1_RX_STAT));
+    if (rs & RX_INCOMPLETE) return 0;    /* nothing whole yet              */
+
+    if (rs & RX_ERROR) { el3_discard(); return 0; }
+
+    len = rs & 0x7FF;
+    if (len <= 0 || len > max) { el3_discard(); return 0; }
+
+    insw((u16)(s_io + W1_RX_FIFO), frame, (len + 1) / 2);
+    el3_discard();
+    (void)guard;
+    return len;
 }
 
 void el3_stop(void)
@@ -208,3 +372,10 @@ void el3_stop(void)
     outw((u16)(s_io + EL3_CMD), C_RESET);
     s_up = 0;
 }
+
+static const u8 *el3_mac_ro(void) { return s_mac; }
+static int el3_up_ro(void) { return el3_find(); }
+
+const Nic g_nic_el3 = {
+    "3C589", el3_up_ro, el3_stop, el3_mac_ro, el3_send, el3_recv, el3_why
+};

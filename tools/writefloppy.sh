@@ -106,7 +106,6 @@ if [ -z "$DEVICE" ]; then
     [ -n "$found" ] || die "No 1.44MB device found. Is the drive plugged in with a disk in it?
   Name it yourself if you are sure: $(basename "${BASH_SOURCE[0]}") /dev/sdX"
     DEVICE="$found"
-    note "Found $DEVICE"
 fi
 
 [ -b "$DEVICE" ] || die "$DEVICE is not a block device."
@@ -126,6 +125,37 @@ if lsblk -n -o NAME "$DEVICE" | tail -n +2 | grep -q .; then
 fi
 
 model=$(lsblk -d -n -o MODEL,TRAN "$DEVICE" 2>/dev/null | xargs || true)
+
+# --- say so, loudly -------------------------------------------------------
+# Everything above this point is a refusal waiting to happen: the wrong
+# size, not a block device, anything with a partition or a holder hanging
+# off it, and the script is already dead. So reaching this line means the
+# target is a bare device of exactly 1,474,560 bytes and nothing else,
+# which is a floppy and cannot be a disk you care about.
+#
+# It is printed big because the person reading it is tired and the cost of
+# skimming past a quiet line is somebody's data.
+shout() {
+    local green reset
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        green=$'\033[1;92m'; reset=$'\033[0m'
+    else
+        green=""; reset=""
+    fi
+    printf '\n%s' "$green"
+    if command -v figlet >/dev/null 2>&1; then
+        figlet -w "$(tput cols 2>/dev/null || echo 80)" -f big "YES" 2>/dev/null \
+            || figlet "YES"
+    else
+        printf '  YES\n'
+    fi
+    printf '%s\n' "$reset"
+    printf '%s' "$green"
+    printf '  THE DISCOVERED DEVICE IS TOTALLY A FLOPPY DISK!\n'
+    printf '  Typing "YES" to write to it is TOTALLY SAFE, BOSS.\n'
+    printf '%s\n' "$reset"
+}
+shout
 
 # --- confirm --------------------------------------------------------------
 step "About to write FLOPOS to a floppy disk"

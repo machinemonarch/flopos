@@ -12,6 +12,22 @@ static inline u8 inb(u16 port)
 static inline void outw(u16 port, u16 v)
 { __asm__ __volatile__("outw %0, %1" :: "a"(v), "Nd"(port)); }
 
+/* Block moves straight between a port and memory.  The card FIFOs are a
+ * single address that has to be read or written hundreds of times, and
+ * the processor has an instruction for exactly that which is several
+ * times quicker than a loop around inw. */
+static inline void outsw(u16 port, const void *buf, int n)
+{ __asm__ __volatile__("rep outsw" : "+S"(buf), "+c"(n) : "d"(port)); }
+
+static inline void insw(u16 port, void *buf, int n)
+{ __asm__ __volatile__("rep insw" : "+D"(buf), "+c"(n) : "d"(port) : "memory"); }
+
+static inline void outsl(u16 port, const void *buf, int n)
+{ __asm__ __volatile__("rep outsl" : "+S"(buf), "+c"(n) : "d"(port)); }
+
+static inline void insl(u16 port, void *buf, int n)
+{ __asm__ __volatile__("rep insl" : "+D"(buf), "+c"(n) : "d"(port) : "memory"); }
+
 static inline u16 inw(u16 port)
 { u16 v; __asm__ __volatile__("inw %1, %0" : "=a"(v) : "Nd"(port)); return v; }
 
