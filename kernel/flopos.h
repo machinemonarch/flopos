@@ -453,6 +453,16 @@ int          net_send(const u8 *frame, int len);
 int          net_recv(u8 *frame, int max);
 int          net_frame_begin(u8 *f, const u8 *to, u16 type);
 
+/* --- ip.c --------------------------------------------------------------- */
+void   ip_configure(u32 addr, u32 mask, u32 gw);
+u32    ip_addr(void);
+u32    ip_gateway(void);
+u32    ip_netmask(void);
+void   ip_poll(void);
+const u8 *ip_route(u32 to, int wait_ms);
+int    ip_ping(u32 to, int seq, int wait_ms);
+int    ip_parse(const char *s, u32 *out);
+
 /* --- el3.c -------------------------------------------------------------- */
 int    el3_start(int sock, u32 cor, u16 io);
 void   el3_stop(void);

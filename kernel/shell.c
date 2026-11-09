@@ -618,6 +618,95 @@ static void cmd_dump(void)
     }
 }
 
+/* ---- ping -------------------------------------------------------------
+ * The smallest round trip there is.  If an echo comes back then the card
+ * works, the wire works, finding who is behind an address works, the
+ * checksums are right, and somebody out there agrees we exist.  Almost
+ * everything can be wrong in a way that still lets a frame leave; very
+ * little can be wrong in a way that lets one come back.
+ */
+static void print_ip(u32 a)
+{
+    term_printf("%u.%u.%u.%u", (a >> 24) & 0xFF, (a >> 16) & 0xFF,
+                (a >> 8) & 0xFF, a & 0xFF);
+}
+
+static void cmd_ping(void)
+{
+    u32 to;
+    int i, got = 0, best = -1;
+
+    if (s_argc < 2) {
+        say("Ping what?");
+        term_colour(C_DIM);
+        term_print("  ping ");
+        print_ip(ip_gateway());
+        term_newline();
+        return;
+    }
+
+    if (!ip_parse(s_argv[1], &to)) {
+        say("That is not an address I can read.");
+        say_dim("Four numbers and three dots, for now. Names come later.");
+        return;
+    }
+
+    if (!net_up()) {
+        say("No network card came up.");
+        term_colour(C_DIM);
+        term_printf("  %s", net_why());
+        term_newline();
+        return;
+    }
+
+    for (i = 1; i <= 4; i++) {
+        int ms = ip_ping(to, i, 1000);
+
+        term_colour(ms >= 0 ? C_TEXT : C_DIM);
+        if (ms >= 0) {
+            got++;
+            if (best < 0 || ms < best) best = ms;
+            term_print("reply from ");
+            print_ip(to);
+            term_printf("  %u ms", (u32)ms);
+        } else if (ms == -2) {
+            term_print("nobody admits to ");
+            print_ip(to);
+        } else if (ms == -3) {
+            term_print("the card would not send it");
+        } else {
+            term_print("no answer");
+        }
+        term_newline();
+    }
+
+    term_colour(got ? C_BRIGHT : C_ACCENT);
+    if (got) term_printf("%u of 4 came back, best %u ms", (u32)got, (u32)best);
+    else     term_print("Nothing came back.");
+    term_newline();
+}
+
+/* Where we think we are.  No asking the network yet -- that is DHCP and
+ * it is its own piece of work. */
+static void cmd_ip(void)
+{
+    u32 a, m, g;
+
+    if (s_argc >= 4) {
+        if (!ip_parse(s_argv[1], &a) || !ip_parse(s_argv[2], &m) ||
+            !ip_parse(s_argv[3], &g)) {
+            say("Three addresses: mine, the mask, the way out.");
+            return;
+        }
+        ip_configure(a, m, g);
+    }
+
+    term_colour(C_TEXT);
+    term_print("address  "); print_ip(ip_addr());     term_newline();
+    term_print("mask     "); print_ip(ip_netmask());  term_newline();
+    term_print("way out  "); print_ip(ip_gateway());  term_newline();
+}
+
 /* ---- how big the picture is -------------------------------------------
  * 320x200 has to be stretched by two and a half across and three down to
  * reach an 800x600 panel, and neither is a whole number, so every line
@@ -1187,6 +1276,7 @@ static const Cmd s_cmds[] = {
     { "learned", "what you have taught me",      cmd_learned },
     { "remember","write it all to the disk",     cmd_remember},
     { "journal", "what I have written down",     cmd_journal },
+    { "ping",    "is anybody out there",         cmd_ping    },
     { "report",  "tell Claude how you are",      cmd_report  },
     { "bye",     "write everything down and stop", cmd_bye   },
     { "reboot",  "start the machine again",      cmd_reboot  },
@@ -1204,6 +1294,7 @@ static const Cmd s_diag[] = {
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "dump",    "show me what is at an address",cmd_dump    },
     { "net",     "wake the network card up",     cmd_net     },
+    { "ip",      "where we think we are",        cmd_ip      },
 };
 
 static int s_diag_count(void)

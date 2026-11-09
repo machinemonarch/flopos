@@ -163,6 +163,11 @@ void kmain(void)
 
         t = ms_now();
 
+        /* Anything that arrived on the wire.  Cheap when there is nothing
+         * there, which is almost always, and it means the machine answers
+         * when something asks after it rather than only when we ask. */
+        if (net_ready()) ip_poll();
+
         /* Characters from the serial line are treated exactly as if they
          * had been typed here, so the far end can drive the machine. */
         {
