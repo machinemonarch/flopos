@@ -41,6 +41,7 @@ static u8  *s_hi;                        /* the 800x600 canvas             */
 static volatile u8 *s_lfb;               /* where the card displays it     */
 static u16  s_hmode;
 static int  s_composed;          /* the background is already up    */
+static u32  s_frames;            /* how many have reached the card  */
 #define HI_W 800
 #define HI_H 600
 
@@ -123,6 +124,15 @@ void vga_compose(void)
 /* Ask the card for 800x600 in 256 colours with the whole screen as one
  * flat stretch of memory.  Returns 0 and changes nothing if it cannot,
  * which leaves everything exactly as it was. */
+/* Breadcrumbs.  These go straight down the wire rather than through the
+ * terminal, because the terminal's output only becomes visible when a
+ * frame is drawn, and the whole question here is whether a frame can be
+ * drawn at all. */
+static void say_step(const char *what)
+{
+    serial_printf("[vga] %s\n", what);
+}
+
 int vga_go_big(void)
 {
     VbeMode m;
@@ -130,7 +140,8 @@ int vga_go_big(void)
     u32 r;
 
     if (s_hi) return 1;
-    if (!vbe_probe()) return 0;
+    say_step("asking what the card offers");
+    if (!vbe_probe()) { say_step("no vesa"); return 0; }
 
     for (i = 0; i < 128; i++) {
         int mode = vbe_mode_at(i);
@@ -151,15 +162,41 @@ int vga_go_big(void)
     s_hi = (u8 *)halloc(HI_W * HI_H + 1024);
     memset8(s_hi, 0, HI_W * HI_H);
 
+    /* Stop the panel stretching before changing mode, not after.  At
+     * 800x600 the picture is already the size of the screen, so there is
+     * nothing to stretch, and a Chips part left holding a ratio that no
+     * longer describes anything is a good way to wedge the part that
+     * drives the screen -- which is also the part we are about to write
+     * half a megabyte to. */
+    if (panel_present()) panel_set_wide(0);
+
+    say_step("mode set");
+
     /* 0x4000 on the mode number is what asks for the flat stretch. */
     r = bios_int(0x10, 0x4F02, (u16)(m.mode | 0x4000), 0, 0, 0, 0);
-    if ((r & 0xFFFF) != 0x004F) { s_hi = 0; return 0; }
+    if ((r & 0xFFFF) != 0x004F) { s_hi = 0; say_step("mode refused"); return 0; }
 
     s_lfb = (volatile u8 *)m.lfb;
     s_hmode = m.mode;
     s_composed = 0;
+
+    /* Sixteen bytes before half a million.  If the card's memory does not
+     * answer, this is where the machine stops, and the wire will have said
+     * so -- which is the difference between a bug I can find and a bug I
+     * can only speculate about. */
+    {
+        int i, ok = 1;
+        say_step("touching the frame buffer");
+        for (i = 0; i < 16; i++) s_lfb[i] = (u8)(i * 17);
+        for (i = 0; i < 16; i++) if (s_lfb[i] != (u8)(i * 17)) ok = 0;
+        serial_printf("[vga] frame buffer at %x reads back %s\n",
+                      (u32)m.lfb, ok ? "correctly" : "WRONG");
+    }
     s_retrace_ok = 0;                    /* a different chip drives it now */
+    say_step("palette");
     vga_set_palette(s_current);          /* the mode change cleared it     */
+    say_step("up");
+    s_frames = 0;
     return 1;
 }
 
@@ -171,6 +208,7 @@ void vga_go_small(void)
     if (!s_hi) return;
     bios_int(0x10, 0x0013, 0, 0, 0, 0, 0);
     s_hi = 0;
+    if (panel_present()) panel_set_wide(1);   /* 13h needs it again       */
     s_retrace_ok = 1;
     vga_set_palette(s_current);
 }
@@ -183,7 +221,14 @@ void vga_present(void)
          * big one.  Blow it up for them. */
         if (!s_composed) vga_compose();
         s_composed = 0;
+
+        /* The first three frames each say so before and after.  If the
+         * machine dies on the way to the screen, the wire ends mid-pair
+         * and names the frame it died on. */
+        if (s_frames < 3) serial_printf("[vga] frame %u out\n", s_frames);
         memcpy32((void *)s_lfb, s_hi, (HI_W * HI_H) / 4);
+        if (s_frames < 3) serial_printf("[vga] frame %u done\n", s_frames++);
+        else s_frames++;
         return;
     }
     vga_wait_retrace();

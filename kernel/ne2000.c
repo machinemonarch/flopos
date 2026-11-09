@@ -1,0 +1,223 @@
+/* ===========================================================================
+ * ne2000.c -- the other card, the one that only exists in QEMU.
+ *
+ * There is no 3C589 in any emulator and no PC Card socket either, so
+ * everything that gets built on top of a network card -- finding other
+ * machines, addressing them, holding a conversation -- would have to be
+ * written blind and posted to Sweden on a floppy to find out whether it
+ * worked.  An NE2000 is a card QEMU does have.  Teaching FLOPOS to drive
+ * one costs two hundred lines and buys the ability to test every line
+ * above the card against a real network.
+ *
+ * The chip is a National DP8390 with sixteen kilobytes of memory behind
+ * it.  Its registers are paged, like the 3Com's are windowed, and for the
+ * same reason: not enough addresses.  Its memory is reached through a
+ * hatch rather than directly -- set an address and a count, then read or
+ * write one port that many times -- which is slower than it sounds and
+ * was state of the art in 1990.
+ *
+ * Register numbers and bit meanings are the published DP8390 interface.
+ * ===========================================================================
+ */
+#include "flopos.h"
+#include "io.h"
+
+#define NE_BASE   0x300                  /* where QEMU puts ne2k_isa       */
+
+#define R_CMD     0x00
+#define R_DATA    0x10                   /* the hatch into card memory     */
+#define R_RESET   0x1F
+
+/* Page 0, writing. */
+#define R_PSTART  0x01
+#define R_PSTOP   0x02
+#define R_BNRY    0x03
+#define R_TPSR    0x04
+#define R_TBCR0   0x05
+#define R_TBCR1   0x06
+#define R_ISR     0x07
+#define R_RSAR0   0x08
+#define R_RSAR1   0x09
+#define R_RBCR0   0x0A
+#define R_RBCR1   0x0B
+#define R_RCR     0x0C
+#define R_TCR     0x0D
+#define R_DCR     0x0E
+#define R_IMR     0x0F
+/* Page 0, reading. */
+#define R_TSR     0x04
+#define R_RSR     0x0C
+/* Page 1. */
+#define R_PAR0    0x01
+#define R_CURR    0x07
+
+#define CMD_STOP  0x01
+#define CMD_START 0x02
+#define CMD_TXP   0x04
+#define CMD_RD_READ  0x08
+#define CMD_RD_WRITE 0x10
+#define CMD_RD_ABORT 0x20
+#define CMD_PAGE1 0x40
+
+#define ISR_PRX   0x01
+#define ISR_PTX   0x02
+#define ISR_RST   0x80
+#define ISR_RDC   0x40
+
+/* How the sixteen kilobytes are split.  Six pages for sending, which is
+ * four more than one frame needs, and the rest a ring for receiving. */
+#define TX_PAGE   0x40
+#define RX_START  0x46
+#define RX_STOP   0x80
+
+static int s_up;
+static u8  s_mac[6];
+static u8  s_next;                       /* where to read the ring next    */
+static const char *s_why = "not tried";
+
+static u8   rd(int r)        { return inb((u16)(NE_BASE + r)); }
+static void wr(int r, u8 v)  { outb((u16)(NE_BASE + r), v); }
+
+/* Move bytes out of card memory through the hatch. */
+static void dma_in(u16 addr, void *buf, int len)
+{
+    wr(R_ISR, ISR_RDC);
+    wr(R_RBCR0, (u8)(len & 0xFF));
+    wr(R_RBCR1, (u8)(len >> 8));
+    wr(R_RSAR0, (u8)(addr & 0xFF));
+    wr(R_RSAR1, (u8)(addr >> 8));
+    wr(R_CMD, CMD_RD_READ | CMD_START);
+    insw((u16)(NE_BASE + R_DATA), buf, (len + 1) / 2);
+}
+
+static void dma_out(u16 addr, const void *buf, int len)
+{
+    int guard;
+
+    wr(R_ISR, ISR_RDC);
+    wr(R_RBCR0, (u8)(len & 0xFF));
+    wr(R_RBCR1, (u8)(len >> 8));
+    wr(R_RSAR0, (u8)(addr & 0xFF));
+    wr(R_RSAR1, (u8)(addr >> 8));
+    wr(R_CMD, CMD_RD_WRITE | CMD_START);
+    outsw((u16)(NE_BASE + R_DATA), buf, (len + 1) / 2);
+
+    for (guard = 0; guard < 100000; guard++)
+        if (rd(R_ISR) & ISR_RDC) break;
+}
+
+static const u8 *ne_mac(void) { return s_mac; }
+static const char *ne_why(void) { return s_why; }
+
+static int ne_start(void)
+{
+    u8 prom[32];
+    int i, guard;
+
+    s_up = 0;
+
+    /* Reading the reset port and writing it back is how this part is told
+     * to start again.  An absent card floats the bus, so the bit that is
+     * supposed to come up never does and we leave quickly. */
+    outb(NE_BASE + R_RESET, inb(NE_BASE + R_RESET));
+    for (guard = 0; guard < 10000; guard++)
+        if (rd(R_ISR) & ISR_RST) break;
+    if (guard >= 10000) { s_why = "nothing answers at 300"; return 0; }
+
+    wr(R_CMD, CMD_PAGE1 * 0 | CMD_RD_ABORT | CMD_STOP);
+    wr(R_DCR, 0x49);                     /* sixteen bits at a time         */
+    wr(R_RBCR0, 0); wr(R_RBCR1, 0);
+    wr(R_RCR, 0x20);                     /* hear nothing, for now          */
+    wr(R_TCR, 0x02);                     /* talk to itself, for now        */
+
+    /* The address is in a small memory on the card, and in sixteen-bit
+     * mode every byte of it arrives twice, so only every other one is
+     * real. */
+    dma_in(0, prom, 32);
+    for (i = 0; i < 6; i++) s_mac[i] = prom[i * 2];
+
+    if ((s_mac[0] | s_mac[1] | s_mac[2]) == 0 && s_mac[3] == 0) {
+        s_why = "the card has no address";
+        return 0;
+    }
+
+    wr(R_TPSR, TX_PAGE);
+    wr(R_PSTART, RX_START);
+    wr(R_PSTOP, RX_STOP);
+    wr(R_BNRY, RX_START);
+    s_next = RX_START + 1;
+
+    wr(R_CMD, CMD_PAGE1 | CMD_RD_ABORT | CMD_STOP);
+    for (i = 0; i < 6; i++) wr(R_PAR0 + i, s_mac[i]);
+    wr(R_CURR, s_next);
+    wr(R_CMD, CMD_RD_ABORT | CMD_STOP);
+
+    wr(R_ISR, 0xFF);
+    wr(R_IMR, 0x00);                     /* polled, like the other one     */
+    wr(R_TCR, 0x00);                     /* out loud now                   */
+    wr(R_RCR, 0x04);                     /* us, and everybody              */
+    wr(R_CMD, CMD_RD_ABORT | CMD_START);
+
+    s_up = 1;
+    s_why = "up";
+    return 1;
+}
+
+static void ne_stop(void)
+{
+    if (!s_up) return;
+    wr(R_CMD, CMD_RD_ABORT | CMD_STOP);
+    s_up = 0;
+}
+
+static int ne_send(const u8 *frame, int len)
+{
+    int guard;
+
+    if (!s_up) return 0;
+    if (len < 60) len = 60;              /* the wire has a minimum         */
+
+    dma_out(TX_PAGE << 8, frame, len);
+    wr(R_TBCR0, (u8)(len & 0xFF));
+    wr(R_TBCR1, (u8)(len >> 8));
+    wr(R_CMD, CMD_RD_ABORT | CMD_TXP | CMD_START);
+
+    for (guard = 0; guard < 100000; guard++) {
+        if (rd(R_ISR) & ISR_PTX) { wr(R_ISR, ISR_PTX); return len; }
+    }
+    return 0;
+}
+
+/* Each frame in the ring has four bytes in front of it: how it went, which
+ * page the next one starts on, and how long it is counting those four. */
+static int ne_recv(u8 *frame, int max)
+{
+    u8 hdr[4], curr;
+    int len;
+
+    if (!s_up) return 0;
+
+    wr(R_CMD, CMD_PAGE1 | CMD_RD_ABORT | CMD_START);
+    curr = rd(R_CURR);
+    wr(R_CMD, CMD_RD_ABORT | CMD_START);
+
+    if (curr == s_next) return 0;        /* nothing new in the ring        */
+
+    dma_in((u16)(s_next << 8), hdr, 4);
+    len = (hdr[2] | (hdr[3] << 8)) - 4;
+
+    if (len > 0 && len <= max && (hdr[0] & 0x01))
+        dma_in((u16)((s_next << 8) + 4), frame, len);
+    else
+        len = 0;
+
+    s_next = hdr[1];
+    if (s_next < RX_START || s_next >= RX_STOP) s_next = RX_START;
+    wr(R_BNRY, (u8)(s_next == RX_START ? RX_STOP - 1 : s_next - 1));
+
+    return len;
+}
+
+const Nic g_nic_ne2000 = {
+    "NE2000", ne_start, ne_stop, ne_mac, ne_send, ne_recv, ne_why
+};

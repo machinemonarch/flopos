@@ -1020,71 +1020,26 @@ static void cmd_card(void)
 }
 
 /* ---- the network card -------------------------------------------------
- * Finds the 3Com card in whichever socket it is in, reads its
- * configuration register address out of its own CIS rather than being
- * told, switches it on and asks it for its address.
- *
- * Getting the address back is the whole point of this step.  It is the
- * first thing that can only have come from the card: the maker and model
- * are printed in a table on the card, but the address is unique to the
- * one in your hand, and reading it means every layer underneath -- socket
- * power, the configuration register, the I/O window, the command register
- * and the EEPROM -- is right.
+ * net.c decides which card answered; this only asks.  Getting the address
+ * back is the point of the whole exercise: the maker and model are
+ * printed on the card, but the address belongs to the one in your hand,
+ * so reading it proves every layer underneath is right.
  */
-static int net_cor(int sock, u32 *cor, int *is_net)
-{
-    CardInfo ci;
-
-    memset8((u8 *)&ci, 0, sizeof ci);
-    ci.func = -1;
-    if (pcic_cis_walk(sock, cis_tuple, &ci) <= 0) return 0;
-    *cor = ci.cfg_base;
-    *is_net = (ci.func == 6);
-    return ci.cfg_base != 0;
-}
-
 static void cmd_net(void)
 {
-    int n = pcic_probe();
-    int sock, is_net = 0;
-    u32 cor = 0;
-    int found = -1;
     const u8 *m;
     int i;
 
-    if (!n) { say("No PC Card adapter answered."); return; }
-
-    for (sock = 0; sock < n; sock++) {
-        if (!pcic_present(sock)) continue;
-        if (!pcic_power_up(sock, 1)) continue;
-        if (net_cor(sock, &cor, &is_net) && is_net) { found = sock; break; }
-        pcic_power_down(sock);
-    }
-
-    if (found < 0) {
-        say("No network card in either socket.");
-        return;
-    }
-
-    term_colour(C_DIM);
-    term_printf("socket %u, switch-on register at %x", (u32)found, cor);
-    term_newline();
-
-    if (!el3_start(found, cor, 0x300)) {
+    if (!net_up()) {
         term_colour(C_ACCENT);
-        say("It would not come up.");
+        say("No network card came up.");
         term_colour(C_DIM);
-        term_printf("io %x, status %x", (u32)0x300,
-                    (u32)pcic_status(found));
+        term_printf("  %s", net_why());
         term_newline();
-        term_printf("option register reads back %x",
-                    (u32)pcic_attr_read(found, cor));
-        term_newline();
-        pcic_power_down(found);
         return;
     }
 
-    m = el3_mac();
+    m = net_mac();
     term_colour(C_BRIGHT);
     term_print("address ");
     for (i = 0; i < 6; i++) {
@@ -1093,11 +1048,10 @@ static void cmd_net(void)
     }
     term_newline();
     term_colour(C_TEXT);
-    term_printf("maker %x  product %x  at io %x",
-                (u32)el3_maker(), (u32)el3_product(), (u32)el3_io());
+    term_printf("card    %s", net_name());
     term_newline();
     term_colour(C_DIM);
-    say_dim("It is awake. It cannot say anything yet.");
+    say_dim("It is awake. It has not been asked to say anything yet.");
 }
 
 
