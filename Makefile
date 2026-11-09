@@ -79,15 +79,19 @@ shot: $(IMG)
 write: $(IMG)
 	tools/writefloppy.sh $(DEV)
 
-# Every image handed over gets its own number and its own archived copy.
+# Every image handed over gets its own number, its own archived copy, and
+# its own notes.  Nothing is bumped or built unless CHANGELOG.md says what
+# changed; the notes are stamped with the version only once the image exists.
 release:
-	@v=$$($(PYTHON) tools/release.py $(PART)) && \
+	@$(PYTHON) tools/changelog.py check && \
+	 v=$$($(PYTHON) tools/release.py $(PART)) && \
 	 $(MAKE) --no-print-directory clean >/dev/null && \
 	 $(MAKE) --no-print-directory all && \
 	 mkdir -p releases && \
 	 cp $(IMG) releases/flopos-$$v.img && \
-	 cp -f $(IMG).used releases/flopos-$$v.img.used 2>/dev/null || true; \
-	 echo "   released flopos-$$v.img"
+	 { cp -f $(IMG).used releases/flopos-$$v.img.used 2>/dev/null || true; } && \
+	 $(PYTHON) tools/changelog.py stamp $$v releases/flopos-$$v.txt && \
+	 echo "   released flopos-$$v.img, notes in releases/flopos-$$v.txt"
 
 clean:
 	rm -rf $(OBJDIR) $(BUILD)/*.bin $(BUILD)/*.img
