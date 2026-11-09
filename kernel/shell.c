@@ -568,14 +568,6 @@ static void cmd_quirks(void)
  * those have a linear frame buffer, because that one bit decides how the
  * whole of the drawing code has to be written.
  */
-/* ---- the whole panel --------------------------------------------------
- * 320x200 has to be stretched by two and a half across and three down to
- * reach an 800x600 panel, and neither is a whole number, so every line
- * lands on one row here and two there.  At 800x600 nothing is stretched.
- * The background still comes from the small buffer, because it is a
- * gradient and blowing it up costs nothing anybody can see; the text is
- * drawn at the full size, where a letter has four times the pixels.
- */
 static u32 parse_hex(const char *s)
 {
     u32 v = 0;
@@ -596,8 +588,6 @@ static u32 parse_hex(const char *s)
  * Everything I know about this machine, I know because it told me.  This
  * is the general form of that: name an address and a length and it prints
  * what is there, which goes down the serial line with everything else.
- * The video BIOS at c0000, the BIOS data area, a card's registers -- it is
- * all just memory, and reading it changes nothing.
  */
 static void cmd_dump(void)
 {
@@ -623,34 +613,60 @@ static void cmd_dump(void)
     }
 }
 
-static void cmd_big(void)
+/* ---- how big the picture is -------------------------------------------
+ * 320x200 has to be stretched by two and a half across and three down to
+ * reach an 800x600 panel, and neither is a whole number, so every line
+ * lands on one row here and two there.  At 800x600 nothing is stretched.
+ * The background still comes from the small buffer, because it is a
+ * gradient and blowing it up costs nothing anybody can see; the text is
+ * drawn at the full size, where a letter has four times the pixels.
+ *
+ * Big is what the machine boots into.  Small is here because the one
+ * thing I cannot do from this end is look at the panel.
+ */
+static void screen_say(void)
 {
-    if (vga_is_big()) {
+    term_colour(C_BRIGHT);
+    term_printf("%ux%u, %u by %u%s", (u32)vga_width(), (u32)vga_height(),
+                term_cols(), term_rows(),
+                vga_is_big() ? ", nothing stretched" : "");
+    term_newline();
+}
+
+static void cmd_screen(void)
+{
+    int want_big = !vga_is_big();
+
+    if (s_argc >= 2) {
+        if (eq_ci(s_argv[1], "big") || eq_ci(s_argv[1], "large"))
+            want_big = 1;
+        else if (eq_ci(s_argv[1], "small") || eq_ci(s_argv[1], "little"))
+            want_big = 0;
+        else {
+            say("I know big and small.");
+            screen_say();
+            return;
+        }
+    }
+
+    if (want_big == vga_is_big()) { screen_say(); return; }
+
+    if (!want_big) {
         vga_go_small();
         term_set_face(1);
-        term_colour(C_ACCENT);
-        term_printf("Back to 320x200, %u by %u.", term_cols(), term_rows());
-        term_newline();
-        say_dim("Say it again to go back up.");
+        screen_say();
         return;
     }
 
     term_colour(C_DIM);
     say_dim("Asking the card for 800x600...");
-
     if (!vga_go_big()) {
-        say("It would not give me 800x600 with a flat frame buffer.");
+        say("It will not give me 800x600 with a flat frame buffer.");
         say_dim("Try vesa to see what it does offer.");
         return;
     }
-
-    /* The roomy face at double size: bigger than the small face is now,
-     * smoother than either, and 66 by 37 on the screen. */
     term_set_face(0);
-    term_colour(C_BRIGHT);
-    term_printf("%u by %u, and nothing is being stretched.",
-                term_cols(), term_rows());
-    term_newline();
+    screen_say();
 }
 
 static void cmd_vesa(void)
@@ -1121,7 +1137,7 @@ static const Cmd s_cmds[] = {
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "card",    "what is in the PC Card slots",  cmd_card    },
     { "vesa",    "what the video card can do",   cmd_vesa    },
-    { "big",     "big screen, or back to small", cmd_big     },
+    { "screen",  "how big the picture is",       cmd_screen  },
     { "dump",    "show me what is at an address", cmd_dump    },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
