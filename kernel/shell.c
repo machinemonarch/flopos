@@ -126,6 +126,24 @@ static const Cmd s_diag[];
 static int s_diag_count(void);
 static void cmd_report(void);
 static void cmd_net(void);
+static void print_ip(u32 a);
+static int net_ready_here(int chatty);
+
+/* Put the whole screen up, now, from inside a command -- the main loop
+ * does this every frame, but a command that is about to do something
+ * slow or final wants it seen first.  The terminal is drawn into
+ * whichever buffer is the size the screen actually is; drawing it into
+ * the small one at the big one's row width writes most of half a megabyte
+ * past the end, which is what bye, reboot and whaaat all used to do. */
+static void screen_now(void)
+{
+    u32 t = ms_now();
+    mood_draw(g_back, t);
+    banana_draw(g_back, t);
+    vga_compose();
+    term_render(vga_canvas(), t);
+    vga_present();
+}
 
 static void cmd_whoami(void)
 {
@@ -309,6 +327,11 @@ static void cmd_listen(void)
 
 static void cmd_wide(void)
 {
+    if (vga_is_big()) {
+        say("At 800x600 the picture is already the panel's own size.");
+        say_dim("There is nothing to stretch. screen small to go back to 320x200.");
+        return;
+    }
     if (!panel_present()) {
         say("Nothing answers where the panel controller should be.");
         say_dim("The screen is whatever size it already was.");
@@ -538,9 +561,8 @@ static void cmd_whaaat(void)
     /* Draw the screen as it stands this instant, so the vortex takes hold
      * of what is actually there -- background, text, prompt and all --
      * rather than whatever happened to be in the buffer. */
-    mood_draw(g_back, ms_now());
-    term_render(g_back, ms_now());
-    vga_present();
+    screen_now();
+    vga_shrink();
 
     /* Work out where we are going before setting off, so the vortex can
      * cross into it rather than snapping at the end. */
@@ -625,11 +647,6 @@ static void cmd_dump(void)
  * everything can be wrong in a way that still lets a frame leave; very
  * little can be wrong in a way that lets one come back.
  */
-static void print_ip(u32 a)
-{
-    term_printf("%u.%u.%u.%u", (a >> 24) & 0xFF, (a >> 16) & 0xFF,
-                (a >> 8) & 0xFF, a & 0xFF);
-}
 
 static void cmd_ping(void)
 {
@@ -638,25 +655,24 @@ static void cmd_ping(void)
 
     if (s_argc < 2) {
         say("Ping what?");
-        term_colour(C_DIM);
-        term_print("  ping ");
-        print_ip(ip_gateway());
-        term_newline();
+        say_dim("  ping 1.1.1.1    or    ping example.com");
         return;
     }
+
+    if (!net_ready_here(1)) return;
 
     if (!ip_parse(s_argv[1], &to)) {
-        say("That is not an address I can read.");
-        say_dim("Four numbers and three dots, for now. Names come later.");
-        return;
-    }
-
-    if (!net_up()) {
-        say("No network card came up.");
+        to = ip_lookup(s_argv[1]);
+        if (!to) {
+            term_colour(C_ACCENT);
+            term_printf("Nobody knows a %s.", s_argv[1]);
+            term_newline();
+            return;
+        }
         term_colour(C_DIM);
-        term_printf("  %s", net_why());
+        term_printf("%s is ", s_argv[1]);
+        print_ip(to);
         term_newline();
-        return;
     }
 
     for (i = 1; i <= 4; i++) {
@@ -686,13 +702,25 @@ static void cmd_ping(void)
     term_newline();
 }
 
-/* Where we think we are.  No asking the network yet -- that is DHCP and
- * it is its own piece of work. */
+/* Where we are, and setting it by hand when the network will not say. */
 static void cmd_ip(void)
 {
     u32 a, m, g;
 
-    if (s_argc >= 4) {
+    if (s_argc >= 3 && eq_ci(s_argv[1], "names")) {
+        u32 d;
+        u32 port = 53;
+        if (!ip_parse(s_argv[2], &d)) { say("That is not an address."); return; }
+        if (s_argc >= 4) {
+            const char *q = s_argv[3];
+            port = 0;
+            while (*q >= '0' && *q <= '9') port = port * 10 + (u32)(*q++ - '0');
+        }
+        ip_set_dns(d, (u16)port);
+    } else if (s_argc == 2 && eq_ci(s_argv[1], "dhcp")) {
+        ip_configure(0, 0, 0);
+        if (!net_ready_here(1)) return;
+    } else if (s_argc >= 4) {
         if (!ip_parse(s_argv[1], &a) || !ip_parse(s_argv[2], &m) ||
             !ip_parse(s_argv[3], &g)) {
             say("Three addresses: mine, the mask, the way out.");
@@ -701,10 +729,14 @@ static void cmd_ip(void)
         ip_configure(a, m, g);
     }
 
+    if (!ip_addr()) { say_dim("No address yet. ping or net will ask for one."); return; }
     term_colour(C_TEXT);
-    term_print("address  "); print_ip(ip_addr());     term_newline();
+    term_print("address  "); print_ip(ip_addr());
+    term_printf("  (%s)", ip_how() == 2 ? "from the network" : "set by hand");
+    term_newline();
     term_print("mask     "); print_ip(ip_netmask());  term_newline();
     term_print("way out  "); print_ip(ip_gateway());  term_newline();
+    if (ip_dns()) { term_print("names    "); print_ip(ip_dns()); term_newline(); }
 }
 
 /* ---- how big the picture is -------------------------------------------
@@ -963,6 +995,16 @@ static void card_socket(int sock, int w)
         return;
     }
 
+    /* Powering a socket up and down to read its card is a reset.  Doing
+     * that to the network card while it is running would take the network
+     * down, so a socket a driver has claimed is described, not touched. */
+    if (pcic_claimed(sock)) {
+        fmt_str(line, sizeof line, "in use: the network card, %s", net_name());
+        term_frame_row(w, line, 0);
+        term_frame_bottom(w, 0);
+        return;
+    }
+
     st = pcic_status(sock);
     fmt_str(line, sizeof line, "card seated, status %x%s%s", (u32)st,
             (st & 0x10) ? ", write protected" : "",
@@ -991,10 +1033,9 @@ static void card_socket(int sock, int w)
          * switches the card on; reading it back is the only way to know
          * the window reached that far at all. */
         if (ci.cfg_base) {
-            u8 cor[4];
-            pcic_cis_read(sock, ci.cfg_base, cor, 4);
             fmt_str(line, sizeof line, "option %x  status %x",
-                    (u32)cor[0], (u32)cor[2]);
+                    (u32)pcic_attr_read(sock, ci.cfg_base),
+                    (u32)pcic_attr_read(sock, ci.cfg_base + 2));
             term_frame_row(w, line, 0);
         }
         if (ci.cfglen) {
@@ -1045,6 +1086,13 @@ static void card_raw(int sock)
     int i, j;
 
     if (!pcic_present(sock)) return;
+    if (pcic_claimed(sock)) {
+        term_colour(C_DIM);
+        term_printf("socket %u is the running network card; left alone",
+                    (u32)sock);
+        term_newline();
+        return;
+    }
 
     if (!pcic_power_up(sock, 1)) {
         say("It would not come ready.");
@@ -1108,39 +1156,70 @@ static void cmd_card(void)
     say_dim("card raw  prints the bytes instead of my reading of them");
 }
 
-/* ---- the network card -------------------------------------------------
- * net.c decides which card answered; this only asks.  Getting the address
- * back is the point of the whole exercise: the maker and model are
- * printed on the card, but the address belongs to the one in your hand,
- * so reading it proves every layer underneath is right.
+/* ---- the network --------------------------------------------------------
+ * Card up, then an address from the network, then say what we have.
+ * Everything that wants the network asks for it through net_ready_here(),
+ * so the first `ping` after boot does all of this by itself and nobody
+ * has to know there was a `net` to type first.
  */
-static void cmd_net(void)
+static void print_ip(u32 a)
 {
-    const u8 *m;
-    int i;
+    term_printf("%u.%u.%u.%u", (a >> 24) & 0xFF, (a >> 16) & 0xFF,
+                (a >> 8) & 0xFF, a & 0xFF);
+}
 
+static int net_ready_here(int chatty)
+{
     if (!net_up()) {
         term_colour(C_ACCENT);
         say("No network card came up.");
         term_colour(C_DIM);
         term_printf("  %s", net_why());
         term_newline();
-        return;
+        return 0;
     }
+    if (ip_addr()) return 1;
+
+    if (chatty) {
+        term_colour(C_DIM);
+        say_dim("Asking the network for an address...");
+    }
+    if (!ip_dhcp()) {
+        term_colour(C_ACCENT);
+        say(net_link() ? "Nobody on this network handed out an address."
+                       : "The card is up, but nothing is plugged into it.");
+        say_dim("Set one by hand: ip 192.168.1.50 255.255.255.0 192.168.1.1");
+        return 0;
+    }
+    return 1;
+}
+
+static void cmd_net(void)
+{
+    const u8 *m;
+    int i;
+
+    if (!net_ready_here(1) && !net_ready()) return;
 
     m = net_mac();
-    term_colour(C_BRIGHT);
-    term_print("address ");
+    term_colour(C_TEXT);
+    term_printf("card     %s, ", net_name());
     for (i = 0; i < 6; i++) {
         if (i) term_putc(':');
         term_printf("%02x", (u32)m[i]);
     }
     term_newline();
-    term_colour(C_TEXT);
-    term_printf("card    %s", net_name());
+    term_printf("link     %s", net_link() ? "yes" : "no -- is the cable in?");
     term_newline();
-    term_colour(C_DIM);
-    say_dim("It is awake. It has not been asked to say anything yet.");
+    if (ip_addr()) {
+        term_colour(C_BRIGHT);
+        term_print("address  "); print_ip(ip_addr());
+        term_printf("  (%s)", ip_how() == 2 ? "from the network" : "set by hand");
+        term_newline();
+        term_colour(C_TEXT);
+        term_print("way out  "); print_ip(ip_gateway()); term_newline();
+        if (ip_dns()) { term_print("names    "); print_ip(ip_dns()); term_newline(); }
+    }
 }
 
 
@@ -1207,14 +1286,12 @@ static void cmd_bye(void)
 {
     if (store_unsaved()) {
         say_dim("Writing things down first...");
-        term_render(g_back, ms_now());
-        vga_present();
+        screen_now();
         store_save();
     }
 
     say(voice(V_BYE));
-    term_render(g_back, ms_now());
-    vga_present();
+    screen_now();
     delay_ms(700);
 
     snd_silence();
@@ -1226,6 +1303,7 @@ static void cmd_bye(void)
      * that might or might not mean anything. */
     {
         u8 *fb = (u8 *)VGA_FB;
+        vga_go_small();                  /* so that 0xA0000 is the screen  */
         cli();
         outb(0x3C8, 0);  outb(0x3C9, 0);  outb(0x3C9, 0);  outb(0x3C9, 0);
         outb(0x3C8, 15); outb(0x3C9, 44); outb(0x3C9, 50); outb(0x3C9, 56);
@@ -1240,13 +1318,11 @@ static void cmd_reboot(void)
 {
     if (store_unsaved()) {
         say_dim("Writing things down first...");
-        term_render(g_back, ms_now());
-        vga_present();
+        screen_now();
         store_save();
     }
     say(voice(V_BYE));
-    term_render(g_back, ms_now());
-    vga_present();
+    screen_now();
     delay_ms(400);
     vga_fade_out(16);
     reboot();
@@ -1282,6 +1358,75 @@ static const Cmd s_cmds[] = {
     { "reboot",  "start the machine again",      cmd_reboot  },
 };
 
+#ifdef FLOPOS_TEST
+/* ---- test build only: reproduce the freeze ---------------------------
+ * Every freeze on the laptop was the same thing: a BIOS call that switches
+ * interrupts on and takes a while, a timer tick arriving in the middle of
+ * it, and that tick landing on a real-mode vector whose handler never
+ * tells the interrupt controller it has finished.  QEMU's BIOS happens not
+ * to do any of that, which is why none of it ever showed up here.
+ *
+ * So this builds the bad BIOS by hand.  INT 10h is pointed at twenty
+ * milliseconds of real-mode spinning with interrupts on, and vectors
+ * 0x20-0x2F at a bare IRET -- a handler that never acknowledges anything.
+ * `stall raw` goes in the way the video calls used to; `stall` goes in the
+ * way every call does now.  Only the second should leave a running clock.
+ */
+static void cmd_stall(void)
+{
+    static const u8 spin[] = {
+        0xFB,                   /* sti                                   */
+        0xB9, 0xC8, 0x00,       /* mov cx, 200                           */
+        0x51,                   /* push cx                               */
+        0xB9, 0xFF, 0xFF,       /* mov cx, 0xFFFF                        */
+        0xE2, 0xFE,             /* loop $                                */
+        0x59,                   /* pop cx                                */
+        0xE2, 0xF7,             /* loop back to the push                 */
+        0xCF                    /* iret                                  */
+    };
+    volatile u32 *ivt = (volatile u32 *)0;
+    volatile u8 *code = (volatile u8 *)0x600;
+    u32 save[17], before, after, t0;
+    int i, raw = (s_argc >= 2 && eq_ci(s_argv[1], "raw"));
+
+    if (!g_cpu_mhz) { say("No cycle counter to time it with."); return; }
+
+    for (i = 0; i < (int)sizeof spin; i++) code[i] = spin[i];
+    code[0x20] = 0xCF;                              /* the bare IRET      */
+
+    save[16] = ivt[0x10];
+    for (i = 0; i < 16; i++) save[i] = ivt[0x20 + i];
+    ivt[0x10] = 0x00000600;                         /* 0000:0600          */
+    for (i = 0; i < 16; i++) ivt[0x20 + i] = 0x00000620;
+
+    if (raw) {
+        /* The old way in: straight through, controllers left as they are. */
+        u32 f = irq_save();
+        extern u32 bios_int_raw(u16, u16, u16, u16, u16, u16, u16);
+        bios_int_raw(0x10, 0, 0, 0, 0, 0, 0);
+        irq_restore(f);
+    } else {
+        bios_int(0x10, 0, 0, 0, 0, 0, 0);
+    }
+
+    ivt[0x10] = save[16];
+    for (i = 0; i < 16; i++) ivt[0x20 + i] = save[i];
+
+    /* Now watch the tick for a fifth of a second of real time, by the
+     * cycle counter, without asking ms_now -- which would referee and so
+     * hide exactly what this is trying to see. */
+    before = g_ticks;
+    t0 = tsc32();
+    while (tsc32() - t0 < g_cpu_mhz * 200000u) { }
+    after = g_ticks;
+
+    term_colour(after != before ? C_BRIGHT : C_ACCENT);
+    term_printf("%s: the clock moved %u ticks in 200 ms (50 is right)",
+                raw ? "raw" : "wrapped", after - before);
+    term_newline();
+}
+#endif
+
 /* The instruments.  They all still work if you type them, and none of
  * them is in the list: they are questions I ask the machine, not words
  * anybody should have to wade through to find "look". */
@@ -1294,6 +1439,9 @@ static const Cmd s_diag[] = {
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "dump",    "show me what is at an address",cmd_dump    },
     { "net",     "wake the network card up",     cmd_net     },
+#ifdef FLOPOS_TEST
+    { "stall",   "reproduce the freeze",         cmd_stall   },
+#endif
     { "ip",      "where we think we are",        cmd_ip      },
 };
 

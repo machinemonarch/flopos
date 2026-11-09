@@ -46,11 +46,19 @@ int net_up(void)
 
     s_why[0] = 0;
     for (i = 0; i < NCARDS; i++) {
+        /* The NE2000 lives at 0x300 by convention, which is exactly where
+         * the 3Com is put when it comes up.  On a machine with PC Card
+         * slots there is no NE2000, and probing for one means writing to
+         * the 3Com's registers, so it is not looked for at all. */
+        if (s_cards[i] == &g_nic_ne2000 && pcic_probe()) continue;
+
         if (s_cards[i]->start()) { s_nic = s_cards[i]; return 1; }
         note_why(s_cards[i]->name, s_cards[i]->why());
     }
     return 0;
 }
+
+int net_link(void) { return s_nic && s_nic->link ? s_nic->link() : 0; }
 
 void net_down(void)
 {
@@ -63,10 +71,22 @@ const char  *net_name(void)  { return s_nic ? s_nic->name : "none"; }
 const char  *net_why(void)   { return s_why; }
 const u8    *net_mac(void)   { return s_nic ? s_nic->mac() : (const u8 *)"\0\0\0\0\0\0"; }
 
+/* The wire has a minimum: sixty bytes before the checksum, and anything
+ * shorter is a runt that switches are entitled to throw away.  An ARP
+ * request is forty-two.  So short frames are copied out and padded with
+ * zeros here, once, for every card -- rather than each driver padding by
+ * reading on past the end of whatever buffer it was handed. */
 int net_send(const u8 *frame, int len)
 {
+    static u8 pad[60];
+    int i;
+
     if (!s_nic || len < 14 || len > NET_MTU) return 0;
-    return s_nic->send(frame, len);
+    if (len >= 60) return s_nic->send(frame, len);
+
+    for (i = 0; i < len; i++) pad[i] = frame[i];
+    for (; i < 60; i++) pad[i] = 0;
+    return s_nic->send(pad, 60) ? len : 0;
 }
 
 int net_recv(u8 *frame, int max)

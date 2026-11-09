@@ -206,7 +206,6 @@ static int ne_send(const u8 *frame, int len)
     int guard;
 
     if (!s_up) return 0;
-    if (len < 60) len = 60;              /* the wire has a minimum         */
 
     dma_out(TX_PAGE << 8, frame, len);
     wr(R_TBCR0, (u8)(len & 0xFF));
@@ -249,6 +248,10 @@ static int ne_recv(u8 *frame, int max)
     return len;
 }
 
+/* No link status register on this part worth the name; in QEMU there is
+ * always somebody at the other end. */
+static int ne_link(void) { return s_up; }
+
 const Nic g_nic_ne2000 = {
-    "NE2000", ne_start, ne_stop, ne_mac, ne_send, ne_recv, ne_why
+    "NE2000", ne_start, ne_stop, ne_mac, ne_send, ne_recv, ne_why, ne_link
 };

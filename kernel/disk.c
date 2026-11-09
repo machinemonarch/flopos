@@ -9,12 +9,10 @@
  * cylinders, 2 heads, 18 sectors -- and the boot sector already relies on
  * it, so there is no sense discovering it twice.
  *
- * The timer is reprogrammed after every call.  The BIOS owns channel 0 of
- * the 8254 as far as it is concerned and sets it back to its own 18.2Hz
- * while servicing the disk, which leaves FLOPOS's clock running thirteen
- * times slow afterwards.  Everything timed off that clock -- the typing on
- * the boot screen, the sequencer, every delay -- then crawls, which looks
- * exactly like the machine having frozen.
+ * Everything about getting in and out of the BIOS safely -- the interrupt
+ * controllers, the timer it reprograms behind our back, the keyboard and
+ * serial lines it leaves stranded -- lives in bios_int() now, in bioscall.c,
+ * so that no caller can get it wrong by forgetting a step.
  * ===========================================================================
  */
 #include "flopos.h"
@@ -26,23 +24,6 @@
 static u8 s_last_status;
 
 u8 disk_last_status(void) { return s_last_status; }
-
-/* The trip through real mode begins with cli and cannot end with sti --
- * the caller might have had interrupts off for its own reasons.  So the
- * flag is saved here and put back exactly as it was found.  Forgetting
- * this leaves the timer and the keyboard dead the moment anything touches
- * the disk, which presents as the whole machine freezing. */
-static u32 irq_save(void)
-{
-    u32 f;
-    __asm__ __volatile__("pushfl; popl %0" : "=r"(f) :: "memory");
-    return f;
-}
-
-static void irq_restore(u32 f)
-{
-    if (f & 0x200) sti();
-}
 
 static int transfer(u32 lba, int count, int write)
 {
@@ -63,22 +44,14 @@ static int transfer(u32 lba, int count, int write)
         u16 cx = (u16)(((cylinder & 0xFF) << 8) | (sector & 0x3F));
         u16 dx = (u16)(((head & 0xFF) << 8) | BOOTINFO_DRIVE);
 
-        pic_to_bios();
         r = bios_int(0x13, ax, 0, cx, dx, DISK_BUF_SEG, 0);
-        pic_to_kernel();
-        time_init();                     /* see below                      */
-        kbd_resync();                    /* and see kbd_resync             */
 
         s_last_status = (u8)((r >> 8) & 0xFF);
         if (!(r & 0x10000)) { irq_restore(flags); return 1; }
 
         /* Recalibrate and try again; a drive that has been idle often
          * fails the first seek and succeeds on the second. */
-        pic_to_bios();
         (void)bios_int(0x13, 0x0000, 0, 0, (u16)BOOTINFO_DRIVE, DISK_BUF_SEG, 0);
-        pic_to_kernel();
-        time_init();
-        kbd_resync();
     }
 
     irq_restore(flags);

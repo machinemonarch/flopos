@@ -56,6 +56,8 @@ static u16 modifier_bits(void)
  *
  * Draining the buffer is all it takes.  Harmless if there is nothing in it.
  */
+void kbd_irq(void);
+
 void kbd_resync(void)
 {
     int guard = 0;
@@ -63,13 +65,29 @@ void kbd_resync(void)
     s_ext = 0;
 }
 
+/* After the BIOS has had the machine: anything typed meanwhile is still
+ * sitting in the controller, holding its interrupt line up.  Hand it to
+ * the ordinary handler, so it is a keypress rather than a lost one, and
+ * so the line comes down and the next key can raise it again. */
+void kbd_drain(void)
+{
+    int guard = 0;
+    while ((inb(0x64) & 1) && ++guard < 32) kbd_irq();
+}
+
 void kbd_irq(void)
 {
-    u8 sc, code, ext;
+    u8 st, sc, code, ext;
     int release;
 
-    if (!(inb(0x64) & 1)) return;
+    st = inb(0x64);
+    if (!(st & 1)) return;
     sc = inb(0x60);
+
+    /* A byte from the pointing stick, not the keyboard.  It has to be read
+     * -- the controller holds one byte and passes on nothing else until it
+     * goes -- but it is not a key. */
+    if (st & 0x20) return;
 
     if (sc == 0xE0) { s_ext = 1; return; }
     if (sc == 0xE1) { s_ext = 2; return; }

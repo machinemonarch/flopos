@@ -39,6 +39,31 @@ static inline void cli(void) { __asm__ __volatile__("cli"); }
 static inline void sti(void) { __asm__ __volatile__("sti"); }
 static inline void hlt(void) { __asm__ __volatile__("hlt"); }
 
+/* Whether interrupts were on, so a routine that must switch them off can
+ * put them back exactly as it found them rather than guessing. */
+static inline u32 irq_save(void)
+{
+    u32 f;
+    __asm__ __volatile__("pushfl; popl %0; cli" : "=r"(f) :: "memory");
+    return f;
+}
+
+static inline void irq_restore(u32 f)
+{
+    if (f & 0x200) sti();
+}
+
+/* The low half of the cycle counter.  Only meaningful when g_cpu_mhz is
+ * non-zero, which is how everything here knows a counter exists at all:
+ * on a 486 the instruction does not exist and executing it is a fault. */
+static inline u32 tsc32(void)
+{
+    u32 lo, hi;
+    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+    (void)hi;
+    return lo;
+}
+
 static inline void memset8(void *d, u8 v, usize n)
 {
     __asm__ __volatile__("cld; rep stosb"

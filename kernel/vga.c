@@ -123,18 +123,24 @@ void vga_compose(void)
     }
 }
 
+/* The big picture, back down to 320x200: the vortex photographs the small
+ * buffer and swirls that, and at 800x600 the text is not in it -- it was
+ * drawn straight onto the big one.  Every fifth-of-two-and-a-halfth pixel
+ * is enough for something about to be spun into a whirlpool. */
+void vga_shrink(void)
+{
+    int x, y;
+    if (!s_hi) return;
+    for (y = 0; y < SCR_H; y++) {
+        const u8 *src = s_hi + (y * 3 + 1) * HI_W;
+        u8 *dst = g_back + y * SCR_W;
+        for (x = 0; x < SCR_W; x++) dst[x] = src[(x * 5) / 2 + 1];
+    }
+}
+
 /* Ask the card for 800x600 in 256 colours with the whole screen as one
  * flat stretch of memory.  Returns 0 and changes nothing if it cannot,
  * which leaves everything exactly as it was. */
-/* Breadcrumbs.  These go straight down the wire rather than through the
- * terminal, because the terminal's output only becomes visible when a
- * frame is drawn, and the whole question here is whether a frame can be
- * drawn at all. */
-static void say_step(const char *what)
-{
-    serial_printf("[vga] %s\n", what);
-}
-
 int vga_go_big(void)
 {
     VbeMode m;
@@ -142,8 +148,7 @@ int vga_go_big(void)
     u32 r;
 
     if (s_hi) return 1;
-    say_step("asking what the card offers");
-    if (!vbe_probe()) { say_step("no vesa"); return 0; }
+    if (!vbe_probe()) return 0;
 
     for (i = 0; i < 128; i++) {
         int mode = vbe_mode_at(i);
@@ -172,11 +177,13 @@ int vga_go_big(void)
      * half a megabyte to. */
     if (panel_present()) panel_set_wide(0);
 
-    say_step("mode set");
-
     /* 0x4000 on the mode number is what asks for the flat stretch. */
     r = bios_int(0x10, 0x4F02, (u16)(m.mode | 0x4000), 0, 0, 0, 0);
-    if ((r & 0xFFFF) != 0x004F) { s_hi = 0; say_step("mode refused"); return 0; }
+    if ((r & 0xFFFF) != 0x004F) {
+        s_hi = 0;
+        if (panel_present()) panel_set_wide(1);
+        return 0;
+    }
 
     s_lfb = (volatile u8 *)m.lfb;
     s_hmode = m.mode;
@@ -188,16 +195,26 @@ int vga_go_big(void)
      * can only speculate about. */
     {
         int i, ok = 1;
-        say_step("touching the frame buffer");
         for (i = 0; i < 16; i++) s_lfb[i] = (u8)(i * 17);
         for (i = 0; i < 16; i++) if (s_lfb[i] != (u8)(i * 17)) ok = 0;
-        serial_printf("[vga] frame buffer at %x reads back %s\n",
-                      (u32)m.lfb, ok ? "correctly" : "WRONG");
+        if (!ok) {
+            /* Memory that does not hold what was written to it is not a
+             * screen.  Back to 13h before anything else trusts it. */
+            serial_printf("[vga] frame buffer at %x does not hold data\n",
+                          (u32)m.lfb);
+            bios_int(0x10, 0x0013, 0, 0, 0, 0, 0);
+            s_hi = 0;
+            if (panel_present()) panel_set_wide(1);
+            vga_set_palette(s_current);
+            return 0;
+        }
     }
-    s_retrace_ok = 0;                    /* a different chip drives it now */
-    say_step("palette");
+    /* The retrace bit still works in VESA modes on this family; if it ever
+     * does not, the first wait times out and stops asking. */
+    s_retrace_ok = 1;
     vga_set_palette(s_current);          /* the mode change cleared it     */
-    say_step("up");
+    serial_printf("[vga] 800x600, mode %x, frame buffer at %x\n",
+                  (u32)m.mode, (u32)m.lfb);
     s_frames = 0;
     s_worst = 0;
     s_said = 0;
@@ -229,29 +246,27 @@ void vga_present(void)
         /* The first three frames each say so before and after.  If the
          * machine dies on the way to the screen, the wire ends mid-pair
          * and names the frame it died on. */
-        /* Time it.  Three frames reaching the card and then silence is
-         * what a machine doing this too slowly to use looks like from the
-         * other end, and it is indistinguishable from one that died --
-         * unless somebody is counting. */
+        /* Timed, because a machine too slow for this should say so and
+         * step back down rather than crawl.  Three frames is enough to
+         * tell.  Two seconds in, the rate goes down the wire once, which
+         * is the number worth having from a machine I cannot watch. */
         {
             u32 a = ms_now(), took;
 
             memcpy32((void *)s_lfb, s_hi, (HI_W * HI_H) / 4);
             took = ms_now() - a;
             s_frames++;
+            if (s_frames <= 3 && took > s_worst) s_worst = took;
 
-            if (took > s_worst) s_worst = took;
-            if (s_frames <= 4 || ms_now() - s_said > 2000) {
-                serial_printf("[vga] frame %u took %u ms\n", s_frames, took);
-                s_said = ms_now();
+            if (!s_said) s_said = ms_now();
+            else if (s_said != 1 && ms_now() - s_said >= 2000) {
+                serial_printf("[vga] %u frames in 2 seconds, %u ms to send one\n",
+                              s_frames, took);
+                s_said = 1;
             }
 
-            /* Half a megabyte a frame is a lot to ask of a 1996 laptop,
-             * and if it cannot do it there is no sense pretending.  Three
-             * frames is enough to tell, and dropping back is better than
-             * leaving somebody in front of a machine that looks hung. */
-            if (s_frames >= 3 && s_worst > 400) {
-                serial_printf("[vga] %u ms a frame is unusable, going back\n",
+            if (s_frames == 3 && s_worst > 400) {
+                serial_printf("[vga] %u ms a frame is too slow, back to 320x200\n",
                               s_worst);
                 vga_go_small();
             }
@@ -304,6 +319,10 @@ void vga_fade_to(const u8 *pal768, int steps)
             tmp[i] = (u8)(a + ((b - a) * s) / steps);
         }
         vga_set_palette(tmp);
+        /* Each step is paced by the screen's own refresh.  Where that
+         * cannot be seen, by the clock instead -- otherwise a fade that
+         * should take a quarter of a second is over before it is visible. */
+        if (!s_retrace_ok) delay_ms(14);
     }
 }
 

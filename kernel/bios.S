@@ -52,7 +52,9 @@
         .set    RM_SEG,     0x1000       /* KBASE >> 4                     */
         .set    RM_STACK,   0x7C00       /* the boot sector is long done   */
 
-/* u32 bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di)
+/* u32 bios_int_raw(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di)
+ *
+ * The bare trip.  Call bios_int() instead, always: see bioscall.c.
  *
  * which is 0x13 for the disk, 0x15 for the services APM lives behind, or
  * 0x10 for video -- which is how VESA is asked what this card can do, and
@@ -62,8 +64,8 @@
  * Returns the BIOS's AX, with bit 16 set if it reported carry -- so a
  * non-zero high half means the call failed.
  */
-        .globl  bios_int
-bios_int:
+        .globl  bios_int_raw
+bios_int_raw:
         pushl   %ebp
         movl    %esp, %ebp
         pushal
@@ -132,18 +134,13 @@ real_mode:
 
         lidtl   14(%bx)                  /* the BIOS vector table at 0     */
 
-        /* Interrupts stay off for video.  The 8259s are remapped to 0x20
-         * and 0x28 for protected mode, so anything that arrives down here
-         * vectors through a real-mode table that knows nothing about them
-         * and the machine is gone.  The disk calls get away with it twice
-         * over: the BIOS wants IRQ6, and the window is a millisecond.  A
-         * VESA enumeration is a hundred calls that need no interrupt at
-         * all, and a timer tick inside one of them is a certainty. */
-        movw    38(%bx), %ax
-        cmpw    $0x10, %ax
-        je      noints
+        /* Interrupts on, for every service alike.  This is only safe
+         * because bios_int() in bioscall.c has already handed the interrupt
+         * controllers back to the BIOS's own numbering before calling in
+         * here -- so a timer tick that lands down here reaches the BIOS's
+         * own timer handler, which is the one thing it knows what to do
+         * with.  Nothing may call this entry directly for that reason. */
         sti
-noints:
         movw    4(%bx),  %ax
         movw    6(%bx),  %cx
         movw    8(%bx),  %dx

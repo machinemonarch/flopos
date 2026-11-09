@@ -193,12 +193,25 @@ u8 pcic_status(int sock)
 }
 
 /* ---- bringing a card up -----------------------------------------------
- * Vcc first, then wait, then let go of reset, then wait again.  The two
- * waits are not superstition: the standard gives a card 300ms of grace
- * after power and 20ms after reset before it has to answer for itself, and
- * a card read too early answers with rubbish that looks exactly like a
- * card that is not there.
+ * Reset held, power off if it was on, then Vcc, then wait, then let go of
+ * reset, then wait again.  The waits are not superstition: the standard
+ * gives a card 300ms after power and 20ms after reset before it has to
+ * answer for itself, and a card read too early answers with rubbish that
+ * looks exactly like a card that is not there.  Starting from power off
+ * means a card left configured by an earlier session -- a warm reboot
+ * does not cut the socket's power -- comes up fresh rather than half
+ * remembering something.
  */
+static u8 s_claimed;                     /* sockets a driver is using      */
+
+void pcic_claim(int sock, int on)
+{
+    if (on) s_claimed |= (u8)(1 << sock);
+    else    s_claimed &= (u8)~(1 << sock);
+}
+
+int pcic_claimed(int sock) { return (s_claimed >> sock) & 1; }
+
 int pcic_power_up(int sock, int io_card)
 {
     int tries;
@@ -206,6 +219,11 @@ int pcic_power_up(int sock, int io_card)
     if (!s_index || !pcic_present(sock)) return 0;
 
     pc_set(sock, R_WINDOWS, 0);                       /* nothing mapped   */
+    pc_set(sock, R_INTCTL, 0);                        /* hold it in reset */
+    if (pc_get(sock, R_POWER) & PW_OUTPUT) {
+        pc_set(sock, R_POWER, 0);
+        delay_ms(50);
+    }
     pc_set(sock, R_POWER, PW_VCC_5V | PW_OUTPUT);     /* 5V: this machine */
     delay_ms(300);
 
@@ -228,89 +246,107 @@ void pcic_power_down(int sock)
     pc_set(sock, R_POWER, 0);
 }
 
-/* ---- the card's own description ---------------------------------------
- * A card keeps its CIS in attribute memory, which is a separate address
- * space reached by setting one bit in the window's offset register, and in
- * which only the even bytes mean anything -- the odd ones are not wired.
- * So a window mapped at CIS_HOST shows the CIS stretched to twice its
- * length, and reading it means taking every other byte.
+/* ---- attribute memory -------------------------------------------------
+ * A card keeps its own description, and the registers that switch it on,
+ * in attribute memory: a separate address space reached by setting one
+ * bit in a memory window's offset register.  Only the even addresses in
+ * it are wired.
+ *
+ * Everything here works in card addresses -- the address on the card's
+ * own bus -- because that is what the card's description gives.  The
+ * configuration register base in a CONFIG tuple is a card address: a
+ * 3C589 says 0x10000 and means 0x10000.  The CIS itself is the one thing
+ * spoken of in bytes rather than addresses, and its nth byte is at card
+ * address 2n, because the odd addresses are not there.
+ *
+ * An earlier version doubled the configuration register's address as if
+ * it were a CIS byte, so the switch-on write went to 0x20000, where there
+ * is nothing.  And mapping the window wrote the whole window-enable
+ * register, which quietly switched the card's I/O window off every time
+ * the switch-on register was touched.  Either alone was enough to leave
+ * the card present and silent.
  */
-/* Which part of attribute memory the window is currently showing.  The
- * CIS starts at zero, but the configuration registers do not have to:
- * a 3C589 keeps its at attribute offset 0x10000, which is past the end of
- * anything a window parked at zero can see. */
-static u32 s_win_base;
+static u32 s_win_card;                   /* card address the window shows */
 
-static void map_attr(int sock, u32 attr_off)
+static void map_attr(int sock, u32 card_addr)
 {
     u32 start = CIS_HOST >> 12;
     u32 stop  = (CIS_HOST + (CIS_PAGES << 12) - 1) >> 12;
-    u32 card;
+    s32 delta;
+    u8 win;
+
+    s_win_card = card_addr & ~0xFFFFu;   /* 64K of card, 64K aligned      */
+    delta = (s32)(s_win_card >> 12) - (s32)start;
+
+    /* Off while it is being moved, so it never points anywhere half-set. */
+    win = pc_get(sock, R_WINDOWS);
+    pc_set(sock, R_WINDOWS, (u8)(win & ~WIN_MEM(0)));
 
     pc_set(sock, R_MEM(0) + 0, (u8)(start & 0xFF));
     pc_set(sock, R_MEM(0) + 1, (u8)((start >> 8) & 0x0F));
     pc_set(sock, R_MEM(0) + 2, (u8)(stop & 0xFF));
     pc_set(sock, R_MEM(0) + 3, (u8)((stop >> 8) & 0x0F));
-    /* Only the even bytes of attribute memory are wired, so attribute
-     * offset N lives at card address 2N and a 64K window spans 32K of the
-     * CIS.  Park the window on the 32K block the caller wants. */
-    s_win_base = attr_off & ~0x7FFFu;
-    card = s_win_base * 2;
-
     /* The offset the chip wants is card address minus host address, in
      * pages, truncated to its fourteen bits. */
-    {
-        s32 delta = (s32)(card >> 12) - (s32)start;
-        pc_set(sock, R_MEM(0) + 4, (u8)(delta & 0xFF));
-        pc_set(sock, R_MEM(0) + 5, (u8)(((delta >> 8) & 0x3F) | MO_REG));
-    }
-    pc_set(sock, R_WINDOWS, WIN_MEM(0));
+    pc_set(sock, R_MEM(0) + 4, (u8)(delta & 0xFF));
+    pc_set(sock, R_MEM(0) + 5, (u8)(((delta >> 8) & 0x3F) | MO_REG));
+
+    pc_set(sock, R_WINDOWS, (u8)(win | WIN_MEM(0)));
 }
 
+/* Only the memory window goes; an I/O window a driver is using stays. */
 static void unmap(int sock)
 {
-    pc_set(sock, R_WINDOWS, 0);
+    u8 win = pc_get(sock, R_WINDOWS);
+    pc_set(sock, R_WINDOWS, (u8)(win & ~WIN_MEM(0)));
 }
 
-static u8 attr_byte(u32 off)
+static volatile u8 *attr_at(u32 card_addr)
 {
-    /* Even bytes only, so the nth byte of the CIS is at twice n -- counted
-     * from wherever the window happens to be parked. */
-    return *(volatile u8 *)(CIS_HOST + (off - s_win_base) * 2);
+    return (volatile u8 *)(CIS_HOST + (card_addr - s_win_card));
+}
+
+static u8 attr_byte(u32 n)               /* the nth byte of the CIS        */
+{
+    return *attr_at(n * 2);
 }
 
 /* The CIS as bytes, for when it is the interpretation that is in doubt and
  * not the reading.  The card must already be powered. */
-int pcic_cis_read(int sock, u32 off, u8 *buf, int len)
+int pcic_cis_read(int sock, u32 n, u8 *buf, int len)
 {
     int i;
 
     if (!s_index || !pcic_present(sock)) return 0;
 
-    map_attr(sock, off);
-    for (i = 0; i < len; i++) buf[i] = attr_byte(off + (u32)i);
+    map_attr(sock, n * 2);
+    for (i = 0; i < len; i++) {
+        u32 a = (n + (u32)i) * 2;
+        if (a - s_win_card >= 0x10000u) map_attr(sock, a);
+        buf[i] = *attr_at(a);
+    }
     unmap(sock);
     return len;
 }
 
-/* Writing one byte of attribute memory.  This is how a card is switched
- * on: its configuration option register lives in attribute memory, and
- * putting the index of one of its configurations into it is what makes it
- * stop being a lump and start decoding addresses. */
-void pcic_attr_write(int sock, u32 off, u8 val)
+/* One byte of attribute memory, by card address.  This is how a card is
+ * switched on: putting the index of one of its configurations into its
+ * configuration option register is what makes it stop being a lump and
+ * start decoding addresses. */
+void pcic_attr_write(int sock, u32 card_addr, u8 val)
 {
     if (!s_index || !pcic_present(sock)) return;
-    map_attr(sock, off);
-    *(volatile u8 *)(CIS_HOST + (off - s_win_base) * 2) = val;
+    map_attr(sock, card_addr);
+    *attr_at(card_addr) = val;
     unmap(sock);
 }
 
-u8 pcic_attr_read(int sock, u32 off)
+u8 pcic_attr_read(int sock, u32 card_addr)
 {
     u8 v;
     if (!s_index || !pcic_present(sock)) return 0xFF;
-    map_attr(sock, off);
-    v = attr_byte(off);
+    map_attr(sock, card_addr);
+    v = *attr_at(card_addr);
     unmap(sock);
     return v;
 }
@@ -330,8 +366,9 @@ int pcic_map_io(int sock, u16 base, int len)
     pc_set(sock, R_IO(0) + 2, (u8)(stop & 0xFF));
     pc_set(sock, R_IO(0) + 3, (u8)(stop >> 8));
 
-    /* Sixteen bits wide, and let the card say so for itself rather than
-     * taking our word for it. */
+    /* Sixteen bits wide.  The card's CONFIG entry says it does both
+     * eight and sixteen, and the EtherLink's FIFO is meant to be read a
+     * word at a time. */
     pc_set(sock, R_IOCTL, 0x01);
 
     win = pc_get(sock, R_WINDOWS);

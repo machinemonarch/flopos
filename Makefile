@@ -19,7 +19,8 @@ CFLAGS  := -m32 -std=gnu99 -ffreestanding -nostdlib -nostdinc \
            -fno-asynchronous-unwind-tables -fno-unwind-tables \
            -fno-stack-protector -fomit-frame-pointer \
            -fno-tree-loop-distribute-patterns \
-           -Wall -Wextra -Wno-unused-parameter -Wno-array-bounds -Ikernel
+           -Wall -Wextra -Wno-unused-parameter -Wno-array-bounds -Ikernel \
+           $(EXTRA_CFLAGS)
 # -Wno-array-bounds: the boot info block genuinely lives at fixed low
 # addresses, and gcc reads any absolute dereference as an array at zero.
 

@@ -127,7 +127,6 @@ int power_off(void)
     cli();
     snd_silence();
 
-    pic_to_bios();
     r = bios_int(0x15, 0x5300, 0x0000, 0, 0, 0, 0);   /* is APM there?       */
     if (!(r & 0x10000)) {
         (void)bios_int(0x15, 0x5301, 0x0000, 0, 0, 0, 0);      /* connect    */
@@ -135,7 +134,6 @@ int power_off(void)
         (void)bios_int(0x15, 0x5308, 0x0001, 0x0001, 0, 0, 0); /* enable      */
         (void)bios_int(0x15, 0x5307, 0x0001, 0x0003, 0, 0, 0); /* and off     */
     }
-    pic_to_kernel();
 
     return 0;                            /* still here: it would not      */
 }

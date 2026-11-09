@@ -38,12 +38,12 @@
 #define ICMP_ECHO_REPLY   0
 #define ICMP_ECHO_REQUEST 8
 
-/* Where we think we are.  QEMU hands out 10.0.2.15 with the gateway at
- * 10.0.2.2, so those are the defaults -- not because they are right in
- * general but because they make the thing testable without asking. */
-static u32 s_ip   = 0x0A00020F;          /* 10.0.2.15                      */
-static u32 s_mask = 0xFFFFFF00;
-static u32 s_gw   = 0x0A000202;          /* 10.0.2.2                       */
+/* Where we are.  Nothing until the network says otherwise: an address
+ * guessed is an address that is wrong everywhere but one place.  DHCP
+ * fills these in; `ip` can set them by hand. */
+static u32 s_ip, s_mask, s_gw, s_dns;
+static u16 s_dns_srv_port = 53;          /* settable, for testing          */
+static int s_how;                        /* 0 none, 1 by hand, 2 by DHCP   */
 
 typedef struct {
     u32 ip;
@@ -87,9 +87,20 @@ u32  ip_addr(void)    { return s_ip; }
 u32  ip_gateway(void) { return s_gw; }
 u32  ip_netmask(void) { return s_mask; }
 
+u32  ip_dns(void)     { return s_dns; }
+
+/* Who to ask about names, when DHCP named nobody or named somebody wrong. */
+void ip_set_dns(u32 addr, u16 port)
+{
+    s_dns = addr;
+    s_dns_srv_port = port ? port : 53;
+}
+int  ip_how(void)     { return s_how; }
+
 void ip_configure(u32 addr, u32 mask, u32 gw)
 {
     s_ip = addr; s_mask = mask; s_gw = gw;
+    s_how = addr ? 1 : 0;
     s_arp_next = 0;
     memset8((u8 *)s_arp, 0, sizeof s_arp);
 }
@@ -204,6 +215,285 @@ static void take_icmp(const u8 *ip_hdr, const u8 *p, int len)
     }
 }
 
+const u8 *ip_route(u32 to, int wait_ms);
+
+/* ---- UDP ---------------------------------------------------------------
+ * Eight bytes of header -- two ports, a length, and a checksum that IPv4
+ * lets you leave as zero, which every DHCP and DNS server on earth
+ * accepts.  Everything above it here is a question and an answer, so
+ * there is no more to it than that.
+ */
+static u16 s_ip_id = 1;
+
+static int ip_header(u8 *f, int n, u8 proto, u32 to, int payload)
+{
+    f[n + 0] = 0x45;                     /* version four, five words long  */
+    f[n + 1] = 0;
+    put16(f + n + 2, (u16)(20 + payload));
+    put16(f + n + 4, s_ip_id++);
+    put16(f + n + 6, 0);
+    f[n + 8] = 64;                       /* sixty-four machines, at most   */
+    f[n + 9] = proto;
+    put16(f + n + 10, 0);
+    put32(f + n + 12, s_ip);
+    put32(f + n + 16, to);
+    put16(f + n + 10, checksum(f + n, 20));
+    return n + 20;
+}
+
+static int udp_send(u32 to, u16 sport, u16 dport, const u8 *data, int len)
+{
+    u8 f[NET_MTU];
+    const u8 *mac;
+    int n, i;
+
+    if (len < 0 || len > NET_MTU - 14 - 20 - 8) return 0;
+    if (to == 0xFFFFFFFF) mac = g_mac_broadcast;
+    else if (!(mac = ip_route(to, 1500))) return 0;
+
+    n = net_frame_begin(f, mac, ET_IPV4);
+    n = ip_header(f, n, PROTO_UDP, to, 8 + len);
+    put16(f + n + 0, sport);
+    put16(f + n + 2, dport);
+    put16(f + n + 4, (u16)(8 + len));
+    put16(f + n + 6, 0);
+    for (i = 0; i < len; i++) f[n + 8 + i] = data[i];
+    return net_send(f, n + 8 + len);
+}
+
+/* ---- DHCP --------------------------------------------------------------
+ * Four messages.  Anybody give me an address?  (DISCOVER.)  Here is one.
+ * (OFFER.)  I will have that one, please.  (REQUEST.)  It is yours.  (ACK.)
+ * Everything about where this machine is -- its address, how big its bit
+ * of network is, the way out, who to ask about names -- arrives in the
+ * last of them, which is why a laptop plugged into anything just works.
+ *
+ * Asked for by broadcast, from address zero, with the flag that asks the
+ * server to answer by broadcast too: until it does, we have nowhere for
+ * it to send anything.
+ */
+#define DHCP_DISCOVER 1
+#define DHCP_OFFER    2
+#define DHCP_REQUEST  3
+#define DHCP_ACK      5
+#define DHCP_NAK      6
+
+static u32 s_xid;
+static int s_dhcp;                       /* 1 waiting offer, 2 ack, 3 done */
+static u32 s_off_ip, s_off_server, s_off_mask, s_off_gw, s_off_dns;
+
+static int dhcp_send(int type)
+{
+    u8 b[320];
+    const u8 *mac = net_mac();
+    int n, i;
+
+    for (i = 0; i < (int)sizeof b; i++) b[i] = 0;
+    b[0] = 1;                            /* a request                      */
+    b[1] = 1;                            /* over ethernet                  */
+    b[2] = 6;
+    put32(b + 4, s_xid);
+    put16(b + 10, 0x8000);               /* answer by broadcast, please    */
+    for (i = 0; i < 6; i++) b[28 + i] = mac[i];
+    b[236] = 99; b[237] = 130; b[238] = 83; b[239] = 99;   /* the cookie  */
+
+    n = 240;
+    b[n++] = 53; b[n++] = 1; b[n++] = (u8)type;
+    b[n++] = 61; b[n++] = 7; b[n++] = 1;           /* who we are          */
+    for (i = 0; i < 6; i++) b[n++] = mac[i];
+    if (type == DHCP_REQUEST) {
+        b[n++] = 50; b[n++] = 4; put32(b + n, s_off_ip);     n += 4;
+        b[n++] = 54; b[n++] = 4; put32(b + n, s_off_server); n += 4;
+    }
+    b[n++] = 12; b[n++] = 6;                       /* what to call us     */
+    b[n++] = 'f'; b[n++] = 'l'; b[n++] = 'o';
+    b[n++] = 'p'; b[n++] = 'o'; b[n++] = 's';
+    b[n++] = 55; b[n++] = 3; b[n++] = 1; b[n++] = 3; b[n++] = 6;
+    b[n++] = 255;
+
+    /* BOOTP's own minimum, which some servers still insist on. */
+    if (n < 300) n = 300;
+    return udp_send(0xFFFFFFFF, 68, 67, b, n);
+}
+
+static void take_dhcp(const u8 *p, int len)
+{
+    const u8 *mac = net_mac();
+    int i, type = 0;
+    u32 server = 0, mask = 0, gw = 0, dns = 0;
+
+    if (len < 240 || p[0] != 2 || get32(p + 4) != s_xid) return;
+    for (i = 0; i < 6; i++) if (p[28 + i] != mac[i]) return;
+    if (p[236] != 99 || p[237] != 130 || p[238] != 83 || p[239] != 99) return;
+
+    for (i = 240; i + 1 < len && p[i] != 255; ) {
+        u8 code = p[i], l;
+        if (code == 0) { i++; continue; }
+        l = p[i + 1];
+        if (i + 2 + l > len) break;
+        if (code == 53 && l >= 1) type = p[i + 2];
+        if (code == 54 && l >= 4) server = get32(p + i + 2);
+        if (code == 1  && l >= 4) mask = get32(p + i + 2);
+        if (code == 3  && l >= 4) gw = get32(p + i + 2);
+        if (code == 6  && l >= 4) dns = get32(p + i + 2);
+        i += 2 + l;
+    }
+
+    if (type == DHCP_OFFER && s_dhcp == 1) {
+        s_off_ip = get32(p + 16);
+        s_off_server = server;
+        s_off_mask = mask ? mask : 0xFFFFFF00;
+        s_off_gw = gw;
+        s_off_dns = dns;
+        s_dhcp = 2;
+    } else if (type == DHCP_ACK && s_dhcp == 2) {
+        s_ip = get32(p + 16);
+        s_mask = mask ? mask : s_off_mask;
+        s_gw = gw ? gw : s_off_gw;
+        s_dns = dns ? dns : s_off_dns;
+        s_how = 2;
+        s_dhcp = 3;
+    } else if (type == DHCP_NAK && s_dhcp == 2) {
+        s_dhcp = 0;
+    }
+}
+
+/* Three tries, each waiting a little longer: a second, then two, then
+ * three.  A router answers in a few milliseconds; a network with no DHCP
+ * server at all costs six seconds to find out, once. */
+int ip_dhcp(void)
+{
+    int attempt;
+    const u8 *mac = net_mac();
+
+    if (!net_ready()) return 0;
+
+    for (attempt = 0; attempt < 3; attempt++) {
+        u32 until;
+
+        s_xid = (g_cpu_mhz ? tsc32() : g_ticks * 2654435761u) ^
+                ((u32)mac[2] << 24 | (u32)mac[3] << 16 | (u32)mac[4] << 8 | mac[5]);
+        s_dhcp = 1;
+        if (!dhcp_send(DHCP_DISCOVER)) return 0;
+        until = ms_now() + 1000u * (u32)(attempt + 1);
+        while (ms_now() < until && s_dhcp == 1) ip_poll();
+        if (s_dhcp != 2) continue;
+
+        if (!dhcp_send(DHCP_REQUEST)) return 0;
+        until = ms_now() + 2000;
+        while (ms_now() < until && s_dhcp == 2) ip_poll();
+        if (s_dhcp == 3) {
+            s_arp_next = 0;
+            memset8((u8 *)s_arp, 0, sizeof s_arp);
+            return 1;
+        }
+    }
+    s_dhcp = 0;
+    return 0;
+}
+
+/* ---- DNS ---------------------------------------------------------------
+ * A name, asked of the server DHCP named, as one UDP packet: a header,
+ * the name spelled as length-prefixed labels, and "an address, please".
+ * The answer repeats the question and then lists records; the first one
+ * that is an address is the one we want.  Names in answers can be
+ * pointers back to earlier names -- the format's one bit of compression
+ * -- which only matters here for knowing how far to skip.
+ */
+static u16 s_dns_id, s_dns_port;
+static u32 s_dns_got;
+static int s_dns_done;
+
+static int skip_name(const u8 *p, int i, int len)
+{
+    while (i < len) {
+        u8 l = p[i];
+        if (l == 0) return i + 1;
+        if ((l & 0xC0) == 0xC0) return i + 2;
+        i += 1 + l;
+    }
+    return len;
+}
+
+static void take_dns(const u8 *p, int len)
+{
+    int i, q, a;
+
+    if (len < 12 || get16(p) != s_dns_id || !(p[2] & 0x80)) return;
+    s_dns_done = 1;
+    if ((p[3] & 0x0F) != 0) return;      /* the server said no              */
+
+    q = get16(p + 4);
+    a = get16(p + 6);
+    i = 12;
+    while (q-- > 0 && i < len) i = skip_name(p, i, len) + 4;
+    while (a-- > 0 && i < len) {
+        u16 type, rdlen;
+        i = skip_name(p, i, len);
+        if (i + 10 > len) return;
+        type = get16(p + i);
+        rdlen = get16(p + i + 8);
+        i += 10;
+        if (i + rdlen > len) return;
+        if (type == 1 && rdlen == 4) { s_dns_got = get32(p + i); return; }
+        i += rdlen;
+    }
+}
+
+/* Returns the address, or 0. */
+u32 ip_lookup(const char *name)
+{
+    u8 q[300];
+    int n = 12, i, start;
+    u32 until;
+
+    if (!net_ready() || !s_dns || !name[0]) return 0;
+
+    s_dns_id = (u16)((g_cpu_mhz ? tsc32() : g_ticks) * 40503u);
+    s_dns_port = (u16)(49152 + (s_dns_id & 0x3FFF));
+    for (i = 0; i < 12; i++) q[i] = 0;
+    put16(q, s_dns_id);
+    q[2] = 0x01;                         /* recursion, please              */
+    put16(q + 4, 1);
+
+    /* "www.example.com" -> 3 www 7 example 3 com 0 */
+    while (*name && n < (int)sizeof q - 6) {
+        start = n++;
+        while (*name && *name != '.' && n < (int)sizeof q - 6) q[n++] = (u8)*name++;
+        if (n - start - 1 == 0 || n - start - 1 > 63) return 0;
+        q[start] = (u8)(n - start - 1);
+        if (*name == '.') name++;
+    }
+    q[n++] = 0;
+    put16(q + n, 1); n += 2;             /* an address                     */
+    put16(q + n, 1); n += 2;             /* on the internet                */
+
+    for (i = 0; i < 2; i++) {
+        s_dns_got = 0;
+        s_dns_done = 0;
+        if (!udp_send(s_dns, s_dns_port, s_dns_srv_port, q, n)) return 0;
+        until = ms_now() + 2000;
+        while (ms_now() < until && !s_dns_done) ip_poll();
+        if (s_dns_done) return s_dns_got;
+    }
+    return 0;
+}
+
+static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
+{
+    u16 dport;
+    int ulen;
+
+    (void)ip_hdr;
+    if (len < 8) return;
+    dport = get16(u + 2);
+    ulen = get16(u + 4);
+    if (ulen < 8 || ulen > len) return;
+
+    if (dport == 68 && s_dhcp && s_dhcp < 3) take_dhcp(u + 8, ulen - 8);
+    else if (dport == s_dns_port && s_dns_port) take_dns(u + 8, ulen - 8);
+}
+
 /* ---- everything that arrives ------------------------------------------
  * Called often and from one place.  Nothing here blocks: a frame is
  * either there or it is not, and if it is not we go and draw another
@@ -224,7 +514,7 @@ void ip_poll(void)
             if (len < 42) break;
             if (get16(a + 2) != ET_IPV4) break;
             arp_learn(get32(a + 14), a + 8);
-            if (get16(a + 6) == ARP_REQUEST && get32(a + 24) == s_ip)
+            if (s_ip && get16(a + 6) == ARP_REQUEST && get32(a + 24) == s_ip)
                 arp_answer(f);
             break;
         }
@@ -234,10 +524,25 @@ void ip_poll(void)
             if (len < 34) break;
             hl = (h[0] & 0x0F) * 4;
             if (hl < 20 || 14 + hl > len) break;
-            if (get32(h + 16) != s_ip) break;        /* not for us         */
-            arp_learn(get32(h + 12), f + 6);
-            if (h[9] == PROTO_ICMP)
-                take_icmp(h, h + hl, get16(h + 2) - hl);
+            {
+                /* Ours, or everybody's.  Before DHCP has finished we have
+                 * no address at all, and the reply that gives us one is
+                 * addressed to the address it is giving -- so UDP to the
+                 * DHCP client port is let through whatever it says. */
+                u32 dst = get32(h + 16);
+                int mine = (s_ip && dst == s_ip) || dst == 0xFFFFFFFF ||
+                           (s_ip && dst == (s_ip | ~s_mask));
+                int dhcp = h[9] == PROTO_UDP && 14 + hl + 4 <= len &&
+                           get16(h + hl + 2) == 68;
+                int tot = get16(h + 2);
+                if (!mine && !dhcp) break;
+                if (tot < hl || 14 + tot > len) break;
+                if (s_ip && dst == s_ip) arp_learn(get32(h + 12), f + 6);
+                if (h[9] == PROTO_ICMP && mine)
+                    take_icmp(h, h + hl, tot - hl);
+                else if (h[9] == PROTO_UDP)
+                    take_udp(h, h + hl, tot - hl);
+            }
             break;
         }
         default:
@@ -281,7 +586,7 @@ int ip_ping(u32 to, int seq, int wait_ms)
     u32 start, until;
     int n, i;
 
-    if (!net_ready()) return -1;
+    if (!net_ready() || !s_ip) return -1;
 
     mac = ip_route(to, wait_ms);
     if (!mac) return -2;                 /* nobody admitted to that address */
@@ -291,17 +596,7 @@ int ip_ping(u32 to, int seq, int wait_ms)
     s_ping_got = 0;
 
     n = net_frame_begin(f, mac, ET_IPV4);
-    f[n + 0] = 0x45;                     /* version four, five words long  */
-    f[n + 1] = 0;
-    put16(f + n + 2, 20 + 16);
-    put16(f + n + 4, (u16)seq);
-    put16(f + n + 6, 0);
-    f[n + 8] = 64;                       /* sixty-four machines, at most   */
-    f[n + 9] = PROTO_ICMP;
-    put16(f + n + 10, 0);
-    put32(f + n + 12, s_ip);
-    put32(f + n + 16, to);
-    put16(f + n + 10, checksum(f + n, 20));
+    (void)ip_header(f, n, PROTO_ICMP, to, 16);
 
     f[n + 20] = ICMP_ECHO_REQUEST;
     f[n + 21] = 0;

@@ -50,73 +50,62 @@ static void idt_set(int n, u32 handler)
     s_idt[n].flags  = 0x8E;              /* present, ring 0, int gate      */
 }
 
-static void pic_remap(void)
+/* What the kernel wants open, kept here rather than read back from the
+ * chip.  Reading it back is how a bug becomes permanent: if anything --
+ * a BIOS's "unexpected interrupt" handler is the classic -- masks the
+ * timer behind our back, the next save-and-restore would faithfully put
+ * it back masked, and the clock would never run again.  So the chip is
+ * always told what we intend, never what it last said. */
+static u8 s_kmask1 = 0xFC;               /* IRQ0 and IRQ1 open             */
+static u8 s_kmask2 = 0xFF;
+
+static void pic_program(u8 base1, u8 base2)
 {
-    u8 m1, m2;
-
-    m1 = inb(PIC1_DATA);
-    m2 = inb(PIC2_DATA);
-
     outb(PIC1_CMD, 0x11); io_wait();     /* ICW1: init + expect ICW4       */
     outb(PIC2_CMD, 0x11); io_wait();
-    outb(PIC1_DATA, 0x20); io_wait();    /* ICW2: master base vector 32    */
-    outb(PIC2_DATA, 0x28); io_wait();    /*       slave base vector 40     */
+    outb(PIC1_DATA, base1); io_wait();   /* ICW2: where the vectors start  */
+    outb(PIC2_DATA, base2); io_wait();
     outb(PIC1_DATA, 0x04); io_wait();    /* ICW3: slave on IRQ2            */
     outb(PIC2_DATA, 0x02); io_wait();
     outb(PIC1_DATA, 0x01); io_wait();    /* ICW4: 8086 mode                */
     outb(PIC2_DATA, 0x01); io_wait();
-
-    (void)m1; (void)m2;
-    outb(PIC1_DATA, 0xFC);               /* let through IRQ0 and IRQ1 only */
-    outb(PIC2_DATA, 0xFF);
 }
 
-/* Hand the interrupt controller back to the BIOS, and take it back again.
+/* Hand the interrupt controllers back to the BIOS, and take them back.
  *
- * The 8259s are remapped at boot so that hardware interrupts do not collide
- * with the CPU's exception vectors.  The BIOS knows nothing about that: its
- * own handlers sit at the original vectors, and its floppy code enables
- * interrupts and waits for IRQ6.  So before stepping back into real mode to
- * call it, the controllers have to be put back the way it left them, or the
- * first timer tick vectors into nothing and the machine stops.
- */
-static u8 s_saved_mask1, s_saved_mask2;
-
-static void pic_program(u8 base1, u8 base2)
-{
-    outb(PIC1_CMD, 0x11); io_wait();
-    outb(PIC2_CMD, 0x11); io_wait();
-    outb(PIC1_DATA, base1); io_wait();
-    outb(PIC2_DATA, base2); io_wait();
-    outb(PIC1_DATA, 0x04); io_wait();
-    outb(PIC2_DATA, 0x02); io_wait();
-    outb(PIC1_DATA, 0x01); io_wait();
-    outb(PIC2_DATA, 0x01); io_wait();
-}
-
+ * At boot they are moved to vectors 0x20 and 0x28 so hardware interrupts
+ * stop colliding with the processor's own exceptions.  The BIOS knows
+ * nothing about that.  Its handlers sit at 0x08 and 0x70, and its own
+ * code -- the video BIOS included, which was the long-hunted freeze --
+ * switches interrupts on the moment it is entered.  A timer tick arriving
+ * while the controllers still point at 0x20 lands on a real-mode vector
+ * the BIOS never meant for hardware, whose handler either never says it
+ * has finished, which blocks every interrupt from then on, or masks the
+ * line it does not recognise, which stops the clock for good.
+ *
+ * Re-initialising the chips on the way back also clears anything left
+ * marked as in service, so even a BIOS that misbehaves cannot leave a
+ * line stuck.  Only bios_int() calls these. */
 void pic_to_bios(void)
 {
-    s_saved_mask1 = inb(PIC1_DATA);
-    s_saved_mask2 = inb(PIC2_DATA);
     pic_program(0x08, 0x70);             /* where the BIOS put them       */
-    outb(PIC1_DATA, 0xBE);               /* let through the timer and the
-                                          * floppy, nothing else          */
+    outb(PIC1_DATA, 0xBE);               /* the timer and the floppy only */
     outb(PIC2_DATA, 0xFF);
 }
 
 void pic_to_kernel(void)
 {
     pic_program(0x20, 0x28);
-    outb(PIC1_DATA, s_saved_mask1);
-    outb(PIC2_DATA, s_saved_mask2);
+    outb(PIC1_DATA, s_kmask1);
+    outb(PIC2_DATA, s_kmask2);
 }
 
 /* Let a driver open its own interrupt line once it knows it has hardware. */
 void irq_unmask(int irq)
 {
-    u16 port = (irq < 8) ? PIC1_DATA : PIC2_DATA;
     u8 bit = (u8)(1 << (irq & 7));
-    outb(port, (u8)(inb(port) & ~bit));
+    if (irq < 8) { s_kmask1 &= (u8)~bit; outb(PIC1_DATA, s_kmask1); }
+    else         { s_kmask2 &= (u8)~bit; outb(PIC2_DATA, s_kmask2); }
 }
 
 void idt_init(void)
@@ -126,7 +115,7 @@ void idt_init(void)
     for (i = 0; i < 256; i++) idt_set(i, 0), s_idt[i].flags = 0;
     for (i = 0; i < 48; i++)  idt_set(i, (u32)isr_table[i]);
 
-    pic_remap();
+    pic_to_kernel();
 
     s_idtp.limit = sizeof(s_idt) - 1;
     s_idtp.base  = (u32)&s_idt[0];

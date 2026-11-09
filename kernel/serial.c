@@ -149,3 +149,10 @@ int serial_getc(void)
     s_tail = (u16)((s_tail + 1) % RXLEN);
     return c;
 }
+
+/* Same job as kbd_drain: whatever arrived while the BIOS had the machine
+ * is read now, which also lowers the line so the next byte is heard. */
+void serial_drain(void)
+{
+    if (s_present) serial_irq();
+}

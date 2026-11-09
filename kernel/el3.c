@@ -46,14 +46,24 @@
 #define C_TX_DIS    CMD(10)
 #define C_TX_RESET  CMD(11)
 #define C_ACK_INTR  CMD(13)
-#define C_SET_MASK  CMD(14)
-#define C_SET_ZERO  CMD(15)
+#define C_SET_MASK  CMD(14)                /* which events interrupt     */
+#define C_SET_STATUS CMD(15)               /* which events are visible   */
 #define C_RX_FILTER CMD(16)
 #define C_STATS_DIS CMD(22)
+#define C_STOP_COAX CMD(23)
 
-/* Window 0: how the card was set up at the factory. */
+/* Window 0: how the card is set up. */
+#define W0_CONFIG   0x04                 /* bit 0 enables the adapter      */
+#define W0_ADDRCONF 0x06                 /* top two bits pick the xcvr     */
+#define W0_RESOURCE 0x08
 #define W0_EE_CMD   0x0A
 #define W0_EE_DATA  0x0C
+
+/* Window 4: the wire itself. */
+#define W4_MEDIA    0x0A
+#define MEDIA_LED      0x0001            /* the link light, on 589E cards  */
+#define MEDIA_TP       0x00C0            /* link beat and jabber checking  */
+#define MEDIA_LINKBEAT 0x0800            /* somebody is at the other end   */
 #define EE_BUSY     0x8000
 #define EE_READ     0x0080
 
@@ -190,6 +200,7 @@ static int el3_find(void)
     for (sock = 0; sock < n; sock++) {
         Found f;
         if (!pcic_present(sock)) continue;
+        if (pcic_claimed(sock)) continue;
         if (!pcic_power_up(sock, 1)) { pcic_power_down(sock); continue; }
 
         f.cor = 0; f.func = -1;
@@ -205,6 +216,31 @@ static int el3_find(void)
 
 const char *el3_why(void) { return s_why; }
 
+/* Issue a command the card has to chew on, and wait for it to finish.
+ * Bit 12 of the status word stays up while it is busy; a reset takes the
+ * best part of a millisecond and the card ignores anything sent meanwhile. */
+static int el3_cmd_wait(u16 cmd)
+{
+    int guard;
+    outw((u16)(s_io + EL3_CMD), cmd);
+    for (guard = 0; guard < 2000; guard++) {
+        if (!(st() & S_CMD_BUSY)) return 1;
+        delay_ms(1);
+    }
+    return 0;
+}
+
+/* Give up cleanly: unclaimed, unmapped, unpowered.  A card left switched
+ * on at 0x300 after a failure is a card some other probe will poke. */
+static int el3_fail(int sock, const char *why)
+{
+    s_why = why;
+    s_up = 0;
+    pcic_claim(sock, 0);
+    pcic_power_down(sock);
+    return 0;
+}
+
 int el3_start(int sock, u32 cor, u16 io)
 {
     u16 w;
@@ -215,86 +251,115 @@ int el3_start(int sock, u32 cor, u16 io)
     s_io = io;
 
     if (!pcic_present(sock)) { s_why = "the socket is empty"; return 0; }
-    if (!pcic_power_up(sock, 1)) {
-        s_why = "the card never came ready after power";
-        return 0;
-    }
+    pcic_claim(sock, 1);
+    if (!pcic_power_up(sock, 1))
+        return el3_fail(sock, "the card never came ready after power");
 
-    /* Reset the card through its own configuration register first, so it
-     * does not matter what state anything left it in. */
-    pcic_attr_write(sock, cor, 0x80);
-    delay_ms(20);
-    pcic_attr_write(sock, cor, 0x00);
-    delay_ms(20);
+    /* The socket side first: sixteen of the machine's I/O addresses, sent
+     * to the card.  Nothing touched afterwards may switch this off again,
+     * which an earlier version did every time it wrote the register
+     * below. */
+    if (!pcic_map_io(sock, io, 16))
+        return el3_fail(sock, "the socket would not take an I/O window");
+    pcic_set_irq(sock, 0);               /* polled                          */
 
-    if (!pcic_map_io(sock, io, 16)) {
-        s_why = "the socket would not take an I/O window";
-        return 0;
-    }
-    pcic_set_irq(sock, 0);               /* polled, for now                */
-
-    /* Configuration one: the entry the card marked as its default. */
+    /* The card side: the number of the configuration it marked as its
+     * default, written into its configuration option register.  Until this
+     * happens the card is a memory card and ignores I/O altogether. */
     pcic_attr_write(sock, cor, 0x01);
     delay_ms(20);
 
-    /* From here the card should be answering at io.  A global reset takes
-     * about a millisecond and the card ignores everything until it is
-     * finished. */
-    outw((u16)(s_io + EL3_CMD), C_RESET);
-    delay_ms(10);
-
-    /* If nothing is there the bus floats and every read is 0xFFFF.  That
-     * is the one answer that means "no card", and it has to be checked
-     * before anything is believed. */
+    /* Answering at all?  Nothing at an address reads as all ones.  If it
+     * is not, the option register's own value goes into the reason: "it
+     * did not take the write" and "it took it and still says nothing" are
+     * different faults with different fixes. */
     if (st() == 0xFFFF) {
-        s_why = "nothing answers at the I/O address";
-        return 0;
+        static char why[80];
+        fmt_str(why, sizeof why,
+                "nothing answers at %x (option register reads %x)",
+                (u32)io, (u32)pcic_attr_read(sock, cor));
+        return el3_fail(sock, why);
     }
 
-    if (!ee_read(EE_MANF_ID, &s_manf)) { s_why = "its eeprom never answered"; return 0; }
-    if (!ee_read(EE_PROD_ID, &s_prod)) { s_why = "its eeprom stopped halfway"; return 0; }
-    if (s_manf != MANF_3COM) { s_why = "the eeprom says it is not a 3Com"; return 0; }
+    if (!ee_read(EE_MANF_ID, &s_manf)) return el3_fail(sock, "its eeprom never answered");
+    if (!ee_read(EE_PROD_ID, &s_prod)) return el3_fail(sock, "its eeprom stopped halfway");
+    if (s_manf != MANF_3COM) return el3_fail(sock, "the eeprom says it is not a 3Com");
 
     /* The address, three words of it, most significant byte first inside
-     * each word -- which is the opposite way round from everything else on
-     * this machine, so it is spelled out rather than cast. */
+     * each word -- the opposite way round from everything else on this
+     * machine, so it is spelled out rather than cast. */
     for (i = 0; i < 3; i++) {
-        if (!ee_read(EE_ADDR0 + i, &w)) {
-            s_why = "it would not give up its address";
-            return 0;
-        }
+        if (!ee_read(EE_ADDR0 + i, &w))
+            return el3_fail(sock, "it would not give up its address");
         s_mac[i * 2]     = (u8)(w >> 8);
         s_mac[i * 2 + 1] = (u8)(w & 0xFF);
     }
 
-    /* The card does not put its own address into its receive filter on its
-     * own; it has to be written back in through window 2. */
+    /* Window 0 again, for the three registers that make it a working
+     * adapter rather than an answering one.  Enable is the one that was
+     * missing: without it the card reads its EEPROM quite happily and
+     * never puts a single frame on the wire.  The resource register has to
+     * hold that particular value on the PC Card version -- the interrupt
+     * field is not loaded from anywhere and is left to the driver.  And
+     * the transceiver is the twisted pair, which is what the dongle on the
+     * end of a 3C589D is for. */
+    win(0);
+    outw((u16)(s_io + W0_CONFIG), 0x0001);        /* enable the adapter     */
+    outw((u16)(s_io + W0_RESOURCE), 0x3F00);
+    outw((u16)(s_io + W0_ADDRCONF), 0x0000);      /* 10BASE-T               */
+
+    /* Its own address into its receive filter, through window 2: the card
+     * does not do that for itself. */
     win(2);
     for (i = 0; i < 6; i++)
         outb((u16)(s_io + W2_ADDR + i), s_mac[i]);
 
-    /* No interrupts and no statistics: everything is polled, so an
-     * interrupt would only be something else to get wrong. */
-    outw((u16)(s_io + EL3_CMD), C_SET_MASK | 0);
-    outw((u16)(s_io + EL3_CMD), C_SET_ZERO | 0);
-    outw((u16)(s_io + EL3_CMD), C_ACK_INTR | 0x7FF);
+    /* Twisted pair wants link beat and jabber checking switched on, and
+     * the coax converter off. */
+    outw((u16)(s_io + EL3_CMD), C_STOP_COAX);
+    win(4);
+    outw((u16)(s_io + W4_MEDIA), MEDIA_TP | MEDIA_LED);
+
+    /* Statistics off and cleared by reading them, so the counters never
+     * fill and ask for attention nobody is listening for. */
     outw((u16)(s_io + EL3_CMD), C_STATS_DIS);
+    win(6);
+    for (i = 0; i < 10; i++) (void)inb((u16)(s_io + i));
+    (void)inw((u16)(s_io + 10));
+    (void)inw((u16)(s_io + 12));
+
+    /* Both directions reset and then switched on.  No interrupts --
+     * everything is polled -- but every status bit visible, since a status
+     * bit masked to zero is one nobody can ever see go up. */
+    win(1);
+    if (!el3_cmd_wait(C_RX_RESET) || !el3_cmd_wait(C_TX_RESET))
+        return el3_fail(sock, "it never finished resetting");
+    outw((u16)(s_io + EL3_CMD), C_SET_MASK | 0);
+    outw((u16)(s_io + EL3_CMD), C_SET_STATUS | 0xFF);
+    outw((u16)(s_io + EL3_CMD), C_ACK_INTR | 0xFF);
 
     /* Listen for things addressed to us and for things addressed to
      * everybody, and nothing else.  Promiscuous would be easier and is
      * exactly the sort of easier that ends up shipped. */
     outw((u16)(s_io + EL3_CMD), C_RX_FILTER | RXF_STATION | RXF_BROADCAST);
-    outw((u16)(s_io + EL3_CMD), C_RX_RESET);
-    delay_ms(2);
-    outw((u16)(s_io + EL3_CMD), C_TX_RESET);
-    delay_ms(2);
     outw((u16)(s_io + EL3_CMD), C_RX_ENA);
     outw((u16)(s_io + EL3_CMD), C_TX_ENA);
-    win(1);
-    s_why = "up";
 
+    s_why = "up";
     s_up = 1;
     return 1;
+}
+
+/* Whether the twisted pair can hear a hub or switch at the other end.  A
+ * card can be perfectly configured and plugged into nothing. */
+int el3_link(void)
+{
+    u16 m;
+    if (!s_up) return 0;
+    win(4);
+    m = inw((u16)(s_io + W4_MEDIA));
+    win(1);
+    return (m & MEDIA_LINKBEAT) != 0;
 }
 
 /* ---- sending ----------------------------------------------------------
@@ -369,13 +434,17 @@ static int el3_recv(u8 *frame, int max)
 void el3_stop(void)
 {
     if (!s_up) return;
-    outw((u16)(s_io + EL3_CMD), C_RESET);
+    outw((u16)(s_io + EL3_CMD), C_RX_DIS);
+    outw((u16)(s_io + EL3_CMD), C_TX_DIS);
     s_up = 0;
+    pcic_claim(s_sock, 0);
+    pcic_power_down(s_sock);
 }
 
 static const u8 *el3_mac_ro(void) { return s_mac; }
 static int el3_up_ro(void) { return el3_find(); }
 
 const Nic g_nic_el3 = {
-    "3C589", el3_up_ro, el3_stop, el3_mac_ro, el3_send, el3_recv, el3_why
+    "3C589", el3_up_ro, el3_stop, el3_mac_ro, el3_send, el3_recv, el3_why,
+    el3_link
 };

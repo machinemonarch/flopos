@@ -377,6 +377,8 @@ void   pcic_attr_write(int sock, u32 off, u8 val);
 u8     pcic_attr_read(int sock, u32 off);
 int    pcic_map_io(int sock, u16 base, int len);
 void   pcic_set_irq(int sock, int irq);
+void   pcic_claim(int sock, int on);
+int    pcic_claimed(int sock);
 
 /* The tuples worth knowing by name. */
 #define CISTPL_VERS_1       0x15         /* who made it, in words          */
@@ -437,6 +439,7 @@ typedef struct {
     int  (*send)(const u8 *frame, int len);
     int  (*recv)(u8 *frame, int max);
     const char *(*why)(void);            /* why it did not come up         */
+    int  (*link)(void);                  /* is anybody at the other end    */
 } Nic;
 
 extern const Nic g_nic_el3;
@@ -452,6 +455,7 @@ const u8    *net_mac(void);
 int          net_send(const u8 *frame, int len);
 int          net_recv(u8 *frame, int max);
 int          net_frame_begin(u8 *f, const u8 *to, u16 type);
+int          net_link(void);
 
 /* --- ip.c --------------------------------------------------------------- */
 void   ip_configure(u32 addr, u32 mask, u32 gw);
@@ -462,6 +466,11 @@ void   ip_poll(void);
 const u8 *ip_route(u32 to, int wait_ms);
 int    ip_ping(u32 to, int seq, int wait_ms);
 int    ip_parse(const char *s, u32 *out);
+u32    ip_dns(void);
+void   ip_set_dns(u32 addr, u16 port);
+int    ip_how(void);
+int    ip_dhcp(void);
+u32    ip_lookup(const char *name);
 
 /* --- el3.c -------------------------------------------------------------- */
 int    el3_start(int sock, u32 cor, u16 io);
@@ -472,6 +481,7 @@ int    el3_socket(void);
 u16    el3_product(void);
 u16    el3_maker(void);
 const u8 *el3_mac(void);
+int    el3_link(void);
 
 /* --- vbe.c ------------------------------------------------------------- */
 typedef struct {
@@ -497,6 +507,7 @@ int    vga_go_big(void);
 void   vga_go_small(void);
 int    vga_is_big(void);
 void   vga_compose(void);
+void   vga_shrink(void);
 u8    *vga_canvas(void);
 int    vga_width(void);
 int    vga_height(void);
@@ -524,6 +535,15 @@ void   serial_set_echo(int on);
 u32    bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di);
 void   pic_to_bios(void);
 void   pic_to_kernel(void);
+void   clock_credit_cycles(u32 cycles);
+void   clock_rebase(void);
+void   clock_restart(void);
+void   clock_watch(void);
+u32    clock_restarts(void);
+void   kbd_drain(void);
+void   serial_drain(void);
+void   serial_irq(void);
+void   time_init(void);
 
 /* --- disk.c ------------------------------------------------------------ */
 #define DISK_BUF_SEG 0x7000              /* 0x70000: below 1MB, and clear

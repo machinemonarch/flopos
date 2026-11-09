@@ -29,13 +29,12 @@ static int s_input_col;
 static u32 s_perf[PERF_N];               /* rolling average, in cycles     */
 static u32 s_fps, s_frames, s_fps_at;
 
-static u32 tsc32(void)
+/* The perf counters' clock: the cycle counter where there is one, and a
+ * steady zero where there is not, so a 486 times everything as free
+ * rather than faulting on an instruction it has never heard of. */
+static u32 perf_clock(void)
 {
-    u32 lo, hi;
-    if (!g_has_tsc) return 0;
-    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-    (void)hi;
-    return lo;
+    return g_has_tsc ? tsc32() : 0;
 }
 
 static void perf_add(int phase, u32 cycles)
@@ -61,60 +60,52 @@ static void after_prompt(void)
 
 /* How often the screen is actually pushed to the card.  At 320x200 that
  * is 64000 bytes and may as well be every time round; at 800x600 it is
- * 480000, and doing that flat out leaves the machine with no time to
- * notice anything else -- including the keyboard, which is how a working
- * machine comes to look like a dead one. */
+ * 480000, and thirty times a second is as smooth as anybody can see while
+ * leaving the loop free to look at the network and the serial line in
+ * between. */
 static u32 s_last_frame;
-static int s_stages;
-
-static void stage(char c)
-{
-    if (!vga_is_big() || s_stages > 40) return;
-    serial_putc(c);
-    if (c == '.') serial_putc('\n');
-    s_stages++;
-}
 
 static int frame_due(void)
 {
-    u32 every = vga_is_big() ? 50 : 0;
+    u32 every = vga_is_big() ? 33 : 0;
     if (ms_now() - s_last_frame < every) return 0;
     s_last_frame = ms_now();
     return 1;
+}
+
+/* What was typed only reaches the terminal's history when a frame draws
+ * it, and a line can now arrive and finish between two frames -- all at
+ * once down the serial line, or from anybody typing faster than thirty
+ * keys a second.  So the line is written in one last time before the
+ * newline commits it, or the history keeps a prompt with nothing after. */
+static void commit_line(void)
+{
+    term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
+    term_newline();
 }
 
 static void draw_frame_now(u32 t)
 {
     u32 a, b;
 
-    /* For the first few frames of a big screen, say which part of drawing
-     * one we are in.  Four characters a frame, ten frames, and then it
-     * stops -- and if the machine dies in there, the wire ends on the
-     * letter of the thing that killed it instead of on a silence that
-     * could mean anything. */
-    stage('m');
-    a = tsc32();
+    a = perf_clock();
     mood_draw(g_back, t);
     banana_draw(g_back, t);              /* over the background, always    */
-    stage('c');
     vga_compose();                       /* and blown up, if we are big    */
-    b = tsc32(); perf_add(PERF_ROOM, b - a); a = b;
+    b = perf_clock(); perf_add(PERF_ROOM, b - a); a = b;
 
     /* The text goes on last and at the real size, which is the whole point
      * of the bigger screen: the background can be stretched because it is
      * a gradient, and a letter cannot. */
-    stage('t');
     term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
     term_render(vga_canvas(), t);
-    b = tsc32(); perf_add(PERF_TEXT, b - a); a = b;
+    b = perf_clock(); perf_add(PERF_TEXT, b - a); a = b;
 
     if (!vga_is_big()) vga_wait_retrace();
-    b = tsc32(); perf_add(PERF_WAIT, b - a); a = b;
+    b = perf_clock(); perf_add(PERF_WAIT, b - a); a = b;
 
-    stage('p');
     vga_present();
-    stage('.');
-    b = tsc32(); perf_add(PERF_BLIT, b - a);
+    b = perf_clock(); perf_add(PERF_BLIT, b - a);
 
     s_frames++;
     {
@@ -174,11 +165,25 @@ void kmain(void)
     line_init();
     shell_init();
 
-    /* 800x600 is NOT switched on here, and the reason is written down so
-     * nobody turns it back on without reading it: on the machine this is
-     * for, doing it before the boot screen froze it solid.  Until that is
-     * understood, `screen big` asks for it from the keyboard, where a
-     * mistake is one reboot rather than a dead floppy. */
+    /* The panel's own 800x600, from the boot screen on.  This once froze
+     * the machine solid before the boot screen had finished, and the
+     * reason is understood now: the video BIOS switches interrupts on, a
+     * timer tick landed inside it on a vector meant for something else,
+     * and the clock stopped.  Every BIOS call goes through bios_int() now,
+     * which cannot let that happen, and a stopped clock is caught and
+     * restarted by ms_now() even if something else ever manages it.
+     *
+     * Holding Shift while it boots keeps 320x200, because the one thing
+     * that cannot be fixed from this end is a panel nobody here can see.
+     * The BIOS's own record of the shift keys is used rather than ours:
+     * a key held since power-on was pressed before our keyboard driver
+     * existed, so only the BIOS saw it go down. */
+    {
+        int shift = (*(volatile u8 *)0x417 & 0x03) ||
+                    kbd_down(0x2A) || kbd_down(0x36);
+        if (!shift && vga_go_big()) term_set_face(0);
+        else if (shift) serial_print("[vga] shift held: staying at 320x200\n");
+    }
 
     /* Saffran first, out of black and back into it. */
     splash_show();
@@ -209,7 +214,7 @@ void kmain(void)
             while ((sc = serial_getc()) >= 0) {
                 if (line_inject(sc)) {
                     term_scroll_home();
-                    term_newline();
+                    commit_line();
                     shell_submit(line_text());
                     line_reset();
                     shell_prompt();
@@ -230,7 +235,7 @@ void kmain(void)
 
             if (line_key(ev)) {           /* Enter: the line is finished    */
                 term_scroll_home();
-                term_newline();           /* commit what was typed          */
+                commit_line();
                 shell_submit(line_text());
                 line_reset();
                 shell_prompt();
