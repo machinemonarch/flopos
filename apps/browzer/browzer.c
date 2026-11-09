@@ -84,7 +84,7 @@ static const char s_home[] =
     "</ul>"
     "<p>tab picks a link, enter follows it, backspace goes back, esc leaves. "
     "Boxes on a page are typed into the same way: tab to one, enter, type, enter sends.</p>"
-    "<p>b keeps a page in your bookmarks, m shows them, and p there puts one up above.</p>"
+    "<p>b adds the page you are on to your bookmarks, and m lists them. On that list, p puts a bookmark on this home page.</p>"
     "<p>Secure pages are encrypted, and the site has to prove who it is.</p>";
 
 /* ---- drawing ------------------------------------------------------------ */
@@ -341,7 +341,7 @@ static void home(void)
     while (*at && !(at[0] == '<' && at[1] == 'h' && at[2] == '2')) page[n++] = *at++;
     for (i = 0; i < s_nmarks; i++) if (s_mark[i].home) any = 1;
     if (any) {
-        n = put(page, n, cap, "<h2>Yours</h2><ul>");
+        n = put(page, n, cap, "<h2>Your bookmarks</h2><ul>");
         for (i = 0; i < s_nmarks; i++) {
             if (!s_mark[i].home) continue;
             n = put(page, n, cap, "<li><a href=\"");
@@ -411,7 +411,7 @@ static void mark_this(void)
     m->title[i] = 0;
     m->home = 0;
     s_nmarks++;
-    say(marks_write() ? "Kept in your bookmarks. m shows them; p there puts it on the home page."
+    say(marks_write() ? "Added to your bookmarks. m lists them, and p on that list puts one on the home page."
                       : "Could not write BOOKMARK.TXT to the floppy.", C_ACCENT);
 }
 

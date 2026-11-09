@@ -84,7 +84,7 @@ the rest.
 
 **b** keeps the page you are on. **m** shows them all as a page: Tab picks
 one and Enter goes there. On that page, **p** puts the picked one on the
-home page, under "Yours", or takes it off again, and **d** twice deletes it.
+home page, under "Your bookmarks", or takes it off again, and **d** twice deletes it.
 
 They are kept in `BOOKMARK.TXT` on the floppy, one a line (the address,
 then the title, with `*` in front of those on the home page), so any

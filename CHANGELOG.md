@@ -6,6 +6,9 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- browzer's home page heads your pinned bookmarks "Your bookmarks", and
+  says plainly how to add them.
+
 ## 1.16.0 — 2026-11-09
 
 - **Bookmarks in browzer.** b keeps the page you are on, m lists them, and
