@@ -52,14 +52,19 @@ times each answer. FLOPOS also answers pings itself.
 
 Reads a web page and prints it as text in the terminal: headings stand out,
 links are marked, words are wrapped to the screen, Swedish letters come out
-right, and redirects are followed.
+right, and redirects are followed. It is browzer reading the page out
+rather than showing it, so the two always agree.
 
 ## browzer
 
     here> browzer
+    here> browzer www.nojs.chat
 
 A small web browser that takes the whole screen. The address is along the
-top, the page in the middle and a status line along the bottom.
+top, the page in the middle and a status line along the bottom. It is an
+app, `BROWZER.APP` on the floppy: the system provides the connection
+(including the secure part and the certificate check), and browzer does
+the rest.
 
 | Key | What it does |
 |---|---|
@@ -72,6 +77,29 @@ top, the page in the middle and a status line along the bottom.
 | `r` | Load the page again |
 | `h` | Home |
 | Esc | Cancel a page that is taking too long, or leave |
+
+### Forms
+
+Text boxes and buttons on a page work, so search boxes, logins and chat
+pages like nojs.chat can be used.
+
+- A box is drawn as `[__________]` and a button as `[ Send ]`. Tab
+  reaches them the same way it reaches links.
+- **Enter on a box** starts typing into it. The status line says so, and a
+  block shows where the next letter goes.
+- **Enter again** sends the form. In a big box (a text area), Enter is a
+  new line instead, and Tab finishes.
+- **Enter on a button** sends the form with that button.
+- **Esc** stops typing without sending.
+
+Hidden values the page keeps in its forms are sent back exactly as they
+came. Both ways of sending work (GET puts the form in the address, POST
+sends it separately), and the redirect most sites answer a form with is
+followed. Not yet: checkboxes, radio buttons, drop-down lists and file
+uploads.
+
+Text typed into a page goes to that site, so on a secure page check the
+status line says who vouched for it first.
 
 **Typing words instead of an address searches**, through FrogFind. It is a
 search engine made for old computers, and it answers with plain, simple

@@ -66,7 +66,7 @@ The journal is plain text, so you can read it on any computer: open
 |---|---|
 | `write` | The word processor. `write 3` opens document 3. See [write](write.md). |
 | `apps` | Lists the programs on the floppy. Typing a program's name runs it. |
-| `browzer` | A small web browser. See [The network](network.md). |
+| `browzer` | A small web browser, with forms. An app on the floppy. See [The network](network.md). |
 
 ## The network
 
@@ -74,7 +74,7 @@ The journal is plain text, so you can read it on any computer: open
 |---|---|
 | `network` | A menu showing the network card, the connection and the address, where you can choose automatic setup or set it by hand. |
 | `ping place` | Asks a machine on the network whether it is there and times the answer: `ping example.com`, `ping 1.1.1.1`. |
-| `fetch address` | Reads a web page out as text in the terminal: `fetch example.com`, `fetch https://...`. |
+| `fetch address` | Reads a web page out as text in the terminal: `fetch example.com`, `fetch https://...`. (This is browzer, reading instead of showing.) |
 
 More in [The network](network.md).
 

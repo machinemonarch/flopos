@@ -515,40 +515,8 @@ void   tcp_close(void);
 int    tcp_open(void);
 int    tcp_done(void);
 const char *tcp_why(void);
-void   http_fetch(const char *url);
 
-/* --- url.c --------------------------------------------------------------- */
-#define URL_PATH_MAX 200
-typedef struct { char host[64]; char path[URL_PATH_MAX]; u16 port; int secure; } Url;
-int    url_parse(const char *u, Url *out);
-void   url_text(const Url *u, char *out, int max);
-int    url_resolve(const char *base, const char *href, char *out, int max);
-void   browzer_run(const char *start);
-
-/* A page as browzer keeps it: a grid of cells that remember which link
- * each character belongs to, and the links' addresses. */
-#define PAGE_LINKS    240
-#define PAGE_HREF_MAX 200
-typedef struct { u8 ch, col; u16 link; } PageCell;
-typedef struct {
-    PageCell *cells;                     /* max_lines rows of width        */
-    int   width, max_lines;
-    int   lines, col, full;
-    char  title[64];
-    char  (*href)[PAGE_HREF_MAX];
-    int   nlinks;
-    char  url[PAGE_HREF_MAX + 16];
-    char  note[128];
-    char  who[48];                       /* who vouched for a secure page   */
-    int   checked, untrusted;
-    u8    note_col;
-    int   status, secure, pq;
-    u32   bytes;
-    void  (*progress)(void);
-} Page;
-void   page_clear(Page *pg);
-int    http_page(const char *url, Page *pg);
-void   http_page_html(const char *html, Page *pg);
+/* url.c, http.c and browzer.c are BROWZER.APP now (apps/browzer). */
 
 /* --- sha256.c ------------------------------------------------------------ */
 typedef struct { u32 h[8]; u32 len; u8 buf[64]; int fill; } Sha256;

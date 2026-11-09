@@ -1,5 +1,9 @@
 /* ===========================================================================
- * http.c -- asking a web server for a page, and making it readable.
+ * web.c -- asking a web server for a page, and making it readable.
+ *
+ * Part of browzer, the app.  The connection itself -- the lookup, TCP,
+ * and for a secure page the keys and the proof of who the server is -- is
+ * the kernel's (conn_open); everything from the request on is here.
  *
  * HTTP is text over a TCP (or TLS) conversation: a line saying what you
  * want, a few lines about yourself, a blank line.  The answer is the same
@@ -21,9 +25,15 @@
  * clicked around in.
  * ===========================================================================
  */
-#include "flopos.h"
-#include "io.h"
-#include "version.h"
+#include "web.h"
+
+/* A line down the serial cable, if there is one. */
+static void wire(const char *a, const char *b)
+{
+    char line[200];
+    fmt_str(line, sizeof line, "%s%s\n", a, b);
+    A->wire(line);
+}
 
 /* ---- where the words go ---------------------------------------------- */
 static Page *s_pg;                       /* a page, or 0 for the terminal  */
@@ -32,7 +42,7 @@ static void note(const char *t, u8 col)
 {
     int i;
     if (!s_pg) { term_colour(col); term_print(t); term_newline(); return; }
-    serial_printf("[web] %s\n", t);    /* browzer's status, for the wire  */
+    wire("[web] ", t);                 /* browzer's status, for the wire  */
     for (i = 0; t[i] && i < (int)sizeof s_pg->note - 1; i++) s_pg->note[i] = t[i];
     s_pg->note[i] = 0;
     s_pg->note_col = col;
@@ -88,6 +98,9 @@ void page_clear(Page *pg)
     pg->full = 0;
     page_line_clear(0);
     pg->nlinks = 0;
+    pg->nforms = 0;
+    pg->nfields = 0;
+    pg->pool_used = 0;
     pg->title[0] = 0;
     pg->note[0] = 0;
     pg->bytes = 0;
@@ -121,6 +134,15 @@ static char s_aname[8];
 static int  s_aname_len;
 static char s_quote;
 static char s_href[PAGE_HREF_MAX];
+
+/* Forms: the attributes a field needs, the form being read, and the text
+ * area or button being read, if any.  A value can be long -- a page may
+ * keep a whole conversation in a hidden field -- so it has room. */
+#define VAL_MAX 32768
+static char s_action[PAGE_HREF_MAX], s_method[8], s_type[12], s_fname[64], s_size[6];
+static char s_val[VAL_MAX];
+static int  s_has_val;
+static int  s_form = -1, s_area = -1, s_area_w, s_button = -1, s_area_fresh;
 static char s_alt[60];
 static char s_wattr[8], s_hattr[8];      /* an image's width and height    */
 static char *s_aval;
@@ -197,9 +219,36 @@ static u8 glyph_for(u32 c)
     }
 }
 
+static int put_utf8(char *o, u32 c)
+{
+    if (c < 0x80)    { o[0] = (char)c; return 1; }
+    if (c < 0x800)   { o[0] = (char)(0xC0 | (c >> 6)); o[1] = (char)(0x80 | (c & 0x3F)); return 2; }
+    if (c < 0x10000) { o[0] = (char)(0xE0 | (c >> 12)); o[1] = (char)(0x80 | ((c >> 6) & 0x3F));
+                       o[2] = (char)(0x80 | (c & 0x3F)); return 3; }
+    o[0] = (char)(0xF0 | (c >> 18)); o[1] = (char)(0x80 | ((c >> 12) & 0x3F));
+    o[2] = (char)(0x80 | ((c >> 6) & 0x3F)); o[3] = (char)(0x80 | (c & 0x3F));
+    return 4;
+}
+
 /* One character of readable text, already decoded. */
 static void emit(u32 c)
 {
+    /* Inside a text area, the text is the box's value, not the page's. */
+    if (s_area >= 0 && s_pg) {
+        PageField *f = &s_pg->fields[s_area];
+        char b[4];
+        int n;
+        if (s_area_fresh && c == '\n') { s_area_fresh = 0; return; }   /* HTML drops it */
+        s_area_fresh = 0;
+        if (c == '\r') return;
+        n = put_utf8(b, c);
+        if (f->vlen + (u32)n <= f->vcap) {
+            int k;
+            for (k = 0; k < n; k++) s_pg->pool[f->val + f->vlen + (u32)k] = b[k];
+            f->vlen += (u32)n;
+        }
+        return;
+    }
     if (s_in_title) {
         if (s_pg) {
             int n = 0;
@@ -335,7 +384,201 @@ static u16 add_link(void)
     decode_amp(s_href);
     for (i = 0; s_href[i] && i < PAGE_HREF_MAX - 1; i++) s_pg->href[s_pg->nlinks][i] = s_href[i];
     s_pg->href[s_pg->nlinks][i] = 0;
-    return (u16)++s_pg->nlinks;
+    ++s_pg->nlinks;
+    if (s_pg->link_field) s_pg->link_field[s_pg->nlinks] = 0;
+    return (u16)s_pg->nlinks;
+}
+
+/* ---- forms ------------------------------------------------------------- */
+static u32 entity_code(const char *n);
+/* An attribute's value with its entities turned into the characters they
+ * stand for, as UTF-8, in place: that is what a form sends back, so it
+ * has to be exact.  (It only ever gets shorter.) */
+static void decode_entities(char *s)
+{
+    char *r = s, *w = s;
+    while (*r) {
+        if (*r == '&') {
+            char name[12];
+            int n = 0;
+            const char *q = r + 1;
+            while (n < 11 && *q && *q != ';' && *q != '&' && *q != ' ') name[n++] = *q++;
+            name[n] = 0;
+            if (*q == ';') {
+                u32 c = entity_code(name);
+                if (c) { w += put_utf8(w, c); r = (char *)q + 1; continue; }
+            }
+        }
+        *w++ = *r++;
+    }
+    *w = 0;
+}
+
+static int eq_ci(const char *a, const char *b)
+{
+    while (*a && *b) {
+        char x = *a++, y = *b++;
+        if (x >= 'A' && x <= 'Z') x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z') y = (char)(y + 32);
+        if (x != y) return 0;
+    }
+    return *a == *b;
+}
+
+static int number(const char *t)
+{
+    int v = 0;
+    while (*t >= '0' && *t <= '9') v = v * 10 + (*t++ - '0');
+    return v;
+}
+
+/* A field of the form being read, its name and value into the pool with
+ * room for vcap bytes of value.  -1 if there is no form, or no room. */
+static int add_field(int kind, const char *val, int vlen, int vcap)
+{
+    Page *p = s_pg;
+    PageField *f;
+    int nlen = 0, i;
+
+    if (!p || !p->fields || s_form < 0 || p->nfields >= PAGE_FIELDS) return -1;
+    while (s_fname[nlen]) nlen++;
+    if (vcap < vlen) vcap = vlen;
+    if (p->pool_used + (u32)nlen + (u32)vcap > PAGE_POOL) return -1;
+    f = &p->fields[p->nfields];
+    f->form = (u8)s_form; f->kind = (u8)kind; f->link = 0;
+    f->line = f->col = f->width = 0;
+    f->name = p->pool_used; f->nlen = (u32)nlen;
+    for (i = 0; i < nlen; i++) p->pool[p->pool_used++] = s_fname[i];
+    f->val = p->pool_used; f->vlen = (u32)vlen; f->vcap = (u32)vcap;
+    for (i = 0; i < vlen; i++) p->pool[p->pool_used + (u32)i] = val[i];
+    p->pool_used += (u32)vcap;
+    return p->nfields++;
+}
+
+/* A link number for a field, so tab can reach it and enter acts on it. */
+static u16 field_link(int fi)
+{
+    Page *p = s_pg;
+    if (p->nlinks >= PAGE_LINKS) return 0;
+    p->href[p->nlinks][0] = 0;
+    p->nlinks++;
+    p->link_field[p->nlinks] = (u16)(fi + 1);
+    p->fields[fi].link = (u16)p->nlinks;
+    return (u16)p->nlinks;
+}
+
+/* Room on this line for n more cells, or a new line. */
+static void make_room(int n)
+{
+    int w = out_width();
+    flush_word();
+    if (s_col && s_col + 1 + n > w) { out_newline(); s_col = 0; }
+    else if (s_col && s_space) { out_char(' ', C_TEXT, 0); s_col++; }
+}
+
+/* A box to type into: [________], its value shown in it. */
+static void field_box(int fi, int width)
+{
+    Page *p = s_pg;
+    PageField *f = &p->fields[fi];
+    u16 id = field_link(fi);
+    int w = out_width(), i;
+
+    if (width > w - 4) width = w - 4;
+    if (width < 6) width = 6;
+    make_room(width + 2);
+    out_char('[', C_GREY, id); s_col++;
+    f->line = (u16)(p->lines - 1);
+    f->col = (u16)p->col;
+    f->width = (u16)width;
+    for (i = 0; i < width; i++) { out_char('_', C_DIM, id); s_col++; }
+    out_char(']', C_GREY, id); s_col++;
+    s_space = 1;
+    s_newlines = 0;
+    page_field_show(p, fi);
+}
+
+/* What goes into a box: the tail of the value, as glyphs, then
+ * underscores.  A password is stars. */
+void page_field_show(Page *pg, int fi)
+{
+    PageField *f = &pg->fields[fi];
+    PageCell *c;
+    const u8 *v = (const u8 *)pg->pool + f->val;
+    u32 k = 0;
+    int n = 0, skip, i;
+
+    if (!f->width) return;
+    for (k = 0; k < f->vlen; k++) if ((v[k] & 0xC0) != 0x80) n++;     /* characters */
+    skip = n > f->width - 1 ? n - (f->width - 1) : 0;                 /* room for the caret */
+    c = &pg->cells[f->line * pg->width + f->col];
+    for (i = 0; i < f->width; i++) { c[i].ch = '_'; c[i].col = C_DIM; }
+    for (k = 0, i = 0; k < f->vlen; ) {
+        u32 cp = v[k++];
+        if (cp >= 0xC0) {
+            int more = cp >= 0xF0 ? 3 : cp >= 0xE0 ? 2 : 1;
+            cp &= more == 3 ? 0x07 : more == 2 ? 0x0F : 0x1F;
+            while (more-- && k < f->vlen) cp = (cp << 6) | (v[k++] & 0x3F);
+        }
+        if (skip) { skip--; continue; }
+        if (i >= f->width) break;
+        c[i].ch = f->kind == FK_PASSWORD ? '*' : cp == '\n' ? ' ' : glyph_for(cp);
+        c[i].col = C_BRIGHT;
+        i++;
+    }
+}
+
+/* [ Send ], a button that sends the form. */
+static void submit_button(const char *label)
+{
+    int fi, i, n = 0;
+    u16 id;
+    char lab[40];
+
+    decode_entities(s_val);
+    for (n = 0; s_val[n]; n++) { }
+    fi = add_field(FK_SUBMIT, s_val, n, n);
+    if (fi < 0) return;
+    id = field_link(fi);
+    for (i = 0; label[i] && i < 36; i++) lab[i] = label[i];
+    lab[i] = 0;
+    make_room(i + 4);
+    out_char('[', C_GREY, id); out_char(' ', C_ACCENT, id); s_col += 2;
+    for (i = 0; lab[i]; i++) {
+        u32 cp = (u8)lab[i];
+        if (cp >= 0xC0 && (lab[i + 1] & 0xC0) == 0x80) { cp = ((cp & 0x1F) << 6) | (lab[i + 1] & 0x3F); i++; }
+        out_char(glyph_for(cp), C_ACCENT, id); s_col++;
+    }
+    out_char(' ', C_ACCENT, id); out_char(']', C_GREY, id); s_col += 2;
+    s_space = 1;
+    s_newlines = 0;
+}
+
+static void input_tag(void)
+{
+    int n;
+    decode_entities(s_val);
+    for (n = 0; s_val[n]; n++) { }
+    if (eq_ci(s_type, "hidden")) {
+        (void)add_field(FK_HIDDEN, s_val, n, n);
+    } else if (eq_ci(s_type, "submit") || eq_ci(s_type, "image")) {
+        if (s_has_val && s_val[0]) {
+            static char lab[40];
+            int i;
+            for (i = 0; s_val[i] && i < 39; i++) lab[i] = s_val[i];
+            lab[i] = 0;
+            submit_button(lab);
+        } else
+            submit_button("Send");
+    } else if (!s_type[0] || eq_ci(s_type, "text") || eq_ci(s_type, "search") ||
+               eq_ci(s_type, "email") || eq_ci(s_type, "url") || eq_ci(s_type, "tel") ||
+               eq_ci(s_type, "number") || eq_ci(s_type, "password")) {
+        int fi = add_field(eq_ci(s_type, "password") ? FK_PASSWORD : FK_TEXT, s_val, n, n + 512);
+        int w = s_size[0] ? number(s_size) : 24;
+        if (fi >= 0) field_box(fi, w);
+    }
+    /* Checkboxes, radio buttons, files, and buttons that only do
+     * something with JavaScript: not yet. */
 }
 
 static void tag_ended(void)
@@ -352,6 +595,58 @@ static void tag_ended(void)
             s_hstate = H_SKIP;
             return;
         }
+    }
+    if (tag_is("form")) {
+        newline(2);
+        if (s_tag_close) { s_form = -1; return; }
+        s_form = -1;
+        if (s_pg && s_pg->forms && s_pg->nforms < PAGE_FORMS) {
+            PageForm *f = &s_pg->forms[s_pg->nforms];
+            int k;
+            decode_entities(s_action);
+            for (k = 0; s_action[k] && k < PAGE_HREF_MAX - 1; k++) f->action[k] = s_action[k];
+            f->action[k] = 0;
+            f->post = eq_ci(s_method, "post");
+            s_form = s_pg->nforms++;
+        }
+        return;
+    }
+    if (tag_is("input")) { if (!s_tag_close) input_tag(); return; }
+    if (tag_is("textarea")) {
+        if (!s_tag_close) {
+            int fi = add_field(FK_AREA, "", 0, 4096);
+            s_area_w = s_size[0] ? number(s_size) : 48;
+            if (fi >= 0) { newline(1); s_area = fi; s_area_fresh = 1; }
+        } else if (s_area >= 0) {
+            int fi = s_area;
+            s_area = -1;
+            field_box(fi, s_area_w);
+            newline(1);
+        }
+        return;
+    }
+    if (tag_is("button")) {
+        /* Its own words are its label: they become the link, in brackets. */
+        if (!s_tag_close) {
+            int n, fi;
+            if (eq_ci(s_type, "button") || eq_ci(s_type, "reset")) return;
+            decode_entities(s_val);
+            for (n = 0; s_val[n]; n++) { }
+            fi = add_field(FK_SUBMIT, s_val, n, n);
+            if (fi < 0) return;
+            flush_word();
+            s_linkid = field_link(fi);
+            s_link = 1;
+            s_button = fi;
+            push('[', C_GREY);
+        } else if (s_button >= 0) {
+            push(']', C_GREY);
+            flush_word();
+            s_link = 0;
+            s_linkid = 0;
+            s_button = -1;
+        }
+        return;
     }
     if (tag_is("title")) {
         if (s_pg) { s_in_title = !s_tag_close; return; }
@@ -382,7 +677,8 @@ static void tag_ended(void)
         if (tag_is(block[i])) { newline(2); return; }
 }
 
-static void entity_ended(void)
+/* An entity's character: "amp", "#233", "#xE9".  0 if it is not one. */
+static u32 entity_code(const char *n)
 {
     static const struct { const char *n; u32 c; } e[] = {
         { "amp", '&' }, { "lt", '<' }, { "gt", '>' }, { "quot", '"' },
@@ -395,25 +691,34 @@ static void entity_ended(void)
         { "middot", 0xB7 }, { 0, 0 } };
     int i, j;
 
-    s_ent[s_ent_len] = 0;
-    if (s_ent[0] == '#') {
+    if (n[0] == '#') {
         u32 v = 0;
-        int hex = (s_ent[1] == 'x' || s_ent[1] == 'X');
-        for (i = hex ? 2 : 1; s_ent[i]; i++) {
-            char c = s_ent[i];
+        int hex = (n[1] == 'x' || n[1] == 'X'), any = 0;
+        for (i = hex ? 2 : 1; n[i]; i++) {
+            char c = n[i];
             int d = (c >= '0' && c <= '9') ? c - '0' :
                     (hex && c >= 'a' && c <= 'f') ? c - 'a' + 10 :
                     (hex && c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
-            if (d < 0) break;
+            if (d < 0) return 0;
             v = v * (hex ? 16 : 10) + (u32)d;
+            any = 1;
         }
-        emit(v);
-        return;
+        return any && v < 0x110000 ? v : 0;
     }
     for (i = 0; e[i].n; i++) {
-        for (j = 0; e[i].n[j] && e[i].n[j] == s_ent[j]; j++) { }
-        if (!e[i].n[j] && !s_ent[j]) { emit(e[i].c); return; }
+        for (j = 0; e[i].n[j] && e[i].n[j] == n[j]; j++) { }
+        if (!e[i].n[j] && !n[j]) return e[i].c;
     }
+    return 0;
+}
+
+static void entity_ended(void)
+{
+    u32 c;
+    int i;
+    s_ent[s_ent_len] = 0;
+    c = entity_code(s_ent);
+    if (c) { emit(c); return; }
     emit('&');                           /* not one we know: as written    */
     for (i = 0; s_ent[i]; i++) emit((u8)s_ent[i]);
 }
@@ -435,6 +740,22 @@ static void attr_begin_value(void)
                s_aname[2] == 'i' && s_aname[3] == 'g' && s_aname[4] == 'h' && s_aname[5] == 't') {
         s_aval = s_hattr; s_aval_max = (int)sizeof s_hattr;
     }
+    else {
+        static const struct { const char *n; char *buf; int max; } more[] = {
+            { "action", s_action, PAGE_HREF_MAX }, { "method", s_method, 8 },
+            { "type", s_type, 12 }, { "name", s_fname, 64 },
+            { "value", s_val, VAL_MAX }, { "size", s_size, 6 }, { "cols", s_size, 6 },
+        };
+        int k, j;
+        for (k = 0; k < (int)(sizeof more / sizeof more[0]); k++) {
+            for (j = 0; more[k].n[j] && j < s_aname_len && more[k].n[j] == s_aname[j]; j++) { }
+            if (!more[k].n[j] && j == s_aname_len) {
+                s_aval = more[k].buf; s_aval_max = more[k].max;
+                if (more[k].buf == s_val) s_has_val = 1;
+                break;
+            }
+        }
+    }
     s_aval_len = 0;
     if (s_aval) s_aval[0] = 0;
 }
@@ -454,6 +775,9 @@ static void tag_start(void)
     s_href[0] = 0;
     s_alt[0] = 0;
     s_wattr[0] = s_hattr[0] = 0;
+    s_action[0] = s_method[0] = s_type[0] = s_fname[0] = s_size[0] = 0;
+    s_val[0] = 0;
+    s_has_val = 0;
     s_hstate = H_TAG;
 }
 
@@ -576,6 +900,7 @@ static void filter_reset(int html)
     s_bold = s_link = s_dim = s_in_title = 0;
     s_linkid = 0;
     s_cp_left = 0;
+    s_form = s_area = s_button = -1;
 }
 
 static void body_byte(u8 b)
@@ -629,104 +954,74 @@ static int stop_asked(void) { return ui_key() == UK_ESC; }
 /* The page comes over plain TCP or over TLS; everything here reads and
  * writes the same way either way. */
 static int s_secure;
-static int conn_write(const u8 *d, int n) { return s_secure ? tls_write(d, n) : tcp_write(d, n); }
-static int conn_read(u8 *b, int n, int w) { return s_secure ? tls_read(b, n, w) : tcp_read(b, n, w); }
-static void conn_close(void) { if (s_secure) tls_close(); tcp_close(); }
+static int s_status;                     /* the last answer's status       */
+static int conn_write(const u8 *d, int n) { return A->conn_write(d, n); }
+static int conn_read(u8 *b, int n, int w) { return A->conn_read(b, n, w); }
+static void conn_close(void) { A->conn_close(); }
 
 /* Returns 0 for a page, 1 with moved filled in for a redirect, -1 for a
  * failure that has already been explained. */
-static int fetch_once(const Url *u, char *moved, int moved_max)
+/* post: a form's contents to send, or 0 for an ordinary request. */
+static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, int postlen)
 {
     static u8 buf[1024];
     static char head[2048];
     char req[PAGE_HREF_MAX + 200], line[96];
     int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0;
-    u32 to, body = 0, said = 0;
+    u32 body = 0, said = 0;
     char ctype[48];
 
     ctype[0] = 0;
     moved[0] = 0;
 
-    if (!ip_parse(u->host, &to)) {
-        fmt_str(line, sizeof line, "looking up %s...", u->host);
-        note(line, C_DIM);
-        to = ip_lookup(u->host);
-        if (!to) {
-            fmt_str(line, sizeof line, "Nobody knows a %s.", u->host);
-            note(line, C_ACCENT);
-            return -1;
-        }
-    }
-
-    fmt_str(line, sizeof line, "%s ...", u->host);
-    note(line, C_DIM);
-    if (!s_pg) main_pump(1);
-
-    if (!tcp_connect(to, u->port, 6000)) {
-        fmt_str(line, sizeof line, "Could not reach it: %s.", tcp_why());
-        note(line, C_ACCENT);
-        return -1;
-    }
-
     s_secure = u->secure;
     if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->who[0] = 0; }
-    if (s_secure) {
-        tls_set_note(tls_note);
-        note("agreeing on a key...", C_DIM);
-        if (!s_pg) main_pump(1);
-        if (!tls_connect(u->host)) {
-            int ok = 0;
-            /* The post-quantum handshake was chosen and then failed: that
-             * is ours to fix, not the site's, so try once more without it
-             * and say so -- down the wire as well, where it can be read. */
-            if (tls_pq_broke()) {
-                serial_printf("[tls] post-quantum handshake with %s failed (%s); retrying with X25519 alone\n",
-                              u->host, tls_why());
-                tcp_close();
-                if (tcp_connect(to, u->port, 6000)) {
-                    tls_offer_pq(0);
-                    ok = tls_connect(u->host);
-                    tls_offer_pq(1);
-                }
-            }
-            if (!ok) {
-                if (tls_untrusted()) {
-                    fmt_str(line, sizeof line, "It could not prove it is %s: %s.", u->host, tls_why());
-                    if (s_pg) s_pg->untrusted = 1;
-                } else
-                    fmt_str(line, sizeof line, "The secure handshake failed: %s.", tls_why());
-                note(line, C_ACCENT);
-                tcp_close();
-                return -1;
-            }
-        }
-        serial_printf("[tls] %s: %s, %s, %s\n", u->host, tls_cipher(),
-                      tls_post_quantum() ? "X25519MLKEM768 (post-quantum)" : "X25519",
-                      tls_checked() ? tls_who() : "NOT CHECKED");
+    if (!s_pg) main_pump(1);
+    if (!A->conn_open(u->host, u->port, u->secure, tls_note)) {
+        ConnInfo ci;
+        A->conn_info(&ci);
+        if (s_pg && u->secure) s_pg->untrusted = ci.untrusted;
+        note(A->conn_why(), C_ACCENT);
+        return -1;
+    }
+    if (u->secure) {
+        ConnInfo ci;
+        A->conn_info(&ci);
         if (!s_pg) {
-            if (tls_checked())
+            if (ci.checked)
                 fmt_str(line, sizeof line, "encrypted%s, and it is who it says: %s vouches for it",
-                        tls_post_quantum() ? ", post-quantum" : "", tls_who());
+                        ci.pq ? ", post-quantum" : "", ci.who);
             else
                 fmt_str(line, sizeof line, "encrypted%s -- but NOT checked: it could be anybody",
-                        tls_post_quantum() ? ", post-quantum" : "");
-            note(line, tls_checked() ? C_DIM : C_ACCENT);
+                        ci.pq ? ", post-quantum" : "");
+            note(line, ci.checked ? C_DIM : C_ACCENT);
         } else {
-            int i;
+            int k;
             s_pg->secure = 1;
-            s_pg->pq = tls_post_quantum();
-            s_pg->checked = tls_checked();
-            for (i = 0; tls_who()[i] && i < (int)sizeof s_pg->who - 1; i++) s_pg->who[i] = tls_who()[i];
-            s_pg->who[i] = 0;
+            s_pg->pq = ci.pq;
+            s_pg->checked = ci.checked;
+            for (k = 0; ci.who[k] && k < (int)sizeof s_pg->who - 1; k++) s_pg->who[k] = ci.who[k];
+            s_pg->who[k] = 0;
         }
     }
 
-    fmt_str(req, sizeof req,
-            "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
-            "Accept: text/html, text/plain, */*\r\nConnection: close\r\n\r\n",
-            u->path, u->host, FLOPOS_VERSION);
+    if (post)
+        fmt_str(req, sizeof req,
+                "POST %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+                "Accept: text/html, text/plain, */*\r\n"
+                "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: %u\r\n"
+                "Connection: close\r\n\r\n",
+                u->path, u->host, A->os_version(), (u32)postlen);
+    else
+        fmt_str(req, sizeof req,
+                "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+                "Accept: text/html, text/plain, */*\r\nConnection: close\r\n\r\n",
+                u->path, u->host, A->os_version());
     for (n = 0; req[n]; n++) { }
     conn_write((const u8 *)req, n);
+    for (i = 0; post && i < postlen; i += 4096)        /* the form itself   */
+        conn_write(post + i, postlen - i < 4096 ? postlen - i : 4096);
+    s_status = 0;
 
     filter_reset(1);
 
@@ -737,7 +1032,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max)
             flush_word();
             if (n == -1) note("It went quiet, so I stopped waiting.", C_ACCENT);
             else {
-                fmt_str(line, sizeof line, "Cut off: %s.", s_secure ? tls_why() : tcp_why());
+                fmt_str(line, sizeof line, "Cut off: %s.", A->conn_why());
                 note(line, C_ACCENT);
             }
             break;
@@ -778,6 +1073,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max)
                     ln = *end ? end + 1 : end;
                 }
                 if (s_pg) s_pg->status = status;
+                s_status = status;
 
                 if (status >= 300 && status < 400 && moved[0]) {
                     conn_close();
@@ -828,7 +1124,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max)
 /* Fetch url, following redirects, into the terminal (pg 0) or a page.
  * The address it finally came from goes into pg->url, which is what
  * relative links on it are relative to. */
-static int get(const char *url, Page *pg)
+static int get(const char *url, Page *pg, const u8 *post, int postlen)
 {
     Url u;
     char moved[URL_PATH_MAX];
@@ -846,7 +1142,7 @@ static int get(const char *url, Page *pg)
     if (!pg) term_plain(1);
     for (hops = 0; hops < 5; hops++) {
         if (pg) url_text(&u, pg->url, (int)sizeof pg->url);
-        r = fetch_once(&u, moved, sizeof moved);
+        r = fetch_once(&u, moved, sizeof moved, post, postlen);
         if (r != 1) {
             if (!pg) term_plain(0);
             s_pg = keep;
@@ -854,9 +1150,13 @@ static int get(const char *url, Page *pg)
         }
         if (!pg) {
             term_colour(C_DIM);
-            term_printf("moved to %s", moved);
+            term_print("moved to ");
+            term_print(moved);
             term_newline();
         }
+        /* After a form, "see over there" means go and look, not send it
+         * again -- except 307 and 308, which mean send it there too. */
+        if (s_status != 307 && s_status != 308) { post = 0; postlen = 0; }
         if (moved[0] == '/' && moved[1] != '/') {        /* same server    */
             int i;
             for (i = 0; moved[i] && i < PAGE_HREF_MAX - 1; i++) u.path[i] = moved[i];
@@ -876,5 +1176,9 @@ static int get(const char *url, Page *pg)
     return 0;
 }
 
-void http_fetch(const char *url) { (void)get(url, 0); }
-int  http_page(const char *url, Page *pg) { return get(url, pg); }
+void http_fetch(const char *url) { (void)get(url, 0, 0, 0); }
+int  http_page(const char *url, Page *pg) { return get(url, pg, 0, 0); }
+int  http_load(const char *url, Page *pg, const u8 *post, int postlen)
+{
+    return get(url, pg, post, postlen);
+}

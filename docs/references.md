@@ -41,8 +41,8 @@ was copied from any of them.
 | [RFC 2131](https://www.rfc-editor.org/rfc/rfc2131) | DHCP | `ip.c` |
 | [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035) | DNS | `ip.c` |
 | [RFC 9293](https://www.rfc-editor.org/rfc/rfc9293) | TCP | `tcp.c` |
-| [RFC 1945](https://www.rfc-editor.org/rfc/rfc1945) | HTTP/1.0 | `http.c` |
-| [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) | URLs, and joining a link to a page | `url.c` |
+| [RFC 1945](https://www.rfc-editor.org/rfc/rfc1945) | HTTP/1.0 | `apps/browzer/web.c` |
+| [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) | URLs, joining a link to a page | `apps/browzer/url.c` |
 
 ### Files
 

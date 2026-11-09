@@ -192,9 +192,10 @@ Each layer is its own file:
 | Cards | `el3.c`, `ne2000.c`, `net.c` | The 3Com 3C589, the emulator's NE2000, and a common interface for both. Polled: no interrupts. |
 | Addresses | `ip.c` | ARP (finding the hardware behind an address), IPv4, ICMP (ping), UDP, DHCP (being given an address), DNS (names) |
 | Conversations | `tcp.c` | TCP: ordered, reliable, retransmitted. Its receive window is kept small to fit the card's buffer. |
-| Web | `http.c`, `url.c` | HTTP/1.0 requests, redirects, and turning HTML into wrapped, readable text with links |
+| Connections | `conn.c` | One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close |
 | Secure web | `tls.c` | TLS 1.3, client side |
-| Programs | `netui.c`, `browzer.c` | The network menu and the browser |
+| Programs | `netui.c` | The network menu |
+| Web | `apps/browzer/` | BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`). `fetch` runs it too. |
 
 ## Encryption
 

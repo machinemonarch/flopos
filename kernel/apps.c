@@ -16,6 +16,7 @@
 #include "flopos.h"
 #include "io.h"
 #include "../apps/app.h"
+#include "version.h"
 
 /* The app header's copies of kernel constants, checked against the
  * originals here so that the two can never quietly disagree. */
@@ -39,6 +40,19 @@ _Static_assert(K_UP == UK_UP && K_DOWN == UK_DOWN && K_LEFT == UK_LEFT &&
                K_END == UK_END && K_DEL == UK_DEL, "app.h keys");
 _Static_assert(M_SHIFT == KEV_SHIFT && M_CTRL == KEV_CTRL && M_ALT == KEV_ALT, "app.h mods");
 _Static_assert(sizeof(AppFile) == sizeof(FsFile), "app.h files");
+_Static_assert(A_CH_FILL == CH_FILL, "app.h fill");
+
+/* The connections, in conn.c. */
+int  net_online(void);
+int  conn_open(const char *host, u16 port, int secure, void (*note)(const char *t));
+int  conn_write(const u8 *d, int n);
+int  conn_read(u8 *b, int n, int wait_ms);
+void conn_close(void);
+const char *conn_why(void);
+void conn_info(ConnInfo *ci);
+
+static const char *api_version(void) { return FLOPOS_VERSION; }
+static void api_wire(const char *t) { if (serial_present()) serial_print(t); }
 _Static_assert(A_CH_ARING == CH_ARING && A_CH_ADIA == CH_ADIA && A_CH_ODIA == CH_ODIA &&
                A_CH_ARING_L == CH_ARING_L && A_CH_ADIA_L == CH_ADIA_L &&
                A_CH_ODIA_L == CH_ODIA_L, "app.h letters");
@@ -58,7 +72,11 @@ static const Api s_api = {
     term_print, term_newline, term_colour,
     api_key, main_pump, ms_now,
     api_find, api_read, api_write, fs_each,
-    fmt_str
+    fmt_str,
+    /* version 2 */
+    api_version, term_putc, term_plain, api_wire,
+    net_online, conn_open, conn_write, conn_read, conn_close, conn_why, conn_info,
+    tls_check,
 };
 
 static int memory_for_apps(void)
@@ -112,8 +130,10 @@ int app_run(const char *word, int argc, char **argv)
         term_newline();
         return 1;
     }
-    if (h->api_version != APP_API_VERSION) {
-        term_printf("%s was built for a different FLOPOS (it wants version %u, this is %u).",
+    /* The table only ever grows at the end, so an app built for an older
+     * version still finds everything it knows about where it expects. */
+    if (h->api_version == 0 || h->api_version > APP_API_VERSION) {
+        term_printf("%s was built for a newer FLOPOS (it wants version %u, this is %u).",
                     file, h->api_version, (u32)APP_API_VERSION);
         term_newline();
         return 1;

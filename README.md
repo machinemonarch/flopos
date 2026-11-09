@@ -32,8 +32,8 @@ proxies, no JavaScript.
 - **Talks back** in a warm deadpan, learns words you `teach` it, and keeps
   a journal on the floppy that any computer can read.
 - **Gets online**: DHCP, DNS, `ping`, `fetch` for reading a page as text,
-  and **browzer**, a small web browser that shows images as captioned
-  boxes and searches through FrogFind.
+  and **browzer**, a small web browser with working forms, that shows
+  images as captioned boxes and searches through FrogFind.
 - **Speaks TLS 1.3** with X25519MLKEM768, ML-KEM-768, ChaCha20-Poly1305 and
   AES-128-GCM, and makes every site prove who it is: certificate chains
   checked with RSA and ECDSA up to Mozilla's trusted authorities. All of it
@@ -43,7 +43,7 @@ proxies, no JavaScript.
   four headings, saving Markdown documents to the floppy, with a view for
   editing the Markdown directly.
 - **Apps load from the floppy** beside the system, so programs don't make
-  the system bigger.
+  the system bigger: `write` and `browzer` are apps.
 
 ## Quick start
 

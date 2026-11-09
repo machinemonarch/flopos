@@ -1,5 +1,8 @@
 /* ===========================================================================
- * browzer.c -- a small web browser.
+ * browzer.c -- a small web browser, and the app it is.
+ *
+ * BROWZER.APP on the floppy.  Typed as `browzer`, it is the browser; typed
+ * as `fetch`, it reads one page out into the terminal as text and stops.
  *
  * The whole screen, framed: an address along the top, the page in the
  * middle, a status line along the bottom.  Pages come through the same
@@ -12,19 +15,48 @@
  *   r                again                 h                     home
  *   esc              leave
  *
+ * Forms: tab reaches the boxes and buttons as it does links.  Enter on a
+ * box starts typing into it; enter again sends the form (in a big box,
+ * enter is a new line and tab finishes).  Enter on a button sends the
+ * form with that button.  Esc stops typing.
+ *
  * Typing words rather than an address searches, through FrogFind -- a
  * search engine made for old computers that answers in plain HTML over
  * plain http, which is exactly what this one can best read.
  * ===========================================================================
  */
-#include "flopos.h"
+#include "web.h"
 
 #define MAX_LINES  1500
 #define MAX_WIDTH  98
 #define HISTORY    20
 
-static Page s_pg;
+const Api *A;
+
+/* Everything a page needs, kept here in the app's own memory. */
+static Page      s_pg;
+static PageCell  s_cells[MAX_LINES * MAX_WIDTH];
+static char      s_hrefs[PAGE_LINKS][PAGE_HREF_MAX];
+static PageForm  s_forms[PAGE_FORMS];
+static PageField s_fields[PAGE_FIELDS];
+static char      s_pool[PAGE_POOL];
+static u16       s_link_field[PAGE_LINKS + 1];
+static u8        s_body[PAGE_POOL * 3];  /* a form, ready to send          */
 static int  s_ready;
+static int  s_typing = -1;               /* the field being typed into     */
+
+int ui_key(void)
+{
+    int mods, k = A->key(&mods);
+    if (k >= 0 && (mods & (M_CTRL | M_ALT))) return -1;
+    return k;
+}
+
+static PageField *field_of(int link)
+{
+    int f = link > 0 && link <= PAGE_LINKS ? s_pg.link_field[link] : 0;
+    return f ? &s_pg.fields[f - 1] : 0;
+}
 static int  s_w, s_h, s_vh;              /* window, and page rows shown    */
 static int  s_top;                       /* first page line shown          */
 static int  s_sel;                       /* selected link, 0 for none      */
@@ -50,7 +82,8 @@ static const char s_home[] =
     "<li><a href=\"https://wiby.me/\">wiby.me</a> -- a search engine for the old web</li>"
     "<li><a href=\"http://example.com/\">example.com</a></li>"
     "</ul>"
-    "<p>tab picks a link, enter follows it, backspace goes back, esc leaves.</p>"
+    "<p>tab picks a link, enter follows it, backspace goes back, esc leaves. "
+    "Boxes on a page are typed into the same way: tab to one, enter, type, enter sends.</p>"
     "<p>Secure pages are encrypted, and the site has to prove who it is.</p>";
 
 /* ---- drawing ------------------------------------------------------------ */
@@ -130,8 +163,32 @@ static void draw(void)
         term_win_put(s_w - 2, 3 + pos, CH_FILL, C_GREY, pp);
     }
 
+    /* The caret, in the box being typed into. */
+    if (s_typing >= 0) {
+        PageField *f = &s_pg.fields[s_typing];
+        u32 k;
+        int n = 0, cy = f->line - s_top;
+        for (k = 0; k < f->vlen; k++) if ((s_pg.pool[f->val + k] & 0xC0) != 0x80) n++;
+        if (n > f->width - 1) n = f->width - 1;
+        if (cy >= 0 && cy < s_vh) term_win_put(2 + f->col + n, 3 + cy, ' ', C_TEXT, C_BRIGHT);
+    }
+
     /* Status: what is happening, or where the picked link goes. */
-    if (s_sel && !s_loading) {
+    if (s_typing >= 0) {
+        put_text_clipped(2, s_h - 2, s_pg.fields[s_typing].kind == FK_AREA
+                         ? "typing: enter is a new line, tab finishes"
+                         : "typing: enter sends it, esc stops", C_ACCENT, pp, s_w - 12);
+    } else if (s_sel && !s_loading && field_of(s_sel)) {
+        PageField *f = field_of(s_sel);
+        char where[PAGE_HREF_MAX + 16];
+        if (f->kind == FK_SUBMIT) {
+            const char *act = s_pg.forms[f->form].action;
+            if (!url_resolve(s_pg.url, act[0] ? act : s_pg.url, where, sizeof where)) where[0] = 0;
+            term_win_text(2, s_h - 2, "sends to", C_ACCENT, pp);
+            put_text_clipped(11, s_h - 2, where, C_TEXT, pp, s_w - 12);
+        } else
+            put_text_clipped(2, s_h - 2, "a box: enter to type into it", C_ACCENT, pp, s_w - 12);
+    } else if (s_sel && !s_loading) {
         char where[PAGE_HREF_MAX + 16];
         if (!url_resolve(s_pg.url, s_pg.href[s_sel - 1], where, sizeof where))
             fmt_str(where, sizeof where, "(not a page: %s)", s_pg.href[s_sel - 1]);
@@ -148,7 +205,8 @@ static void draw(void)
 
     /* Keys, let into the bottom of the frame. */
     {
-        const char *keys = s_w >= 60 ? " tab link  enter go  bksp back  g go to  esc leave "
+        const char *keys = s_typing >= 0 ? " type  enter send  tab done  esc stop "
+                         : s_w >= 60 ? " tab link  enter go  bksp back  g go to  esc leave "
                                      : " tab enter bksp g esc ";
         int kl = 0;
         while (keys[kl]) kl++;
@@ -187,23 +245,25 @@ static void home(void)
     s_sel = 0;
 }
 
-static void go(const char *url)
+/* A page, or the answer to a form sent to url (post, of postlen bytes). */
+static void go_with(const char *url, const u8 *post, int postlen)
 {
     s_top = 0;
     s_sel = 0;
+    s_typing = -1;
     if (url[0] == 'f' && url[1] == 'l' && url[2] == 'o' && url[3] == 'p') { home(); return; }
     s_loading = 1;
     s_pg.title[0] = 0;
     s_pg.lines = 1;
     progress();
-    if (!net_up() || (!ip_addr() && !ip_apply_saved() && !ip_dhcp())) {
+    if (!A->net_online()) {
         page_clear(&s_pg);
         fmt_str(s_pg.note, sizeof s_pg.note, "No network. Try the network command.");
         s_pg.note_col = C_ACCENT;
         s_loading = 0;
         return;
     }
-    if (!http_page(url, &s_pg) && s_pg.lines <= 1 && s_pg.col == 0) {
+    if (!http_load(url, &s_pg, post, postlen) && s_pg.lines <= 1 && s_pg.col == 0) {
         /* Nothing came: say why on the page itself, not only in the
          * status line, and keep the address so r can try again. */
         static char html[600];
@@ -249,6 +309,101 @@ static void go(const char *url)
     }
 }
 
+static void go(const char *url) { go_with(url, 0, 0); }
+
+/* ---- forms ----------------------------------------------------------------- */
+/* Bytes as a form sends them: letters and digits as they are, a space as
+ * +, anything else as %XX. */
+static int urlenc(u8 *out, int n, int cap, const char *p, u32 len)
+{
+    static const char hexd[] = "0123456789ABCDEF";
+    u32 i;
+    for (i = 0; i < len && n < cap - 3; i++) {
+        u8 c = (u8)p[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+            c == '-' || c == '_' || c == '.' || c == '*') out[n++] = c;
+        else if (c == ' ') out[n++] = '+';
+        else if (c == '\n') { out[n++] = '%'; out[n++] = '0'; out[n++] = 'D';
+                              out[n++] = '%'; out[n++] = '0'; out[n++] = 'A'; }
+        else { out[n++] = '%'; out[n++] = (u8)hexd[c >> 4]; out[n++] = (u8)hexd[c & 15]; }
+    }
+    return n;
+}
+
+/* Send the form that field belongs to: every named box and hidden value
+ * in it, and the button, if a button was what sent it. */
+static void submit(PageField *by)
+{
+    PageForm *form = &s_pg.forms[by->form];
+    char url[PAGE_HREF_MAX + 16];
+    int n = 0, i, cap = (int)sizeof s_body;
+
+    for (i = 0; i < s_pg.nfields; i++) {
+        PageField *f = &s_pg.fields[i];
+        if (f->form != by->form || !f->nlen) continue;
+        if (f->kind == FK_SUBMIT && f != by) continue;
+        if (n) s_body[n++] = '&';
+        n = urlenc(s_body, n, cap, s_pg.pool + f->name, f->nlen);
+        s_body[n++] = '=';
+        n = urlenc(s_body, n, cap, s_pg.pool + f->val, f->vlen);
+    }
+    if (n >= cap - 4) {
+        fmt_str(s_pg.note, sizeof s_pg.note, "That form is too big to send.");
+        s_pg.note_col = C_ACCENT;
+        return;
+    }
+    if (!url_resolve(s_pg.url, form->action[0] ? form->action : s_pg.url, url, sizeof url)) {
+        fmt_str(s_pg.note, sizeof s_pg.note, "The form says to send it nowhere I can find.");
+        s_pg.note_col = C_ACCENT;
+        return;
+    }
+    push_history();
+    if (form->post) {
+        go_with(url, s_body, n);
+    } else {
+        /* A GET form: what it says goes after a ? in the address. */
+        int k = 0;
+        while (url[k] && url[k] != '?' && url[k] != '#') k++;
+        if (k + 1 + n >= (int)sizeof url) {
+            fmt_str(s_pg.note, sizeof s_pg.note, "Too much to send in an address.");
+            s_pg.note_col = C_ACCENT;
+            return;
+        }
+        url[k++] = '?';
+        for (i = 0; i < n; i++) url[k++] = (char)s_body[i];
+        url[k] = 0;
+        go(url);
+    }
+}
+
+/* One typed character into the box being typed into, as UTF-8. */
+static void type_char(PageField *f, int k)
+{
+    char b[2];
+    int n = 0, i;
+    switch (k) {
+    case CH_ARING:   b[0] = (char)0xC3; b[1] = (char)0x85; n = 2; break;
+    case CH_ADIA:    b[0] = (char)0xC3; b[1] = (char)0x84; n = 2; break;
+    case CH_ODIA:    b[0] = (char)0xC3; b[1] = (char)0x96; n = 2; break;
+    case CH_ARING_L: b[0] = (char)0xC3; b[1] = (char)0xA5; n = 2; break;
+    case CH_ADIA_L:  b[0] = (char)0xC3; b[1] = (char)0xA4; n = 2; break;
+    case CH_ODIA_L:  b[0] = (char)0xC3; b[1] = (char)0xB6; n = 2; break;
+    default:
+        if (k == '\n' || (k >= 32 && k < 127)) { b[0] = (char)k; n = 1; }
+    }
+    if (!n || f->vlen + (u32)n > f->vcap) return;
+    for (i = 0; i < n; i++) s_pg.pool[f->val + f->vlen++] = b[i];
+    page_field_show(&s_pg, (int)(f - s_pg.fields));
+}
+
+static void unchar(PageField *f)
+{
+    if (!f->vlen) return;
+    f->vlen--;
+    while (f->vlen && (s_pg.pool[f->val + f->vlen] & 0xC0) == 0x80) f->vlen--;  /* the whole letter */
+    page_field_show(&s_pg, (int)(f - s_pg.fields));
+}
+
 /* What was typed into the address bar: an address, or words to look for. */
 static void go_typed(const char *t)
 {
@@ -286,7 +441,13 @@ static void go_typed(const char *t)
 static void follow(void)
 {
     char url[PAGE_HREF_MAX + 16];
+    PageField *f;
     if (!s_sel) return;
+    if ((f = field_of(s_sel)) != 0) {
+        if (f->kind == FK_SUBMIT) submit(f);
+        else s_typing = (int)(f - s_pg.fields);
+        return;
+    }
     if (!url_resolve(s_pg.url, s_pg.href[s_sel - 1], url, sizeof url)) return;
     push_history();
     go(url);
@@ -354,8 +515,12 @@ void browzer_run(const char *start)
     s_vh = s_h - 6;
 
     if (!s_ready) {
-        s_pg.cells = (PageCell *)halloc(MAX_LINES * MAX_WIDTH * sizeof(PageCell));
-        s_pg.href = (char (*)[PAGE_HREF_MAX])halloc(PAGE_LINKS * PAGE_HREF_MAX);
+        s_pg.cells = s_cells;
+        s_pg.href = s_hrefs;
+        s_pg.forms = s_forms;
+        s_pg.fields = s_fields;
+        s_pg.pool = s_pool;
+        s_pg.link_field = s_link_field;
         s_pg.max_lines = MAX_LINES;
         s_pg.progress = progress;
         s_ready = 1;
@@ -379,6 +544,18 @@ void browzer_run(const char *start)
         draw();
         k = ui_key();
         if (k < 0) { main_pump(0); continue; }
+
+        if (s_typing >= 0) {             /* into a box on the page          */
+            PageField *f = &s_pg.fields[s_typing];
+            if (k == UK_ESC) s_typing = -1;
+            else if (k == UK_TAB) { s_typing = -1; pick(+1); }
+            else if (k == UK_BKSP) unchar(f);
+            else if (k == UK_ENTER) {
+                if (f->kind == FK_AREA) type_char(f, '\n');
+                else { s_typing = -1; submit(f); }
+            } else type_char(f, k);
+            continue;
+        }
 
         if (s_editing) {
             if (k == UK_ENTER) {
@@ -419,12 +596,35 @@ void browzer_run(const char *start)
                 char u[PAGE_HREF_MAX + 16]; int i;
                 for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
                 u[i] = 0;
-                tls_check(0);
+                A->conn_check(0);
                 go(u);
-                tls_check(1);
+                A->conn_check(1);
             }
             break;
         default: break;
         }
     }
+}
+
+/* ---- the app ---------------------------------------------------------------- */
+/* browzer [address or words], or fetch address: the words after it are
+ * where to go. */
+int app_main(const Api *api, int argc, char **argv)
+{
+    static char start[PAGE_HREF_MAX];
+    int a, i, n = 0;
+
+    A = api;
+    for (a = 1; a < argc; a++) {
+        if (a > 1 && n < PAGE_HREF_MAX - 1) start[n++] = ' ';
+        for (i = 0; argv[a][i] && n < PAGE_HREF_MAX - 1; i++) start[n++] = argv[a][i];
+    }
+    start[n] = 0;
+
+    if (argc >= 1 && argv[0][0] == 'f') {         /* fetch: into the terminal */
+        if (n) http_fetch(start);
+        return 0;
+    }
+    browzer_run(start);
+    return 0;
 }

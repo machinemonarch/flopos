@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 1
+#define APP_API_VERSION 2
 #define APP_BASE        0x00A00000u      /* 10MB, clear of the kernel heap */
 #define APP_MAX         0x00400000u      /* 4MB: code, data and buffers    */
 
@@ -75,6 +75,7 @@ typedef struct { u32 first, size; } AppFile;
 #define A_CH_ARING_L 0x86                /* å */
 #define A_CH_ADIA_L  0x87                /* ä */
 #define A_CH_ODIA_L  0x88                /* ö */
+#define A_CH_FILL    0xB3                /* a whole cell, filled          */
 
 /* Keys, as key() returns them; anything else is the character itself. */
 #define K_UP    0x101
@@ -94,6 +95,13 @@ typedef struct { u32 first, size; } AppFile;
 #define M_SHIFT 0x0200
 #define M_CTRL  0x0400
 #define M_ALT   0x0800
+
+/* What a connection turned out to be (conn_info). */
+typedef struct {
+    int  secure, pq, checked, untrusted;
+    char who[48];                        /* the authority that vouched      */
+    char cipher[24];
+} ConnInfo;
 
 typedef struct {
     u32 version;
@@ -129,6 +137,29 @@ typedef struct {
 
     /* Text. */
     void (*format)(char *out, u32 cap, const char *fmt, ...);
+
+    /* ---- version 2 ------------------------------------------------------ */
+    const char *(*os_version)(void);     /* "1.15.0"                        */
+    void (*putc)(int c);                 /* one character to the terminal   */
+    void (*plain)(int on);               /* the terminal: lines left alone  */
+    void (*wire)(const char *t);         /* down the serial cable, if any   */
+
+    /* The network.  net_online brings the card up and finds an address
+     * if it has to.  One connection at a time: conn_open looks the host
+     * up, connects, and if secure agrees on keys and makes the server
+     * prove who it is, telling note how it is going.  On failure,
+     * conn_why() is a whole sentence to show.  conn_read returns bytes,
+     * 0 when the other end has finished, -1 when it went quiet for
+     * wait_ms, -2 when it broke.  conn_check(0) lets the next secure
+     * connection through without the proof, for "go there anyway". */
+    int  (*net_online)(void);
+    int  (*conn_open)(const char *host, u16 port, int secure, void (*note)(const char *t));
+    int  (*conn_write)(const u8 *d, int n);
+    int  (*conn_read)(u8 *b, int n, int wait_ms);
+    void (*conn_close)(void);
+    const char *(*conn_why)(void);
+    void (*conn_info)(ConnInfo *ci);
+    void (*conn_check)(int on);
 } Api;
 
 typedef int (*AppMain)(const Api *api, int argc, char **argv);

@@ -6,6 +6,23 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.15.0 — 2026-11-09
+
+- **Forms in browzer.** Text boxes, big text areas, hidden values and
+  buttons work: Tab to a box, Enter, type, Enter sends. Search boxes,
+  logins and chat pages like nojs.chat can be used. Pages are sent both
+  ways sites ask for (GET and POST), and the redirect after a form is
+  followed. Not yet: checkboxes, radio buttons, drop-down lists.
+- **browzer is an app now**, BROWZER.APP on the floppy, like `write`. The
+  system keeps what any program could use -- the network and secure
+  connections, certificate check included -- and browzer has everything
+  that is only about the web. `fetch` is browzer too, reading the page out
+  instead of showing it. The system is 20 KB smaller.
+- Apps can open network connections, plain or secure, through the system
+  (app interface version 2). Apps built for version 1 still run.
+- browzer starts at its home page each time now, rather than where you
+  left it.
+
 ## 1.14.0 — 2026-11-09
 
 - **Secure sites have to prove who they are.** FLOPOS now checks a site's

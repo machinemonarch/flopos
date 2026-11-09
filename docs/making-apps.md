@@ -2,7 +2,8 @@
 
 Programs don't have to be built into the system. An **app** is a file on
 the floppy, `NAME.APP`, loaded into memory and run when you type its name.
-`write` is the first.
+There are two so far: `write`, the word processor, and `browzer`, the web
+browser (which is also what `fetch` runs).
 
 Why apps live outside the system:
 
@@ -72,7 +73,7 @@ checks the header, and calls `app_main`. When it returns, you are back at
 ## What an app can ask for
 
 `app_main` receives a table of functions. Its first field is the version,
-currently 1. New functions are only ever added at the end, so an app built
+currently 2. New functions are only ever added at the end, so an app built
 for an older version keeps working.
 
 **A window**, in character cells, drawn over the terminal:
@@ -110,6 +111,32 @@ for an older version keeps working.
 
 **Text**: `format(out, cap, fmt, ...)`, a small `printf` into a buffer
 supporting `%s`, `%u`, `%d`, `%x` and `%c`, with widths and zero padding like `%02u`.
+
+### Added in version 2
+
+| Function | What it does |
+|---|---|
+| `os_version()` | Which FLOPOS this is, as text |
+| `putc(c)` | One character to the terminal |
+| `plain(on)` | Stop the terminal's line quirks while an app prints something that has to stay readable |
+| `wire(text)` | Send text down the serial cable, if there is one |
+
+**The network.** The system does everything below the conversation itself,
+so an app only reads and writes:
+
+| Function | What it does |
+|---|---|
+| `net_online()` | Brings the network card up and finds an address if it has to. 0 if there is no network. |
+| `conn_open(host, port, secure, note)` | Looks the host up, connects, and if `secure`, agrees on keys with TLS 1.3 and makes the server prove who it is. `note` is told how it is going ("agreeing on a key..."). 0 on failure. |
+| `conn_write(data, n)` | Send |
+| `conn_read(buf, n, wait_ms)` | Receive: the number of bytes, 0 when the other end has finished, -1 when it went quiet for `wait_ms`, -2 when it broke |
+| `conn_close()` | Hang up |
+| `conn_why()` | After a failure, a whole sentence saying why ("It could not prove it is example.com: its certificate ran out on 2026-01-27.") |
+| `conn_info(&ci)` | Whether it was secure, post-quantum, checked, who vouched for it, and the cipher |
+| `conn_check(on)` | `conn_check(0)` lets the next secure connection through without the proof, for "go there anyway" |
+
+One connection at a time. Anything above it is the app's own: browzer
+speaks HTTP and reads HTML itself, in `apps/browzer/`.
 
 Colours (`A_TEXT`, `A_DIM`, `A_BRIGHT`, `A_ACCENT`, `A_GREY`, `A_PAPER`,
 `A_HILITE`, `A_SELECT`), frame pieces (`A_FR_*`) and the Swedish letters

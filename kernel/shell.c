@@ -145,8 +145,9 @@ static void screen_now(void)
     vga_present();
 }
 
-/* A web page, read out as text.  Plain http for now; secure pages need
- * TLS, which is being built. */
+/* A web page, read out as text.  That is browzer's work -- it is the app
+ * that knows HTTP and HTML -- so `fetch` runs BROWZER.APP, which reads
+ * the page into the terminal when it is started under this name. */
 static void cmd_fetch(void)
 {
     if (s_argc < 2) {
@@ -155,22 +156,16 @@ static void cmd_fetch(void)
         return;
     }
     if (!net_ready_here(1)) return;
-    http_fetch(s_argv[1]);
+    if (!app_run("browzer", s_argc, s_argv)) say("browzer is not on this floppy, and fetch is browzer.");
 }
 
 static void cmd_crypto(void) { (void)crypto_selftest(); }
 
-/* The browser.  An address or some words after it go straight there. */
+/* The browser, BROWZER.APP on the floppy.  Listed here so `help` still
+ * shows it; an address or some words after it go straight there. */
 static void cmd_browzer(void)
 {
-    static char start[PAGE_HREF_MAX];
-    int i, n = 0, a;
-    for (a = 1; a < s_argc; a++) {
-        if (a > 1 && n < PAGE_HREF_MAX - 1) start[n++] = ' ';
-        for (i = 0; s_argv[a][i] && n < PAGE_HREF_MAX - 1; i++) start[n++] = s_argv[a][i];
-    }
-    start[n] = 0;
-    browzer_run(start);
+    if (!app_run("browzer", s_argc, s_argv)) say("browzer is not on this floppy.");
 }
 
 static void cmd_apps(void) { apps_list(); }
