@@ -626,11 +626,12 @@ static void cmd_dump(void)
 static void cmd_big(void)
 {
     if (vga_is_big()) {
-        say("Already there.");
-        term_colour(C_DIM);
-        term_printf("800x600, mode %x, %u by %u characters",
-                    (u32)vga_big_mode(), term_cols(), term_rows());
+        vga_go_small();
+        term_set_face(1);
+        term_colour(C_ACCENT);
+        term_printf("Back to 320x200, %u by %u.", term_cols(), term_rows());
         term_newline();
+        say_dim("Say it again to go back up.");
         return;
     }
 
@@ -650,7 +651,6 @@ static void cmd_big(void)
     term_printf("%u by %u, and nothing is being stretched.",
                 term_cols(), term_rows());
     term_newline();
-    say_dim("There is no way back without a reboot.");
 }
 
 static void cmd_vesa(void)
@@ -1121,7 +1121,7 @@ static const Cmd s_cmds[] = {
     { "frames",  "what a frame is made of",      cmd_frames  },
     { "card",    "what is in the PC Card slots",  cmd_card    },
     { "vesa",    "what the video card can do",   cmd_vesa    },
-    { "big",     "use the whole panel, properly",cmd_big     },
+    { "big",     "big screen, or back to small", cmd_big     },
     { "dump",    "show me what is at an address", cmd_dump    },
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },

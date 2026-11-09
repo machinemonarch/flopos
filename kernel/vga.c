@@ -40,6 +40,7 @@ static u8 s_current[768];                /* what the DAC is holding now    */
 static u8  *s_hi;                        /* the 800x600 canvas             */
 static volatile u8 *s_lfb;               /* where the card displays it     */
 static u16  s_hmode;
+static int  s_composed;          /* the background is already up    */
 #define HI_W 800
 #define HI_H 600
 
@@ -109,6 +110,7 @@ void vga_compose(void)
     int y;
 
     if (!s_hi) return;
+    s_composed = 1;
 
     for (y = 0; y < SCR_H; y++) {
         expand_row(d, g_back + y * SCR_W);
@@ -155,14 +157,32 @@ int vga_go_big(void)
 
     s_lfb = (volatile u8 *)m.lfb;
     s_hmode = m.mode;
+    s_composed = 0;
     s_retrace_ok = 0;                    /* a different chip drives it now */
     vga_set_palette(s_current);          /* the mode change cleared it     */
     return 1;
 }
 
+/* Back to 320x200, which is a safety valve rather than a feature: if the
+ * big mode comes out wrong on a panel I cannot see, there has to be a way
+ * to say so from the keyboard rather than from the power switch. */
+void vga_go_small(void)
+{
+    if (!s_hi) return;
+    bios_int(0x10, 0x0013, 0, 0, 0, 0, 0);
+    s_hi = 0;
+    s_retrace_ok = 1;
+    vga_set_palette(s_current);
+}
+
 void vga_present(void)
 {
     if (s_hi) {
+        /* Anything that drew into the small buffer and then presented --
+         * the boot screen, the arrival, the vortex -- never knew about the
+         * big one.  Blow it up for them. */
+        if (!s_composed) vga_compose();
+        s_composed = 0;
         memcpy32((void *)s_lfb, s_hi, (HI_W * HI_H) / 4);
         return;
     }

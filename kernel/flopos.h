@@ -442,6 +442,7 @@ int    vbe_is_graphics(const VbeMode *m);
 int    vbe_has_lfb(const VbeMode *m);
 
 int    vga_go_big(void);
+void   vga_go_small(void);
 int    vga_is_big(void);
 void   vga_compose(void);
 u8    *vga_canvas(void);
