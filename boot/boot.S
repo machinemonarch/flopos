@@ -5,16 +5,22 @@
  *   1. sane segments + stack
  *   2. remember the BIOS boot drive (DL)
  *   3. switch to VGA mode 13h straight away, so the load is visible
- *   4. pull KERNEL.BIN off the floppy into 1000:0000, one track per
- *      INT 13h call, painting a stripe of colour per chunk
- *   5. far jump into the kernel's own 16-bit stub
+ *   4. pull SAFFRAN.PIX off the floppy into 8000:0000 -- her palette, then
+ *      her picture -- painting her onto the screen as each chunk arrives,
+ *      so she appears exactly as fast as the disk delivers her
+ *   5. pull KERNEL.BIN into 1000:0000 underneath her, one track per
+ *      INT 13h call, with a thin bar along the bottom for how far it has
+ *      got.  The bar stops at half way: the kernel fills in the rest as
+ *      it really does get ready.
+ *   6. far jump into the kernel's own 16-bit stub
  *
  * Bytes 3..61 hold a FAT12 BPB.  We assemble a placeholder here and the
  * image builder copies mformat's real one over it, so the disk stays a
  * perfectly ordinary DOS floppy that happens to boot.
  *
- * Offsets KERNEL_LBA / KERNEL_SECTORS are patched by tools/mkimage.py at
- * build time; the magic words below are what it looks for.
+ * Where SAFFRAN.PIX and KERNEL.BIN sit on the disk is patched in by
+ * tools/mkimage.py at build time; the magic words below are what it looks
+ * for.
  * ===========================================================================
  */
 
@@ -56,6 +62,7 @@ after_bpb:
         movw    %ax, %ss
         movw    $0x7C00, %sp            /* stack grows down from us        */
         sti
+        cld
 
         /* DL still holds the drive the BIOS booted from.  Trust it, but
          * fall back to 0x00 if it looks like a hard disk -- some very old
@@ -74,10 +81,24 @@ after_bpb:
         movb    boot_drive, %al
         movb    %al, 0x502
 
-/* ---- read the kernel -------------------------------------------------- */
-read_loop:
+        call    load                    /* Saffran, painted on as she comes */
+
+        movw    kernel_lba, %ax         /* then the kernel, under her      */
+        movw    %ax, lba
+        movw    kernel_sectors, %ax
+        movw    %ax, sectors_left
+        movw    %ax, total
+        movw    $0x1000, dest_seg
+        call    load
+
+        /* Hand over to the kernel's 16-bit stub at 1000:0000. */
+        movb    boot_drive, %dl
+        ljmp    $0x1000, $0x0000
+
+/* ---- read one file's sectors to dest_seg ------------------------------- */
+load:
         cmpw    $0, sectors_left
-        je      read_done
+        je      load_done
 
         /* LBA -> CHS for a 1.44M floppy: 18 sectors/track, 2 heads.
          *   index  = lba % 18          sector = index + 1
@@ -152,40 +173,64 @@ read_ok:
         subw    %ax, sectors_left
         shlw    $5, %ax                 /* sectors * 512 / 16 paragraphs */
         addw    %ax, dest_seg
-        call    stripe
-        jmp     read_loop
+        call    progress
+        jmp     load
+load_done:
+        ret
 
-read_done:
-        /* Hand over to the kernel's 16-bit stub at 1000:0000. */
-        movb    boot_drive, %dl
-        ljmp    $0x1000, $0x0000
-
-/* ---- a stripe of colour per chunk loaded ------------------------------
- * Fills 12 scanlines from the bottom up, so the screen floods with colour
- * as the kernel comes off the disk.  Pure eye candy, and a genuinely
- * useful progress indicator on a real drive that takes a few seconds.
+/* ---- after every chunk: show how far the load has got -------------------
+ * While Saffran is loading (dest_seg at 8000 or above), everything of her
+ * that has arrived goes on the screen: her palette, as much of it as has
+ * come, then her pixels, as many rows as have come.  She fills in from the
+ * top down, at the speed of the drive.
+ *
+ * While the kernel is loading, a two-pixel bar along the bottom grows to
+ * half the width of the screen, in palette entry 254: the bright green the
+ * picture keeps back for text.
  */
-stripe:
+progress:
         pusha
-        movw    stripe_n, %ax
-        cmpw    $16, %ax
-        jae     stripe_out              /* ran out of screen             */
-        incw    stripe_n
+        pushw   %ds
+        pushw   $0xA000
+        popw    %es
+        movw    dest_seg, %cx
+        subw    $0x8000, %cx            /* paragraphs of Saffran so far    */
+        jb      bar                     /* below 8000: it is the kernel    */
 
-        movw    $0xA000, %cx
-        movw    %cx, %es
-        movw    $3840, %cx              /* 12 rows * 320                 */
-        incw    %ax
-        mulw    %cx                     /* ax = (n+1) * 3840             */
-        movw    $64000, %di
-        subw    %ax, %di                /* fill from the bottom upward   */
-        movw    $3840, %cx
-        movw    stripe_n, %ax
-        shlw    $3, %ax
-        addw    $32, %ax                /* 32.. is the VGA hue ramp      */
-        cld
+        pushw   $0x8000
+        popw    %ds
+        xorw    %si, %si
+        movw    $0x3C8, %dx             /* the DAC, from entry 0           */
+        xorb    %al, %al
+        outb    %al, %dx
+        incw    %dx
+        pushw   %cx
+        movw    $768, %cx
+        rep     outsb                   /* si ends at 768: the pixels      */
+        popw    %cx
+        shlw    $4, %cx                 /* bytes of her loaded so far      */
+        subw    $768, %cx
+        jbe     shown                   /* nothing past the palette yet    */
+        cmpw    $64000, %cx
+        jbe     1f
+        movw    $64000, %cx
+1:      xorw    %di, %di
+        rep     movsb
+        jmp     shown
+
+bar:    movw    sectors_left, %ax       /* width = 160 - left * 160 / total */
+        movw    $160, %cx
+        mulw    %cx
+        divw    total
+        subw    %ax, %cx
+        movb    $254, %al
+        movw    $198 * 320, %di
+        pushw   %cx
         rep     stosb
-stripe_out:
+        popw    %cx
+        movw    $199 * 320, %di
+        rep     stosb
+shown:  popw    %ds
         popa
         ret
 
@@ -207,7 +252,7 @@ disk_error:
         ljmp    $0xFFFF, $0x0000
 
 err_msg:
-        .asciz  "FLOPOS: floppy read failed. Press a key to reboot.\r\n"
+        .asciz  "FLOPOS: the floppy would not read. Any key reboots.\r\n"
 
 /* ---- variables -------------------------------------------------------- */
 boot_drive:     .byte   0
@@ -216,12 +261,16 @@ chs_head:       .byte   0
 chs_sect:       .byte   0
 chunk:          .byte   0
 retries:        .byte   0
-stripe_n:       .word   0
-dest_seg:       .word   0x1000
+dest_seg:       .word   0x8000          /* Saffran first                 */
+total:          .word   1
 
-        /* mkimage.py finds these two by their magic placeholder values. */
-lba:            .word   0xAA55          /* -> first sector of KERNEL.BIN */
-sectors_left:   .word   0x55AA          /* -> length of KERNEL.BIN       */
+        /* mkimage.py finds these four by their magic placeholder values.
+         * lba and sectors_left start out as SAFFRAN.PIX's, and are set to
+         * the kernel's for the second load. */
+lba:            .word   0xAA55          /* -> first sector of SAFFRAN.PIX */
+sectors_left:   .word   0x55AA          /* -> its length in sectors       */
+kernel_lba:     .word   0xBB66          /* -> first sector of KERNEL.BIN  */
+kernel_sectors: .word   0x66BB          /* -> its length in sectors       */
 
         /* boot signature at 510 */
         .org    510

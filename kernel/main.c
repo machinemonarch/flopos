@@ -142,26 +142,66 @@ void kmain(void)
     u32 t;
 
     /* --- the machine ---------------------------------------------------- */
+    /* Saffran is on the screen already: the boot sector put her there
+     * while it loaded us.  These first few are over in a millisecond,
+     * before there is a clock to tell them by, so they are told just
+     * after, in the order they happened. */
     heap_init();
     mathx_init();
     vga_init();
+    vga_adopt();
     cpu_detect();
-
     idt_init();
     time_init();
-    kbd_init();
-    serial_init();
-    snd_init();
     irq_enable();
-    if (serial_present()) irq_unmask(4);
 
-    if (serial_present())
+    boot_begin();
+    {
+        extern char _image_end[];
+        u32 kb = ((u32)_image_end - 0x10000u + 1023u) / 1024u;
+        boot_step("Hauling Saffran and %u KB off the wobbly disc...", kb);
+    }
+    boot_step("Forgot where I placed stuff.");
+    if (BOOTINFO_EXTKB) boot_result("found %u MB", (BOOTINFO_EXTKB + 1024u + 512u) / 1024u);
+    else                boot_result("640 KB, all low");
+    boot_step("Bending sine-noodles into perfect circles...");
+    boot_step("Lifting Saffran off the glass onto a fresh canvas...");
+    boot_step("Questioning Normalcy");
+    {
+        char name[16];
+        int i;
+        for (i = 0; g_cpu_name[i] && i < 15; i++) name[i] = g_cpu_name[i];
+        name[i] = 0;
+        if (name[0]) boot_result("%s", name);
+    }
+    boot_step("Weighing the Sympathetic with the Para-Sympathetic.");
+    boot_step("Aligning the realm to the beat of the crystal...");
+
+    /* From here, each line is told before its step runs. */
+    boot_step("Tuning an ear to the clatter of Swedish runes...");
+    kbd_init();
+
+    boot_step("Stringing a whisper-wire out the back...");
+    serial_init();
+    if (serial_present()) irq_unmask(4);
+    if (serial_present()) {
         serial_print("\n--- FLOPOS is awake and talking. Type here to drive it. ---\n");
+        boot_result("COM1");
+    } else
+        boot_result("no wire");
+
+    boot_step("Negotiating with the silicone...");
     cpu_measure_mhz();                   /* needs the timer running        */
+    if (g_cpu_mhz) boot_result("%u MHz", g_cpu_mhz);
+
+    boot_step("Schnipskiing the Schnoodlz");
+    snd_init();
+    boot_result(snd_has_fm() ? "FM choir" : "the beeper");
 
     /* Pull the journal and whatever has been taught off the disk.  This
      * spins the drive for a moment, which is the first honest sign that
      * the machine remembers anything. */
+    boot_step("Flippely-Flopping");
     store_init();
     if (store_ready()) {
         u8 h, mi, se, mo, da; u16 yr;
@@ -170,41 +210,59 @@ void kmain(void)
                                  yr, mo, da, h, mi, store_boots());
         else
             store_journal_printf("--- awake, boot %u", store_boots());
-    }
+        boot_result("boot %u, %u words", store_boots(), (u32)store_taught_count());
+    } else
+        boot_result("nothing kept");
 
     /* --- the environment ------------------------------------------------ */
-    /* Full screen from the first frame, boot screen included.  panel_init
-     * reads and keeps the old register values first, so `wide` can still
-     * put the panel back exactly as it was found. */
+    /* panel_init reads and keeps the old register values first, so `wide`
+     * can still put the panel back exactly as it was found. */
+    boot_step("Searching for stuff...");
     panel_init();
-    panel_set_wide(1);
+    boot_result(panel_present() ? "a flat panel" : "no panel");
+    if (panel_present()) {
+        boot_step("Coaxing the glass to fill its frame...");
+        panel_set_wide(1);
+    }
+
+    boot_step("Inking the little letters...");
     term_init();
+    boot_step("Schnoodling the Schnabbleyblobs.");
     mood_init();
+    boot_step("Memorising every word I know...");
     line_init();
     shell_init();
 
-    /* The panel's own 800x600, from the boot screen on.  This once froze
-     * the machine solid before the boot screen had finished, and the
-     * reason is understood now: the video BIOS switches interrupts on, a
-     * timer tick landed inside it on a vector meant for something else,
-     * and the clock stopped.  Every BIOS call goes through bios_int() now,
-     * which cannot let that happen, and a stopped clock is caught and
-     * restarted by ms_now() even if something else ever manages it.
+    /* The panel's own 800x600, from the shell's first frame.  This once
+     * froze the machine solid, and the reason is understood now: the
+     * video BIOS switches interrupts on, a timer tick landed inside it on
+     * a vector meant for something else, and the clock stopped.  Every
+     * BIOS call goes through bios_int() now, which cannot let that happen,
+     * and a stopped clock is caught and restarted by ms_now() even if
+     * something else ever manages it.
      *
      * Holding Shift while it boots keeps 320x200, because the one thing
      * that cannot be fixed from this end is a panel nobody here can see.
      * The BIOS's own record of the shift keys is used rather than ours:
      * a key held since power-on was pressed before our keyboard driver
-     * existed, so only the BIOS saw it go down. */
+     * existed, so only the BIOS saw it go down.
+     *
+     * Saffran stays up across the switch: the screen blanks for a moment,
+     * then she comes back at the new size with her own colours. */
     {
         int shift = (*(volatile u8 *)0x417 & 0x03) ||
                     kbd_down(0x2A) || kbd_down(0x36);
-        if (!shift && vga_go_big()) term_set_face(0);
-        else if (shift) serial_print("[vga] shift held: staying at 320x200\n");
+        if (shift) {
+            boot_step("A finger on Shift. Staying small and chunky.");
+            serial_print("[vga] shift held: staying at 320x200\n");
+        } else {
+            boot_step("Begging the glass for 480,000 lights...");
+            if (vga_go_big()) { term_set_face(0); boot_result("800x600"); }
+            else              boot_result("it said no");
+        }
     }
-
-    /* Saffran first, out of black and back into it. */
-    splash_show();
+    boot_step("Being generally cool.");
+    boot_end();
 
     /* Arrive out of black rather than snapping on. */
     vga_set_palette(black);

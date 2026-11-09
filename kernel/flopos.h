@@ -152,6 +152,7 @@ void   vga_present(void);
 void   vga_clear(u8 colour);
 void   vga_set_palette(const u8 *pal768);
 void   vga_get_palette(u8 *out768);
+void   vga_adopt(void);                     /* take over the boot screen     */
 void   vga_fade_to(const u8 *pal768, int steps);
 void   vga_fade_out(int steps);
 int    vga_retrace_works(void);
@@ -311,21 +312,22 @@ int    panel_present(void);              /* is there a flat-panel chip?    */
 int    panel_wide(void);
 void   panel_set_wide(int on);
 
-/* --- splash.c / arrive.c ----------------------------------------------- *
- * The boot screen owns the whole palette while it is up, so the eight
- * entries text needs are reserved out of the photograph's 256 rather than
- * taken from it.  mksplash.py writes them; these name them.
+/* --- arrive.c: the boot, told as it happens --------------------------- *
+ * Saffran owns the whole palette while she is up, so the entries text
+ * needs are kept back from the photograph rather than taken from it.
+ * tools/mksplash.py writes them; these name them.  The shadow is entry 0
+ * because 0 is what the screen shows where she has not loaded yet.
  */
-extern const u8 g_saffran_pal[768];
-extern const u8 g_saffran_pix[SCR_PIX];
-
-#define SPL_SHADOW 248
+#define SPL_SHADOW 0
 #define SPL_DIM    250
 #define SPL_TEXT   253
 #define SPL_BRIGHT 254
 #define SPL_WHITE  255
 
-void   splash_show(void);
+void   boot_begin(void);                    /* the clock is running: start   */
+void   boot_step(const char *fmt, ...);     /* a step is about to happen     */
+void   boot_result(const char *fmt, ...);   /* ...and what it found          */
+void   boot_end(void);                      /* hold, then fade out           */
 
 /* --- banana.c ---------------------------------------------------------- */
 void   banana_draw(u8 *dst, u32 t);

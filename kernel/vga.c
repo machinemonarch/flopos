@@ -13,6 +13,7 @@
 #include "flopos.h"
 #include "io.h"
 
+#define DAC_READ_INDEX  0x3C7
 #define DAC_WRITE_INDEX 0x3C8
 #define DAC_DATA        0x3C9
 #define INPUT_STATUS_1  0x3DA
@@ -52,6 +53,17 @@ void vga_init(void)
 {
     g_back = (u8 *)halloc(SCR_PIX + 1024);   /* slack for sloppy writes    */
     memset8(g_back, 0, SCR_PIX);
+}
+
+/* Take over whatever the boot sector left on the screen -- Saffran -- as
+ * the back buffer and the current palette, so the first frame the kernel
+ * draws carries on from her instead of starting from black. */
+void vga_adopt(void)
+{
+    int i;
+    memcpy32(g_back, (const void *)VGA_FB, SCR_PIX / 4);
+    outb(DAC_READ_INDEX, 0);
+    for (i = 0; i < 768; i++) s_current[i] = inb(DAC_DATA);
 }
 
 /* Park on the leading edge of vertical retrace.  Two waits: first for any

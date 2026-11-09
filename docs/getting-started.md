@@ -49,12 +49,18 @@ and plug it back in:
 
 Put the floppy in the laptop and switch it on. You will see:
 
-1. Coloured stripes while the boot sector loads the system off the disk.
-2. Saffran fading up out of black, with a few boot messages that aren't
-   true. Any key skips this.
-3. The screen switching to 800×600, the panel's own resolution, with
-   smooth text.
-4. The prompt:
+1. **Saffran, painting in from the top** as her picture comes off the
+   disk.
+2. **A thin green bar** growing along the bottom while the system loads
+   underneath her.
+3. **The machine telling you what it is doing**, one line per real step,
+   in its own dialect, with what each step found at the end of its line:
+   the memory, the processor's speed, how many times it has woken up, and
+   so on. The bar carries on to the end as the steps finish. Near the end
+   the screen switches to 800×600, the panel's own resolution, with
+   Saffran still up. Any key skips the typing; the steps still all
+   happen.
+4. Saffran fading out and the prompt fading in:
 
         FLOPOS
         a place to be, on one floppy disk

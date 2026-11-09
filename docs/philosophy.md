@@ -53,9 +53,11 @@ far was traced to its cause and fixed where it started, and the clock has a
 watchdog that restarts it if it ever stops.
 
 **Say what is true.** When something fails, FLOPOS says why in a sentence.
-When something is not secure, it says that on the screen. Its boot
-messages ("Negotiating with the silicone...", "Schnipskiing the
-Schnoodlz") are the one place it is allowed to fib, and that is a joke.
+When something is not secure, it says that on the screen. Even the boot
+messages are true. "Aligning the realm to the beat of the crystal..." is
+the timer being started, which really does run off a crystal. "Flippely-
+Flopping" is the floppy being read. They are just phrased in a dialect of
+their own.
 
 **Everything it keeps is readable anywhere.** The floppy is a normal DOS
 disk. The journal is plain text, and documents are Markdown. Put the disk
@@ -95,7 +97,9 @@ you, not how they work: `goaway` clears the screen, `remember` saves,
   the text always wins, and breathes with the music.
 - **Music**: a step sequencer playing rhythms on the laptop's FM sound chip.
 - **A banana** in the corner, in wireframe, tumbling on two axes.
-- **A boot screen** with a photograph of Saffran (a cat) fading up out of
-  black while the machine pretends to get ready.
+- **Saffran** (a cat) on the boot screen. She is the first thing read off
+  the floppy and appears as fast as the drive delivers her. The machine
+  then tells her, step by step, everything it is really doing to get
+  ready.
 - **whaaat**: the whole screen pulled through a hole in itself and turned
   inside out.

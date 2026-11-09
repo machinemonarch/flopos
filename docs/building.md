@@ -29,12 +29,13 @@ On a Linux PC:
 | Path | What |
 |---|---|
 | `boot/boot.S` | The boot sector |
+| `boot/saffran.pix` | Saffran, the boot picture: palette and pixels, made by `tools/mksplash.py` |
 | `kernel/` | The system: one file per job, each explaining itself at the top |
 | `apps/` | Programs that live on the floppy beside the system (see [Making apps](making-apps.md)) |
 | `linker.ld` | Where the kernel sits in memory, with checks that it fits |
 | `tools/mkimage.py` | Builds the floppy image: a real FAT12 disk that also boots |
 | `tools/mkfont.py` | Generates the text faces from readable glyph art |
-| `tools/mksplash.py` | Turns a photograph into the boot screen |
+| `tools/mksplash.py` | Turns a photograph into the boot picture |
 | `tools/writefloppy.sh` | Writes the image to a real floppy, safely |
 | `tools/99-flopos-floppy.rules` | Lets you write floppies without a password |
 | `tools/release.py`, `tools/changelog.py` | Version numbers and release notes |
@@ -53,7 +54,8 @@ can be read by DOS, Windows, Linux or a Mac. On it:
 
 | File | What |
 |---|---|
-| `KERNEL.BIN` | The system. Checked to be in one unbroken run of sectors, and its position written into the boot sector. |
+| `SAFFRAN.PIX` | The boot picture, read first. In one unbroken run of sectors. |
+| `KERNEL.BIN` | The system, read second. Also in one unbroken run, and both positions are written into the boot sector. |
 | `WRITE.APP` | The word processor |
 | `JOURNAL.TXT`, `STATE.BIN` | What FLOPOS remembers. Made at full size so they can be written in place. |
 | `WRITE1.MD` … `WRITE8.MD` | Documents, 16KB each |

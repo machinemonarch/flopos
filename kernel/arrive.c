@@ -1,44 +1,54 @@
 /* ===========================================================================
- * arrive.c -- the way in.
+ * arrive.c -- the way in, told as it happens.
  *
- * Saffran comes up out of black, and the machine reports what it is
- * pretending to do while it gets ready.  None of the lines are true.  The
- * machine is in fact ready almost immediately; this exists because a
- * computer that simply appears is less fun than one that arrives.
+ * By the time the kernel runs, Saffran is already on the screen: the boot
+ * sector loaded her off the floppy first and painted her on as she
+ * arrived, then loaded the kernel underneath her with a bar along the
+ * bottom.  The kernel takes her over from there and narrates its own
+ * start, one line per real step, in a dialect of its own.  Every line is
+ * something the machine is actually doing at that moment, and where a step
+ * finds something out -- the processor's speed, how much memory there is,
+ * how many times it has woken up -- the answer is shown at the end of the
+ * line.  The bar carries on from where the boot sector left it, one step
+ * at a time.
  *
- * Four of the ten lines are chosen at random each boot, so it is not the
- * same sequence twice, and any key cuts the whole thing short.
+ * The first few steps (memory, tables, the interrupt controllers, the
+ * timer) are over in the first millisecond, before there is a clock to
+ * type by.  Their lines are told first, in the order they happened.
+ * Everything after that is typed before its step runs.
+ *
+ * Any key stops the typing: the steps still all run, as fast as they can,
+ * and the lines simply appear whole.
  *
  * Text over a photograph has no reliable background, so every glyph is
  * outlined on all four sides rather than given the usual single drop
  * shadow -- otherwise half the strokes land on fur of their own
- * brightness and disappear.  The eight palette entries this uses are
- * reserved by tools/mksplash.py and are not part of the picture.
+ * brightness and disappear.  The palette entries this uses are kept back
+ * from the photograph by tools/mksplash.py.
  * ===========================================================================
  */
 #include "flopos.h"
 #include "io.h"
 
-#define LINES_SHOWN 4
-#define LINE_Y0     146
+#define LINES_SHOWN 5
+#define LINE_Y0     135
 #define LINE_STEP   11
 #define TEXT_X      6
-#define TYPE_MS     22                   /* per character                  */
-#define NOODLE_MS   820                  /* how long each line "works"     */
+#define RESULT_R    314                  /* results end at this column      */
+#define TYPE_MS     7                    /* per character                   */
+#define AFTER_MS    70                   /* a breath after each step        */
+#define HOLD_MS     900                  /* the last line, before fading    */
+#define BAR_Y       198
+#define BAR_FROM    160                  /* the boot sector's half          */
+#define BOOT_STEPS  19                   /* lines in a full boot            */
 
-static const char *s_chatter[] = {
-    "Aligning the realm to the beat of the crystal...",
-    "Negotiating with the silicone...",
-    "Questioning Normalcy",
-    "Weighing the Sympathetic with the Para-Sympathetic.",
-    "Searching for stuff...",
-    "Flippely-Flopping",
-    "Schnipskiing the Schnoodlz",
-    "Forgot where I placed stuff.",
-    "Schnoodling the Schnabbleyblobs.",
-    "Being generally cool.",
-};
-#define CHATTER_N ((int)(sizeof s_chatter / sizeof s_chatter[0]))
+typedef struct { char text[60]; char result[28]; } BootLine;
+
+static BootLine s_line[LINES_SHOWN];
+static int      s_n;                     /* lines so far, all of them       */
+static int      s_skip;
+static int      s_full;                  /* the bar: all the way            */
+static u8      *s_pic;                   /* Saffran, untouched              */
 
 /* ---- the figure -------------------------------------------------------
  * One glyph for head, body and legs, and four tildes either side for the
@@ -59,7 +69,7 @@ static const char *s_chatter[] = {
 #define ARM_STEP  4                      /* close enough to read as a line */
 #define ARM_SWING 190                    /* brads of sweep, about 65 deg   */
 
-static void draw_arm(u8 *buf, int x, int y, int dir, int ph, u32 unused)
+static void draw_arm(u8 *buf, int x, int y, int dir, int ph)
 {
     int i;
 
@@ -74,108 +84,139 @@ static void draw_arm(u8 *buf, int x, int y, int dir, int ph, u32 unused)
         draw_char_outline(buf, x + dir * dx, y + 2 + dy, '~',
                           SPL_BRIGHT, SPL_SHADOW);
     }
-    (void)unused;
 }
 
 static void draw_noodler(u8 *buf, int x, int y, u32 t)
 {
     int ph = (int)((t * 3) >> 2) & SINMASK;
 
-    draw_arm(buf, x, y, -1, ph, 0);
-    draw_arm(buf, x, y, +1, ph + 512, 0);   /* half a turn out of step     */
+    draw_arm(buf, x, y, -1, ph);
+    draw_arm(buf, x, y, +1, ph + 512);   /* half a turn out of step        */
     draw_char_outline(buf, x, y, CH_NOODLER, SPL_WHITE, SPL_SHADOW);
 }
 
-/* ---- one frame of the whole thing ------------------------------------- */
-static void frame(const char **done, int ndone,
-                  const char *typing, int typed, u32 t, int noodling)
+/* ---- one frame ---------------------------------------------------------- */
+static BootLine *line_at(int k) { return &s_line[k % LINES_SHOWN]; }
+
+/* typed: how much of the newest line is showing.  The newest line is the
+ * step under way; the ones above it are done. */
+static void frame(int typed, int noodling)
 {
-    char partial[80];
-    int i, y;
+    int first = s_n > LINES_SHOWN ? s_n - LINES_SHOWN : 0, k, y = LINE_Y0;
+    int done = s_full ? BOOT_STEPS : (s_n > 0 ? s_n - 1 : 0);
+    int bar = BAR_FROM + ((SCR_W - BAR_FROM) * done) / BOOT_STEPS;
 
-    memcpy32(g_back, (void *)g_saffran_pix, SCR_PIX / 4);
+    memcpy32(g_back, s_pic, SCR_PIX / 4);
 
-    y = LINE_Y0;
-    for (i = 0; i < ndone; i++) {
-        draw_text_outline(g_back, TEXT_X, y, done[i], SPL_DIM, SPL_SHADOW);
-        y += LINE_STEP;
-    }
+    for (k = first; k < s_n; k++, y += LINE_STEP) {
+        BootLine *L = line_at(k);
+        int newest = (k == s_n - 1);
+        char partial[60];
+        const char *t = L->text;
 
-    if (typing) {
-        for (i = 0; i < typed && i < (int)sizeof partial - 1; i++)
-            partial[i] = typing[i];
-        partial[i] = 0;
-        draw_text_outline(g_back, TEXT_X, y, partial, SPL_TEXT, SPL_SHADOW);
+        if (newest && typed >= 0) {
+            int i;
+            for (i = 0; i < typed && L->text[i] && i < (int)sizeof partial - 1; i++)
+                partial[i] = L->text[i];
+            partial[i] = 0;
+            t = partial;
+        }
+        draw_text_outline(g_back, TEXT_X, y, t, newest ? SPL_TEXT : SPL_DIM, SPL_SHADOW);
 
-        if (noodling) {
-            /* Just past the end of the text, but never so far right that
-             * the figure walks off the screen. */
-            int nx = TEXT_X + text_width(partial) + 4 + ARM_SEGS * ARM_STEP;
+        if (L->result[0]) {
+            int w = text_width(L->result), x = RESULT_R - w;
+            int after = TEXT_X + text_width(L->text) + 6;
+            if (x < after) x = after;
+            draw_text_outline(g_back, x, y, L->result,
+                              newest ? SPL_WHITE : SPL_DIM, SPL_SHADOW);
+        } else if (newest && noodling) {
+            int nx = TEXT_X + text_width(t) + 4 + ARM_SEGS * ARM_STEP;
             if (nx > SCR_W - 4 - ARM_SEGS * ARM_STEP)
                 nx = SCR_W - 4 - ARM_SEGS * ARM_STEP;
-            draw_noodler(g_back, nx, y, t);
+            draw_noodler(g_back, nx, y, ms_now());
         }
     }
+
+    if (bar > SCR_W) bar = SCR_W;
+    memset8(g_back + BAR_Y * SCR_W, SPL_BRIGHT, (usize)bar);
+    memset8(g_back + (BAR_Y + 1) * SCR_W, SPL_BRIGHT, (usize)bar);
 
     vga_present();
 }
 
 static int interrupted(void)
 {
-    if (kbd_event() >= 0) return 1;
-    if (serial_getc() >= 0) return 1;
-    return 0;
+    if (s_skip) return 1;
+    if (kbd_event() >= 0 || serial_getc() >= 0) s_skip = 1;
+    return s_skip;
 }
 
-void splash_show(void)
+static void wait_ms(u32 ms, int noodling)
 {
-    static u8 black[768];
-    const char *shown[LINES_SHOWN];
-    u8 picked[CHATTER_N];
-    int n, i, len, typed;
-    u32 t0;
-
-    /* Seeded off the clock, or every boot says the same things. */
-    {
-        u8 h, mi, se, mo, da; u16 yr;
-        u32 seed = ms_now() * 2654435761u;
-        if (rtc_read(&h, &mi, &se, &yr, &mo, &da))
-            seed ^= (u32)(se * 3600 + mi * 60 + h) * 2246822519u;
-        rnd_seed(seed);
+    u32 until = ms_now() + ms;
+    while ((s32)(until - ms_now()) > 0) {
+        if (interrupted()) return;
+        frame(-1, noodling);
     }
+}
 
-    for (i = 0; i < CHATTER_N; i++) picked[i] = 0;
+/* ---- the narrator -------------------------------------------------------- */
+void boot_begin(void)
+{
+    /* Seeded off the clock, so nothing random says the same thing every
+     * boot. */
+    u8 h, mi, se, mo, da; u16 yr;
+    u32 seed = ms_now() * 2654435761u;
+    if (rtc_read(&h, &mi, &se, &yr, &mo, &da))
+        seed ^= (u32)(se * 3600 + mi * 60 + h) * 2246822519u;
+    rnd_seed(seed);
 
-    memcpy32(g_back, (void *)g_saffran_pix, SCR_PIX / 4);
-    vga_set_palette(black);
-    vga_present();
-    vga_fade_to(g_saffran_pal, 22);
+    s_pic = (u8 *)halloc(SCR_PIX);
+    memcpy32(s_pic, g_back, SCR_PIX / 4);
+}
 
-    for (n = 0; n < LINES_SHOWN; n++) {
-        int which;
-        do { which = rnd_range(0, CHATTER_N - 1); } while (picked[which]);
-        picked[which] = 1;
+void boot_step(const char *fmt, ...)
+{
+    __builtin_va_list ap;
+    BootLine *L;
+    int len, typed;
 
-        len = strlen8(s_chatter[which]);
+    if (s_n > 0) wait_ms(AFTER_MS, 0);   /* let the last result land       */
 
-        for (typed = 1; typed <= len; typed++) {
-            u32 until = ms_now() + TYPE_MS;
-            frame(shown, n, s_chatter[which], typed, ms_now(), 0);
-            while (ms_now() < until)
-                if (interrupted()) goto done;
-            if (interrupted()) goto done;
-        }
+    L = line_at(s_n++);
+    __builtin_va_start(ap, fmt);
+    fmt_vstr(L->text, sizeof L->text, fmt, ap);
+    __builtin_va_end(ap);
+    L->result[0] = 0;
+    if (serial_present()) serial_printf("[boot] %s\n", L->text);
 
-        t0 = ms_now();
-        while (ms_now() - t0 < NOODLE_MS) {
-            frame(shown, n, s_chatter[which], len, ms_now(), 1);
-            if (interrupted()) goto done;
-        }
-
-        shown[n] = s_chatter[which];
+    len = strlen8(L->text);
+    for (typed = 1; typed <= len && !interrupted(); typed++) {
+        u32 until = ms_now() + TYPE_MS;
+        frame(typed, 1);
+        while ((s32)(until - ms_now()) > 0 && !interrupted()) { }
     }
+    frame(-1, 1);                        /* whole, while the step runs     */
+}
 
-done:
+void boot_result(const char *fmt, ...)
+{
+    __builtin_va_list ap;
+    BootLine *L;
+
+    if (!s_n) return;
+    L = line_at(s_n - 1);
+    __builtin_va_start(ap, fmt);
+    fmt_vstr(L->result, sizeof L->result, fmt, ap);
+    __builtin_va_end(ap);
+    if (serial_present()) serial_printf("[boot]   %s\n", L->result);
+    frame(-1, 0);
+}
+
+void boot_end(void)
+{
+    s_full = 1;
+    wait_ms(HOLD_MS, 1);
     vga_fade_out(18);
     memset8(g_back, 0, SCR_PIX);
     vga_present();

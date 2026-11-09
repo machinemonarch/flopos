@@ -5,8 +5,9 @@ The disk is formatted with mformat and the kernel is copied on with mcopy,
 so what comes out is an ordinary DOS floppy -- you can mount it, read it in
 Windows, and copy your own files into the free space. The boot sector is
 then dropped into sector 0 with mformat's own BPB spliced into it, and the
-two placeholder words in the boot code are patched with the real location
-of KERNEL.BIN as the filesystem laid it out.
+placeholder words in the boot code are patched with the real locations of
+SAFFRAN.PIX (the boot picture) and KERNEL.BIN as the filesystem laid them
+out.
 
 Nothing here hardcodes a cluster number: the FAT chain is walked and
 checked, so if a future kernel grows past a track boundary or lands
@@ -45,10 +46,18 @@ JOURNAL_HEADER = (
 # follow it are where these two files ended up.
 DISKMAP_MAGIC = b"FLOPOS-DISKMAP!\x00"
 
-# The boot sector reserves these two words for us; mkimage finds them by
-# their placeholder values rather than by a hardcoded offset.
+# The boot sector reserves these words for us; mkimage finds them by
+# their placeholder values rather than by a hardcoded offset.  The first
+# pair is the boot picture, loaded first; the second is the kernel.
 MAGIC_LBA = 0xAA55
 MAGIC_CNT = 0x55AA
+MAGIC_KLBA = 0xBB66
+MAGIC_KCNT = 0x66BB
+
+# Saffran: 768 bytes of palette, then 320x200 pixels.  Made from a photo
+# by tools/mksplash.py.
+SAFFRAN = "boot/saffran.pix"
+SAFFRAN_BYTES = 768 + 64000
 
 
 def run(*cmd):
@@ -90,8 +99,12 @@ def main():
     run("mformat", "-i", out_path, "-f", "1440", "-v", "FLOPOS",
         "-N", "5D0F05E5", "::")
 
-    # KERNEL.BIN goes on first so it starts at cluster 2 and stays in one
-    # piece; anything else can land wherever it likes.
+    # The boot sector reads these two, in this order, so they go on first:
+    # each lands in one piece, and the drive reads straight on from the
+    # picture into the kernel without seeking back.
+    if os.path.getsize(SAFFRAN) != SAFFRAN_BYTES:
+        sys.exit("%s should be %d bytes" % (SAFFRAN, SAFFRAN_BYTES))
+    run("mcopy", "-i", out_path, SAFFRAN, "::SAFFRAN.PIX")
     run("mcopy", "-i", out_path, kern_path, "::KERNEL.BIN")
     # The two writable files go on next, while the disk is still empty
     # enough that they are certain to land in one piece.
@@ -192,6 +205,7 @@ def main():
 
         return data_start + (chain[0] - 2) * spc, (size + SECTOR - 1) // SECTOR
 
+    saf_lba,  saf_sectors  = locate(b"SAFFRAN PIX", SAFFRAN_BYTES)
     kern_lba, kern_sectors = locate(b"KERNEL  BIN", len(kern))
     jrn_lba,  jrn_sectors  = locate(b"JOURNAL TXT", JOURNAL_BYTES)
     st_lba,   st_sectors   = locate(b"STATE   BIN", STATE_BYTES)
@@ -207,17 +221,21 @@ def main():
     if kern_lba + kern_sectors > TOTAL_SECTORS:
         sys.exit("kernel runs off the end of the disk")
 
-    # The boot sector reads into 1000:0000 and the kernel must not overrun
-    # the stack we set at 0x8F000.
+    # The boot sector reads the kernel into 1000:0000, and the picture into
+    # 8000:0000 before that; the kernel must stay below both.
     if 0x10000 + kern_sectors * SECTOR > 0x80000:
-        sys.exit("kernel is too big to load below the stack")
+        sys.exit("kernel is too big to load below the picture and the stack")
 
     # ---- splice mformat's BPB into our boot code and patch it ---------
     boot[3:62] = img[3:62]                        # keep the real BPB
     off_lba = find_word(boot, MAGIC_LBA, 62, 510)
     off_cnt = find_word(boot, MAGIC_CNT, 62, 510)
-    struct.pack_into("<H", boot, off_lba, kern_lba)
-    struct.pack_into("<H", boot, off_cnt, kern_sectors)
+    off_klba = find_word(boot, MAGIC_KLBA, 62, 510)
+    off_kcnt = find_word(boot, MAGIC_KCNT, 62, 510)
+    struct.pack_into("<H", boot, off_lba, saf_lba)
+    struct.pack_into("<H", boot, off_cnt, saf_sectors)
+    struct.pack_into("<H", boot, off_klba, kern_lba)
+    struct.pack_into("<H", boot, off_kcnt, kern_sectors)
     boot[510:512] = b"\x55\xAA"
 
     img[0:SECTOR] = boot
@@ -248,6 +266,8 @@ def main():
         f.write("%d\n" % used_bytes)
 
     print("   %s" % out_path)
+    print("   saffran     %6d bytes  (%d sectors) at LBA %d"
+          % (SAFFRAN_BYTES, saf_sectors, saf_lba))
     print("   kernel      %6d bytes  (%d sectors) at LBA %d"
           % (len(kern), kern_sectors, kern_lba))
     print("   journal     %6d bytes  (%d sectors) at LBA %d"
@@ -255,7 +275,8 @@ def main():
     print("   state       %6d bytes  (%d sectors) at LBA %d"
           % (STATE_BYTES, st_sectors, st_lba))
     print("   disk map patched into the kernel at image offset %d" % at)
-    print("   boot sector patched: lba@%d count@%d" % (off_lba, off_cnt))
+    print("   boot sector patched: picture @%d/%d, kernel @%d/%d"
+          % (off_lba, off_cnt, off_klba, off_kcnt))
     print("   in use      %6d bytes  (%d%% of the disk)"
           % (used_bytes, 100 * used_bytes // (TOTAL_SECTORS * SECTOR)))
     print("   FAT12 free  %6d bytes" %

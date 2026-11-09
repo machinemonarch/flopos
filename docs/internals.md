@@ -6,21 +6,37 @@ source files involved; every file opens with a comment explaining itself.
 ## Booting
 
 1. **The boot sector** (`boot/boot.S`, 512 bytes). The BIOS loads it at
-   address 0x7C00. It switches the screen to VGA mode 13h straight away,
-   so the load is visible, then reads the kernel off the floppy a track at
-   a time with retries, painting a stripe of colour for each chunk. The
-   disk is a real FAT12 floppy, so the build works out where `KERNEL.BIN`
-   actually landed and writes that sector number into the boot sector.
+   address 0x7C00. It switches the screen to VGA mode 13h, then reads two
+   files off the floppy, a track at a time with retries:
+   - `SAFFRAN.PIX` (her palette, then 320×200 pixels) into 0x80000. After
+     every chunk it copies everything of her that has arrived onto the
+     screen, so she appears exactly as fast as the drive reads her.
+   - `KERNEL.BIN` into 0x10000, underneath her, drawing a two-pixel bar
+     along the bottom that reaches halfway when the kernel is in.
+
+   The disk is a real FAT12 floppy, so the build works out where both
+   files actually landed and writes those sector numbers into the boot
+   sector.
 2. **The 16-bit stub** (`kernel/start.S`). The kernel is loaded at 0x10000.
    It measures memory (three ways, see [hardware](hardware.md)), opens the
    A20 gate (three ways, and checks it worked), loads a flat descriptor
    table and switches the processor into 32-bit protected mode.
 3. **The 32-bit start**: flat segments, a stack, zeroed memory for the
    kernel's variables.
-4. **`main`** (`kernel/main.c`): interrupts, timer, keyboard, serial line,
-   memory, the processor's measured speed, the saved state from the
-   floppy, the boot screen, and the switch to 800×600 unless Shift is held.
-   Then the main loop runs forever: read keys, run commands, draw a frame.
+4. **`main`** (`kernel/main.c`) takes Saffran over from the screen
+   (`vga_adopt`) and starts the machine: memory, interrupts, timer,
+   keyboard, serial line, the processor's measured speed, sound, the saved
+   state from the floppy, the panel, the text, the background, the shell,
+   and the switch to 800×600 unless Shift is held.
+
+   `kernel/arrive.c` narrates this. `boot_step` puts up a line just
+   before each step runs, and `boot_result` adds what the step found. The
+   first few steps happen before the timer exists, so their lines are
+   told just after, in order. From the serial line's own step onward, each
+   line also goes down the cable as `[boot] ...`.
+
+   Then the main loop runs forever: read keys, run commands, draw a
+   frame.
 
 ## Memory
 
@@ -88,8 +104,8 @@ that was the cause of every freeze (see [hardware](hardware.md)).
   four times, which is cheap. Its brightness follows the music.
 - `kernel/mathx.c`: integer sines, square roots and angles (no floating
   point anywhere).
-- `kernel/banana.c`, `kernel/vortex.c`, `kernel/arrive.c`,
-  `kernel/splash.c`: the banana, `whaaat`, and the boot screen.
+- `kernel/banana.c`, `kernel/vortex.c`, `kernel/arrive.c`: the banana,
+  `whaaat`, and the boot narration over Saffran.
 
 ## The terminal
 
