@@ -6,6 +6,21 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.10.0 — 2026-11-09
+
+- **`write`, a small word processor**: bold, italic and underline (Ctrl-B, I,
+  U), a title and four heading levels (Ctrl-P, or Ctrl-T and Ctrl-0 to 4),
+  Shift-arrows to select. Eight documents live on the floppy (Ctrl-S, Ctrl-O),
+  saved as plain text any other computer can read.
+- **Apps load from the floppy.** `write` is the first program kept in its own
+  file instead of inside the system, which leaves room to grow and costs nothing
+  at boot. `apps` lists what's there.
+- FLOPOS can now read any file on the floppy by name, including ones copied onto
+  it from another computer.
+- Text in windows can be bold, italic and underlined.
+- Tools: writing a new version to the floppy now keeps your documents, journal and
+  taught words (`--fresh` to start clean).
+
 ## 1.9.0 — 2026-11-09
 
 - **Post-quantum encryption.** Secure connections offer X25519MLKEM768, so

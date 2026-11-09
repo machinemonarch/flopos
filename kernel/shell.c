@@ -173,6 +173,8 @@ static void cmd_browzer(void)
     browzer_run(start);
 }
 
+static void cmd_apps(void) { apps_list(); }
+
 static void cmd_network(void)
 {
     netui_run();
@@ -1395,6 +1397,7 @@ static const Cmd s_cmds[] = {
     { "remember","write it all to the disk",     cmd_remember},
     { "journal", "what I have written down",     cmd_journal },
     { "network", "how this machine is connected",cmd_network },
+    { "apps",    "programs on the floppy",       cmd_apps    },
     { "ping",    "is anybody out there",         cmd_ping    },
     { "fetch",   "read a web page",              cmd_fetch   },
     { "browzer", "a small web browser",          cmd_browzer },
@@ -1633,6 +1636,9 @@ void shell_submit(const char *line)
             goto tail;
         }
     }
+
+    /* 1c. A program on the floppy by that name. */
+    if (app_run(s_argv[0], s_argc, s_argv)) goto tail;
 
     /* 2. Anything you taught it. */
     if (s_argc == 1) {

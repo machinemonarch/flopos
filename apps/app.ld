@@ -1,0 +1,19 @@
+/* Every app is linked to run at APP_BASE, header first. */
+OUTPUT_FORMAT("binary")
+ENTRY(app_main)
+
+SECTIONS
+{
+    . = 0x00A00000;
+    .apphdr : { KEEP(*(.apphdr)) }
+    .text   : { *(.text) *(.text.*) }
+    .rodata : { *(.rodata) *(.rodata.*) }
+    .data   : { *(.data) *(.data.*) }
+    . = ALIGN(16);
+    _app_image_end = .;
+    .bss (NOLOAD) : { *(.bss) *(.bss.*) *(COMMON) }
+    . = ALIGN(16);
+    _app_bss_end = .;
+    ASSERT(_app_bss_end - 0x00A00000 <= 0x00400000, "app is bigger than its 4MB")
+    /DISCARD/ : { *(.comment*) *(.note*) *(.eh_frame*) }
+}

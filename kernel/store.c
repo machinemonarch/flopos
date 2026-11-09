@@ -56,42 +56,6 @@ const Taught *store_taught_at(int i)
  * sector at a time turns sixteen kilobytes into thirty-two of those --
  * slow enough on a real drive to look like a hang.
  */
-#define SPT 18
-
-static u32 run_limit(u32 lba, u32 left)
-{
-    u32 in_track = SPT - (lba % SPT);    /* the BIOS will not cross one    */
-    if (in_track < left) left = in_track;
-    if (left > SPT) left = SPT;
-    return left;
-}
-
-static int read_run(u32 lba, u32 sectors, u8 *dst)
-{
-    while (sectors) {
-        u32 n = run_limit(lba, sectors);
-        if (!disk_read(lba, (int)n)) return 0;
-        memcpy8(dst, (const void *)DISK_BUF, n * SECTOR);
-        dst += n * SECTOR;
-        lba += n;
-        sectors -= n;
-    }
-    return 1;
-}
-
-static int write_run(u32 lba, u32 sectors, const u8 *src)
-{
-    while (sectors) {
-        u32 n = run_limit(lba, sectors);
-        memcpy8((void *)DISK_BUF, src, n * SECTOR);
-        if (!disk_write(lba, (int)n)) return 0;
-        src += n * SECTOR;
-        lba += n;
-        sectors -= n;
-    }
-    return 1;
-}
-
 /* ---- the journal ------------------------------------------------------
  * Plain text, terminated by the DOS end-of-file character so that TYPE,
  * Notepad and cat all stop in the right place, then padded with zeroes.
@@ -273,9 +237,9 @@ void store_init(void)
     s_taught  = (Taught *)(statebuf + sizeof(StateHdr));
     s_set     = (Settings *)(statebuf + g_diskmap.state_sectors * SECTOR - 64);
 
-    if (!read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
+    if (!disk_read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
         return;
-    if (!read_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
+    if (!disk_read_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
         return;
 
     /* Before trusting any of this enough to write to it, check that the
@@ -323,7 +287,7 @@ int store_save(void)
         u32 i;
         s_journal[s_journal_len] = EOF_MARK;
         for (i = s_journal_len + 1; i < s_journal_cap; i++) s_journal[i] = 0;
-        if (!write_run(g_diskmap.journal_lba, g_diskmap.journal_sectors,
+        if (!disk_write_run(g_diskmap.journal_lba, g_diskmap.journal_sectors,
                        s_journal))
             ok = 0;
         else
@@ -338,7 +302,7 @@ int store_save(void)
         h->count    = (u32)s_taught_n;
         h->boots    = s_boots;
         h->checksum = taught_checksum();
-        if (!write_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
+        if (!disk_write_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
             ok = 0;
         else
             s_taught_dirty = 0;

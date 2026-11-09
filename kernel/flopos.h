@@ -276,6 +276,10 @@ void   term_win_close(void);
 int    term_win_width(void);
 int    term_win_height(void);
 void   term_win_put(int x, int y, int ch, u8 fg, u8 bg);
+void   term_win_put_at(int x, int y, int ch, u8 fg, u8 bg, u8 attr);
+#define ATTR_BOLD      0x01
+#define ATTR_ITALIC    0x02
+#define ATTR_UNDERLINE 0x04
 int    term_win_text(int x, int y, const char *t, u8 fg, u8 bg);
 void   term_win_band(int y, int x0, int x1, u8 bg);
 void   term_win_frame(const char *title, u8 fg);
@@ -673,7 +677,17 @@ void   time_init(void);
 #define DISK_BUF     ((volatile u8 *)0x70000)
 #define VBE_BUF_SEG  0x7200              /* 0x72000: clear of the disk    */
 #define VBE_BUF      ((volatile u8 *)0x72000)
-int    disk_read(u32 lba, int count);    /* -> 1 on success               */
+int    disk_read(u32 lba, int count);
+int    disk_read_run(u32 lba, u32 sectors, u8 *dst);
+int    disk_write_run(u32 lba, u32 sectors, const u8 *src);
+
+/* --- fs.c ----------------------------------------------------------------- */
+typedef struct { u32 first, size; } FsFile;
+int    fs_mount(void);
+int    fs_find(const char *name, FsFile *f);
+int    fs_read(const FsFile *f, u8 *buf, u32 max);
+int    fs_write_inplace(const FsFile *f, const u8 *buf);
+void   fs_each(void (*fn)(const char *name, u32 size, void *ctx), void *ctx);    /* -> 1 on success               */
 int    disk_write(u32 lba, int count);
 u8     disk_last_status(void);
 
@@ -721,9 +735,13 @@ void   main_pump(int now);
 #define UK_PGDN  0x10B
 #define UK_HOME  0x10C
 #define UK_END   0x10D
+#define UK_DEL   0x10E
 int    ui_key(void);
 int    ui_wait_key(void);
+int    ui_key_mods(int *mods);
 void   netui_run(void);
+int    app_run(const char *word, int argc, char **argv);
+void   apps_list(void);
 int    ip_apply_saved(void);
 u32    store_boots(void);
 

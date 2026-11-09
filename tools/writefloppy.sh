@@ -8,6 +8,11 @@
 #   tools/writefloppy.sh --lowlevel      low-level format first (slow)
 #   tools/writefloppy.sh --full          write all 1.44MB, not just the part
 #                                        that is used
+#   tools/writefloppy.sh --fresh         do not carry documents, the journal
+#                                        and taught words over from the disk
+#
+# Upgrading keeps what you wrote: documents, the journal and taught words
+# already on the floppy are copied into the new image before it goes down.
 #
 # It only asks for a password if it has to. Finding the drive and checking
 # that it really is a floppy needs no privilege at all; writing to it does,
@@ -46,6 +51,7 @@ IMAGE="$IMAGE_DEFAULT"
 ASSUME_YES=0
 LOWLEVEL=0
 FULL=0
+FRESH=0
 
 die()  { printf '\n  %s\n\n' "$*" >&2; exit 1; }
 note() { printf '  %s\n' "$*"; }
@@ -56,6 +62,7 @@ while [ $# -gt 0 ]; do
         -y|--yes)      ASSUME_YES=1 ;;
         --lowlevel)    LOWLEVEL=1 ;;
         --full)        FULL=1 ;;
+        --fresh)       FRESH=1 ;;
         -i|--image)    shift; IMAGE="${1:-}" ;;
         -h|--help)     sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         /dev/*)        DEVICE="$1" ;;
@@ -73,6 +80,7 @@ escalate() {
     [ "$ASSUME_YES" -eq 1 ] && args+=(-y)
     [ "$LOWLEVEL" -eq 1 ]   && args+=(--lowlevel)
     [ "$FULL" -eq 1 ]       && args+=(--full)
+    [ "$FRESH" -eq 1 ]      && args+=(--fresh)
     args+=(--image "$IMAGE")
     note "$1"
     exec sudo -- "${BASH_SOURCE[0]}" "${args[@]}"
@@ -239,6 +247,44 @@ fi
 if findmnt -n "$DEVICE" >/dev/null 2>&1; then
     step "Unmounting $DEVICE"
     umount "$DEVICE" || die "Could not unmount $DEVICE. Close anything using it."
+fi
+
+# --- keep what was written on the old disk ----------------------------------
+# A new image carries empty documents, an empty journal and no taught
+# words, so writing it as it is would wipe everything written on the
+# floppy since the last upgrade.  Anything of those that is on the floppy
+# now, at the size the new image expects, is copied into the snapshot
+# first.  A floppy that is not a FLOPOS disk simply has none of them.
+# --fresh skips this and writes the image exactly as built.
+#
+# The temporary folder is only ever used if mktemp really made it, and its
+# contents are removed one named file at a time -- never with a wildcard
+# on a variable, which with an empty variable is "rm -f /*".
+KEEP_FILES="JOURNAL.TXT STATE.BIN WRITE1.MD WRITE2.MD WRITE3.MD WRITE4.MD
+            WRITE5.MD WRITE6.MD WRITE7.MD WRITE8.MD"
+KEEPDIR=""
+if [ "$FRESH" -ne 1 ] && command -v mcopy >/dev/null 2>&1; then
+    KEEPDIR="$(mktemp -d "${TMPDIR:-/tmp}/flopos-keep.XXXXXX" 2>/dev/null)" || KEEPDIR=""
+fi
+if [ -n "$KEEPDIR" ] && [ -d "$KEEPDIR" ] && [ "$KEEPDIR" != "/" ]; then
+    kept=""
+    for f in $KEEP_FILES; do
+        if mcopy -n -i "$DEVICE" "::$f" "$KEEPDIR/$f" 2>/dev/null; then
+            want=$( { mcopy -n -i "$SNAP" "::$f" - 2>/dev/null || true; } | wc -c)
+            have=$(stat -c%s "$KEEPDIR/$f")
+            if [ "$want" -gt 0 ] && [ "$want" = "$have" ]; then
+                mcopy -o -n -i "$SNAP" "$KEEPDIR/$f" "::$f" && kept="$kept $f"
+            fi
+        fi
+    done
+    for f in $KEEP_FILES; do
+        rm -f -- "$KEEPDIR/$f"
+    done
+    rmdir -- "$KEEPDIR" 2>/dev/null || true
+    if [ -n "$kept" ]; then
+        step "Keeping what is already on the floppy:"
+        note "  $kept"
+    fi
 fi
 
 # --- optional low-level format --------------------------------------------

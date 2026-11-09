@@ -60,3 +60,41 @@ static int transfer(u32 lba, int count, int write)
 
 int disk_read(u32 lba, int count)  { return transfer(lba, count, 0); }
 int disk_write(u32 lba, int count) { return transfer(lba, count, 1); }
+
+/* ---- runs of sectors ----------------------------------------------------
+ * As many sectors as asked for, a track at a time: the BIOS will not cross
+ * a track in one call, and each call is a trip through real mode, so a
+ * sector at a time would turn sixteen kilobytes into thirty-two of them --
+ * slow enough on a real drive to look like a hang. */
+static u32 run_limit(u32 lba, u32 left)
+{
+    u32 in_track = SPT - (lba % SPT);
+    if (in_track < left) left = in_track;
+    return left;
+}
+
+int disk_read_run(u32 lba, u32 sectors, u8 *dst)
+{
+    while (sectors) {
+        u32 n = run_limit(lba, sectors);
+        if (!disk_read(lba, (int)n)) return 0;
+        memcpy8(dst, (const void *)DISK_BUF, n * 512);
+        dst += n * 512;
+        lba += n;
+        sectors -= n;
+    }
+    return 1;
+}
+
+int disk_write_run(u32 lba, u32 sectors, const u8 *src)
+{
+    while (sectors) {
+        u32 n = run_limit(lba, sectors);
+        memcpy8((void *)DISK_BUF, src, n * 512);
+        if (!disk_write(lba, (int)n)) return 0;
+        src += n * 512;
+        lba += n;
+        sectors -= n;
+    }
+    return 1;
+}

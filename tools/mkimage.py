@@ -27,6 +27,11 @@ TOTAL_SECTORS = 2880            # 1.44MB: 80 cylinders * 2 heads * 18 sectors
 JOURNAL_BYTES = 8192
 STATE_BYTES = 8192
 
+# The editor's documents: eight of them, sixteen kilobytes each -- several
+# pages of text apiece, and a size a floppy writes in a second or two.
+DOC_SLOTS = 8
+DOC_BYTES = 16384
+
 JOURNAL_HEADER = (
     "FLOPOS journal\r\n"
     "\r\n"
@@ -64,9 +69,10 @@ def find_word(buf, value, lo, hi):
 
 
 def main():
-    if len(sys.argv) != 4:
-        sys.exit("usage: mkimage.py boot.bin kernel.bin out.img")
+    if len(sys.argv) < 4:
+        sys.exit("usage: mkimage.py boot.bin kernel.bin out.img [app.app ...]")
     boot_path, kern_path, out_path = sys.argv[1:4]
+    app_paths = sys.argv[4:]
 
     boot = bytearray(open(boot_path, "rb").read())
     kern = open(kern_path, "rb").read()
@@ -103,6 +109,21 @@ def main():
     readme = "README.md"
     if os.path.exists(readme):
         run("mcopy", "-i", out_path, readme, "::README.TXT")
+
+    # Apps, each its own file: WRITE.APP for `write`.  The kernel finds
+    # them by name when they are asked for, so where they land is theirs.
+    for app in app_paths:
+        name = os.path.splitext(os.path.basename(app))[0].upper()[:8] + ".APP"
+        run("mcopy", "-i", out_path, app, "::" + name)
+
+    # Documents for the editor: made at their full size now, because the
+    # kernel only ever writes a file in place and never changes its size
+    # or where it lives.  Empty to begin with -- the DOS end-of-file mark
+    # and then nothing -- so TYPE shows nothing rather than noise.
+    for n in range(1, DOC_SLOTS + 1):
+        dpath = os.path.join(tmpdir, "WRITE%d.MD" % n)
+        open(dpath, "wb").write(b"\x1A" + b"\x00" * (DOC_BYTES - 1))
+        run("mcopy", "-i", out_path, dpath, "::WRITE%d.MD" % n)
 
     img = bytearray(open(out_path, "rb").read())
 

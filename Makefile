@@ -39,6 +39,13 @@ KOBJ    := $(OBJDIR)/start.o $(OBJDIR)/isr.o $(OBJDIR)/bios.o $(COBJ)
 
 IMG     := $(BUILD)/flopos.img
 
+# Apps: every folder under apps/ is one, built into its own file and put on
+# the floppy beside the kernel.  They share the kernel's compiler flags but
+# none of its code -- only apps/app.h.
+APPNAMES  := $(patsubst apps/%/,%,$(wildcard apps/*/))
+APPFILES  := $(patsubst %,$(BUILD)/apps/%.app,$(APPNAMES))
+APPCFLAGS := $(filter-out -Ikernel,$(CFLAGS)) -Iapps
+
 .PHONY: all clean run shot write size release
 all: $(IMG)
 
@@ -61,8 +68,15 @@ $(BUILD)/kernel.bin: $(KOBJ) linker.ld
 	$(LD) -m elf_i386 -T linker.ld -o $@ $(KOBJ) --no-warn-rwx-segments
 	@echo "   kernel.bin: $$(stat -c%s $@) bytes"
 
-$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin tools/mkimage.py README.md
-	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@
+.SECONDEXPANSION:
+$(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) apps/crt.c apps/app.h apps/app.ld
+	@mkdir -p $(BUILD)/apps
+	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld \
+	      -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $(wildcard apps/$*/*.c)
+	@echo "   $*.app: $$(stat -c%s $@) bytes"
+
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) tools/mkimage.py README.md
+	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 
 size: $(BUILD)/kernel.bin
 	@$(LD) -m elf_i386 -T linker.ld -o /dev/null $(KOBJ) --no-warn-rwx-segments -M 2>/dev/null \
@@ -94,4 +108,4 @@ release:
 	 echo "   released flopos-$$v.img, notes in releases/flopos-$$v.txt"
 
 clean:
-	rm -rf $(OBJDIR) $(BUILD)/*.bin $(BUILD)/*.img
+	rm -rf $(OBJDIR) $(BUILD)/apps $(BUILD)/*.bin $(BUILD)/*.img

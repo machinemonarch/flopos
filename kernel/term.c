@@ -681,6 +681,7 @@ static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
 #define WIN_W 100
 #define WIN_H 50
 static u8  s_win_ch[WIN_H][WIN_W], s_win_fg[WIN_H][WIN_W], s_win_bg[WIN_H][WIN_W];
+static u8  s_win_at[WIN_H][WIN_W];        /* bold, italic, underline        */
 static int s_win_on, s_win_c, s_win_r, s_win_w, s_win_h;
 
 
@@ -702,6 +703,7 @@ int term_win_open(int w, int h)
             s_win_ch[y][x] = ' ';
             s_win_fg[y][x] = C_TEXT;
             s_win_bg[y][x] = WIN_PAPER;
+            s_win_at[y][x] = 0;
         }
     s_win_on = 1;
     return w;
@@ -711,12 +713,18 @@ void term_win_close(void) { s_win_on = 0; }
 int  term_win_width(void)  { return s_win_w; }
 int  term_win_height(void) { return s_win_h; }
 
-void term_win_put(int x, int y, int ch, u8 fg, u8 bg)
+void term_win_put_at(int x, int y, int ch, u8 fg, u8 bg, u8 attr)
 {
     if (x < 0 || y < 0 || x >= s_win_w || y >= s_win_h) return;
     s_win_ch[y][x] = (u8)ch;
     s_win_fg[y][x] = fg;
     s_win_bg[y][x] = bg;
+    s_win_at[y][x] = attr;
+}
+
+void term_win_put(int x, int y, int ch, u8 fg, u8 bg)
+{
+    term_win_put_at(x, y, ch, fg, bg, 0);
 }
 
 int term_win_text(int x, int y, const char *t, u8 fg, u8 bg)
@@ -756,6 +764,34 @@ void term_win_frame(const char *title, u8 fg)
     }
 }
 
+/* A glyph, bold and/or italic.  Bold is the classic trick: drawn twice,
+ * one pixel apart.  Italic slants it: the top third shifted right by two
+ * pixels' worth, the middle by one, the bottom left where it was -- the
+ * bottom stays put so letters still sit on their line. */
+static void blit_styled(u8 *dst, int x, int y, int c, u8 colour, u8 attr)
+{
+    const Face *f = s_face;
+    int cols = f->w * s_scale, rows = f->h * s_scale, col, row;
+
+    if (!(attr & (ATTR_BOLD | ATTR_ITALIC))) { blit_glyph(dst, x, y, c, colour); return; }
+
+    for (col = 0; col < cols; col++) {
+        u32 bits = s_scale > 1 ? s_big[glyph_index(c)][col]
+                               : f->glyphs[glyph_index(c) * f->w + col];
+        for (row = 0; row < rows && bits; row++, bits >>= 1) {
+            int px, py;
+            if (!(bits & 1)) continue;
+            px = x + col;
+            py = y + row;
+            if (attr & ATTR_ITALIC) px += s_scale * (row < rows / 3 ? 2 : row < 2 * rows / 3 ? 1 : 0);
+            if (px >= 0 && px < s_vw && py >= 0 && py < s_vh) {
+                dst[py * s_pitch + px] = colour;
+                if ((attr & ATTR_BOLD) && px + 1 < s_vw) dst[py * s_pitch + px + 1] = colour;
+            }
+        }
+    }
+}
+
 static void fill_rect(u8 *dst, int x, int y, int w, int h, u8 colour)
 {
     int r;
@@ -784,10 +820,15 @@ static void render_window(u8 *dst)
         for (x = 0; x < s_win_w; x++) {
             int px = ox + x * cw, py = oy + y * ch;
             int c = s_win_ch[y][x];
+            u8 at = s_win_at[y][x], fg = s_win_fg[y][x];
             fill_rect(dst, px, py, cw, ch, s_win_bg[y][x]);
+            /* Underline: a line under the letters, the width of the cell,
+             * so an underlined word is one line rather than dashes. */
+            if (at & ATTR_UNDERLINE)
+                fill_rect(dst, px, py + (s_face->pitch - 1) * s_scale, cw, s_scale, fg);
             if (c == ' ' || c == 0) continue;
-            if (CH_IS_CELL(c)) blit_cell(dst, px, py, c, s_win_fg[y][x]);
-            else               blit_glyph(dst, px, py, c, s_win_fg[y][x]);
+            if (CH_IS_CELL(c)) { blit_cell(dst, px, py, c, fg); continue; }
+            blit_styled(dst, px, py, c, fg, at);
         }
     }
 }
