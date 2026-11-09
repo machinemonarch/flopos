@@ -238,6 +238,6 @@ const u8 g_font4x6[FONT_GLYPHS][4] = {
  * cols and rows are what then fits in 320x200 starting at x0. */
 const Face g_faces[FACE_COUNT] = {
     { (const u8 *)g_font5x8, 5, 8, 6, 8, 53, 25, 1, 1, "roomy"  },
-    { (const u8 *)g_font4x6, 4, 6, 4, 6, 80, 33, 0, 0, "close"  },
+    { (const u8 *)g_font4x6, 4, 6, 4, 6, 80, 33, 0, 1, "close"  },
 };
 

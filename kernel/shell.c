@@ -570,6 +570,8 @@ typedef struct {
     u16  manf, prod;
     int  func;
     u16  cfg_base;
+    u8   cfg[8];                         /* the CONFIG body, as it came   */
+    int  cfglen;
     int  codes[20];
     int  ncodes;
 } CardInfo;
@@ -623,6 +625,13 @@ static int cis_tuple(u8 code, const u8 *body, int len, void *ctx)
                 base |= (u32)body[2 + i] << (8 * i);
             ci->cfg_base = (u16)base;
         }
+        /* And the body itself.  This came back as zero on the first card
+         * ever put in front of it, which is either a card that really does
+         * keep its registers at zero or a parse that is wrong, and the only
+         * thing that tells the two apart is the bytes. */
+        for (i = 0; i < len && i < (int)sizeof ci->cfg; i++)
+            ci->cfg[i] = body[i];
+        ci->cfglen = len < (int)sizeof ci->cfg ? len : (int)sizeof ci->cfg;
         break;
 
     default:
@@ -690,6 +699,21 @@ static void card_socket(int sock, int w)
         fmt_str(line, sizeof line, "%u tuples, config registers at %x",
                 (u32)n, (u32)ci.cfg_base);
         term_frame_row(w, line, 0);
+        if (ci.cfglen) {
+            char *p = line;
+            int left = (int)sizeof line - 1;
+            const char *lead = "config tuple ";
+            while (*lead && left > 1) { *p++ = *lead++; left--; }
+            for (i = 0; i < ci.cfglen && left > 4; i++) {
+                char tmp[8];
+                char *e = fmt_hex(tmp, (u32)ci.cfg[i], 2);
+                int k = (int)(e - tmp), j;
+                for (j = 0; j < k && left > 1; j++) { *p++ = tmp[j]; left--; }
+                if (left > 1) { *p++ = ' '; left--; }
+            }
+            *p = 0;
+            term_frame_row(w, line, 0);
+        }
 
         /* The raw codes, because the first time anything talks to new
          * hardware the only honest report is the one that has not been
@@ -712,6 +736,36 @@ static void card_socket(int sock, int w)
 
     pcic_power_down(sock);
     term_frame_bottom(w, 0);
+}
+
+/* The bytes, undigested.  Everything above this is an interpretation, and
+ * when an interpretation disagrees with the hardware the bytes are the only
+ * way to find out which of the two is wrong. */
+static void card_raw(int sock)
+{
+    u8 buf[256];
+    int i, j;
+
+    if (!pcic_present(sock)) return;
+
+    if (!pcic_power_up(sock, 1)) {
+        say("It would not come ready.");
+        pcic_power_down(sock);
+        return;
+    }
+    pcic_cis_read(sock, 0, buf, (int)sizeof buf);
+    pcic_power_down(sock);
+
+    term_colour(C_DIM);
+    term_printf("socket %u, the first %u bytes of the CIS",
+                (u32)sock, (u32)sizeof buf);
+    term_newline();
+    term_colour(C_TEXT);
+    for (i = 0; i < (int)sizeof buf; i += 16) {
+        term_printf("%03x ", (u32)i);
+        for (j = 0; j < 16; j++) term_printf("%02x ", buf[i + j]);
+        term_newline();
+    }
 }
 
 static void cmd_card(void)
@@ -739,14 +793,21 @@ static void cmd_card(void)
         return;
     }
 
-    fmt_str(line, sizeof line, "adapter at %x, %u socket%s, %s",
+    if (s_argc >= 2 && eq_ci(s_argv[1], "raw")) {
+        for (i = 0; i < n; i++) card_raw(i);
+        return;
+    }
+
+    fmt_str(line, sizeof line, "adapter at %x, %u socket%s, %s (id %x)",
             (u32)pcic_port(), (u32)n, n == 1 ? "" : "s",
-            pcic_kind(pcic_ident(0)));
+            pcic_kind(pcic_ident(0)), (u32)pcic_ident(0));
     term_colour(C_TEXT);
     term_print(line);
     term_newline();
 
     for (i = 0; i < n; i++) card_socket(i, w);
+
+    say_dim("card raw  prints the bytes instead of my reading of them");
 }
 
 /* The grid is a matter of eyesight and of what is being built, so it is a

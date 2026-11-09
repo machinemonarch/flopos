@@ -10,7 +10,8 @@
  * normal, and binormal -- so the rings stay perpendicular to the spine as
  * it bends.  Sweeping circles in a fixed plane instead would give
  * something that reads as a bent tube seen from one angle and a mess from
- * every other.
+ * every other -- which matters more now it turns on two axes at once and
+ * is seen from all of them.
  *
  * Fixed point throughout at 1.0 == 256 for the model, and the sine table's
  * 1.0 == 4096 for the rotation.  Nothing here touches the FPU.
@@ -95,13 +96,17 @@ static void build(void)
 void banana_draw(u8 *dst, u32 t)
 {
     int px[NV], py[NV], pz[NV];
-    int ay, i;
+    int ay, ax, i;
     int cx = BOX_X + BOX_W / 2;
     int cy = BOX_Y + BOX_H / 2;
 
     if (!s_built) build();
 
+    /* Two turns at once.  The rates are deliberately not multiples of one
+     * another, so the two circuits drift against each other and the thing
+     * tumbles instead of rocking back into the same pose every time round. */
     ay = (int)((t * 3) >> 4) & SINMASK;          /* round, and round       */
+    ax = (int)(44 + ((t * 2) >> 4)) & SINMASK;   /* and over the top       */
 
     for (i = 0; i < NV; i++) {
         int x = s_vx[i], y = s_vy[i], z = s_vz[i];
@@ -111,11 +116,12 @@ void banana_draw(u8 *dst, u32 t)
         x1 = ((x * COS(ay)) - (z * SIN(ay))) >> 12;
         z1 = ((x * SIN(ay)) + (z * COS(ay))) >> 12;
 
-        /* A slight lean, and no more than that.  Tipped hard the curve of
-         * the spine foreshortens into nothing and the whole thing reads as
-         * a wedge; seen nearly side-on, the bend is the silhouette. */
-        y2 = ((y * COS(44)) - (z1 * SIN(44))) >> 12;
-        z2 = ((y * SIN(44)) + (z1 * COS(44))) >> 12;
+        /* Over the top, as well.  There are two poses in every tumble where
+         * the spine foreshortens into nothing and the banana reads as a
+         * wedge -- but it is moving through them, not sitting in them, and
+         * the moment either side is the one where the bend is clearest. */
+        y2 = ((y * COS(ax)) - (z1 * SIN(ax))) >> 12;
+        z2 = ((y * SIN(ax)) + (z1 * COS(ax))) >> 12;
 
         d = z2 + DIST;
         if (d < 40) d = 40;

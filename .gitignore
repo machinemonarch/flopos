@@ -36,3 +36,4 @@ photos/
 .idea
 .vscode
 .claude/
+logs/

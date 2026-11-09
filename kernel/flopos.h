@@ -371,6 +371,7 @@ u8     pcic_status(int sock);
 int    pcic_power_up(int sock, int io_card);
 void   pcic_power_down(int sock);
 int    pcic_cis_walk(int sock, CisFn fn, void *ctx);
+int    pcic_cis_read(int sock, u32 off, u8 *buf, int len);
 
 /* The tuples worth knowing by name. */
 #define CISTPL_VERS_1       0x15         /* who made it, in words          */

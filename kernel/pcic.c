@@ -160,18 +160,22 @@ int  pcic_sockets(void)   { return s_sockets; }
 u16  pcic_port(void)      { return s_index; }
 u8   pcic_ident(int sock) { return (sock >= 0 && sock < 4) ? s_ident[sock] : 0; }
 
-/* The identification byte says what kind of part answered.  Bits 5:4 say
- * whether it can do I/O cards at all, which is the difference between a
- * socket that could hold a network card and one that could only ever hold
- * memory. */
+/* The identification byte names the part.  The 82365SL's own datasheet
+ * describes bits 5:4 as saying whether the socket does I/O as well as
+ * memory, but no real part in this family ever populated them -- a genuine
+ * 82365SL answers 0x82 or 0x83, which by that reading would be "memory
+ * only" while happily running a network card.  So the bits are ignored and
+ * the whole byte is matched instead, which is what the values are actually
+ * good for.  Anything unrecognised is still spoken to: the register
+ * interface is the same, and the raw byte is printed either way. */
 const char *pcic_kind(u8 id)
 {
-    switch (id & 0xF0) {
-    case 0x80: return "memory only";
-    case 0x90: return "memory and I/O";
-    case 0xA0: return "memory and I/O, rev B";
-    case 0xB0: return "memory and I/O, rev C";
-    default:   return "unfamiliar";
+    switch (id) {
+    case 0x82: case 0x83: return "82365SL";
+    case 0x84: case 0x85: return "82365SL, VLSI part";
+    case 0x88: case 0x89: return "VG-468";
+    case 0x8A:            return "VG-469";
+    default:              return "ExCA compatible";
     }
 }
 
@@ -256,6 +260,20 @@ static u8 attr_byte(u32 off)
 {
     /* Even bytes only, so the nth byte of the CIS is at twice n. */
     return *(volatile u8 *)(CIS_HOST + off * 2);
+}
+
+/* The CIS as bytes, for when it is the interpretation that is in doubt and
+ * not the reading.  The card must already be powered. */
+int pcic_cis_read(int sock, u32 off, u8 *buf, int len)
+{
+    int i;
+
+    if (!s_index || !pcic_present(sock)) return 0;
+
+    map_attr(sock);
+    for (i = 0; i < len; i++) buf[i] = attr_byte(off + (u32)i);
+    unmap(sock);
+    return len;
 }
 
 /* Walk the tuple chain, handing each one to the caller.  A tuple is a code
