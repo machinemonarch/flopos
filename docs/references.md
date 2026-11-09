@@ -71,6 +71,7 @@ for decades:
 | 3Com EtherLink III technical reference (3C5x9 family) | `el3.c`: the 3C589's registers and how to bring it up |
 | National Semiconductor DP8390 / NE2000 | `ne2000.c`: the card QEMU emulates |
 | Chips & Technologies 65550 flat-panel registers | `panel.c`: stretching 320×200 to fill the panel |
+| VEXP 1.3 by Adrian Gradwell (freeware, 1997), notes on the 65550's panel stretching | `panel.c`: `wide`, and why it is set after the mode change |
 | [Scale2x](https://www.scale2x.it/) | Smoothing the letters at 800×600 (`term.c`) |
 
 ## Toshiba's material (consulted, not included)
@@ -90,28 +91,6 @@ floppy and panel are wired.
 
 They are copyrighted. They live in `reference/`, which is never committed,
 and no Toshiba code, firmware or text is in FLOPOS.
-
-## Credit: Adrian Gradwell and VEXP
-
-**VEXP**, by **Adrian Gradwell**, is a small freeware DOS utility for
-Toshiba laptops built on the Chips & Technologies 65550 video chip. He
-wrote it in 1996 because, in his words, Toshiba didn't provide one, and
-kept improving it into 1997 (version 1.3, 20 August 1997). His site at the
-time was www.dil.u-net.com.
-
-VEXP turns on the chip's hidden ability to stretch a small DOS picture to
-fill the whole laptop panel. Its notes also record what he found out the
-hard way: the BIOS rewrites the stretching registers every time the
-video mode changes, so the setting quietly reverts. That is why VEXP grew a
-memory-resident part to put it back.
-
-That one observation shaped `wide` in FLOPOS. FLOPOS sets its video mode
-once and writes the panel registers afterwards, so they stay. VEXP itself
-is not included, and none of its code is in FLOPOS. A copy was consulted
-from `reference/` for what it explains about the hardware.
-
-Thank you, Adrian. Nearly thirty years on, your notes are still the
-clearest account of how this panel works.
 
 ## Checking the work
 
