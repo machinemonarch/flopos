@@ -8,10 +8,10 @@ source files involved; every file opens with a comment explaining itself.
 1. **The boot sector** (`boot/boot.S`, 512 bytes). The BIOS loads it at
    address 0x7C00. It switches the screen to VGA mode 13h, then reads two
    files off the floppy, a track at a time with retries:
-   - `SAFFRAN.PIX` (her palette, then 320×200 pixels) into 0x80000. After
-     every chunk it copies everything of her that has arrived onto the
-     screen, so she appears exactly as fast as the drive reads her.
-   - `KERNEL.BIN` into 0x10000, underneath her, drawing a two-pixel bar
+   - `SAFFRAN.PIX` (his palette, then 320×200 pixels) into 0x80000. After
+     every chunk it copies everything of him that has arrived onto the
+     screen, so he appears exactly as fast as the drive reads him.
+   - `KERNEL.BIN` into 0x10000, underneath him, drawing a two-pixel bar
      along the bottom that reaches halfway when the kernel is in.
 
    The disk is a real FAT12 floppy, so the build works out where both

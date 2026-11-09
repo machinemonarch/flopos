@@ -313,10 +313,10 @@ int    panel_wide(void);
 void   panel_set_wide(int on);
 
 /* --- arrive.c: the boot, told as it happens --------------------------- *
- * Saffran owns the whole palette while she is up, so the entries text
+ * Saffran owns the whole palette while he is up, so the entries text
  * needs are kept back from the photograph rather than taken from it.
  * tools/mksplash.py writes them; these name them.  The shadow is entry 0
- * because 0 is what the screen shows where she has not loaded yet.
+ * because 0 is what the screen shows where he has not loaded yet.
  */
 #define SPL_SHADOW 0
 #define SPL_DIM    250

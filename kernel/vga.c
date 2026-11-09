@@ -57,7 +57,7 @@ void vga_init(void)
 
 /* Take over whatever the boot sector left on the screen -- Saffran -- as
  * the back buffer and the current palette, so the first frame the kernel
- * draws carries on from her instead of starting from black. */
+ * draws carries on from him instead of starting from black. */
 void vga_adopt(void)
 {
     int i;

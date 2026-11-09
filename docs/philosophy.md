@@ -97,9 +97,9 @@ you, not how they work: `goaway` clears the screen, `remember` saves,
   the text always wins, and breathes with the music.
 - **Music**: a step sequencer playing rhythms on the laptop's FM sound chip.
 - **A banana** in the corner, in wireframe, tumbling on two axes.
-- **Saffran** (a cat) on the boot screen. She is the first thing read off
-  the floppy and appears as fast as the drive delivers her. The machine
-  then tells her, step by step, everything it is really doing to get
+- **Saffran**, Max's cat, on the boot screen. He is the first thing read
+  off the floppy and appears as fast as the drive delivers him. The machine
+  then tells him, step by step, everything it is really doing to get
   ready.
 - **whaaat**: the whole screen pulled through a hole in itself and turned
   inside out.

@@ -2,9 +2,9 @@
  * arrive.c -- the way in, told as it happens.
  *
  * By the time the kernel runs, Saffran is already on the screen: the boot
- * sector loaded her off the floppy first and painted her on as she
- * arrived, then loaded the kernel underneath her with a bar along the
- * bottom.  The kernel takes her over from there and narrates its own
+ * sector loaded him off the floppy first and painted him on as he
+ * arrived, then loaded the kernel underneath him with a bar along the
+ * bottom.  The kernel takes him over from there and narrates its own
  * start, one line per real step, in a dialect of its own.  Every line is
  * something the machine is actually doing at that moment, and where a step
  * finds something out -- the processor's speed, how much memory there is,

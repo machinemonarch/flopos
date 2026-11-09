@@ -9,9 +9,9 @@ without it. Each version's notes are also written next to its image, as
 ## 1.12.0 — 2026-11-09
 
 - **Saffran shows while the machine really loads.** The coloured stripes
-  are gone: she is now the first thing read off the floppy, painting in
-  from the top as fast as the drive delivers her, with a thin green bar
-  along the bottom while the system loads underneath her.
+  are gone: he is now the first thing read off the floppy, painting in
+  from the top as fast as the drive delivers him, with a thin green bar
+  along the bottom while the system loads underneath him.
 - **The boot messages are true now.** Every line is a real step, typed just
   before it happens, in the same dialect as before, with what the step
   found at the end of the line (memory, processor speed, boot count). All

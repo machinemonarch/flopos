@@ -49,10 +49,10 @@ and plug it back in:
 
 Put the floppy in the laptop and switch it on. You will see:
 
-1. **Saffran, painting in from the top** as her picture comes off the
+1. **Saffran, painting in from the top** as his picture comes off the
    disk.
 2. **A thin green bar** growing along the bottom while the system loads
-   underneath her.
+   underneath him.
 3. **The machine telling you what it is doing**, one line per real step,
    in its own dialect, with what each step found at the end of its line:
    the memory, the processor's speed, how many times it has woken up, and

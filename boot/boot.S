@@ -5,10 +5,10 @@
  *   1. sane segments + stack
  *   2. remember the BIOS boot drive (DL)
  *   3. switch to VGA mode 13h straight away, so the load is visible
- *   4. pull SAFFRAN.PIX off the floppy into 8000:0000 -- her palette, then
- *      her picture -- painting her onto the screen as each chunk arrives,
- *      so she appears exactly as fast as the disk delivers her
- *   5. pull KERNEL.BIN into 1000:0000 underneath her, one track per
+ *   4. pull SAFFRAN.PIX off the floppy into 8000:0000 -- his palette, then
+ *      his picture -- painting him onto the screen as each chunk arrives,
+ *      so he appears exactly as fast as the disk delivers him
+ *   5. pull KERNEL.BIN into 1000:0000 underneath him, one track per
  *      INT 13h call, with a thin bar along the bottom for how far it has
  *      got.  The bar stops at half way: the kernel fills in the rest as
  *      it really does get ready.
@@ -81,9 +81,9 @@ after_bpb:
         movb    boot_drive, %al
         movb    %al, 0x502
 
-        call    load                    /* Saffran, painted on as she comes */
+        call    load                    /* Saffran, painted on as he comes  */
 
-        movw    kernel_lba, %ax         /* then the kernel, under her      */
+        movw    kernel_lba, %ax         /* then the kernel, under him      */
         movw    %ax, lba
         movw    kernel_sectors, %ax
         movw    %ax, sectors_left
@@ -179,9 +179,9 @@ load_done:
         ret
 
 /* ---- after every chunk: show how far the load has got -------------------
- * While Saffran is loading (dest_seg at 8000 or above), everything of her
- * that has arrived goes on the screen: her palette, as much of it as has
- * come, then her pixels, as many rows as have come.  She fills in from the
+ * While Saffran is loading (dest_seg at 8000 or above), everything of him
+ * that has arrived goes on the screen: his palette, as much of it as has
+ * come, then his pixels, as many rows as have come.  He fills in from the
  * top down, at the speed of the drive.
  *
  * While the kernel is loading, a two-pixel bar along the bottom grows to
@@ -208,7 +208,7 @@ progress:
         movw    $768, %cx
         rep     outsb                   /* si ends at 768: the pixels      */
         popw    %cx
-        shlw    $4, %cx                 /* bytes of her loaded so far      */
+        shlw    $4, %cx                 /* bytes of him loaded so far      */
         subw    $768, %cx
         jbe     shown                   /* nothing past the palette yet    */
         cmpw    $64000, %cx

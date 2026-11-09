@@ -142,7 +142,7 @@ void kmain(void)
     u32 t;
 
     /* --- the machine ---------------------------------------------------- */
-    /* Saffran is on the screen already: the boot sector put her there
+    /* Saffran is on the screen already: the boot sector put him there
      * while it loaded us.  These first few are over in a millisecond,
      * before there is a clock to tell them by, so they are told just
      * after, in the order they happened. */
@@ -248,7 +248,7 @@ void kmain(void)
      * existed, so only the BIOS saw it go down.
      *
      * Saffran stays up across the switch: the screen blanks for a moment,
-     * then she comes back at the new size with her own colours. */
+     * then he comes back at the new size with his own colours. */
     {
         int shift = (*(volatile u8 *)0x417 & 0x03) ||
                     kbd_down(0x2A) || kbd_down(0x36);
