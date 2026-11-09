@@ -7,8 +7,15 @@
 #   tools/writefloppy.sh -y              skip the confirmation
 #   tools/writefloppy.sh --lowlevel      low-level format first (slow)
 #
-# It asks for your password once, at the start, and does everything else
-# itself.
+# It only asks for a password if it has to. Finding the drive and checking
+# that it really is a floppy needs no privilege at all; writing to it does,
+# unless the drive belongs to you. To make it belong to you, once:
+#
+#     sudo cp tools/99-flopos-floppy.rules /etc/udev/rules.d/
+#     sudo udevadm control --reload
+#
+# then unplug the drive and plug it back in. After that it never asks
+# again.
 #
 # On "formatting": the image already contains a complete, freshly made
 # FAT12 filesystem, so writing it IS formatting the disk -- there is no
@@ -53,16 +60,18 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# --- one password prompt, at the top -------------------------------------
-if [ "$(id -u)" -ne 0 ]; then
-    args=()
-    if [ -n "$DEVICE" ];        then args+=("$DEVICE");   fi
-    if [ "$ASSUME_YES" -eq 1 ]; then args+=(-y);          fi
-    if [ "$LOWLEVEL" -eq 1 ];   then args+=(--lowlevel);  fi
+# Asking for root is put off until we know it is needed: finding the drive
+# and checking it needs none, and with the udev rule installed, writing to
+# it needs none either.
+escalate() {
+    local args=()
+    [ -n "$DEVICE" ]        && args+=("$DEVICE")
+    [ "$ASSUME_YES" -eq 1 ] && args+=(-y)
+    [ "$LOWLEVEL" -eq 1 ]   && args+=(--lowlevel)
     args+=(--image "$IMAGE")
-    note "This needs root to write to a disk device. Asking once."
+    note "$1"
     exec sudo -- "${BASH_SOURCE[0]}" "${args[@]}"
-fi
+}
 
 # --- the image ------------------------------------------------------------
 [ -f "$IMAGE" ] || die "No image at $IMAGE. Run 'make' first."
@@ -122,6 +131,19 @@ fi
 # partitions hanging off it.
 if lsblk -n -o NAME "$DEVICE" | tail -n +2 | grep -q .; then
     die "REFUSING: $DEVICE has partitions or holders. That is not a bare floppy."
+fi
+
+# Everything above here needed no privilege, which is the point: the
+# checks that decide whether this is safe run as you, every time, whether
+# or not root is ever involved.
+if [ ! -w "$DEVICE" ] && [ "$(id -u)" -ne 0 ]; then
+    note ""
+    note "$DEVICE is not yours to write, so this needs root."
+    note "To stop being asked, once:"
+    note "    sudo cp tools/99-flopos-floppy.rules /etc/udev/rules.d/"
+    note "    sudo udevadm control --reload"
+    note "  then unplug the drive and plug it back in."
+    escalate ""
 fi
 
 model=$(lsblk -d -n -o MODEL,TRAN "$DEVICE" 2>/dev/null | xargs || true)
