@@ -6,6 +6,8 @@
 #   tools/writefloppy.sh /dev/sde        name the device yourself
 #   tools/writefloppy.sh -y              skip the confirmation
 #   tools/writefloppy.sh --lowlevel      low-level format first (slow)
+#   tools/writefloppy.sh --full          write all 1.44MB, not just the part
+#                                        that is used
 #
 # It only asks for a password if it has to. Finding the drive and checking
 # that it really is a floppy needs no privilege at all; writing to it does,
@@ -43,6 +45,7 @@ DEVICE=""
 IMAGE="$IMAGE_DEFAULT"
 ASSUME_YES=0
 LOWLEVEL=0
+FULL=0
 
 die()  { printf '\n  %s\n\n' "$*" >&2; exit 1; }
 note() { printf '  %s\n' "$*"; }
@@ -52,6 +55,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -y|--yes)      ASSUME_YES=1 ;;
         --lowlevel)    LOWLEVEL=1 ;;
+        --full)        FULL=1 ;;
         -i|--image)    shift; IMAGE="${1:-}" ;;
         -h|--help)     sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         /dev/*)        DEVICE="$1" ;;
@@ -68,6 +72,7 @@ escalate() {
     [ -n "$DEVICE" ]        && args+=("$DEVICE")
     [ "$ASSUME_YES" -eq 1 ] && args+=(-y)
     [ "$LOWLEVEL" -eq 1 ]   && args+=(--lowlevel)
+    [ "$FULL" -eq 1 ]       && args+=(--full)
     args+=(--image "$IMAGE")
     note "$1"
     exec sudo -- "${BASH_SOURCE[0]}" "${args[@]}"
@@ -79,6 +84,26 @@ escalate() {
 img_size=$(stat -c%s "$IMAGE")
 [ "$img_size" -eq "$FLOPPY_BYTES" ] \
     || die "$IMAGE is $img_size bytes, not $FLOPPY_BYTES. That is not a floppy image."
+
+# How much of it is worth writing.
+#
+# A floppy drive manages about 28 kilobytes a second, so the whole disk is
+# roughly fifty seconds to write and fifty more to read back -- and about
+# seven eighths of what it spends that time on is empty filesystem.  The
+# allocation table says those clusters are free, so whatever is already on
+# the diskette out there is unreferenced and harmless; mkimage records how
+# far the real content reaches and we stop at a track boundary past it.
+#
+# --full writes all of it, for when the diskette's far end is suspect or
+# when there is something on it you would rather was gone.
+BLOCK=36864                              # two cylinders, the dd block size
+WRITE_BYTES=$FLOPPY_BYTES
+if [ "$FULL" -ne 1 ] && [ -f "$IMAGE.used" ]; then
+    used=$(tr -dc '0-9' < "$IMAGE.used")
+    if [ -n "$used" ] && [ "$used" -gt 0 ] && [ "$used" -le "$FLOPPY_BYTES" ]; then
+        WRITE_BYTES=$(( (used + BLOCK - 1) / BLOCK * BLOCK ))
+    fi
+fi
 
 # Warn if the tree has moved on since the image was built.
 # Only the things that actually end up inside the image count here --
@@ -186,6 +211,10 @@ note "    image    $IMAGE"
 note "    built    $(date -r "$IMAGE" '+%Y-%m-%d %H:%M')"
 note "    device   $DEVICE  (${model:-unknown drive})"
 note "    size     $dev_size bytes -- correct for 1.44MB"
+if [ "$WRITE_BYTES" -lt "$FLOPPY_BYTES" ]; then
+    note "    writing  $WRITE_BYTES bytes -- the rest of the disk is empty"
+    note "             (--full writes all $FLOPPY_BYTES)"
+fi
 note ""
 note "  Everything currently on that disk will be gone. The image carries"
 note "  its own fresh FAT12 filesystem, so this formats it as it writes."
@@ -227,14 +256,15 @@ fi
 # bs=36k is two full cylinders per USB transaction. At bs=512 a USB floppy
 # spends all its time on per-command latency and takes about four times
 # as long for exactly the same result.
-step "Writing $dev_size bytes"
-dd if="$SNAP" of="$DEVICE" bs=36k conv=fsync status=progress
+step "Writing $WRITE_BYTES bytes"
+dd if="$SNAP" of="$DEVICE" bs=$BLOCK count=$((WRITE_BYTES / BLOCK)) \
+   conv=fsync status=progress
 
 # --- verify ---------------------------------------------------------------
-step "Reading it back to check every sector"
-if cmp "$SNAP" "$DEVICE"; then
+step "Reading it back to check every sector written"
+if cmp -n "$WRITE_BYTES" "$SNAP" "$DEVICE"; then
     note ""
-    note "  VERIFIED. All $dev_size bytes match."
+    note "  VERIFIED. All $WRITE_BYTES bytes match."
 else
     die "MISMATCH. The disk does not read back the same as what was written.
   The image was snapshotted before the write, so this is the media or the

@@ -204,6 +204,28 @@ def main():
         f.write(img)
 
     used = (kern_sectors + jrn_sectors + st_sectors) * SECTOR
+    # How much of the disk actually matters.  Everything past the last
+    # allocated sector is empty filesystem: the FAT and the directory say
+    # those clusters are free, so whatever is already on the diskette
+    # there is unreferenced and harmless.  Writing it anyway costs about
+    # forty-five seconds of a drive that manages 28 kilobytes a second,
+    # twice, because it is verified afterwards as well.
+    #
+    # Rounded up to a whole track, because that is the unit a floppy
+    # actually reads and writes.
+    # Taken from the allocation table rather than from the three files we
+    # happen to know about, because the image also carries a README and
+    # anything else added later would be missed the same way.
+    last = 1
+    for n in range(2, (TOTAL_SECTORS - data_start) // spc + 2):
+        if fat_entry(n):
+            last = n
+    used = data_start + (last - 1) * spc
+    track = 18 * SECTOR
+    used_bytes = ((used * SECTOR + track - 1) // track) * track
+    with open(out_path + ".used", "w") as f:
+        f.write("%d\n" % used_bytes)
+
     print("   %s" % out_path)
     print("   kernel      %6d bytes  (%d sectors) at LBA %d"
           % (len(kern), kern_sectors, kern_lba))
@@ -213,6 +235,8 @@ def main():
           % (STATE_BYTES, st_sectors, st_lba))
     print("   disk map patched into the kernel at image offset %d" % at)
     print("   boot sector patched: lba@%d count@%d" % (off_lba, off_cnt))
+    print("   in use      %6d bytes  (%d%% of the disk)"
+          % (used_bytes, 100 * used_bytes // (TOTAL_SECTORS * SECTOR)))
     print("   FAT12 free  %6d bytes" %
           ((TOTAL_SECTORS * SECTOR) - (data_start * SECTOR) - used))
 

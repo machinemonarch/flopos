@@ -85,6 +85,7 @@ release:
 	 $(MAKE) --no-print-directory all && \
 	 mkdir -p releases && \
 	 cp $(IMG) releases/flopos-$$v.img && \
+	 cp -f $(IMG).used releases/flopos-$$v.img.used 2>/dev/null || true; \
 	 echo "   released flopos-$$v.img"
 
 clean:
