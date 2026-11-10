@@ -126,3 +126,9 @@ looking at again unless their code changes.
   only answers ping.
 - **The mp3 decoder and the MOD/XM player:** sizes read from the file are
   clamped.
+- **TCP's out-of-order pieces (1.22):** a piece is kept only inside the
+  space the window offered, and at most eight are tracked, so nothing a
+  server sends can write past the receive buffer.
+- **The table decoders (1.22):** a bit reader never moves past the end of
+  its padded buffer, and a codebook that is not a prefix code, or has
+  codes too long for two tables, is refused when it is built.
