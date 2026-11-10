@@ -99,7 +99,7 @@ def main():
         failed = 0
         for i, step in enumerate(a.addresses):
             addr, _, want = step.partition("=>")
-            start = len(wire.text())
+            start, began = len(wire.text()), time.time()
             if addr.startswith("key:"):                 # keys instead of an address
                 for k in addr[4:].split(","): mon.cmd("sendkey " + k)
             elif addr.startswith("type:"):              # text, typed; \n is enter
@@ -121,7 +121,7 @@ def main():
             if want:
                 ok = re.search(want, wire.text()[start:]) is not None
                 failed += not ok
-                print("%s  %s" % ("ok    " if ok else "FAILED", addr) + ("" if ok else "\n        " + "\n        ".join(said[-6:])))
+                print("%s  %s  (%.1f s)" % ("ok    " if ok else "FAILED", addr, time.time() - began) + ("" if ok else "\n        " + "\n        ".join(said[-6:])))
             else:
                 print("%s\n        %s" % (addr, "\n        ".join(said[-6:])))
         if failed: print("%d failed" % failed)

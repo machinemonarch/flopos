@@ -128,8 +128,8 @@ static void draw(void)
 
     if (s_status[0]) term_win_text(3, 13, s_status, s_status_col, pp);
 
-    term_win_text(3, H - 3, s_edit >= 0 ? "type the address, enter to keep it, esc to undo"
-                                        : "up down move   enter change   esc leave",
+    term_win_text(3, H - 3, s_edit >= 0 ? "type the address, \1enter\1 to keep it, \1esc\1 to undo"
+                                        : "\1up down\1 move   \1enter\1 change   \1esc\1 leave",
                   C_DIM, pp);
 }
 

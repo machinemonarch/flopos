@@ -1,5 +1,6 @@
 /* ===========================================================================
- * tls.c -- TLS 1.3, the client half (RFC 8446).
+ * tls.c -- TLS 1.3, the client half (RFC 8446), and TLS 1.2 (RFC 5246)
+ * for servers that have nothing newer.
  *
  * How a secure web page is fetched.  The two ends agree on a secret with
  * X25519 in the first two messages, derive a ladder of keys from it with
@@ -26,6 +27,15 @@
  * here.  Without both, the connection is refused and says why -- unless
  * the person asked to go on anyway (tls_check(0)), and then everything
  * after says it was not checked.
+ *
+ * TLS 1.2, only as safe as 1.3 is: the same two ciphers, sealed the same
+ * way (RFC 7905, RFC 5288), and a fresh key exchange every time -- X25519,
+ * or P-256 for servers too old for that -- signed by the server.  Nothing
+ * from 1.2's older half: no RSA key exchange, no CBC, no SHA-1, no
+ * renegotiation, no compression.  The extended master secret (RFC 7627) is
+ * used where the server has it.  And a server that speaks 1.3 but answers
+ * 1.2 is refused: TLS 1.3 servers mark the answer so, and it means someone
+ * in between has tampered with our hello to force the older one.
  * ===========================================================================
  */
 #include "flopos.h"
@@ -40,6 +50,11 @@
 #define CT_APPDATA   23
 
 #define HS_SERVER_HELLO   2
+#define HS_SKE            12             /* TLS 1.2: ServerKeyExchange      */
+#define HS_CERT_REQ       13
+#define HS_HELLO_DONE     14
+#define HS_CKE            16
+#define HS_CERT_STATUS    22
 #define HS_NEW_TICKET     4
 #define HS_ENC_EXT        8
 #define HS_CERT           11
@@ -51,11 +66,20 @@ typedef struct { u8 key[32], iv[12]; u32 seq; } Dir;
 #define SUITE_CHACHA 0x1303
 #define SUITE_AES128 0x1301
 #define GROUP_X25519 0x001d
+#define GROUP_P256   0x0017
+#define S12_CHACHA_EC  0xCCA9            /* TLS 1.2: ECDHE, then the cipher */
+#define S12_CHACHA_RSA 0xCCA8
+#define S12_AES_EC     0xC02B
+#define S12_AES_RSA    0xC02F
 #define GROUP_HYBRID 0x11ec              /* X25519MLKEM768                  */
 
 static u32 s_suite, s_group;
 static int s_offer_pq = 1;               /* offer the hybrid at all        */
 static int s_pq_broke;                   /* it was chosen, and then failed  */
+static int s_v12, s_ems, s_p256;         /* TLS 1.2; its extended master secret; P-256 */
+static u8  s_srv_random[32];
+
+static int aes(void) { return s_suite == SUITE_AES128 || s_suite == S12_AES_EC || s_suite == S12_AES_RSA; }
 
 void tls_offer_pq(int on) { s_offer_pq = on; }
 int  tls_pq_broke(void)   { return s_pq_broke; }
@@ -84,7 +108,17 @@ void tls_set_note(void (*fn)(const char *)) { s_note = fn; }
 
 const char *tls_why(void) { return s_why; }
 int tls_post_quantum(void) { return s_group == GROUP_HYBRID; }
-const char *tls_cipher(void) { return s_suite == SUITE_AES128 ? "AES-128-GCM" : "ChaCha20-Poly1305"; }
+const char *tls_kex(void)
+{
+    if (s_v12) return s_p256 ? (s_ems ? "P-256" : "P-256, no extended master secret")
+                             : (s_ems ? "X25519" : "X25519, no extended master secret");
+    return s_group == GROUP_HYBRID ? "X25519MLKEM768 (post-quantum)" : "X25519";
+}
+const char *tls_cipher(void)
+{
+    if (s_v12) return aes() ? "AES-128-GCM, TLS 1.2" : "ChaCha20-Poly1305, TLS 1.2";
+    return aes() ? "AES-128-GCM" : "ChaCha20-Poly1305";
+}
 
 static void why(const char *t)
 {
@@ -189,10 +223,47 @@ static int read_record(u8 *type, int *len)
 
 /* Decrypt the record in s_rec into s_plain; returns the real content type
  * that was hidden inside it, or 0 if the seal did not hold. */
+static void aad12(u8 aad[13], u32 seq, u8 type, int n)
+{
+    int i;
+    for (i = 0; i < 4; i++) aad[i] = 0;
+    for (i = 0; i < 4; i++) aad[4 + i] = (u8)(seq >> (24 - 8 * i));
+    aad[8] = type; aad[9] = 3; aad[10] = 3;
+    put16(aad + 11, (u32)n);
+}
+
+/* TLS 1.2: the record's own type is the real one, nothing hidden inside.
+ * AES-GCM carries eight bytes of its nonce in front; ChaCha20 makes it
+ * from the sequence number, as 1.3 does. */
+static int open12(int len, int *plen)
+{
+    u8 nonce[12], aad[13];
+    const u8 *ct = s_rec + 5;
+    int n = len - 16, i;
+    if (aes()) {
+        if (len < 8 + 16) return 0;
+        for (i = 0; i < 4; i++) nonce[i] = s_rd.iv[i];
+        for (i = 0; i < 8; i++) nonce[4 + i] = ct[i];
+        ct += 8; n -= 8;
+    } else {
+        if (n < 0) return 0;
+        nonce_for(&s_rd, nonce);
+    }
+    aad12(aad, s_rd.seq, s_rec[0], n);
+    if (aes() ? !aesgcm_open(s_rd.key, nonce, aad, 13, ct, (u32)n, ct + n, s_plain)
+              : !aead_open(s_rd.key, nonce, aad, 13, ct, (u32)n, ct + n, s_plain))
+        return 0;
+    s_rd.seq++;
+    *plen = n;
+    return s_rec[0] ? s_rec[0] : -1;
+}
+
 static int open_record(int len, int *plen)
 {
     u8 nonce[12];
     int n = len - 16;
+
+    if (s_v12) return open12(len, plen);
 
     if (n < 1) return 0;
     nonce_for(&s_rd, nonce);
@@ -214,6 +285,25 @@ static int send_record(u8 type, const u8 *data, int len)
     int i;
 
     if (len > 16384) return 0;
+    if (s_v12) {
+        u8 aad[13];
+        int pre = aes() ? 8 : 0;
+        out[0] = type; out[1] = 3; out[2] = 3;
+        put16(out + 3, (u32)(pre + len + 16));
+        if (aes()) {
+            for (i = 0; i < 4; i++) nonce[i] = s_wr.iv[i];
+            for (i = 0; i < 4; i++) nonce[4 + i] = 0;
+            for (i = 0; i < 4; i++) nonce[8 + i] = (u8)(s_wr.seq >> (24 - 8 * i));
+            for (i = 0; i < 8; i++) out[5 + i] = nonce[4 + i];   /* in the clear */
+        } else
+            nonce_for(&s_wr, nonce);
+        for (i = 0; i < len; i++) out[5 + pre + i] = data[i];
+        aad12(aad, s_wr.seq, type, len);
+        if (aes()) aesgcm_seal(s_wr.key, nonce, aad, 13, out + 5 + pre, (u32)len, out + 5 + pre, out + 5 + pre + len);
+        else       aead_seal(s_wr.key, nonce, aad, 13, out + 5 + pre, (u32)len, out + 5 + pre, out + 5 + pre + len);
+        s_wr.seq++;
+        return tcp_write(out, 5 + pre + len + 16) == 5 + pre + len + 16;
+    }
     out[0] = CT_APPDATA; out[1] = 3; out[2] = 3;
     put16(out + 3, (u32)(len + 1 + 16));
     for (i = 0; i < len; i++) out[5 + i] = data[i];
@@ -236,7 +326,7 @@ static const char *alert_name(int d)
     case 47:  return "it did not like something we sent";
     case 50:  return "it could not read what we sent";
     case 51:  return "it could not decrypt what we sent";
-    case 70:  return "it does not speak TLS 1.3";
+    case 70:  return "it speaks only TLS 1.1 or older, which is not safe enough";
     case 71:  return "it wants stronger encryption than we offered";
     case 80:  return "it had an internal problem";
     case 109: return "it needs an extension we did not send";
@@ -258,9 +348,13 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
     for (i = 0; i < 32; i++) m[n++] = random[i];
     m[n++] = 32;                         /* a session id, for middleboxes  */
     for (i = 0; i < 32; i++) m[n++] = session[i];
-    put16(m + n, 4); n += 2;
+    put16(m + n, 12); n += 2;
     put16(m + n, SUITE_CHACHA); n += 2;  /* the fast one here, first       */
     put16(m + n, SUITE_AES128); n += 2;  /* the one every server has       */
+    put16(m + n, S12_CHACHA_EC); n += 2; /* and the same two in TLS 1.2    */
+    put16(m + n, S12_CHACHA_RSA); n += 2;
+    put16(m + n, S12_AES_EC); n += 2;
+    put16(m + n, S12_AES_RSA); n += 2;
     m[n++] = 1; m[n++] = 0;              /* no compression                 */
 
     ext_at = n; n += 2;
@@ -281,11 +375,19 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
         for (i = 0; i < sni_len; i++) m[n++] = (u8)host[i];
     }
 
-    /* supported_groups: the post-quantum hybrid, then plain x25519. */
-    put16(m + n, 0x000a); n += 2; put16(m + n, s_offer_pq ? 6 : 4); n += 2;
-    put16(m + n, s_offer_pq ? 4 : 2); n += 2;
+    /* supported_groups: the post-quantum hybrid, then plain x25519, and
+     * P-256 for TLS 1.2 servers that have neither. */
+    put16(m + n, 0x000a); n += 2; put16(m + n, s_offer_pq ? 8 : 6); n += 2;
+    put16(m + n, s_offer_pq ? 6 : 4); n += 2;
     if (s_offer_pq) { put16(m + n, GROUP_HYBRID); n += 2; }
     put16(m + n, GROUP_X25519); n += 2;
+    put16(m + n, GROUP_P256); n += 2;
+
+    /* For TLS 1.2: points sent whole; the extended master secret; and an
+     * empty renegotiation_info, which says we will never renegotiate. */
+    put16(m + n, 0x000b); n += 2; put16(m + n, 2); n += 2; m[n++] = 1; m[n++] = 0;
+    put16(m + n, 0x0017); n += 2; put16(m + n, 0); n += 2;
+    put16(m + n, 0xff01); n += 2; put16(m + n, 1); n += 2; m[n++] = 0;
 
     /* signature_algorithms: what the server may sign with, which is what
      * this machine can check -- ECDSA on P-256 and P-384, RSA-PSS for the
@@ -300,9 +402,9 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
         for (k = 0; k < cnt; k++) { put16(m + n, sa[k]); n += 2; }
     }
 
-    /* supported_versions: 1.3, and nothing else. */
-    put16(m + n, 0x002b); n += 2; put16(m + n, 3); n += 2;
-    m[n++] = 2; m[n++] = 3; m[n++] = 4;
+    /* supported_versions: 1.3, then 1.2. */
+    put16(m + n, 0x002b); n += 2; put16(m + n, 5); n += 2;
+    m[n++] = 4; m[n++] = 3; m[n++] = 4; m[n++] = 3; m[n++] = 3;
 
     /* key_share: our half of the secret, both ways.  The hybrid share is
      * the ML-KEM encapsulation key followed by the X25519 public key. */
@@ -343,25 +445,26 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
 
     if (len < 38) { why("its hello was too short"); return 0; }
     if (same(b + 2, hrr, 32)) { why("it wanted a key exchange we do not do"); return 0; }
+    for (p = 0; p < 32; p++) s_srv_random[p] = b[2 + p];
     p = 34;
     sid = b[p++];
     p += sid;
     if (p + 3 > len) { why("its hello did not add up"); return 0; }
     s_suite = get16(b + p);
-    if (s_suite != SUITE_CHACHA && s_suite != SUITE_AES128) {
-        why("it chose a cipher we did not offer");
-        return 0;
-    }
     p += 3;
-    if (p + 2 > len) { why("its hello had no extensions"); return 0; }
-    end = p + 2 + (int)get16(b + p);
-    p += 2;
+    if (p + 2 > len) {                   /* no extensions: TLS 1.2 at best  */
+        end = p;
+    } else {
+        end = p + 2 + (int)get16(b + p);
+        p += 2;
+    }
     if (end > len) end = len;
     while (p + 4 <= end) {
         u32 type = get16(b + p), elen = get16(b + p + 2);
         const u8 *e = b + p + 4;
         if (p + 4 + (int)elen > end) break;
         if (type == 0x002b && elen == 2 && get16(e) == 0x0304) got_ver = 1;
+        if (type == 0x0017 && elen == 0) s_ems = 1;
         if (type == 0x0033 && elen == 36 && get16(e) == GROUP_X25519 && get16(e + 2) == 32) {
             int i;
             for (i = 0; i < 32; i++) server_pub[i] = e[4 + i];
@@ -379,7 +482,26 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
         }
         p += 4 + (int)elen;
     }
-    if (!got_ver) { why("it does not speak TLS 1.3"); return 0; }
+    if (!got_ver) {
+        /* TLS 1.2, then -- unless a 1.3 server says it was pushed into it. */
+        static const u8 down[7] = { 'D', 'O', 'W', 'N', 'G', 'R', 'D' };
+        if (b[0] != 3 || b[1] != 3) { why("it speaks only TLS 1.1 or older, which is not safe enough"); return 0; }
+        if (same(s_srv_random + 24, down, 7)) {
+            why("someone in the way tried to make it use an older TLS");
+            serial_printf("[tls] a downgrade to TLS 1.2 was refused\n");
+            return 0;
+        }
+        if (s_suite != S12_CHACHA_EC && s_suite != S12_CHACHA_RSA && s_suite != S12_AES_EC && s_suite != S12_AES_RSA) {
+            why("it chose a cipher we did not offer");
+            return 0;
+        }
+        s_v12 = 1;
+        return 1;
+    }
+    if (s_suite != SUITE_CHACHA && s_suite != SUITE_AES128) {
+        why("it chose a cipher we did not offer");
+        return 0;
+    }
     if (!got_key) { why("it sent no key share"); return 0; }
     return 1;
 }
@@ -422,7 +544,7 @@ static int check_certs(const char *host, const u8 *body, int len)
     body = s_certmsg;
 
     if (len < 4) goto bad;
-    at = 1 + body[0];                            /* request context      */
+    at = s_v12 ? 0 : 1 + body[0];                /* 1.3: request context */
     if (at + 3 > len) goto bad;
     end = at + 3 + (int)get24(body + at);
     at += 3;
@@ -432,11 +554,11 @@ static int check_certs(const char *host, const u8 *body, int len)
         if (at + 3 > end) goto bad;
         cl = (int)get24(body + at);
         at += 3;
-        if (at + cl + 2 > end) goto bad;
+        if (at + cl + (s_v12 ? 0 : 2) > end) goto bad;
         certs[n] = body + at;
         lens[n++] = cl;
         at += cl;
-        at += 2 + (int)get16(body + at);        /* its extensions       */
+        if (!s_v12) at += 2 + (int)get16(body + at);   /* 1.3: its extensions */
     }
     if (s_note) s_note("checking who it is...");
     if (!x509_check(certs, lens, n, host, reason, (int)sizeof reason)) {
@@ -496,6 +618,188 @@ static int more_handshake(void)
     return 1;
 }
 
+/* ---- TLS 1.2 -----------------------------------------------------------
+ * Its pseudo-random function: HMAC-SHA-256, chained (RFC 5246, 5). */
+static void prf(const u8 *secret, int slen, const char *label, const u8 *seed, int seedlen, u8 *out, int olen)
+{
+    u8 ls[16 + 64], a[32], buf[32 + 16 + 64], h[32];
+    int ll = 0, n, i;
+    while (label[ll]) ll++;
+    for (i = 0; i < ll; i++) ls[i] = (u8)label[i];
+    for (i = 0; i < seedlen; i++) ls[ll + i] = seed[i];
+    n = ll + seedlen;
+    hmac_sha256(secret, (u32)slen, ls, (u32)n, a);              /* A(1)         */
+    while (olen > 0) {
+        for (i = 0; i < 32; i++) buf[i] = a[i];
+        for (i = 0; i < n; i++) buf[32 + i] = ls[i];
+        hmac_sha256(secret, (u32)slen, buf, (u32)(32 + n), h);
+        for (i = 0; i < 32 && i < olen; i++) *out++ = h[i];
+        olen -= 32;
+        hmac_sha256(secret, (u32)slen, a, 32, a);               /* A(i+1)       */
+    }
+}
+
+/* Handshake messages in the clear, into s_hsbuf. */
+static int more_plain(void)
+{
+    u8 type;
+    int len, i;
+    if (!read_record(&type, &len)) return 0;
+    if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+    if (type != CT_HANDSHAKE) { why("it sent something else in the middle of its hello"); return 0; }
+    if (s_hsbuf_len + len > HS_MAX) { why("its certificates were too big for us"); return 0; }
+    for (i = 0; i < len; i++) s_hsbuf[s_hsbuf_len + i] = s_rec[5 + i];
+    s_hsbuf_len += len;
+    return 1;
+}
+
+static int send_plain(const u8 *msg, int n)
+{
+    static u8 out[5 + 80];
+    int i;
+    out[0] = CT_HANDSHAKE; out[1] = 3; out[2] = 3;
+    put16(out + 3, (u32)n);
+    for (i = 0; i < n; i++) out[5 + i] = msg[i];
+    sha256_update(&s_transcript, msg, (u32)n);
+    return tcp_write(out, 5 + n) == 5 + n;
+}
+
+/* After the ServerHello: its certificates, its signed key exchange, our
+ * key exchange, and both sides' Finished. */
+static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret[32])
+{
+    u8 spoint[65], content[64 + 4 + 65], cke[4 + 1 + 65], pms[32], master[48], kb[88];
+    u8 seed[64], h[32], fin[4 + 12], want[12];
+    int mt, ml, i, done = 0, have_cert = 0, ske = 0, asked_cert = 0, curve = 0, plen = 0, n;
+    const u8 *body;
+
+    while (!done) {
+        if (!next_message(&mt, &body, &ml)) {
+            if (!more_plain()) return 0;
+            continue;
+        }
+        if (mt == HS_CERT) {
+            if (s_check) {
+                if (!check_certs(host, body, ml)) { s_untrusted = 1; return 0; }
+                have_cert = 1;
+            }
+        } else if (mt == HS_SKE) {
+            /* curve_type 3 (named), the curve, its point, then its
+             * signature over both randoms and all of that. */
+            int sl, scheme;
+            if (ml < 4 || body[0] != 3) { why("it offered a key exchange we do not do"); return 0; }
+            curve = (int)get16(body + 1);
+            plen = body[3];
+            if (!((curve == GROUP_X25519 && plen == 32) || (curve == GROUP_P256 && plen == 65)) || 4 + plen + 4 > ml) {
+                why("it offered a key exchange we do not do");
+                return 0;
+            }
+            for (i = 0; i < plen; i++) spoint[i] = body[4 + i];
+            scheme = (int)get16(body + 4 + plen);
+            sl = (int)get16(body + 6 + plen);
+            if (8 + plen + sl > ml) { why("its key exchange did not add up"); return 0; }
+            if (s_check) {
+                for (i = 0; i < 32; i++) { content[i] = cli_random[i]; content[32 + i] = s_srv_random[i]; }
+                for (i = 0; i < 4 + plen; i++) content[64 + i] = body[i];
+                if (!have_cert || !x509_check_handshake12(scheme, content, 68 + plen, body + 8 + plen, sl)) {
+                    why("it could not prove the certificate is its own");
+                    s_untrusted = 1;
+                    return 0;
+                }
+            }
+            ske = 1;
+        } else if (mt == HS_CERT_REQ) {
+            asked_cert = 1;                  /* we have none: an empty one, then */
+        } else if (mt == HS_HELLO_DONE) {
+            done = 1;
+        } else if (mt != HS_CERT_STATUS) {
+            why("it sent a handshake message out of turn");
+            return 0;
+        }
+        drop_message(ml);
+    }
+    if (!ske) { why("it offered no key exchange we do"); return 0; }
+    if (s_check && !have_cert) { why("it never proved who it is"); s_untrusted = 1; return 0; }
+
+    /* Our half of the key exchange, and the secret the two make. */
+    if (asked_cert) {
+        static const u8 none[7] = { HS_CERT, 0, 0, 3, 0, 0, 0 };
+        if (!send_plain(none, 7)) { why("could not send our answer"); return 0; }
+    }
+    cke[0] = HS_CKE; cke[1] = 0; cke[2] = 0;
+    if (curve == GROUP_X25519) {
+        u8 z = 0;
+        cke[3] = 33; cke[4] = 32;
+        x25519_public(cke + 5, secret);
+        x25519(pms, secret, spoint);
+        for (i = 0; i < 32; i++) z |= pms[i];
+        if (!z) { why("its key exchange was not a real one"); return 0; }
+        n = 4 + 33;
+    } else {
+        cke[3] = 66; cke[4] = 65;
+        if (s_note) s_note("working out a P-256 secret...");
+        s_p256 = 1;
+        if (!ecdh_p256(secret, spoint, pms, cke + 5)) { why("its key exchange was not on the curve"); return 0; }
+        n = 4 + 66;
+    }
+    if (!send_plain(cke, n)) { why("could not send our key exchange"); return 0; }
+
+    if (s_ems) {
+        transcript_now(h);
+        prf(pms, 32, "extended master secret", h, 32, master, 48);
+    } else {
+        for (i = 0; i < 32; i++) { seed[i] = cli_random[i]; seed[32 + i] = s_srv_random[i]; }
+        prf(pms, 32, "master secret", seed, 64, master, 48);
+    }
+    for (i = 0; i < 32; i++) { seed[i] = s_srv_random[i]; seed[32 + i] = cli_random[i]; }
+    {
+        int kl = aes() ? 16 : 32, il = aes() ? 4 : 12;
+        prf(master, 48, "key expansion", seed, 64, kb, 2 * (kl + il));
+        for (i = 0; i < kl; i++) { s_wr.key[i] = kb[i]; s_rd.key[i] = kb[kl + i]; }
+        for (i = 0; i < il; i++) { s_wr.iv[i] = kb[2 * kl + i]; s_rd.iv[i] = kb[2 * kl + il + i]; }
+        s_wr.seq = s_rd.seq = 0;
+    }
+
+    /* ChangeCipherSpec, then our Finished, sealed. */
+    {
+        static const u8 ccs[6] = { CT_CCS, 3, 3, 0, 1, 1 };
+        if (tcp_write(ccs, 6) != 6) { why("could not send our Finished"); return 0; }
+    }
+    transcript_now(h);
+    fin[0] = HS_FINISHED; fin[1] = 0; fin[2] = 0; fin[3] = 12;
+    prf(master, 48, "client finished", h, 32, fin + 4, 12);
+    sha256_update(&s_transcript, fin, 16);
+    if (!send_record(CT_HANDSHAKE, fin, 16)) { why("could not send our Finished"); return 0; }
+
+    /* Theirs: ChangeCipherSpec, then a Finished that proves it saw the
+     * same handshake. */
+    transcript_now(h);
+    prf(master, 48, "server finished", h, 32, want, 12);
+    for (;;) {
+        u8 type;
+        int len;
+        if (!read_record(&type, &len)) return 0;
+        if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+        if (type == CT_HANDSHAKE) continue;          /* a session ticket: not wanted */
+        if (type == CT_CCS) break;
+        why("it did not finish its hello");
+        return 0;
+    }
+    {
+        u8 type;
+        int len, got, ct;
+        if (!read_record(&type, &len)) return 0;
+        if (type != CT_HANDSHAKE || !(ct = open_record(len, &got)) || got != 16 ||
+            s_plain[0] != HS_FINISHED || !same(s_plain + 4, want, 12)) {
+            why("its proof of the handshake did not match");
+            return 0;
+        }
+    }
+    s_up = 1;
+    s_checked = s_check;
+    return 1;
+}
+
 int tls_connect(const char *host)
 {
     u8 secret[32], pub[32], random[32], session[32], server_pub[32];
@@ -532,6 +836,9 @@ int tls_connect(const char *host)
     s_cancelled = 0;
     s_group = 0;
     s_pq_broke = 0;
+    s_v12 = 0;
+    s_ems = 0;
+    s_p256 = 0;
 
     sha256_init(&s_transcript);
     if (!client_hello(host, random, session, pub, s_mlkem_ek)) { why("could not send our hello"); return 0; }
@@ -552,6 +859,13 @@ int tls_connect(const char *host)
     if (ml + 4 > len) { why("its hello was cut short"); return 0; }
     if (!server_hello(s_rec + 9, ml, server_pub)) return 0;
     sha256_update(&s_transcript, s_rec + 5, (u32)(ml + 4));
+    if (s_v12) {
+        /* What else came in the same record -- its certificates, often --
+         * is the start of the rest. */
+        for (i = 0; i < len - 4 - ml; i++) s_hsbuf[i] = s_rec[9 + ml + i];
+        s_hsbuf_len = len - 4 - ml;
+        return tls12_rest(host, random, secret);
+    }
 
     /* The shared secret -- for the hybrid, the ML-KEM secret and then the
      * X25519 one, sixty-four bytes -- and the ladder of keys from it. */
@@ -682,7 +996,9 @@ int tls_read(u8 *buf, int max, int wait_ms)
             return -1;
         }
         if (type == CT_CCS) continue;
-        if (type != CT_APPDATA) { why("an unencrypted record after the handshake"); s_up = 0; return -2; }
+        if (type != CT_APPDATA && !(s_v12 && (type == CT_ALERT || type == CT_HANDSHAKE))) {
+            why("an unencrypted record after the handshake"); s_up = 0; return -2;
+        }
         ct = open_record(len, &plen);
         if (!ct) { why("a record failed its seal"); s_up = 0; return -2; }
         if (ct == CT_ALERT) {

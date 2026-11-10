@@ -615,6 +615,23 @@ int x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
     return 0;
 }
 
+/* TLS 1.2's signature over its key exchange: RSA PKCS#1 as well (TLS 1.3
+ * has only PSS), and an ECDSA hash not tied to the curve.  SHA-1 is not
+ * taken. */
+int x509_check_handshake12(int scheme, const u8 *content, int clen, const u8 *sig, int slen)
+{
+    const Key *k = &s_leaf_key;
+    int ec = k->type == KEY_P256 || k->type == KEY_P384;
+    switch (scheme) {
+    case 0x0401: return k->type == KEY_RSA && check_sig(k, SIG_PKCS1, HASH_SHA256, 0, content, clen, sig, slen);
+    case 0x0501: return k->type == KEY_RSA && check_sig(k, SIG_PKCS1, HASH_SHA384, 0, content, clen, sig, slen);
+    case 0x0601: return k->type == KEY_RSA && check_sig(k, SIG_PKCS1, HASH_SHA512, 0, content, clen, sig, slen);
+    case 0x0403: return ec && check_sig(k, SIG_ECDSA, HASH_SHA256, 0, content, clen, sig, slen);
+    case 0x0503: return ec && check_sig(k, SIG_ECDSA, HASH_SHA384, 0, content, clen, sig, slen);
+    }
+    return x509_check_handshake(scheme, content, clen, sig, slen);
+}
+
 /* The handshake's own signature, made with the site's key: TLS 1.3 says
  * which scheme by number. */
 int x509_check_handshake(int scheme, const u8 *content, int clen, const u8 *sig, int slen)

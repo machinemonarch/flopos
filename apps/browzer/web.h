@@ -27,6 +27,7 @@ void *memmove(void *d, const void *s, u32 n);
 #define C_DIM      A_DIM
 #define C_BRIGHT   A_BRIGHT
 #define C_ACCENT   A_ACCENT
+#define C_KEY      A_KEY
 #define C_GREY     A_GREY
 #define WIN_PAPER  A_PAPER
 #define WIN_HILITE A_HILITE

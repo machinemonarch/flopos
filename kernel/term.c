@@ -800,9 +800,14 @@ void term_win_put(int x, int y, int ch, u8 fg, u8 bg)
     term_win_put_at(x, y, ch, fg, bg, 0);
 }
 
+/* \1 in the text turns pink on, for a key to press, and off again. */
 int term_win_text(int x, int y, const char *t, u8 fg, u8 bg)
 {
-    while (*t && x < s_win_w) term_win_put(x++, y, (u8)*t++, fg, bg);
+    int key = 0;
+    for (; *t && x < s_win_w; t++) {
+        if (*t == 1) { key = !key; continue; }
+        term_win_put(x++, y, (u8)*t, key ? C_KEY : fg, bg);
+    }
     return x;
 }
 

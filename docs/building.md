@@ -129,6 +129,9 @@ Kept here, so they are never written again:
   browzer writes a line there for each page it gets (`[page] ...`) and the
   HUD for each time it closes (`[hud] ...`). It also records everything
   the Sound Blaster played, which `findsong.py` can find a song in.
+- `tools/bench/tlstest.py` makes a test authority, an image that trusts it,
+  and six local OpenSSL servers (TLS 1.2 in each form FLOPOS takes, TLS
+  1.3, and a TLS 1.1 one that must be refused), and checks them all.
 
 `run.py` waits for FLOPOS's own messages rather than pausing, and lets the
 emulated clock run ahead of the wall's. A full check takes about half a

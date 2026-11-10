@@ -282,3 +282,81 @@ int ecdsa_verify(int curve, const u8 *pub, int publen,
     if (bn_cmp(e, s_fn.m, s_w) >= 0) bn_sub(e, e, s_fn.m, s_w);
     return bn_cmp(e, r, s_w) == 0;
 }
+
+/* ---- ECDH on P-256 --------------------------------------------------------
+ * For TLS 1.2 servers that have no X25519.  k P by a doubling and an
+ * addition at every bit, the sum kept or not by a mask, so the work is the
+ * same whatever the secret's bits are. */
+static void pt_mul(Pt *r, const Pt *p, const u32 *k)
+{
+    static Pt acc, sum;
+    int i, j;
+    for (j = 0; j < L; j++) acc.x[j] = acc.y[j] = acc.z[j] = 0;
+    for (i = 255; i >= 0; i--) {
+        u32 m = (u32)0 - (u32)bit(k, i);
+        pt_double(&acc, &acc);
+        pt_add(&sum, &acc, p);
+        for (j = 0; j < s_w; j++) {
+            acc.x[j] ^= m & (acc.x[j] ^ sum.x[j]);
+            acc.y[j] ^= m & (acc.y[j] ^ sum.y[j]);
+            acc.z[j] ^= m & (acc.z[j] ^ sum.z[j]);
+        }
+    }
+    *r = acc;
+}
+
+/* A point's x and y, big-endian: X / Z^2 and Y / Z^3. */
+static void affine(const Pt *pt, const Curve *C, u8 *xy)
+{
+    u32 t[L], w[L], zi[L], zz[L], v[L];
+    u8 exp[48];
+    int i, bytes = C->bytes;
+    for (i = 0; i < bytes; i++) exp[i] = C->p[i];
+    for (i = bytes - 1; i >= 0; i--) {                      /* p - 2          */
+        int sub = i == bytes - 1 ? 2 : 1;
+        if (exp[i] >= sub) { exp[i] = (u8)(exp[i] - sub); break; }
+        exp[i] = (u8)(exp[i] + 256 - sub);
+    }
+    mont_from(&s_fp, t, pt->z);
+    mont_pow(&s_fp, w, t, exp, bytes);                      /* 1/Z            */
+    mont_to(&s_fp, zi, w);
+    fmul(zz, zi, zi);
+    fmul(t, pt->x, zz); mont_from(&s_fp, v, t); bn_to_be(xy, bytes, v, s_w);
+    fmul(zz, zz, zi);
+    fmul(t, pt->y, zz); mont_from(&s_fp, v, t); bn_to_be(xy + bytes, bytes, v, s_w);
+}
+
+/* Our public point for a secret (pub, 65 bytes, if asked), and the shared
+ * x with the server's point (peer, 65 bytes, if given).  0 if the server's
+ * point is not on the curve, or the result is nowhere. */
+int ecdh_p256(const u8 secret[32], const u8 *peer, u8 shared[32], u8 pub[65])
+{
+    static Pt G, Q, R;
+    const Curve *C = &s_curves[0];
+    u32 k[L], b[L];
+    u8 xy[64];
+    int i;
+    if (!mont_init(&s_fp, C->p, 32) || !mont_init(&s_fn, C->n, 32)) return 0;
+    s_w = s_fp.n;
+    bn_from_be(b, s_w, C->b, 32);
+    mont_to(&s_fp, s_b, b);
+    for (i = 0; i < L; i++) k[i] = 0;
+    bn_from_be(k, s_w, secret, 32);
+    if (bn_cmp(k, s_fn.m, s_w) >= 0) bn_sub(k, k, s_fn.m, s_w);
+    if (bn_is_zero(k, s_w)) return 0;
+    if (pub) {
+        if (!pt_load(&G, C->g, 32)) return 0;
+        pt_mul(&R, &G, k);
+        affine(&R, C, xy);
+        pub[0] = 4;
+        for (i = 0; i < 64; i++) pub[1 + i] = xy[i];
+    }
+    if (peer) {
+        if (peer[0] != 4 || !pt_load(&Q, peer + 1, 32)) return 0;
+        pt_mul(&R, &Q, k);
+        if (fzero(R.z)) return 0;
+        affine(&R, C, xy);
+        for (i = 0; i < 32; i++) shared[i] = xy[i];
+    }
+    return 1;
+}

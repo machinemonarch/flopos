@@ -48,6 +48,8 @@ typedef struct { u32 first, size; } AppFile;
 #define A_BRIGHT  130                    /* PAL_BRIGHT + 26                */
 #define A_ACCENT  158                    /* PAL_ACCENT + 22                */
 #define A_GREY    242                    /* PAL_GREY + 10                  */
+#define A_KEY     55                     /* PAL_KEY: a key to press, pink  */
+#define A_KEYMARK "\1"                    /* in text: pink on, or off again  */
 #define A_BANANA  254                    /* PAL_BANANA + 6                 */
 #define A_PAPER   65                     /* a window's own background      */
 #define A_HILITE  236                    /* a highlighted row              */

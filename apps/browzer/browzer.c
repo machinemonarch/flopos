@@ -490,12 +490,12 @@ static const char s_home_top[] =
     "<title>home</title>"
     "<h1>browzer</h1>"
     "<p>A very small web browser, on a floppy disk, on a Toshiba from 1996.</p>"
-    "<p>Press <b>g</b> and type an address, or just some words to search for them.</p>";
+    "<p>Press <kbd>g</kbd> and type an address, or just some words to search for them.</p>";
 static const char s_home_help[] =
-    "<p>tab picks a link, enter follows it, backspace goes back, esc leaves. "
-    "Boxes on a page are typed into the same way: tab to one, enter, type, enter sends.</p>"
-    "<p>b adds the page you are on to your bookmarks, and m lists them, to change them. "
-    "On that list, p puts one first here.</p>"
+    "<p><kbd>tab</kbd> picks a link, <kbd>enter</kbd> follows it, <kbd>backspace</kbd> goes back, <kbd>esc</kbd> leaves. "
+    "Boxes on a page are typed into the same way: <kbd>tab</kbd> to one, <kbd>enter</kbd>, type, <kbd>enter</kbd> sends.</p>"
+    "<p><kbd>b</kbd> adds the page you are on to your bookmarks, and <kbd>m</kbd> lists them, to change them. "
+    "On that list, <kbd>p</kbd> puts one first here.</p>"
     "<p>Secure pages are encrypted, and the site has to prove who it is.</p>";
 
 /* ---- drawing ------------------------------------------------------------ */
@@ -527,7 +527,11 @@ static int link_line(int id)
 
 static void put_text_clipped(int x, int y, const char *t, u8 fg, u8 bg, int maxx)
 {
-    while (*t && x < maxx) term_win_put(x++, y, (u8)*t++, fg, bg);
+    int key = 0;
+    for (; *t && x < maxx; t++) {                /* \1: a key, in pink */
+        if (*t == 1) { key = !key; continue; }
+        term_win_put(x++, y, (u8)*t, key ? C_KEY : fg, bg);
+    }
 }
 
 static void draw(void)
@@ -619,7 +623,7 @@ static void draw(void)
             }
         } else
             term_win_text(4, 8, "listening for the first of it...", C_DIM, pp);
-        term_win_text(4, 14, "esc stops it", C_DIM, pp);
+        term_win_text(4, 14, "\1esc\1 stops it", C_DIM, pp);
     } else
     /* The page. */
     for (y = 0; y < s_vh; y++) {
@@ -651,16 +655,16 @@ static void draw(void)
 
     /* Status: what is happening, or where the picked link goes. */
     if (s_leave_armed) {
-        put_text_clipped(2, s_h - 2, "Leave browzer? y leaves; any other key stays.", C_ACCENT, pp, s_w - 12);
+        put_text_clipped(2, s_h - 2, "Leave browzer? \1y\1 leaves; any other key stays.", C_ACCENT, pp, s_w - 12);
     } else if (s_choosing >= 0) {
         PageField *f = &s_pg.fields[s_choosing];
-        fmt_str(line, sizeof line, "choosing, %u of %u: up and down change it, enter keeps it",
+        fmt_str(line, sizeof line, "choosing, %u of %u: \1up\1 and \1down\1 change it, \1enter\1 keeps it",
                 (u32)f->sel + 1, (u32)f->nopt);
         put_text_clipped(2, s_h - 2, line, C_ACCENT, pp, s_w - 12);
     } else if (s_typing >= 0) {
         put_text_clipped(2, s_h - 2, s_pg.fields[s_typing].kind == FK_AREA
-                         ? "typing: enter is a new line, tab finishes"
-                         : "typing: enter sends it, esc stops", C_ACCENT, pp, s_w - 12);
+                         ? "typing: \1enter\1 is a new line, \1tab\1 finishes"
+                         : "typing: \1enter\1 sends it, \1esc\1 stops", C_ACCENT, pp, s_w - 12);
     } else if (s_sel && !s_loading && field_of(s_sel)) {
         PageField *f = field_of(s_sel);
         char where[PAGE_HREF_MAX + 16];
@@ -671,10 +675,10 @@ static void draw(void)
             put_text_clipped(11, s_h - 2, where, C_TEXT, pp, s_w - 12);
         } else
             put_text_clipped(2, s_h - 2,
-                             f->kind == FK_CHECK  ? "a tick box: enter ticks or unticks it" :
-                             f->kind == FK_RADIO  ? "one of a set: enter picks this one" :
-                             f->kind == FK_SELECT ? "a list: enter to choose from it" :
-                                                    "a box: enter to type into it", C_ACCENT, pp, s_w - 12);
+                             f->kind == FK_CHECK  ? "a tick box: \1enter\1 ticks or unticks it" :
+                             f->kind == FK_RADIO  ? "one of a set: \1enter\1 picks this one" :
+                             f->kind == FK_SELECT ? "a list: \1enter\1 to choose from it" :
+                                                    "a box: \1enter\1 to type into it", C_ACCENT, pp, s_w - 12);
     } else if (s_sel && !s_loading) {
         char where[PAGE_HREF_MAX + 16];
         if (!url_resolve(s_pg.url, s_pg.href[s_sel - 1], where, sizeof where))
@@ -692,14 +696,14 @@ static void draw(void)
 
     /* Keys, let into the bottom of the frame. */
     {
-        const char *keys = s_choosing >= 0 ? " up down choose  enter keep  esc undo "
-                         : s_editing ? " type  arrows move  ctrl-a all  enter go  esc cancel "
-                         : s_typing >= 0 ? " type  enter send  tab done  esc stop "
-                         : s_w >= 66 ? " tab link  enter go  bksp back  g go to  b mark  m marks  esc "
-                         : s_w >= 60 ? " tab link  enter go  bksp back  g go to  esc leave "
-                                     : " tab enter bksp g esc ";
-        int kl = 0;
-        while (keys[kl]) kl++;
+        const char *keys = s_choosing >= 0 ? " \1up down\1 choose  \1enter\1 keep  \1esc\1 undo "
+                         : s_editing ? " type  \1arrows\1 move  \1ctrl-a\1 all  \1enter\1 go  \1esc\1 cancel "
+                         : s_typing >= 0 ? " type  \1enter\1 send  \1tab\1 done  \1esc\1 stop "
+                         : s_w >= 66 ? " \1tab\1 link  \1enter\1 go  \1bksp\1 back  \1g\1 go to  \1b\1 mark  \1m\1 marks  \1esc\1 "
+                         : s_w >= 60 ? " \1tab\1 link  \1enter\1 go  \1bksp\1 back  \1g\1 go to  \1esc\1 leave "
+                                     : " \1tab\1 \1enter\1 \1bksp\1 \1g\1 \1esc\1 ";
+        int kl = 0, i;
+        for (i = 0; keys[i]; i++) if (keys[i] != 1) kl++;   /* the pink marks take no room */
         if (kl < s_w - 4) term_win_text((s_w - kl) / 2, s_h - 1, keys, C_DIM, pp);
     }
 }
@@ -828,7 +832,7 @@ static void home(void)
     n = put(page, n, cap, s_home_top);
     n = put(page, n, cap, "<h2>Your bookmarks</h2>");
     if (!s_nmarks)
-        n = put(page, n, cap, "<p>None yet. On any page, b keeps it here.</p>");
+        n = put(page, n, cap, "<p>None yet. On any page, <kbd>b</kbd> keeps it here.</p>");
     else {
         n = put(page, n, cap, "<ul>");
         for (pass = 0; pass < 2; pass++)              /* the ones put first, then the rest */
@@ -864,10 +868,10 @@ static void marks_page(void)
     marks_read();
     n = put(page, n, cap, "<title>bookmarks</title><h1>Bookmarks</h1>");
     if (!s_nmarks)
-        n = put(page, n, cap, "<p>None yet. On any page, b keeps it here.</p>");
+        n = put(page, n, cap, "<p>None yet. On any page, <kbd>b</kbd> keeps it here.</p>");
     else {
-        n = put(page, n, cap, "<p>tab picks one, enter goes there, p puts it first on the home page "
-                              "or back among the rest, d deletes it.</p><ul>");
+        n = put(page, n, cap, "<p><kbd>tab</kbd> picks one, <kbd>enter</kbd> goes there, <kbd>p</kbd> puts it first on the home page "
+                              "or back among the rest, <kbd>d</kbd> deletes it.</p><ul>");
         for (i = 0; i < s_nmarks; i++) {
             n = put(page, n, cap, "<li>");
             if (s_mark[i].home) n = put(page, n, cap, "<b>first</b> ");
@@ -897,7 +901,7 @@ static void mark_this(void)
     int i;
     marks_read();
     if (s_pg.url[0] == 'f' && s_pg.url[1] == 'l') { say("That is one of mine; there is nothing to keep.", C_ACCENT); return; }
-    if (mark_find(s_pg.url) >= 0) { say("Already in your bookmarks. m shows them.", C_DIM); return; }
+    if (mark_find(s_pg.url) >= 0) { say("Already in your bookmarks. \1m\1 shows them.", C_DIM); return; }
     if (s_nmarks >= MARKS) { say("The bookmarks are full. d on one in m makes room.", C_ACCENT); return; }
     m = &s_mark[s_nmarks];
     for (i = 0; s_pg.url[i] && i < PAGE_HREF_MAX - 1; i++) m->url[i] = s_pg.url[i];
@@ -906,7 +910,7 @@ static void mark_this(void)
     m->title[i] = 0;
     m->home = 0;
     s_nmarks++;
-    say(marks_write() ? "Added to your bookmarks, which the home page lists. m lists them too, to change them."
+    say(marks_write() ? "Added to your bookmarks, which the home page lists. \1m\1 lists them too, to change them."
                       : "Could not write BOOKMARK.TXT to the floppy.", C_ACCENT);
 }
 
@@ -931,7 +935,7 @@ static void mark_change(int key)
     if (!marks_write()) { say("Could not write BOOKMARK.TXT to the floppy.", C_ACCENT); return; }
     marks_page();
     s_top = top;
-    say(key == 'd' ? "Deleted." : "Changed. h shows the home page.", C_DIM);
+    say(key == 'd' ? "Deleted." : "Changed. \1h\1 shows the home page.", C_DIM);
 }
 
 
@@ -1009,7 +1013,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                 s_lock = 0;
                 music_feed();
                 fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>A %u-channel %s song, playing.</p>"
-                        "<p>It goes on playing while you browse. s stops it.</p>",
+                        "<p>It goes on playing while you browse. <kbd>s</kbd> stops it.</p>",
                         tracker_title()[0] ? tracker_title() : name, tracker_title()[0] ? tracker_title() : name,
                         (u32)tracker_channels(), tracker_kind());
             } else
@@ -1023,7 +1027,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     fmt_str(s_title, sizeof s_title, "%s", name);
                     music_feed();
                     fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s%s, playing.</p>"
-                            "<p>It goes on playing while you browse. s stops it.</p>",
+                            "<p>It goes on playing while you browse. <kbd>s</kbd> stops it.</p>",
                             name, name, s_dec.kind, kbps_text());
                 } else
                     fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A recording -- but this "
@@ -1071,7 +1075,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     "<title>who is this?</title><h2>This site could not prove who it is.</h2>"
                     "<p>%s</p><p>That can mean somebody is pretending to be it, or that the "
                     "site is set up wrong, or that this laptop's clock is.</p>"
-                    "<p>a goes there anyway, unchecked -- type nothing private. "
+                    "<p><kbd>a</kbd> goes there anyway, unchecked -- type nothing private. "
                     "backspace goes back.</p>", why);
         else
             fmt_str(html, sizeof html,
@@ -1522,7 +1526,7 @@ void browzer_run(const char *start)
         switch (k) {
         case UK_ESC: case 'q':
             s_leave_armed = 1;
-            say("Leave browzer? y leaves; any other key stays.", C_ACCENT);
+            say("Leave browzer? \1y\1 leaves; any other key stays.", C_ACCENT);
             break;
         case UK_UP:    scroll(-1); break;
         case UK_DOWN:  scroll(+1); break;

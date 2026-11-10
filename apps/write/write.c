@@ -466,7 +466,8 @@ static void doc_name(char *out, int cap)
 
 static void put_hint(int y, const char *t)
 {
-    int n = slen(t);
+    int n = 0, i;
+    for (i = 0; t[i]; i++) if (t[i] != 1) n++;   /* \1 marks a key, in pink; no room */
     if (n < W - 4) A->win_text((W - n) / 2, y, t, A_DIM, A_PAPER);
 }
 
@@ -545,11 +546,11 @@ static void draw(int blink)
     A->win_text(W - 2 - slen(m), H - 2, m, A_DIM, pp);
 
     if (s_md)
-        put_hint(H - 1, W >= 76 ? " **bold**  *italic*  <u>underline</u>  # heading  % title  ^M the page "
-                                : " **bold** *italic* <u>under</u>  # head  % title  ^M page ");
+        put_hint(H - 1, W >= 76 ? " **bold**  *italic*  <u>underline</u>  # heading  % title  \1^M\1 the page "
+                                : " **bold** *italic* <u>under</u>  # head  % title  \1^M\1 page ");
     else
-        put_hint(H - 1, W >= 84 ? " ^B bold  ^I italic  ^U underline  ^P style  ^M markdown  ^S save  ^O open  esc "
-                                : " ^B ^I ^U  ^P style  ^M markdown  ^S save  ^O open  esc ");
+        put_hint(H - 1, W >= 84 ? " \1^B\1 bold  \1^I\1 italic  \1^U\1 underline  \1^P\1 style  \1^M\1 markdown  \1^S\1 save  \1^O\1 open  \1esc\1 "
+                                : " \1^B\1 \1^I\1 \1^U\1  \1^P\1 style  \1^M\1 markdown  \1^S\1 save  \1^O\1 open  \1esc\1 ");
 }
 
 static void keep_cursor_visible(void)

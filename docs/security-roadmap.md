@@ -120,8 +120,24 @@ looking at again unless their code changes.
 - **Network parsing:** every layer checks its lengths before reading.
   That covers the network card, ARP, DHCP, DNS, ping, TCP, TLS records,
   certificates, HTTP headers (capped at 2 KB) and redirects (at most 5).
-- **HTTPS:** TLS 1.3 only, with post-quantum key exchange and full
-  certificate checks.
+- **HTTPS:** TLS 1.3, with post-quantum key exchange and full certificate
+  checks; and since 1.25, TLS 1.2 in its AEAD-only form. What 1.2 adds
+  was weighed before it was written:
+  - **New code that reads what a server sends:** its ServerKeyExchange
+    (curve, point, signature), checked against the message's length at
+    every step. A P-256 point is checked to be on the curve, and an X25519
+    result of all zeros is refused.
+  - **Downgrades:** a 1.3 server's "DOWNGRD" mark is refused, so 1.2 is
+    used only with servers that really have nothing newer.
+  - **Left out on purpose:** RSA key exchange (no forward secrecy), CBC
+    (padding oracles), SHA-1, renegotiation, compression and session
+    resumption, the parts of 1.2 the known attacks went through.
+  - **Weaker than 1.3 in one way:** without the extended master secret
+    (an old server), the keys aren't bound to the whole handshake. That is
+    what the triple-handshake attack needs, together with resumption or
+    renegotiation, and FLOPOS does neither.
+  - Tested against OpenSSL with RSA PKCS#1, RSA-PSS and ECDSA signatures,
+    both ciphers, both curves, and without the extended master secret.
 - **Nothing listens.** No outside machine can start a conversation; FLOPOS
   only answers ping.
 - **The mp3 decoder and the MOD/XM player:** sizes read from the file are

@@ -234,7 +234,16 @@ real text in them work.
 ## How private it is
 
 Secure pages (`https://`) use **TLS 1.3**, the current version of the
-protocol that puts the padlock in a browser.
+protocol that puts the padlock in a browser, or **TLS 1.2** for a site that
+has nothing newer.
+
+- **TLS 1.2 only in its modern form**: the same ciphers as TLS 1.3, and a
+  new key for every connection (X25519, or P-256 for older servers),
+  signed by the site. Its older half is refused: RSA key exchange, CBC,
+  SHA-1, renegotiation, and every version before it. A site that speaks
+  TLS 1.3 but answers in 1.2 is refused too: TLS 1.3 sites mark such an
+  answer, and it means someone in between forced the older version.
+  On the laptop a TLS 1.2 page takes about as long as a 1.3 one.
 
 - **The key exchange is post-quantum.** FLOPOS offers X25519MLKEM768, which
   combines the classic X25519 with ML-KEM-768, the method NIST

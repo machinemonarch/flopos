@@ -131,7 +131,7 @@ static int  s_ent_len;
 static u8   s_word[80], s_word_col[80];
 static u16  s_word_link[80];
 static int  s_word_len, s_col, s_newlines, s_space;
-static int  s_bold, s_link, s_dim, s_in_title;
+static int  s_bold, s_link, s_dim, s_in_title, s_kbd;
 static u16  s_linkid;
 static u32  s_cp, s_cp_left;
 
@@ -163,7 +163,7 @@ static int  s_aval_len, s_aval_max;
 
 static u8 colour_now(void)
 {
-    return s_dim ? C_DIM : s_bold ? C_BRIGHT : s_link ? C_ACCENT : C_TEXT;
+    return s_dim ? C_DIM : s_kbd ? C_KEY : s_bold ? C_BRIGHT : s_link ? C_ACCENT : C_TEXT;
 }
 
 static int  s_word_cont;                 /* the word goes on past what is flushed */
@@ -1086,6 +1086,7 @@ static void tag_ended(void)
         }
         return;
     }
+    if (tag_is("kbd")) { s_kbd = !s_tag_close; return; }   /* a key to press: pink */
     if (tag_is("title")) {
         if (s_pg) { s_in_title = !s_tag_close; return; }
         newline(2);
@@ -1393,7 +1394,7 @@ static void filter_reset(int html)
     s_hstate = H_TEXT;
     s_word_len = s_col = s_space = 0;
     s_newlines = 1;
-    s_bold = s_link = s_dim = s_in_title = 0;
+    s_bold = s_link = s_dim = s_in_title = s_kbd = 0;
     s_linkid = 0;
     s_cp_left = 0;
     s_form = s_area = s_button = -1;

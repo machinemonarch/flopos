@@ -201,7 +201,7 @@ Each layer is its own file:
 | Addresses | `ip.c` | ARP (finding the hardware behind an address), IPv4, ICMP (ping), UDP, DHCP (being given an address), DNS (names) |
 | Conversations | `tcp.c` | TCP: ordered, reliable, retransmitted. A window of sixteen segments; pieces that come out of turn are kept, and every answer says which pieces have come (SACK), so a lost one costs one resend. |
 | Connections | `conn.c` | One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close |
-| Secure web | `tls.c` | TLS 1.3, client side |
+| Secure web | `tls.c` | TLS 1.3, and 1.2 in its AEAD-only form, client side |
 | Programs | `netui.c` | The network menu |
 | Web | `apps/browzer/` | BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`). `fetch` runs it too. |
 

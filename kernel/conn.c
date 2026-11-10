@@ -82,7 +82,7 @@ int conn_open(const char *host, u16 port, int secure, void (*note)(const char *t
             }
         }
         serial_printf("[tls] %s: %s, %s, %s\n", host, tls_cipher(),
-                      tls_post_quantum() ? "X25519MLKEM768 (post-quantum)" : "X25519",
+                      tls_kex(),
                       tls_checked() ? tls_who() : "NOT CHECKED");
     }
     s_open = 1;

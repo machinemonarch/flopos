@@ -58,7 +58,8 @@ int    glyph_index(int c);
  * adding an offset and can animate by walking one.  mood.c builds it.
  */
 #define PAL_MOOD    1                    /*   1..63   the background field  */
-#define PAL_MOOD_N  55                   /*   1..55; 56..63 are the HUD's    */
+#define PAL_MOOD_N  54                   /*   1..54; 55 keys, 56..63 the HUD */
+#define PAL_KEY     55                   /*  55       keys, in pink          */
 #define PAL_HUD     56                   /*  56..63   the HUD's brain        */
 #define PAL_HUD_N   8
 #define PAL_SHADOW  64                   /*  64..71   text drop shadow      */
@@ -84,6 +85,7 @@ int    glyph_index(int c);
 #define C_BRIGHT (PAL_BRIGHT + 26)
 #define C_ACCENT (PAL_ACCENT + 22)
 #define C_GREY   (PAL_GREY + 10)
+#define C_KEY    PAL_KEY                 /* a key to press, wherever it is named */
 
 /* --- heap.c: a bump allocator over extended memory --------------------- */
 void   heap_init(void);
@@ -601,6 +603,9 @@ int    ecdsa_verify(int curve, const u8 *pub, int publen,
 int    x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
                   char *why, int whycap);
 int    x509_check_handshake(int scheme, const u8 *content, int clen, const u8 *sig, int slen);
+int    x509_check_handshake12(int scheme, const u8 *content, int clen, const u8 *sig, int slen);
+const char *tls_kex(void);              /* the key exchange, as words */
+int    ecdh_p256(const u8 secret[32], const u8 *peer, u8 shared[32], u8 pub[65]);
 const char *x509_who(void);              /* who vouched, after a good check */
 int    x509_roots(void);                 /* how many authorities are trusted */
 void   hmac_sha256(const u8 *key, u32 klen, const u8 *msg, u32 mlen, u8 out[32]);

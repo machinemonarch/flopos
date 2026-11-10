@@ -127,7 +127,7 @@ so an app only reads and writes:
 | Function | What it does |
 |---|---|
 | `net_online()` | Brings the network card up and finds an address if it has to. 0 if there is no network. |
-| `conn_open(host, port, secure, note)` | Looks the host up, connects, and if `secure`, agrees on keys with TLS 1.3 and makes the server prove who it is. `note` is told how it is going ("agreeing on a key..."). 0 on failure. |
+| `conn_open(host, port, secure, note)` | Looks the host up, connects, and if `secure`, agrees on keys with TLS 1.3 (or 1.2, for a server with nothing newer) and makes the server prove who it is. `note` is told how it is going ("agreeing on a key..."). 0 on failure. |
 | `conn_write(data, n)` | Send |
 | `conn_read(buf, n, wait_ms)` | Receive: the number of bytes, 0 when the other end has finished, -1 when it went quiet for `wait_ms`, -2 when it broke |
 | `conn_close()` | Hang up |

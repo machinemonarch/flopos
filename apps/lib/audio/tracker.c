@@ -29,7 +29,11 @@
  *
  * Left out: panning (the Sound Blaster here plays mono), IT's new-note
  * actions (a new note cuts the old one), filters, pitch and panning
- * envelopes, and samples' own vibrato.  The song plays once and stops.
+ * envelopes, and samples' own vibrato.
+ *
+ * A song plays on round its own loop -- most jump back to the start, or
+ * to where their loop begins, and chiptunes are made to go round -- until
+ * the app stops it.
  *
  * Part of the audio library (apps/lib/audio), which any app can build in:
  * it only turns a song into samples, and leaves playing them to the app
@@ -122,7 +126,7 @@ static struct {
     int     speed, bpm, tick, row, ord, gvol;
     int     next_row, next_ord, jump, pdelay, pdelay_n;
     int     rate, tick_len, tick_left;
-    int     playing, ended;
+    int     playing, ended, restart;
     char    title[28];
     u32     played;                      /* samples out                     */
 } T;
@@ -356,6 +360,7 @@ static int load_xm(u8 *d, u32 n)
     hs = le32(d + 60);
     T.fmt = F_XM; T.xm = 1;
     T.nord = (int)le16(d + 64);
+    T.restart = (int)le16(d + 66);
     T.nch = (int)le16(d + 68);
     T.npat = (int)le16(d + 70);
     T.ninst = (int)le16(d + 72);
@@ -1251,18 +1256,14 @@ static void tick(void)
         /* A pattern delay plays the row again, its notes not struck. */
         if (T.pdelay) { T.pdelay_n = T.pdelay; T.pdelay = 0; return; }
         if (T.pdelay_n) { T.pdelay_n--; if (T.pdelay_n) return; }
-        if (T.jump) {
-            if (T.next_ord <= T.ord && T.jump == 1) {      /* a jump back: the song has looped */
-                T.ended = 1;
-                return;
-            }
+        if (T.jump) {                                   /* a jump back is the song's loop */
             T.ord = T.next_ord;
             T.row = T.next_row;
         } else if (++T.row >= T.rows[T.order[T.ord]]) {
             T.row = 0;
             T.ord++;
         }
-        if (T.ord >= T.nord) { T.ended = 1; return; }
+        if (T.ord >= T.nord) { T.ord = T.restart; T.row = 0; }   /* off the end: round again */
         if (T.row >= T.rows[T.order[T.ord]]) T.row = 0;
     }
 }
@@ -1420,6 +1421,7 @@ int tracker_load(u8 *data, u32 len, u32 room, int rate)
     if (!ok) { fresh(data); ok = load_it(data, len, room); }
     if (!ok) { fresh(data); ok = load_mod(data, len); }
     if (!ok || T.nord < 1) return 0;
+    if (T.restart < 0 || T.restart >= T.nord) T.restart = 0;
     T.rate = rate;
     if (!T.gvol && T.fmt < F_S3M) T.gvol = 64;
     T.tick_len = T.rate * 5 / (T.bpm * 2);

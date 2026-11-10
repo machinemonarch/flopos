@@ -197,6 +197,7 @@ static void build_palette(u8 *p)
      * a banana is not negotiable about this. */
     ramp(p, PAL_BANANA, PAL_BANANA_N, 16, 12, 2, 63, 60, 20);
     ramp(p, PAL_HUD, PAL_HUD_N, 2, 4, 16, 10, 20, 63);
+    p[PAL_KEY * 3 + 0] = 63; p[PAL_KEY * 3 + 1] = 26; p[PAL_KEY * 3 + 2] = 46;   /* keys: pink */
 
 }
 

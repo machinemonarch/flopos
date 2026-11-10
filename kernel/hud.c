@@ -134,33 +134,38 @@ static void bars(void)
 }
 
 /* ---- the brain ----------------------------------------------------------- */
-/* Two hemispheres with a fissure between them, folded, and a cerebellum
- * under the back: rings and meridians on each, so it is a wireframe like
- * the banana. */
-#define LAT 7
-#define LON 14
+/* One brain: a single folded ovoid, wider at the back, with a shallow
+ * fissure along the top from front to back, a cerebellum tucked under the
+ * back, and the stem below it.  Rings and meridians, so it is a wireframe
+ * like the banana. */
+#define LAT 8
+#define LON 20
 #define CLAT 3
 #define CLON 10
-#define BV (2 * LAT * LON + CLAT * CLON)
-#define BE (2 * (LAT * LON + (LAT - 1) * LON) + CLAT * CLON + (CLAT - 1) * CLON)
+#define BV (LAT * LON + CLAT * CLON + 2)
+#define BE (LAT * LON + (LAT - 1) * LON + CLAT * CLON + (CLAT - 1) * CLON + 1)
 static s16 s_vx[BV], s_vy[BV], s_vz[BV];
 static u16 s_e0[BE], s_e1[BE];
 static int s_nv, s_ne, s_built;
 
 static void ellipsoid(int cx, int cy, int cz, int rx, int ry, int rz, int nlat, int nlon,
-                      int lat0, int lat1, int folds)
+                      int lat0, int lat1, int cortex)
 {
     int i, j, first = s_nv;
     for (i = 0; i < nlat; i++) {
         int th = lat0 + (lat1 - lat0) * i / (nlat - 1);           /* 1024ths of a turn */
         for (j = 0; j < nlon; j++) {
             int ph = j * SINLEN / nlon;
-            int r = 4096, x, y, z;
-            if (folds)                                              /* the gyri */
-                r += (SIN(ph * 5 + (SIN(th * 4) >> 8)) * (s32)SIN(th * 6 + ph * 2)) >> 15;
+            int r = 4096, x, y, z, c;
+            if (cortex) {
+                r += (SIN(ph * 6 + (SIN(th * 4) >> 8)) * (s32)SIN(th * 7 + ph * 3)) >> 15;   /* the folds */
+                c = COS(ph); if (c < 0) c = -c;                    /* near the middle line */
+                if (SIN(th) > 0 && c < 900) r -= (900 - c) * SIN(th) / 1400;               /* the fissure */
+            }
             x = (int)(((s32)COS(th) * COS(ph) >> 12) * rx >> 12) * r >> 12;
             y = (int)((s32)SIN(th) * ry >> 12) * r >> 12;
             z = (int)(((s32)COS(th) * SIN(ph) >> 12) * rz >> 12) * r >> 12;
+            if (cortex && z < 0) x = x * 11 / 10;                  /* wider at the back */
             if (y < 0) y = y * 7 / 10;                              /* flat below */
             s_vx[s_nv] = (s16)(cx + x); s_vy[s_nv] = (s16)(cy - y); s_vz[s_nv] = (s16)(cz + z);
             s_nv++;
@@ -176,9 +181,11 @@ static void ellipsoid(int cx, int cy, int cz, int rx, int ry, int rz, int nlat, 
 
 static void build(void)
 {
-    ellipsoid(-25, 0, 0, 22, 40, 58, LAT, LON, -170, 228, 1);    /* left    */
-    ellipsoid( 25, 0, 0, 22, 40, 58, LAT, LON, -170, 228, 1);    /* right   */
-    ellipsoid(0, 30, -38, 34, 13, 16, CLAT, CLON, -200, 200, 0); /* cerebellum */
+    ellipsoid(0, 0, 0, 44, 40, 60, LAT, LON, -150, 240, 1);        /* the cerebrum   */
+    ellipsoid(0, 30, -40, 28, 12, 15, CLAT, CLON, -200, 200, 0);   /* the cerebellum */
+    s_vx[s_nv] = 0; s_vy[s_nv] = 22; s_vz[s_nv] = -14; s_nv++;     /* the stem      */
+    s_vx[s_nv] = 0; s_vy[s_nv] = 50; s_vz[s_nv] = -22; s_nv++;
+    s_e0[s_ne] = (u16)(s_nv - 2); s_e1[s_ne] = (u16)(s_nv - 1); s_ne++;
     s_built = 1;
 }
 
@@ -240,8 +247,8 @@ static void brain(u8 *dst, int pitch, int bx, int by, int bw, int bh, u32 t)
 /* ---- its command line ------------------------------------------------- */
 static char s_in[IN_MAX + 1];
 static int  s_in_len;
-static char s_out[OUT_N][HW - 1];
-static char s_cur[HW - 1];
+static char s_out[OUT_N][HW + 8];       /* \1 marks a key: pink, and no room */
+static char s_cur[HW + 8];
 static int  s_cur_len;
 
 static void out_line(void)
@@ -260,8 +267,26 @@ static void out_char(int c)
     if (c == '\r') return;
     if (c == '\n') { out_line(); return; }
     if (c == '\t') c = ' ';
-    if (s_cur_len >= HW - 2) out_line();
-    s_cur[s_cur_len++] = (char)c;
+    if (c != 1) {
+        int i, seen = 0;
+        for (i = 0; i < s_cur_len; i++) seen += s_cur[i] != 1;
+        if (seen < HW - 2) goto room;
+    } else if (s_cur_len < (int)sizeof s_cur - 2) goto room;
+    {
+        /* Full: break at the last space, and carry the word on. */
+        char rest[HW + 8];
+        int i, k = s_cur_len, n = 0;
+        while (k > 0 && s_cur[k - 1] != ' ') k--;
+        if (k > 0 && c != ' ') {
+            for (i = k; i < s_cur_len; i++) rest[n++] = s_cur[i];
+            s_cur_len = k - 1;
+        }
+        out_line();
+        for (i = 0; i < n; i++) s_cur[s_cur_len++] = rest[i];
+        if (c == ' ') return;
+    }
+room:
+    if (s_cur_len < (int)sizeof s_cur - 1) s_cur[s_cur_len++] = (char)c;
 }
 
 static void say(const char *t)
@@ -326,7 +351,11 @@ static void cell(u8 *dst, int cx, int cy, int c, u8 fg)
 
 static void text(u8 *dst, int cx, int cy, const char *t, u8 fg)
 {
-    while (*t && cx < HW - 1) cell(dst, cx++, cy, (u8)*t++, fg);
+    int key = 0;
+    for (; *t && cx < HW - 1; t++) {
+        if (*t == 1) { key = !key; continue; }           /* a key: pink */
+        cell(dst, cx++, cy, (u8)*t, key ? C_KEY : fg);
+    }
 }
 
 static void toggle(void)
@@ -335,8 +364,8 @@ static void toggle(void)
     if (!s_on) {
         s_on = 1; s_keys = 1; s_batt_at = 0;
         if (!s_out[OUT_N - 1][0] && !s_out[OUT_N - 2][0]) {
-            say("Type a command, as at here>.");
-            say("esc gives the keys back.");
+            say("Commands, as at here>.");
+            say("\1esc\1 gives the keys back.");
         }
     } else {
         s_on = 0; s_keys = 0;

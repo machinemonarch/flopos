@@ -6,6 +6,26 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.25.0 — 2026-11-10
+
+- **Songs play on round their loop** until **s** stops them. They used
+  to stop where they jump back to the start, three or four minutes in;
+  chiptunes are made to go round.
+- **Keys are shown in pink** wherever they are named: browzer's pages and
+  its bottom edge, write, the network menu, the HUD. On web pages,
+  `<kbd>`, the tag for keys, is pink too.
+- **The HUD's brain is one brain** now, not two halves, and its command
+  line breaks lines between words.
+
+- **TLS 1.2**, for secure sites that have nothing newer, but only its
+  modern half: the same two ciphers as TLS 1.3, a fresh key exchange for
+  every connection (X25519, or P-256 for servers too old for that) signed
+  by the server, and the extended master secret where the server has it.
+  Nothing older is taken: no RSA key exchange, no CBC, no SHA-1, no
+  renegotiation, and nothing before 1.2. A site that speaks TLS 1.3 but
+  answers in 1.2 is refused, because that means someone in between
+  tampered with the connection to force the older one.
+
 ## 1.24.0 — 2026-11-10
 
 - **Songs from The Mod Archive play.** XM songs came out as noise:
