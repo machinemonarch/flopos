@@ -747,6 +747,15 @@ static void cmd_ip(void)
             while (*q >= '0' && *q <= '9') port = port * 10 + (u32)(*q++ - '0');
         }
         ip_set_dns(d, (u16)port);
+    } else if (s_argc == 3 && eq_ci(s_argv[1], "drop")) {
+        /* testing: lose every Nth frame that arrives, as a full card would */
+        extern u32 g_net_drop;
+        const char *q = s_argv[2];
+        g_net_drop = 0;
+        while (*q >= '0' && *q <= '9') g_net_drop = g_net_drop * 10 + (u32)(*q++ - '0');
+        if (g_net_drop == 1) g_net_drop = 0;
+        say_dim(g_net_drop ? "Losing some of what arrives, for testing." : "Keeping everything that arrives.");
+        return;
     } else if (s_argc == 2 && eq_ci(s_argv[1], "dhcp")) {
         ip_configure(0, 0, 0);
         if (!net_ready_here(1)) return;

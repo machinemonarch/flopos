@@ -691,6 +691,16 @@ static u8  s_win_at[WIN_H][WIN_W];        /* bold, italic, underline        */
 static int s_win_on, s_win_c, s_win_r, s_win_w, s_win_h;
 static int s_win_bare;                   /* no paper, no shadow             */
 
+/* Drawing only what changed.  When a window with paper covers the whole
+ * screen -- browzer, write -- nothing under it can be seen, so nothing
+ * under it is drawn (main.c), and the window itself is drawn only where a
+ * cell differs from how it was drawn last time; the rows touched are
+ * kept, so only those go to the card.  The picture is the same to the
+ * pixel; the machine does a small part of the work. */
+static u8  s_dr_ch[WIN_H][WIN_W], s_dr_fg[WIN_H][WIN_W], s_dr_bg[WIN_H][WIN_W], s_dr_at[WIN_H][WIN_W];
+static int s_win_fresh = 1;              /* draw every cell next time       */
+static int s_dirty_y0 = -1, s_dirty_y1 = -1;   /* pixel rows drawn this frame */
+
 
 int term_win_open(int w, int h)
 {
@@ -714,6 +724,7 @@ int term_win_open(int w, int h)
         }
     s_win_on = 1;
     s_win_bare = 0;
+    s_win_fresh = 1;
     return w;
 }
 
@@ -728,7 +739,37 @@ void term_win_bare(void)
     s_win_bare = 1;
 }
 
-void term_win_close(void) { s_win_on = 0; }
+void term_win_close(void) { s_win_on = 0; s_win_fresh = 1; }
+
+/* Does a window with paper cover every cell of the screen?  A cell left
+ * clear would show what is under it, so then it does not count. */
+int term_win_covers(void)
+{
+    int x, y;
+    if (!s_win_on || s_win_bare || s_win_w < COLS || s_win_h < ROWS || s_view) return 0;
+    for (y = 0; y < s_win_h; y++)
+        for (x = 0; x < s_win_w; x++)
+            if (s_win_at[y][x] & ATTR_CLEAR) return 0;
+    return 1;
+}
+
+/* The rows of pixels drawn since last asked: 0 if none. */
+int term_dirty_rows(int *y0, int *y1)
+{
+    int any = s_dirty_y0 >= 0;
+    *y0 = s_dirty_y0; *y1 = s_dirty_y1;
+    s_dirty_y0 = s_dirty_y1 = -1;
+    return any;
+}
+
+static void dirty(int y0, int y1)
+{
+    if (y0 < 0) y0 = 0;
+    if (y1 >= s_vh) y1 = s_vh - 1;
+    if (y1 < y0) return;
+    if (s_dirty_y0 < 0 || y0 < s_dirty_y0) s_dirty_y0 = y0;
+    if (y1 > s_dirty_y1) s_dirty_y1 = y1;
+}
 int  term_win_width(void)  { return s_win_w; }
 int  term_win_height(void) { return s_win_h; }
 
@@ -822,7 +863,7 @@ static void fill_rect(u8 *dst, int x, int y, int w, int h, u8 colour)
     for (r = 0; r < h; r++) memset8(dst + (y + r) * s_pitch + x, colour, (usize)w);
 }
 
-static void render_window(u8 *dst)
+static void render_window(u8 *dst, int only_changed)
 {
     const Face *f = s_face;
     int cw = f->adv * s_scale, ch = f->pitch * s_scale;
@@ -830,9 +871,11 @@ static void render_window(u8 *dst)
     int oy = s_win_r * f->pitch * s_scale;
     int x, y;
 
+    if (!only_changed) dirty(0, s_vh - 1);
+
     /* A shadow down the right and along the bottom, half a cell deep, so
      * the window sits on the screen rather than in it. */
-    if (!s_win_bare) {
+    if (!s_win_bare && !only_changed) {
         fill_rect(dst, ox + s_win_w * cw, oy + ch / 2, cw / 2, s_win_h * ch, PAL_SHADOW);
         fill_rect(dst, ox + cw / 2, oy + s_win_h * ch, s_win_w * cw, ch / 2, PAL_SHADOW);
     }
@@ -842,6 +885,13 @@ static void render_window(u8 *dst)
             int px = ox + x * cw, py = oy + y * ch;
             int c = s_win_ch[y][x];
             u8 at = s_win_at[y][x], fg = s_win_fg[y][x];
+            if (only_changed) {
+                if (s_dr_ch[y][x] == (u8)c && s_dr_fg[y][x] == fg &&
+                    s_dr_bg[y][x] == s_win_bg[y][x] && s_dr_at[y][x] == at) continue;
+                dirty(py, py + ch - 1);
+            }
+            s_dr_ch[y][x] = (u8)c; s_dr_fg[y][x] = fg;
+            s_dr_bg[y][x] = s_win_bg[y][x]; s_dr_at[y][x] = at;
             if (at & ATTR_CLEAR) {
                 /* Over the moving background: a drop shadow, as the
                  * terminal's own text has, or it sinks into the colours. */
@@ -872,6 +922,15 @@ void term_render(u8 *dst, u32 t)
     u8 st;
 
     geometry();
+
+    /* A window covering everything: only it, and only where it changed
+     * (every cell the first time, and after anything else drew). */
+    if (term_win_covers()) {
+        render_window(dst, !s_win_fresh);
+        s_win_fresh = 0;
+        return;
+    }
+
     base = (s_line >= (u32)(ROWS - 1)) ? s_line - (ROWS - 1) : 0;
     if ((u32)s_view <= base) base -= (u32)s_view;
     else base = 0;
@@ -944,7 +1003,8 @@ void term_render(u8 *dst, u32 t)
         if (ch != ' ' && ch != 0) blit_glyph(dst, x, y, ch, 0);
     }
 
-    if (s_win_on) render_window(dst);
+    if (s_win_on) render_window(dst, 0);
+    s_win_fresh = 1;                     /* drawn over a fresh background    */
 
     /* A thumb on the right edge while looking back through history. */
     if (s_view > 0) {

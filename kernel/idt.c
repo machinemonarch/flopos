@@ -238,4 +238,8 @@ void isr_dispatch(Regs *r)
 
     if (v >= 40) outb(PIC2_CMD, PIC_EOI);
     outb(PIC1_CMD, PIC_EOI);
+
+    /* After the timer's acknowledgement, with the interrupt's own work
+     * done: the sound queue refilled, if an app has asked for that. */
+    if (v == 32) audio_deferred();
 }

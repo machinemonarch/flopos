@@ -35,6 +35,12 @@ SECTIONS
     . = ALIGN(16);
     _bss_end = .;
 
+    /* The disk's buffer is at 0x70000 and the video BIOS's at 0x72000
+     * (flopos.h).  The kernel's memory must end before them, or every
+     * floppy read writes over its variables. */
+    ASSERT(_bss_end <= 0x00070000,
+           "the kernel's memory runs into the disk buffer at 0x70000: move something big to halloc")
+
     ASSERT(_low_end - 0x00010000 < 0x10000,
            "the real-mode thunk has been pushed past the 64K line it must live under")
 

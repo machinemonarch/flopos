@@ -4,6 +4,11 @@
  * 250Hz: fine enough to sequence sixteenth notes at any sane tempo and to
  * time frames in 4ms steps, coarse enough that the interrupt costs nothing
  * on a 120MHz Pentium.  Channel 2 is left alone for the speaker.
+ *
+ * The chip itself interrupts 1000 times a second, and every fourth of
+ * those is the tick.  The other three are for the network card, which
+ * holds only a few kilobytes: at 10 Mbit a full one arrives every 1.2 ms,
+ * so it is emptied every millisecond, before it can overflow.
  * ===========================================================================
  */
 #include "flopos.h"
@@ -12,12 +17,13 @@
 #define PIT_HZ   1193182u
 #define PIT_CH0  0x40
 #define PIT_CMD  0x43
+#define IRQ_HZ   1000                    /* interrupts; a tick every fourth */
 
 volatile u32 g_ticks = 0;
 
 void time_init(void)
 {
-    u32 div = PIT_HZ / TICK_HZ;          /* 4772 -> 250.04 Hz              */
+    u32 div = PIT_HZ / IRQ_HZ;           /* 1193 -> 1000.15 Hz             */
 
     outb(PIT_CMD, 0x34);                 /* ch0, lo/hi, mode 2 rate gen    */
     outb(PIT_CH0, (u8)(div & 0xFF));
@@ -26,10 +32,13 @@ void time_init(void)
 
 void timer_irq(void)
 {
+    static u32 sub;
+    net_tick();
+    if (++sub < IRQ_HZ / TICK_HZ) return;
+    sub = 0;
     g_ticks++;
     snd_tick();
     audio_tick();
-    net_tick();
 }
 
 void clock_watch(void);

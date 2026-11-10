@@ -13,14 +13,17 @@
  *
  * Two numbers matter more than anything else here:
  *
- *   The window we offer is twelve full segments, about 17 KB.  The 3C589
- *   has only a few kilobytes of receive FIFO, and drawing one frame of the
- *   screen takes the best part of 30ms on the laptop, so this used to be
- *   three segments, to keep a server from sending more than the card could
- *   hold while we were busy.  That held a radio stream from far away to
- *   barely more than it needs to play.  Now the timer empties the card
- *   into a queue 250 times a second (net.c), whatever else is going on,
- *   and the window can be as big as the queue.
+ *   The window we offer is sixteen full segments, about 23 KB.  The 3C589
+ *   has only a few kilobytes of receive FIFO, so this used to be three
+ *   segments, to keep a server from sending more than the card could hold
+ *   while we were busy -- which held a radio station far away to barely
+ *   what it needs to play.  Now the timer empties the card into a queue a
+ *   thousand times a second (net.c), whatever else is going on.
+ *
+ *   Pieces that arrive out of turn are kept, not thrown away, and every
+ *   answer says which pieces have come (SACK, RFC 2018), so a server
+ *   that loses one segment sends that one again -- not, as before, the
+ *   whole window after it, one round trip at a time.
  *
  *   The retransmit timeout starts at a second and doubles, eight times,
  *   before the conversation is given up for dead.
@@ -39,7 +42,8 @@ enum { CLOSED, SYN_SENT, ESTAB, FIN_WAIT1, FIN_WAIT2, CLOSE_WAIT, LAST_ACK };
 
 #define MSS      1460
 #define RX_SIZE  65536                   /* a power of two                 */
-#define RX_WIN   (12 * MSS)              /* what we let them have in flight */
+#define RX_WIN   (16 * MSS)              /* what we let them have in flight */
+#define OOO_MAX  8                       /* pieces held ahead of the next   */
 #define TX_SIZE  8192
 
 static int s_state;
@@ -52,8 +56,15 @@ static u32 s_peer_mss = 536;
 static int s_peer_fin;
 static const char *s_why = "";
 
-static u8  s_rx[RX_SIZE];
+static u8 *s_rx;                         /* RX_SIZE, above 1MB: see linker.ld */
 static u32 s_rx_in, s_rx_out;            /* counters; the difference is held */
+
+/* Pieces that came ahead of s_rcv_nxt, already in s_rx where they belong
+ * (a sequence number's place in s_rx never changes): sorted, apart. */
+static struct { u32 start, end; } s_ooo[OOO_MAX];
+static int s_nooo;
+static u32 s_last_seq;                   /* the piece that came most recently */
+static int s_sack_ok;                    /* they said they understand SACK   */
 
 static u8  s_tx[TX_SIZE];                /* from s_snd_una onwards         */
 static int s_tx_len;                     /* sent-unacked plus unsent       */
@@ -115,10 +126,27 @@ static u16 window(void)
 
 static int segment(u8 flags, u32 seq, const u8 *data, int len)
 {
-    u8 seg[20 + 4 + MSS];
-    int hl = (flags & F_SYN) ? 24 : 20, i;
+    u8 seg[60 + MSS];
+    int hl = 20, i;
 
     if (len > MSS) len = MSS;
+    if (flags & F_SYN) {
+        seg[20] = 2; seg[21] = 4; put16(seg + 22, MSS);    /* the biggest we take */
+        seg[24] = 1; seg[25] = 1; seg[26] = 4; seg[27] = 2; /* and SACK, please   */
+        hl = 28;
+    } else if (s_sack_ok && s_nooo && !len) {
+        /* Which pieces we hold: the one that just came first. */
+        int n = s_nooo < 4 ? s_nooo : 4, first = 0, k;
+        for (k = 0; k < s_nooo; k++)
+            if (!before(s_last_seq, s_ooo[k].start) && before(s_last_seq, s_ooo[k].end)) first = k;
+        seg[20] = 1; seg[21] = 1; seg[22] = 5; seg[23] = (u8)(2 + 8 * n);
+        for (k = 0; k < n; k++) {
+            int j = k == 0 ? first : (k <= first ? k - 1 : k);
+            put32(seg + 24 + 8 * k, s_ooo[j].start);
+            put32(seg + 28 + 8 * k, s_ooo[j].end);
+        }
+        hl = 24 + 8 * n;
+    }
     put16(seg + 0, s_lport);
     put16(seg + 2, s_rport);
     put32(seg + 4, seq);
@@ -128,9 +156,6 @@ static int segment(u8 flags, u32 seq, const u8 *data, int len)
     put16(seg + 14, window());
     put16(seg + 16, 0);
     put16(seg + 18, 0);
-    if (flags & F_SYN) {                 /* the biggest segment we take    */
-        seg[20] = 2; seg[21] = 4; put16(seg + 22, MSS);
-    }
     for (i = 0; i < len; i++) seg[hl + i] = data[i];
     put16(seg + 16, tcp_sum(ip_addr(), s_peer, seg, hl + len));
     return ip_send(6, s_peer, seg, hl + len);
@@ -185,6 +210,36 @@ static void tick(void)
     }
 }
 
+/* A piece that came out of turn: kept, joined to any it touches. */
+static void ooo_add(u32 a, u32 b)
+{
+    int i, j;
+    for (i = 0; i < s_nooo; ) {
+        if (!before(s_ooo[i].end, a) && !before(b, s_ooo[i].start)) {
+            if (before(s_ooo[i].start, a)) a = s_ooo[i].start;
+            if (before(b, s_ooo[i].end)) b = s_ooo[i].end;
+            for (j = i; j < s_nooo - 1; j++) s_ooo[j] = s_ooo[j + 1];
+            s_nooo--;
+        } else i++;
+    }
+    if (s_nooo == OOO_MAX) s_nooo--;     /* the furthest is forgotten      */
+    for (i = s_nooo; i > 0 && before(a, s_ooo[i - 1].start); i--) s_ooo[i] = s_ooo[i - 1];
+    s_ooo[i].start = a;
+    s_ooo[i].end = b;
+    s_nooo++;
+}
+
+/* The next byte expected has moved to *upto: the pieces it reaches join. */
+static void ooo_take(u32 *upto)
+{
+    int j;
+    while (s_nooo && !before(*upto, s_ooo[0].start)) {
+        if (before(*upto, s_ooo[0].end)) *upto = s_ooo[0].end;
+        for (j = 0; j < s_nooo - 1; j++) s_ooo[j] = s_ooo[j + 1];
+        s_nooo--;
+    }
+}
+
 void tcp_input(u32 from, const u8 *seg, int len)
 {
     u32 seq, ack;
@@ -229,6 +284,7 @@ void tcp_input(u32 from, const u8 *seg, int len)
                 if (s_peer_mss > MSS) s_peer_mss = MSS;
                 if (s_peer_mss < 64) s_peer_mss = 64;
             }
+            if (kind == 4 && seg[i + 1] == 2) s_sack_ok = 1;
             i += seg[i + 1];
         }
         s_rcv_nxt = seq + 1;
@@ -261,19 +317,27 @@ void tcp_input(u32 from, const u8 *seg, int len)
         s_peer_win = get16(seg + 14);
     }
 
-    /* What they have sent us.  Only the next byte we were expecting is
-     * any use; a later one means something in between went missing, and
-     * acknowledging what we have makes them send it again. */
+    /* What they have sent us, put where it belongs.  If it is the next
+     * byte expected, it and any pieces held after it are ready to read;
+     * if something before it went missing, it is kept, and the answer
+     * says what is missing. */
     if (dlen > 0) {
-        if (seq == s_rcv_nxt || (before(seq, s_rcv_nxt) &&
-                                 before(s_rcv_nxt, seq + (u32)dlen))) {
-            int skip = (int)(s_rcv_nxt - seq), i;
-            int take = dlen - skip;
-            if (take > (int)rx_free()) take = (int)rx_free();
-            for (i = 0; i < take; i++)
-                s_rx[(s_rx_in + (u32)i) & (RX_SIZE - 1)] = data[skip + i];
-            s_rx_in += (u32)take;
-            s_rcv_nxt += (u32)take;
+        u32 a = seq, b = seq + (u32)dlen, lim = s_rcv_nxt + rx_free();
+        if (before(a, s_rcv_nxt)) a = s_rcv_nxt;
+        if (before(lim, b)) b = lim;
+        if (before(a, b)) {
+            u32 off = a - s_rcv_nxt, n = b - a, i;
+            const u8 *src = data + (a - seq);
+            for (i = 0; i < n; i++)
+                s_rx[(s_rx_in + off + i) & (RX_SIZE - 1)] = src[i];
+            if (a == s_rcv_nxt) {
+                u32 upto = b;
+                ooo_take(&upto);
+                s_rx_in += upto - s_rcv_nxt;
+                s_rcv_nxt = upto;
+            } else
+                ooo_add(a, b);
+            s_last_seq = a;
         }
         ack_wanted = 1;
     }
@@ -304,6 +368,7 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
     u32 until, r;
 
     if (s_state != CLOSED) tcp_close();
+    if (!s_rx) s_rx = (u8 *)halloc(RX_SIZE);
 
     r = g_cpu_mhz ? tsc32() : g_ticks * 2654435761u;
     s_peer = to;
@@ -317,6 +382,8 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
     s_peer_mss = 536;
     s_peer_fin = 0;
     s_rx_in = s_rx_out = 0;
+    s_nooo = 0;
+    s_sack_ok = 0;
     s_tx_len = 0;
     s_tries = 0;
     s_rto = 1000;
@@ -367,7 +434,9 @@ int tcp_read(u8 *buf, int max, int wait_ms)
     u32 until = ms_now() + (u32)wait_ms;
 
     for (;;) {
-        u32 held = s_rx_in - s_rx_out;
+        u32 held;
+        ip_poll();                       /* what came meanwhile, answered now */
+        held = s_rx_in - s_rx_out;
         if (held) {
             u32 before_free = rx_free(), i;
             u32 n = held < (u32)max ? held : (u32)max;

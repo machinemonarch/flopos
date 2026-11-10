@@ -15,7 +15,7 @@
  * part and u[M-1-2n] minus the imaginary part.  Checked against the sums written out directly, on random input.
  * ===========================================================================
  */
-#include "decode.h"
+#include "app.h"
 #include "mdct.h"
 
 static double fsin(double x) { double r; __asm__("fsin" : "=t"(r) : "0"(x)); return r; }

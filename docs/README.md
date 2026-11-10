@@ -25,7 +25,9 @@ of it, and how it works inside.
 | [How it works](internals.md) | Boot, memory, interrupts, the BIOS, the screen, the disk, the network stack, encryption |
 | [Making apps](making-apps.md) | Programs that live on the floppy beside the system, and the table of things they can ask for |
 | [Building and releasing](building.md) | Tools, the emulator, tests, version numbers, the changelog |
+| [Techniques](techniques.md) | How radio plays without a pause on a 120 MHz Pentium, and the shared pieces it took |
 | [Security roadmap](security-roadmap.md) | Known weak spots, what fixing each would take, and what is done |
+| [Crimes against tokenomics](crimes-against-tokenomics.md) | The most unreasonable requests, and what became of them |
 | [References](references.md) | Standards, datasheets and tools consulted along the way |
 
 The history of every release is in [CHANGELOG.md](../CHANGELOG.md).

@@ -61,13 +61,20 @@ static int  s_choosing = -1, s_chose_was;   /* a list being chosen from   */
  *
  *   Radio, and recordings too big to keep, are played as they arrive:
  *   the player screen shows the station and what it says is on, and esc
- *   stops it.  The bytes come into a buffer that is decoded as the sound
- *   card makes room.  Nothing is played until about three seconds have
- *   gathered, and if the network falls behind and the sound runs dry, it
- *   waits for three seconds again rather than play each scrap as it comes,
- *   which is what stutters.  A station that hangs up is called again. */
+ *   stops it.  The bytes come into a buffer of up to a megabyte, and
+ *   playing starts once about three seconds are in hand.  A station that
+ *   hangs up is called again.
+ *
+ * The decoding is not done here in browzer's own time.  feed() is handed
+ * to the system, whose timer calls it at interrupt time whenever the
+ * sound card's queue has room -- the way the Mac's Sound Manager asked
+ * its players for more -- so the music goes on whatever browzer is busy
+ * with: drawing, waiting on the network, reading a page.  browzer only
+ * brings the bytes in.  The two share s_in and the decoder; browzer
+ * changes them only with s_lock set, and feed() leaves them alone then.
+ * (feed() can interrupt browzer; browzer never interrupts feed().) */
 #define DL_MAX (2u << 20)
-#define ST_MAX (256u << 10)
+#define ST_MAX (1u << 20)
 static u8   s_dl[DL_MAX];                /* a whole file, or a stream's bytes */
 static u32  s_dl_len;
 enum { DL_NONE, DL_COMING, DL_CAME, DL_BROKE, DL_BIG, DL_STREAM, DL_STREAM_END, DL_UNPLAYABLE, DL_NOCARD };
@@ -89,11 +96,19 @@ static int  s_buffering;                 /* gathering a cushion before playing *
 static int  s_rate_in;                   /* the recording's rate, as playing */
 static int  s_live, s_redial, s_redials; /* radio: called again if it hangs up */
 static u32  s_conn_ms;                   /* when this stream's call began   */
+static volatile int s_lock;              /* browzer is changing what feed() reads */
+static volatile int s_feeding_ok;        /* a decoder is ready for feed()   */
+static volatile u32 s_ran_dry;           /* times the sound ran out mid-stream */
+static volatile u32 s_cushion_x = 1;     /* cushions of three seconds to gather */
 
 static void music_stop(void)
 {
+    s_lock = 1;
+    A->audio_feeder(0);
     if (s_music) A->audio_close();
     s_music = 0;
+    s_feeding_ok = 0;
+    s_lock = 0;
 }
 
 static u32 heard_seconds(void)
@@ -102,41 +117,68 @@ static u32 heard_seconds(void)
     return s_rate ? (s_written > behind ? s_written - behind : 0) / (u32)s_rate : 0;
 }
 
-/* Decode a recording into the card's queue as far as it has room.  0 when
- * the recording has ended; 1 otherwise (including: needs more bytes). */
-static int decode_some(void)
+/* How much of the recording to have in hand, in bytes, before playing:
+ * three seconds at what it says its rate is, times x. */
+static u32 cushion(u32 x)
+{
+    u32 kbps = s_dec.kbps > 8 ? (u32)s_dec.kbps : 128, c = kbps * 375 * x;
+    return c > ST_MAX / 4 ? ST_MAX / 4 : c;
+}
+
+/* The refill, at interrupt time (see above): decode into the card's queue
+ * while it has room, for at most about 4 ms at a go, so that no frame of
+ * the screen waits on it for longer than that. */
+static void feed(void)
 {
     static s16 pcm[1152];
     static u8 out[3400];
+    u32 t0;
+    int want;
+
+    if (s_lock || s_music != 1) return;
+    t0 = A->ms();
+    if (s_src == 1) {                    /* a song: the tracker plays it   */
+        while (A->audio_space() >= (int)sizeof out && A->ms() - t0 < 4) {
+            int n = tracker_render(out, (int)sizeof out);
+            A->audio_write(out, n);
+            s_written += (u32)n;
+            if (n < (int)sizeof out) { s_music = 2; break; }
+        }
+        return;
+    }
+    if (!s_feeding_ok) return;
+    if (s_buffering) {                   /* gathering a cushion first      */
+        if (!s_in.done && s_in.len - s_in.pos < cushion(s_cushion_x)) return;
+        s_buffering = 0;
+    }
     /* The resampler makes up to in * card rate / recording rate + 2: ask
      * for no more than out has room for, however slow the recording. */
-    int want = (int)((sizeof out - 4) * (u32)s_dec.rate / (u32)s_rate);
+    want = (int)((sizeof out - 4) * (u32)s_dec.rate / (u32)s_rate);
     if (want > 1152) want = 1152;
-    while (A->audio_space() >= (int)sizeof out) {
+    while (A->audio_space() >= (int)sizeof out && A->ms() - t0 < 4) {
         int n = s_dec.decode(&s_dec, &s_in, pcm, want), k;
-        if (n == AUDIO_MORE) return 1;
-        if (n <= 0) return 0;
+        if (n == AUDIO_MORE) {
+            /* Nothing more yet.  If the card has run out as well, the
+             * network has fallen behind: gather a cushion again, twice
+             * as big each time, rather than play each scrap as it comes. */
+            if (A->audio_queued() == 0 && !s_in.done) {
+                s_buffering = 1;
+                s_ran_dry++;
+                if (s_cushion_x < 4) s_cushion_x *= 2;
+            }
+            return;
+        }
+        if (n <= 0) { s_music = 2; return; }
         k = rs_run(&s_rs, pcm, n, out);
         A->audio_write(out, k);
         s_written += (u32)k;
     }
-    return 1;
 }
 
-/* Keep the sound card's queue full.  Called whenever browzer waits. */
+/* Called whenever browzer waits: once a song or recording has ended and
+ * the last of it has played, the card is closed. */
 static void music_feed(void)
 {
-    static u8 buf[4096];
-    if (s_music == 1 && s_src == 1) {
-        while (A->audio_space() >= (int)sizeof buf) {
-            int n = tracker_render(buf, (int)sizeof buf);
-            A->audio_write(buf, n);
-            s_written += (u32)n;
-            if (n < (int)sizeof buf) { s_music = 2; break; }
-        }
-    } else if (s_music == 1 && s_src == 2 && s_dl_state != DL_STREAM) {
-        if (!decode_some()) s_music = 2;
-    }
     if (s_music == 2 && A->audio_queued() == 0) music_stop();
 }
 
@@ -149,15 +191,21 @@ static const char *kbps_text(void)
     return t;
 }
 
+/* The card opened and feed() handed to the system.  For a recording, s_in
+ * and s_dec are ready, and s_buffering says whether to gather first. */
 static int music_start(int src, int rate_in)
 {
+    s_lock = 1;
     s_rate = A->audio_open(22050);
-    if (!s_rate) return 0;
+    if (!s_rate) { s_lock = 0; return 0; }
     s_src = src;
     s_written = 0;
     if (src == 2) rs_init(&s_rs, rate_in, s_rate);
     s_rate_in = rate_in;
     s_music = 1;
+    s_feeding_ok = src == 2;
+    A->audio_feeder(feed);
+    s_lock = 0;
     return 1;
 }
 
@@ -198,6 +246,8 @@ static int media_start(const char *ctype, const char *url, u32 length, u32 metai
     /* Its memory is about to be used -- except when a station is called
      * again, when what is still queued plays on while it answers. */
     if (!s_redial) { music_stop(); s_redials = 0; }
+    s_lock = 1;
+    s_feeding_ok = 0;                    /* until the new stream's decoder is ready */
     for (i = 0; ctype[i] && i < (int)sizeof s_dl_type - 1; i++) s_dl_type[i] = ctype[i];
     s_dl_type[i] = 0;
     for (i = 0; url[i] && i < (int)sizeof s_dl_url - 1; i++) s_dl_url[i] = url[i];
@@ -218,9 +268,11 @@ static int media_start(const char *ctype, const char *url, u32 length, u32 metai
         s_buffering = 0;
         s_live = metaint || !length;
         s_conn_ms = A->ms();
+        s_lock = 0;
         return 1;
     }
     s_dl_state = length > DL_MAX ? DL_BIG : DL_COMING;
+    s_lock = 0;
     return 1;
 }
 
@@ -245,51 +297,71 @@ static void meta_done(void)
     }
 }
 
-/* Three seconds of the recording, in bytes, from what it says its rate is. */
-static u32 cushion(void)
+/* Seconds of the recording in hand: the card's queue, and what is still
+ * to decode. */
+static u32 in_hand(void)
 {
-    u32 kbps = s_dec.kbps > 8 ? (u32)s_dec.kbps : 128, c = kbps * 375;
-    return c > ST_MAX / 2 ? ST_MAX / 2 : c;
+    u32 kbps = s_dec.kbps > 8 ? (u32)s_dec.kbps : 128;
+    return (u32)A->audio_queued() / (u32)(s_rate ? s_rate : 22050) + (s_in.len - s_in.pos) / (kbps * 125);
 }
 
+/* The player screen, now and then; and down the serial wire every ten
+ * seconds, and whenever the sound ran out, so a listener with the cable
+ * in can see how the stream is keeping up. */
 static void stream_draw(void)
 {
+    static u32 logged, dry_seen;
+    char t[96];
     if (A->ms() - s_drawn > 400) { s_drawn = A->ms(); draw(); }
+    if (s_ran_dry != dry_seen) {
+        dry_seen = s_ran_dry;
+        fmt_str(t, sizeof t, "[browzer] the sound ran out (%u times); gathering more\n", (u32)dry_seen);
+        A->wire(t);
+    }
+    if (s_music == 1 && A->ms() - logged >= 10000) {
+        logged = A->ms();
+        fmt_str(t, sizeof t, "[browzer] %u s played, %u s in hand%s\n", heard_seconds(), in_hand(),
+                s_buffering ? ", gathering" : "");
+        A->wire(t);
+    }
 }
 
 static int stream_play(void)
 {
-    if (!s_dec.decode) {
-        int r = audio_detect(&s_in, &s_dec, s_dl_type);
-        if (r == AUDIO_MORE && s_in.len < 65536) return 1;
-        if (r != 1) { s_dl_state = DL_UNPLAYABLE; return 0; }
+    if (!s_feeding_ok) {
+        if (!s_dec.decode) {
+            int r = audio_detect(&s_in, &s_dec, s_dl_type);
+            if (r == AUDIO_MORE && s_in.len < 65536) return 1;
+            if (r != 1) { s_dl_state = DL_UNPLAYABLE; return 0; }
+        }
         if (s_music && s_rate_in != s_dec.rate) music_stop();   /* called again, and changed */
         s_buffering = 1;
+        s_cushion_x = 1;
+        if (!s_music) {
+            if (!music_start(2, s_dec.rate)) { s_dl_state = DL_NOCARD; return 0; }
+        } else {
+            s_lock = 1;
+            s_feeding_ok = 1;
+            s_lock = 0;
+        }
     }
-    if (s_buffering) {
-        if (s_in.len - s_in.pos < cushion()) { stream_draw(); return 1; }
-        if (!s_music && !music_start(2, s_dec.rate)) { s_dl_state = DL_NOCARD; return 0; }
-        s_buffering = 0;
-    } else if (s_music == 1 && A->audio_queued() == 0) {
-        s_buffering = 1;                 /* ran dry: gather a cushion again */
-        stream_draw();
-        return 1;
-    }
-    if (!decode_some()) { s_music = 2; return 1; }
     stream_draw();
     return 1;
 }
 
-/* Into the stream's buffer, decoding as it fills; when it is full, wait
- * for the sound card to make room.  0 to stop. */
+/* Into the stream's buffer, which feed() decodes from; when it is full,
+ * wait for feed() to make room.  0 to stop. */
 static int stream_take(const u8 *p, int n)
 {
     while (n > 0) {
         u32 room, take;
         if (s_in.pos > ST_MAX / 2) {                    /* keep the unread part */
-            u32 left = s_in.len - s_in.pos;
+            u32 left;
+            s_lock = 1;
+            left = s_in.len - s_in.pos;
             memmove(s_dl, s_dl + s_in.pos, left);
             s_in.len = left; s_in.pos = 0;
+            s_lock = 0;
         }
         room = ST_MAX - s_in.len;
         if (!room) {
@@ -300,6 +372,7 @@ static int stream_take(const u8 *p, int n)
         }
         take = (u32)n < room ? (u32)n : room;
         memcpy(s_dl + s_in.len, p, take);
+        __asm__ __volatile__("" ::: "memory");          /* the bytes, then the length */
         s_in.len += take; p += take; n -= (int)take;
         if (!stream_play()) return 0;
     }
@@ -346,15 +419,15 @@ static void media_end(int whole)
     if (whole < 0) { s_esc = 1; whole = 0; }          /* esc, while reading */
     if (s_dl_state == DL_COMING) s_dl_state = whole ? DL_CAME : DL_BROKE;
     else if (s_dl_state == DL_STREAM) {
-        /* What is left is played out by music_feed, as browzer waits; or,
-         * for a station about to be called again, as much as fits now. */
+        /* What is left is played out by feed(); a station about to be
+         * called again plays on from the card's queue meanwhile. */
         s_dl_state = DL_STREAM_END;
-        s_in.done = 1;
+        s_in.done = 1;                   /* feed() plays out what is left    */
         if (s_esc || (!whole && !s_live)) music_stop();
         else if (s_dec.decode && !s_music && s_in.len > s_in.pos) {
-            if (music_start(2, s_dec.rate)) decode_some();    /* too short to wait for */
-        } else if (s_music == 1) decode_some();
-        s_buffering = 0;
+            s_buffering = 0;             /* too short to have started: play it */
+            (void)music_start(2, s_dec.rate);
+        }
     }
 }
 
@@ -520,15 +593,19 @@ static void draw(void)
             fmt_str(t, sizeof t, "%s%s, mono, %u Hz", s_dec.kind, kbps_text(), (u32)s_dec.rate);
             term_win_text(4, 8, t, C_DIM, pp);
             if (s_buffering)
-                term_win_text(4, 10, s_music ? "it ran short; gathering a few seconds again..."
-                                             : "gathering a few seconds before it plays...", C_ACCENT, pp);
+                term_win_text(4, 10, s_ran_dry ? "the network fell behind; gathering more first..."
+                                               : "gathering a few seconds before it plays...", C_ACCENT, pp);
             else {
+                /* In hand: what the card has queued, and what is still to
+                 * decode, at the recording's rate. */
                 fmt_str(t, sizeof t, "listening for %u:%02u", secs / 60, secs % 60);
                 term_win_text(4, 10, t, C_ACCENT, pp);
+                fmt_str(t, sizeof t, "%u seconds in hand", in_hand());
+                term_win_text(4, 12, t, C_DIM, pp);
             }
         } else
             term_win_text(4, 8, "listening for the first of it...", C_DIM, pp);
-        term_win_text(4, 12, "esc stops it", C_DIM, pp);
+        term_win_text(4, 14, "esc stops it", C_DIM, pp);
     } else
     /* The page. */
     for (y = 0; y < s_vh; y++) {
@@ -896,7 +973,9 @@ static void go_with(const char *url, const u8 *post, int postlen)
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1>%s", name, name, what);
         } else if (st == DL_CAME && tracker_load(s_dl, s_dl_len, 22050)) {
             if (music_start(1, 0)) {
+                s_lock = 1;
                 (void)tracker_load(s_dl, s_dl_len, s_rate);
+                s_lock = 0;
                 music_feed();
                 fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>A %u-channel %s song, playing.</p>"
                         "<p>It goes on playing while you browse. s stops it.</p>",
@@ -907,6 +986,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                         "no sound card that plays recordings.</p>", name);
         } else if (st == DL_CAME) {
             s_in.buf = s_dl; s_in.len = s_dl_len; s_in.pos = 0; s_in.done = 1;
+            s_buffering = 0;
             if (audio_detect(&s_in, &s_dec, s_dl_type) == 1) {
                 if (music_start(2, s_dec.rate)) {
                     fmt_str(s_title, sizeof s_title, "%s", name);

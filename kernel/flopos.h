@@ -151,6 +151,8 @@ void   vga_wait_retrace(void);
 void   vga_present(void);
 void   vga_clear(u8 colour);
 void   vga_set_palette(const u8 *pal768);
+void   vga_keep_composed(void);       /* the background was not redrawn: keep it */
+void   vga_present_rows(int y0, int y1);  /* send only these rows to the card */
 void   vga_get_palette(u8 *out768);
 void   vga_adopt(void);                     /* take over the boot screen     */
 void   vga_fade_to(const u8 *pal768, int steps);
@@ -276,6 +278,8 @@ void   term_hide(int on);                /* the shell unseen; windows still draw
 void   term_plain(int on);
 int    term_win_open(int w, int h);
 void   term_win_close(void);
+int    term_win_covers(void);            /* an opaque window over everything */
+int    term_dirty_rows(int *y0, int *y1);  /* pixel rows drawn since last asked */
 int    term_win_width(void);
 int    term_win_height(void);
 void   term_win_put(int x, int y, int ch, u8 fg, u8 bg);
@@ -494,6 +498,9 @@ typedef struct {
     int  (*link)(void);                  /* is anybody at the other end    */
 } Nic;
 
+void audio_feeder(void (*fn)(void));     /* an app's refill, at interrupt time */
+void audio_tell(u32 fps);                /* now and then, down the wire     */
+void audio_deferred(void);               /* from the timer, after its EOI   */
 void net_tick(void);                     /* from the timer: empty the card  */
 
 extern const Nic g_nic_el3;

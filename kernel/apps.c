@@ -79,6 +79,8 @@ static const Api s_api = {
     tls_check,
     /* version 3 */
     audio_open, audio_space, audio_queued, audio_write, audio_close,
+    /* version 4 */
+    audio_feeder,
 };
 
 static int memory_for_apps(void)
@@ -144,6 +146,8 @@ int app_run(const char *word, int argc, char **argv)
     memset8((void *)h->image_end, 0, h->bss_end - h->image_end);
     serial_printf("[app] %s: %u bytes, %u in memory\n", file, f.size, h->bss_end - APP_BASE);
     r = ((AppMain)h->entry)(&s_api, argc, argv);
+    audio_feeder(0);                     /* its memory is no longer its own */
+    audio_close();
     term_win_close();
     (void)r;
     return 1;

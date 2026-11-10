@@ -139,12 +139,19 @@ void rs_init(Resampler *r, int from, int to)
     r->taps = (from + to / 2) / to;
     if (r->taps < 1) r->taps = 1;
     if (r->taps > 8) r->taps = 8;
-    r->h = 0; r->sum = 0;
+    r->h = 0; r->sum = 0; r->err = 0;
+    r->recip = 65536 / r->taps;          /* a multiply a sample, not a division */
     for (i = 0; i < 8; i++) r->hist[i] = 0;
 }
 
 /* Straight lines between the samples it has: plenty, at these rates, for
- * an 8-bit speaker. */
+ * an 8-bit speaker.
+ *
+ * Down to 8 bits by noise shaping rather than by dropping the low byte:
+ * each sample is rounded with the error the last one left added in, so
+ * the rounding error comes out as a faint hiss up in the treble instead of
+ * as grit on every quiet passage -- which is how an 8-bit card makes
+ * music sound crackly. */
 static int lines(Resampler *r, const s16 *in, int n, u8 *out)
 {
     int k = 0;
@@ -154,8 +161,16 @@ static int lines(Resampler *r, const s16 *in, int n, u8 *out)
         if ((int)i >= n) { r->phase -= (u32)n << 16; r->prev = in[n - 1]; break; }
         a = i == 0 ? r->prev : in[i - 1];
         b = in[i];
-        v = a + (((b - a) * (s32)(r->phase & 0xFFFF)) >> 16);
-        out[k++] = (u8)((v >> 8) + 128);
+        v = a + (((b - a) * (s32)(r->phase & 0xFFFF)) >> 16) + r->err;
+        {
+            s32 q = (v + 128) >> 8;
+            if (q > 127) q = 127;
+            if (q < -128) q = -128;
+            r->err = v - (q << 8);
+            if (r->err > 256) r->err = 256;          /* after clipping, let go */
+            if (r->err < -256) r->err = -256;
+            out[k++] = (u8)(q + 128);
+        }
         r->phase += r->step;
     }
     return k;
@@ -172,7 +187,7 @@ int rs_run(Resampler *r, const s16 *in, int n, u8 *out)
             r->sum += in[i] - r->hist[r->h];
             r->hist[r->h] = in[i];
             if (++r->h == r->taps) r->h = 0;
-            f[i] = (s16)(r->sum / r->taps);
+            f[i] = (s16)((r->sum * r->recip) >> 16);
         }
         k += lines(r, f, m, out + k);
         in += m; n -= m;

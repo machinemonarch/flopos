@@ -148,18 +148,31 @@ speaks HTTP and reads HTML itself, in `apps/browzer/`.
 | `audio_queued()` | How many are still waiting to be played |
 | `audio_close()` | Stop, and let the FM music back |
 
-Keep the queue topped up whenever the app is waiting for anything else.
+### Added in version 4: refilling at interrupt time
+
+| Function | What it does |
+|---|---|
+| `audio_feeder(fn)` | Hand the system a refill routine. The timer calls `fn` whenever the queue has room, a thousand times a second, whatever the app is doing meanwhile. 0 stops it, and so does `audio_close`. |
+
+`fn` runs at interrupt time, with interrupts on and the FPU's state saved
+around it. It may call `audio_space`, `audio_queued`, `audio_write` and `ms`,
+and use its own memory, nothing else. It should come back within about
+4 ms. Anything the app's own code shares with it must be changed under a
+flag the routine checks: browzer's `s_lock`. See
+[techniques.md](techniques.md).
 
 ## Libraries apps share
 
 Code more than one app could use lives in `apps/lib/<name>/` and is built
 into each app that asks for it in the Makefile:
 
-    APPLIBS_browzer := audio
+    APPLIBS_browzer := audio bits dsp
 
 | Library | What it does |
 |---|---|
-| `audio` | `tracker.c`: .mod and .xm songs into samples (`tracker_load`, `tracker_render`). `decode.c`, `mp3.c`, `aac.c`, `vorbis.c`, `flac.c`, `mdct.c`: recordings (mp3, AAC, Ogg Vorbis, FLAC, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a resampler to the card's rate. |
+| `audio` | `tracker.c`: .mod and .xm songs into samples (`tracker_load`, `tracker_render`). `decode.c`, `mp3.c`, `aac.c`, `vorbis.c`, `flac.c`: recordings (mp3, AAC, Ogg Vorbis, FLAC, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a noise-shaped resampler to the card's 8 bits. Needs `bits` and `dsp`. |
+| `bits` | `bits.h`: reading 1 to 25 bits at once, high-first or low-first. `prefix.h`: Huffman and other prefix codes decoded by table (`prefix_build`, `prefix_get`, `prefix_lget`). For anything compressed: audio now, and JPEG, gzip and PNG would use the same. |
+| `dsp` | `dsp.h`: `dsp_round` (float to int without the x87's slow cast), `dsp_dct2` (the cosine transform of 2 to 64 numbers, fast). `mdct.h`: the inverse MDCT by FFT, its tables kept per size. |
 
 An app that uses floating point (the audio library does) also needs the
 Pentium's FPU switched on for it in the Makefile (`APPFLAGS_browzer :=

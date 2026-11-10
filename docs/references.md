@@ -90,6 +90,9 @@ for decades:
 | [FLAC, RFC 9639](https://www.rfc-editor.org/rfc/rfc9639) | `apps/lib/audio/flac.c` |
 | [Ogg FLAC mapping](https://xiph.org/flac/ogg_mapping.html) | `vorbis.c`: FLAC inside Ogg |
 | SHOUTcast/Icecast metadata (ICY) | browzer: station titles |
+| Inside Macintosh: Sound, the double-buffer callback | `audio_feeder`: refilling at interrupt time |
+| B. G. Lee, "A new algorithm to compute the DCT" (1984) | `dsp_dct2`; mp3's synthesis |
+| [TCP SACK, RFC 2018](https://www.rfc-editor.org/rfc/rfc2018) | `tcp.c`: saying which pieces came |
 | [NTP, RFC 5905](https://www.rfc-editor.org/rfc/rfc5905) | `ip.c`, `rtc.c`: setting the clock |
 | VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |

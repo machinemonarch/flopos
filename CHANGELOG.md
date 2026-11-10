@@ -6,6 +6,32 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.22.0 — 2026-11-10
+
+- **Radio plays without pausing**, on the laptop as well as the emulator.
+  The sound card is now refilled from the system timer, the way the Mac's
+  Sound Manager did it, so drawing, pages and the network no longer starve
+  it. The network card is emptied a thousand times a second, so a 3Com
+  that fills up no longer loses packets. And TCP keeps pieces that arrive
+  out of turn and tells the server exactly what is missing (SACK), so one
+  lost packet costs one resend, not seconds of silence. browzer keeps up
+  to a megabyte of a stream in hand, and the player shows how many seconds
+  that is.
+- **No slower screen while music plays.** When a window covers the whole
+  screen, as browzer does, the hidden background is not drawn, and only
+  what changed is redrawn and sent to the card. The screen stays at its
+  full 30 frames a second with radio playing.
+- **Decoders two to five times faster, same sound**: bits read 25 at a
+  time, Huffman codes by table, mp3's synthesis as a fast cosine
+  transform, silence skipped, and Vorbis's window worked out once. In
+  two new shared libraries, `apps/lib/bits` and `apps/lib/dsp`, for
+  pictures and compression later.
+- **Less crackle**: 8-bit output is noise-shaped, so quiet passages lose
+  their grit.
+- Fixed: the kernel's memory had grown into the floppy's buffer at
+  0x70000; the build now refuses that.
+- New pages: docs/techniques.md, and docs/crimes-against-tokenomics.md.
+
 ## 1.21.0 — 2026-11-10
 
 - **AAC in browzer**: AAC and HE-AAC (AAC+) stations and .aac files, such

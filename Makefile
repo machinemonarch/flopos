@@ -52,7 +52,7 @@ APPFLAGS_browzer := -m80387 -mhard-float
 # Libraries apps share: apps/lib/<name>/, built into each app that lists
 # it.  audio turns songs into samples, for browzer and whatever plays sound
 # next.
-APPLIBS_browzer := audio
+APPLIBS_browzer := audio bits dsp
 
 .PHONY: all clean run shot write size release
 all: $(IMG)

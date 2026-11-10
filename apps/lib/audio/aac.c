@@ -35,6 +35,10 @@
 #include "decode.h"
 #include "mdct.h"
 #include "aactab.h"
+#include "prefix.h"                      /* apps/lib/bits: the bit reader and the codebooks */
+#include "dsp.h"                         /* apps/lib/dsp: quick rounding */
+
+void *memcpy(void *d, const void *s, u32 n);
 
 static double fsin(double x) { double r; __asm__("fsin" : "=t"(r) : "0"(x)); return r; }
 static double fsqrt(double x) { double r; __asm__("fsqrt" : "=t"(r) : "0"(x)); return r; }
@@ -44,61 +48,27 @@ enum { ONLY_LONG, LONG_START, EIGHT_SHORT, LONG_STOP };
 enum { ZERO_HCB = 0, NOISE_HCB = 13, INTENSITY_HCB2 = 14, INTENSITY_HCB = 15 };
 #define MAXCH 8
 
-/* ---- bits, most significant first ---------------------------------------------- */
-static const u8 *s_bp;
-static u32 s_pos, s_end;
-static int s_over;                       /* ran past the frame's end        */
+/* ---- bits, most significant first, and the codebooks ----------------------------
+ * Through apps/lib/bits: the reader takes up to 25 bits a load, and each
+ * codebook is a table indexed by the next nine bits, so a codeword costs a
+ * lookup or two rather than a branch per bit (prefix.h). */
+static Bits s_b;
+#define s_over (s_b.over)
+static u8 s_frame[8192 + 8];             /* this frame, with room to read past its end */
 
-static int bit(void)
-{
-    int b;
-    if (s_pos >= s_end) { s_over = 1; return 0; }
-    b = (s_bp[s_pos >> 3] >> (7 - (s_pos & 7))) & 1;
-    s_pos++;
-    return b;
-}
+static inline u32 gb(int n) { return bits_get(&s_b, n); }
+static inline int bit(void) { return (int)bits_get(&s_b, 1); }
 
-static u32 gb(int n)
-{
-    u32 v = 0;
-    while (n--) v = (v << 1) | (u32)bit();
-    return v;
-}
+static Prefix s_book[12];                /* 1..11 the spectral books, 0 the scalefactors */
+static u32    s_store[24576];
 
-/* ---- the codebooks, as trees ------------------------------------------------------ *
- * Each internal node is two children: a positive number is another node, a
- * negative one is a leaf, -1 - the symbol; 0 is nothing (a broken stream). */
-#define NODES 1400
-static short s_node[NODES][2];
-static int   s_nnodes;
-static short s_root[12];                 /* 1..11 the spectral books, 0 the scalefactors */
+static inline int huff(int book) { return prefix_get(&s_book[book], &s_b); }
 
-static void tree_add(int root, u32 code, int len, int sym)
-{
-    int node = root, b;
-    for (b = len - 1; b >= 0; b--) {
-        int k = (int)((code >> b) & 1);
-        if (b == 0) { s_node[node][k] = (short)(-1 - sym); return; }
-        if (s_node[node][k] <= 0) {
-            if (s_nnodes >= NODES) return;
-            s_node[node][k] = (short)s_nnodes;
-            s_node[s_nnodes][0] = s_node[s_nnodes][1] = 0;
-            s_nnodes++;
-        }
-        node = s_node[node][k];
-    }
-}
-
-static int huff(int book)
-{
-    int n = s_root[book];
-    for (;;) {
-        int next = s_node[n][bit()];
-        if (next < 0) return -1 - next;
-        if (next == 0 || s_over) return -1;
-        n = next;
-    }
-}
+/* Each codeword's two or four numbers, worked out once rather than by
+ * division at every codeword (a division is 46 cycles on a Pentium), and
+ * how many of them are not zero (for the books that send signs after). */
+static signed char s_unpack[1241][4];
+static u8 s_nonzero[1241];
 
 /* ---- fixed tables ---------------------------------------------------------------- */
 static float s_pow43[8208];              /* |q|^(4/3)                        */
@@ -153,17 +123,23 @@ static void make_window(float *w, int n, int kbd, double alpha)
 static void tables(void)
 {
     int b, i;
+    u32 used = 0;
     if (s_ready) return;
-    s_nnodes = 0;
     for (b = 0; b < 12; b++) {
-        s_root[b] = (short)s_nnodes;
-        s_node[s_nnodes][0] = s_node[s_nnodes][1] = 0;
-        s_nnodes++;
-        if (b == 0)
-            for (i = 0; i < 121; i++) tree_add(s_root[0], AAC_SFCODE[i], AAC_SFLEN[i], i);
-        else
-            for (i = 0; i < AAC_HSTART[b + 1] - AAC_HSTART[b]; i++)
-                tree_add(s_root[b], AAC_HCODE[AAC_HSTART[b] + i], AAC_HLEN[AAC_HSTART[b] + i], i);
+        static u32 codes[289];
+        const u8 *lens;
+        int n;
+        if (b == 0) {
+            for (i = 0; i < 121; i++) codes[i] = AAC_SFCODE[i];
+            lens = AAC_SFLEN; n = 121;
+        } else {
+            n = AAC_HSTART[b + 1] - AAC_HSTART[b];
+            for (i = 0; i < n; i++) codes[i] = AAC_HCODE[AAC_HSTART[b] + i];
+            lens = AAC_HLEN + AAC_HSTART[b];
+        }
+        if (!prefix_build(&s_book[b], s_store + used, (u32)(sizeof s_store / 4) - used, 9, codes, lens, n, 0))
+            return;                      /* cannot happen: the books are checked */
+        used += s_book[b].used;
     }
     /* |q|^(4/3) = q times its cube root, the root by Newton's method. */
     s_pow43[0] = 0;
@@ -178,6 +154,23 @@ static void tables(void)
         s_pow43[i] = (float)(x * y);
     }
     for (i = 0; i < 256; i++) s_pow2[i] = (float)p2q(i - 100);
+    for (b = 1; b < 12; b++)
+        for (i = 0; i < AAC_HSTART[b + 1] - AAC_HSTART[b]; i++) {
+            signed char *v = s_unpack[AAC_HSTART[b] + i];
+            int k, nz = 0;
+            switch (b) {
+            case 1: case 2: v[0] = (signed char)(i / 27 - 1); v[1] = (signed char)((i / 9) % 3 - 1);
+                            v[2] = (signed char)((i / 3) % 3 - 1); v[3] = (signed char)(i % 3 - 1); break;
+            case 3: case 4: v[0] = (signed char)(i / 27); v[1] = (signed char)((i / 9) % 3);
+                            v[2] = (signed char)((i / 3) % 3); v[3] = (signed char)(i % 3); break;
+            case 5: case 6: v[0] = (signed char)(i / 9 - 4); v[1] = (signed char)(i % 9 - 4); break;
+            case 7: case 8: v[0] = (signed char)(i / 8); v[1] = (signed char)(i % 8); break;
+            case 9: case 10: v[0] = (signed char)(i / 13); v[1] = (signed char)(i % 13); break;
+            default: v[0] = (signed char)(i / 17); v[1] = (signed char)(i % 17); break;
+            }
+            for (k = 0; k < (b < 5 ? 4 : 2); k++) nz += v[k] != 0;
+            s_nonzero[AAC_HSTART[b] + i] = (u8)nz;
+        }
     s_ready = 1;
 }
 
@@ -309,23 +302,20 @@ static int tns_data(Ics *s)
 /* One codeword's two or four numbers into v. */
 static int spec_word(int cb, int *v)
 {
-    int idx = huff(cb), i, n = cb < 5 ? 4 : 2;
+    int idx = huff(cb), i, n = cb < 5 ? 4 : 2, at, nz;
+    const signed char *u;
     if (idx < 0) return 0;
-    switch (cb) {
-    case 1: case 2:
-        v[0] = idx / 27 - 1; v[1] = (idx / 9) % 3 - 1; v[2] = (idx / 3) % 3 - 1; v[3] = idx % 3 - 1;
-        return 1;
-    case 3: case 4:
-        v[0] = idx / 27; v[1] = (idx / 9) % 3; v[2] = (idx / 3) % 3; v[3] = idx % 3;
-        break;
-    case 5: case 6:
-        v[0] = idx / 9 - 4; v[1] = idx % 9 - 4;
-        return 1;
-    case 7: case 8:   v[0] = idx / 8;  v[1] = idx % 8;  break;
-    case 9: case 10:  v[0] = idx / 13; v[1] = idx % 13; break;
-    default:          v[0] = idx / 17; v[1] = idx % 17; break;
+    at = AAC_HSTART[cb] + idx;
+    u = s_unpack[at];
+    for (i = 0; i < n; i++) v[i] = u[i];
+    if (cb == 1 || cb == 2 || cb == 5 || cb == 6) return 1;     /* signed already */
+    /* The unsigned books: a sign bit for each number not zero, all read
+     * at once. */
+    if ((nz = s_nonzero[at]) != 0) {
+        u32 sg = gb(nz);
+        for (i = 0; i < n; i++)
+            if (v[i] && ((sg >> --nz) & 1)) v[i] = -v[i];
     }
-    for (i = 0; i < n; i++) if (v[i] && bit()) v[i] = -v[i];
     if (cb == 11)
         for (i = 0; i < 2; i++)
             if (v[i] == 16 || v[i] == -16) {
@@ -426,8 +416,11 @@ static void dequantise(const Ics *s, const int *q, float *x)
                 } else if (cb != ZERO_HCB && cb < NOISE_HCB) {
                     float sc = s_pow2[s->sf[g][b]];
                     for (k = lo; k < hi; k++) {
-                        int v = q[base + k], a = v < 0 ? -v : v;
-                        float m = s_pow43[a > 8207 ? 8207 : a] * sc;
+                        int v = q[base + k], a;
+                        float m;
+                        if (!v) continue;        /* most are: x is already 0 */
+                        a = v < 0 ? -v : v;
+                        m = s_pow43[a > 8207 ? 8207 : a] * sc;
                         x[base + k] = v < 0 ? -m : m;
                     }
                 }
@@ -635,13 +628,8 @@ static int element_lfe(void)
     return ics(&s_ics[0], 0, 0);
 }
 
-static void skip_bits(u32 n)
-{
-    s_pos += n;
-    if (s_pos > s_end) s_over = 1;
-}
-
-static void align(void) { s_pos = (s_pos + 7) & ~7u; }
+static void skip_bits(u32 n) { bits_skip(&s_b, n); }
+static void align(void) { bits_align(&s_b); }
 
 static int element_data(void)
 {
@@ -709,9 +697,9 @@ static void emit(void)
     int H = C.half ? 512 : 1024, i;
     float g = 32767.0f / 32768.0f * AUDIO_HEADROOM / (float)(C.nch ? C.nch : 1);
     for (i = 0; i < H; i++) {
-        float v = (C.ov[i] + C.acc[i] * g);
+        int o = dsp_round(C.ov[i] + C.acc[i] * g);
         C.ov[i] = C.acc[H + i] * g;
-        C.out[C.out_n++] = (s16)(v > 32767.0f ? 32767 : v < -32768.0f ? -32768 : (int)v);
+        C.out[C.out_n++] = (s16)(o > 32767 ? 32767 : o < -32768 ? -32768 : o);
     }
 }
 
@@ -749,11 +737,10 @@ static int frame(AudioIn *in)
         }
         prot = !(p[1] & 1);
         nblocks = (p[6] & 3) + 1;
-        s_bp = p;
-        s_end = (u32)len * 8;
-        s_pos = 56 + (prot ? 16 * nblocks : 0);   /* positions and the check */
-        if (prot && nblocks == 1) s_pos = 56 + 16;
-        s_over = 0;
+        memcpy(s_frame, p, (u32)len);
+        s_frame[len] = s_frame[len + 1] = s_frame[len + 2] = s_frame[len + 3] = 0;
+        bits_init(&s_b, s_frame, (u32)len);
+        bits_skip(&s_b, 56 + (prot ? 16 * nblocks : 0));   /* positions and the check */
         C.out_n = C.out_at = 0;
         for (b = 0; b < nblocks; b++) {
             if (raw_block()) { emit(); good = 1; }

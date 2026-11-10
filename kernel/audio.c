@@ -34,6 +34,8 @@ static volatile u32 s_head, s_tail;      /* apps write at head, the timer reads 
 static volatile u32 s_fill;              /* where in s_dma the timer writes next */
 static volatile int s_on;
 static u32 s_rate;
+static void (*volatile s_feeder)(void);  /* an app's refill routine        */
+static volatile int s_feeding;
 
 /* ---- the DSP ---------------------------------------------------------------- */
 static int dsp_reset(u16 b)
@@ -171,6 +173,57 @@ int audio_open(int rate)
     return (int)s_rate;
 }
 
+/* ---- refilling, at interrupt time ---------------------------------------
+ * A player cannot rely on being asked for more when it is convenient for
+ * it: the app may be drawing, or waiting on the network, for longer than
+ * the queue lasts.  So, the way the Mac's Sound Manager did it, the app
+ * hands over a refill routine and the timer calls it whenever the queue
+ * has room.  It runs after the interrupt is acknowledged, with interrupts
+ * back on, so the clock, the keys and the network card carry on around
+ * it; never inside itself; and with the floating-point unit's state saved,
+ * since decoders use it and so may whatever it interrupted. */
+void audio_feeder(void (*fn)(void))
+{
+    s_feeder = fn;
+}
+
+static volatile u32 s_feed_cycles;       /* spent in the refill, so far    */
+
+void audio_deferred(void)
+{
+    static u8 fpu[128] __attribute__((aligned(16)));
+    void (*fn)(void) = s_feeder;
+    u32 t0;
+    if (!fn || s_feeding || !s_on || audio_space() < 2048) return;
+    s_feeding = 1;
+    t0 = g_cpu_mhz ? tsc32() : 0;
+    __asm__ __volatile__("fnsave %0" : "=m"(fpu));
+    __asm__ __volatile__("sti");
+    fn();
+    __asm__ __volatile__("cli");
+    __asm__ __volatile__("frstor %0" : : "m"(fpu));
+    if (g_cpu_mhz) s_feed_cycles += tsc32() - t0;
+    s_feeding = 0;
+}
+
+/* Every ten seconds while sound plays, down the serial wire: what share of
+ * the machine the refill took, and how many frames the screen drew a
+ * second -- the two numbers that say whether playing costs the screen
+ * anything.  From the main loop, not the interrupt. */
+void audio_tell(u32 fps)
+{
+    static u32 at, cyc0;
+    u32 now = ms_now(), cyc;
+    if (!s_on || !g_cpu_mhz) { at = 0; return; }
+    if (!at) { at = now; cyc0 = s_feed_cycles; return; }
+    if (now - at < 10000) return;
+    cyc = s_feed_cycles - cyc0;
+    serial_printf("[audio] decoding took %u.%u%% of the machine; the screen drew %u frames a second\n",
+                  cyc / (g_cpu_mhz * (now - at) * 10u), (cyc / (g_cpu_mhz * (now - at))) % 10u, fps);
+    at = now;
+    cyc0 = s_feed_cycles;
+}
+
 int audio_space(void)
 {
     u32 used = (s_head + RING_LEN - s_tail) % RING_LEN;
@@ -190,6 +243,7 @@ int audio_write(const u8 *p, int n)
 
 void audio_close(void)
 {
+    s_feeder = 0;
     if (!s_on) return;
     s_on = 0;
     dsp_w(0xD0);                                 /* pause                  */

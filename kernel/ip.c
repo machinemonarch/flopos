@@ -579,14 +579,21 @@ static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
  * either there or it is not, and if it is not we go and draw another
  * frame of the screen instead.
  */
+/* For testing on the emulator, whose card never loses anything: throw
+ * away every Nth frame that arrives, the way a full 3C589 would (`net
+ * drop N`; 0, the default, keeps them all). */
+u32 g_net_drop;
+
 void ip_poll(void)
 {
+    static u32 seen;
     u8 f[NET_MTU];
     int len, guard;
 
     for (guard = 0; guard < 48; guard++) {
         len = net_recv(f, (int)sizeof f);
         if (len < 14) return;
+        if (g_net_drop && ++seen % g_net_drop == 0) continue;
         rand_add((u32)len ^ ((u32)f[len - 1] << 16));
 
         switch (get16(f + 12)) {

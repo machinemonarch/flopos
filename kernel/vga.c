@@ -308,6 +308,21 @@ void vga_present(void)
     memcpy32((void *)VGA_FB, g_back, SCR_PIX / 4);
 }
 
+/* What was under a covering window was not drawn this frame: the big
+ * picture keeps what it had, and is not blown up again from the small. */
+void vga_keep_composed(void) { s_composed = 1; }
+
+/* Only the rows that changed, to the card. */
+void vga_present_rows(int y0, int y1)
+{
+    if (!s_hi) { vga_present(); return; }
+    if (y0 < 0) y0 = 0;
+    if (y1 >= HI_H) y1 = HI_H - 1;
+    s_composed = 0;
+    if (y1 < y0) return;
+    memcpy32((u8 *)s_lfb + y0 * HI_W, s_hi + y0 * HI_W, (u32)(y1 - y0 + 1) * HI_W / 4);
+}
+
 void vga_clear(u8 colour)
 {
     u32 v = colour;

@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 3
+#define APP_API_VERSION 4
 #define APP_BASE        0x00A00000u      /* 10MB, clear of the kernel heap */
 #define APP_MAX         0x00800000u      /* 8MB: code, data and buffers    */
 
@@ -171,6 +171,17 @@ typedef struct {
     int  (*audio_queued)(void);
     int  (*audio_write)(const u8 *p, int n);
     void (*audio_close)(void);
+
+    /* ---- version 4 ------------------------------------------------------ */
+    /* A refill routine for the queue above, called by the system timer --
+     * at interrupt time, the way the Mac's Sound Manager called its
+     * players' -- whenever the queue has room, whatever the app is doing
+     * meanwhile.  It may use audio_space, audio_queued, audio_write and
+     * ms, and its own memory; nothing else.  It should come back within
+     * about 4 ms, so no frame of the screen waits long on it; it is called
+     * again, a thousand times a second, while there is room.  The floating-point unit is saved around it.  0 stops it;
+     * audio_close stops it too. */
+    void (*audio_feeder)(void (*fn)(void));
 } Api;
 
 typedef int (*AppMain)(const Api *api, int argc, char **argv);

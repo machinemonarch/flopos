@@ -64,7 +64,7 @@ int  flac_one(const u8 *frame, u32 len, s16 *out);
 /* From the recording's rate to the card's, as 8-bit unsigned.  From twice
  * the card's rate or more, neighbouring samples are averaged first, so
  * what is too high to play does not fold back down as noise. */
-typedef struct { u32 step, phase; s16 prev; int taps, h; s32 sum; s16 hist[8]; } Resampler;
+typedef struct { u32 step, phase; s16 prev; int taps, h; s32 sum, recip, err; s16 hist[8]; } Resampler;
 void rs_init(Resampler *r, int from, int to);
 int  rs_run(Resampler *r, const s16 *in, int n, u8 *out);   /* out: n * to / from + 2 room */
 

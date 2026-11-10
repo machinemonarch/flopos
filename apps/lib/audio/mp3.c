@@ -26,6 +26,8 @@
  */
 #include "decode.h"
 #include "mp3tab.h"
+#include "dsp.h"                         /* apps/lib/dsp: the fast DCT, quick rounding */
+#include "prefix.h"                      /* apps/lib/bits: codebooks by table */
 
 /* ---- maths without a library ---------------------------------------------- */
 static double fsin(double x) { double r; __asm__("fsin" : "=t"(r) : "0"(x)); return r; }
@@ -37,43 +39,43 @@ static double fsqrt(double x) { double r; __asm__("fsqrt" : "=t"(r) : "0"(x)); r
 static float s_pow43[8207];              /* |x|^(4/3)                       */
 static float s_pow2q[512];               /* 2^(e/4), e from -400            */
 #define POW2Q(e) s_pow2q[(e) + 400 < 0 ? 0 : (e) + 400 > 511 ? 511 : (e) + 400]
-static float s_imdct_l[18][36];          /* cos for the long transform      */
+static float s_dct4[18][18];             /* the long transform, as a DCT-IV  */
 static float s_imdct_s[6][12];
 static float s_win[4][36];               /* windows by block type           */
-static float s_synth_n[64][32];          /* the synthesis matrix            */
 static float s_cs[8], s_ca[8];           /* alias reduction                 */
 static int   s_ready;
 
-/* Huffman: each table as a binary tree, nodes in pairs; a negative entry
- * is a leaf, -(1 + value). */
-static short s_tree[34][2 * 600];
-static int   s_tree_n[34];
+/* Huffman: each table decoded by lookup on the next nine bits (prefix.h),
+ * not walked a bit at a time.  Tables that share their codes share one. */
+static Prefix s_hp[34];
+static int    s_hp_ok[34];
+static u32    s_hstore[32768];
 
-static void build_tree(int t)
+static void build_codes(void)
 {
-    int k, n = 2;                        /* node 0 is the root              */
-    short *tr = s_tree[t];
-    tr[0] = tr[1] = 0;
-    for (k = 0; k < HTAB[t].n; k++) {
-        u32 c = HTAB[t].codes[k];
-        int len = (int)(c >> 24), code = (int)((c >> 8) & 0xFFFF), val = (int)(c & 0xFF), b, node = 0;
-        for (b = len - 1; b >= 0; b--) {
-            int bit = (code >> b) & 1;
-            if (b == 0) { tr[node + bit] = (short)(-1 - val); break; }
-            if (tr[node + bit] <= 0) {
-                tr[node + bit] = (short)n;
-                tr[n] = tr[n + 1] = 0;
-                n += 2;
-            }
-            node = tr[node + bit];
+    static u32 codes[256];
+    static u8 lens[256];
+    u32 used = 0;
+    int t, k, i;
+    for (t = 0; t < 34; t++) {
+        if (!HTAB[t].codes) continue;
+        for (k = 0; k < t; k++)
+            if (HTAB[k].codes == HTAB[t].codes && s_hp_ok[k]) { s_hp[t] = s_hp[k]; s_hp_ok[t] = 1; break; }
+        if (s_hp_ok[t]) continue;
+        for (i = 0; i < 256; i++) lens[i] = 0;
+        for (i = 0; i < HTAB[t].n; i++) {
+            u32 c = HTAB[t].codes[i];
+            codes[c & 0xFF] = (c >> 8) & 0xFFFF;
+            lens[c & 0xFF] = (u8)(c >> 24);
         }
+        s_hp_ok[t] = prefix_build(&s_hp[t], s_hstore + used, (u32)(sizeof s_hstore / 4) - used, 9, codes, lens, 256, 0);
+        if (s_hp_ok[t]) used += s_hp[t].used;
     }
-    s_tree_n[t] = n;
 }
 
 static void tables(void)
 {
-    int i, k, t;
+    int i, k;
     if (s_ready) return;
     for (i = 0; i < 8207; i++) {
         /* x^(4/3) = x * cbrt(x); the cube root by Newton from a guess. */
@@ -91,9 +93,8 @@ static void tables(void)
         while (q < 0) { v *= 0.5; q++; }
         s_pow2q[i] = (float)v;
     }
-    for (i = 0; i < 36; i++)
-        for (k = 0; k < 18; k++)
-            s_imdct_l[k][i] = (float)fcos(PI / 72.0 * (2 * i + 1 + 18) * (2 * k + 1));
+    for (i = 0; i < 18; i++)
+        for (k = 0; k < 18; k++) s_dct4[i][k] = (float)fcos(PI / 18.0 * (i + 0.5) * (k + 0.5));
     for (i = 0; i < 12; i++)
         for (k = 0; k < 6; k++)
             s_imdct_s[k][i] = (float)fcos(PI / 24.0 * (2 * i + 1 + 6) * (2 * k + 1));
@@ -103,9 +104,6 @@ static void tables(void)
         s_win[3][i] = i < 6 ? 0.0f : i < 12 ? (float)fsin(PI / 12.0 * (i - 6 + 0.5)) : i < 18 ? 1.0f : s_win[0][i];
         s_win[2][i] = i < 12 ? (float)fsin(PI / 12.0 * (i + 0.5)) : 0.0f;
     }
-    for (i = 0; i < 64; i++)
-        for (k = 0; k < 32; k++)
-            s_synth_n[i][k] = (float)fcos((16 + i) * (2 * k + 1) * PI / 64.0);
     {
         static const double ci[8] = { -0.6, -0.535, -0.33, -0.185, -0.095, -0.041, -0.0142, -0.0037 };
         for (i = 0; i < 8; i++) {
@@ -114,7 +112,7 @@ static void tables(void)
             s_ca[i] = (float)(ci[i] / sq);
         }
     }
-    for (t = 0; t < 34; t++) if (HTAB[t].codes) build_tree(t);
+    build_codes();
     s_ready = 1;
 }
 
@@ -158,27 +156,36 @@ static struct {
     Granule gr[2][2];
     u8  sf_l[2][22];                     /* long-block scalefactors         */
     u8  sf_s[2][13][3];                  /* short, by window                */
-    u8  res[4096];                       /* the bit reservoir               */
+    u8  res[4096 + 4];                   /* the bit reservoir, and room to read past it */
     int res_len;
     float xr[2][576];                    /* frequency lines                 */
     float overlap[2][32][18];
     float sb[18][32];                    /* subband samples, both channels  */
-    float v[1024];                       /* the synthesis's history         */
+    float v[2048];                       /* the synthesis's history, twice over */
     int   voff;
     s16  out[1152];                      /* a frame's samples, not yet taken */
     int   out_n, out_at;
     const u8 *bits;                      /* main data being read            */
     u32   bitpos, bitend;
+    int   nz[2];                         /* lines past this are zero, per channel */
+    int   sblim;                         /* subbands this granule needs transformed */
+    int   aalim;                         /* and the alias reduction's reach (not cut to half rate) */
 } M;
+
+/* Up to 25 bits at once, with one load (bits.h); the buffers have four
+ * zero bytes after their end, and from past the end it reads nothing. */
+static inline u32 peekbits(int n)
+{
+    return (bits_be32(M.bits + (M.bitpos >> 3)) << (M.bitpos & 7)) >> (32 - n);
+}
 
 static u32 getbits(int n)
 {
-    u32 v = 0;
-    while (n-- > 0) {
-        u32 b = M.bitpos < M.bitend ? (M.bits[M.bitpos >> 3] >> (7 - (M.bitpos & 7))) & 1 : 0;
-        M.bitpos++;
-        v = (v << 1) | b;
-    }
+    u32 v;
+    if (n <= 0) return 0;
+    if (M.bitpos >= M.bitend) { M.bitpos += (u32)n; return 0; }
+    v = peekbits(n);
+    M.bitpos += (u32)n;
     return v;
 }
 
@@ -207,10 +214,12 @@ static int header(const u8 *p, int *ver, int *sri, int *nch, int *kbps)
 }
 
 /* ---- side information --------------------------------------------------------- */
-static void side_info(const u8 *p)
+static void side_info(const u8 *p, int si)
 {
+    static u8 side[32 + 4];
     int ch, g, ng = M.lsf ? 1 : 2, i;
-    M.bits = p; M.bitpos = 0; M.bitend = 32 * 8;
+    for (i = 0; i < 36; i++) side[i] = i < si ? p[i] : 0;   /* padded, for reading past */
+    M.bits = side; M.bitpos = 0; M.bitend = 32 * 8;
     M.main_begin = (int)getbits(M.lsf ? 8 : 9);
     getbits(M.lsf ? (M.nch == 1 ? 1 : 2) : (M.nch == 1 ? 5 : 3));     /* private */
     if (!M.lsf) for (ch = 0; ch < M.nch; ch++) for (i = 0; i < 4; i++) M.scfsi[ch][i] = (int)getbits(1);
@@ -312,15 +321,17 @@ static void scalefactors2(int ch)
 /* ---- Huffman, and putting the numbers back to scale ------------------------------ */
 static int huff(int t)
 {
-    const short *tr = s_tree[t];
-    int node = 0;
-    if (!s_tree_n[t]) return 0;
-    for (;;) {
-        int next = tr[node + (int)getbits(1)];
-        if (next < 0) return -1 - next;
-        if (next == 0 || M.bitpos > M.bitend) return 0;  /* a code that is not one */
-        node = next;
+    const Prefix *hp = &s_hp[t];
+    u32 e;
+    if (!s_hp_ok[t] || M.bitpos >= M.bitend) return 0;
+    e = hp->tab[peekbits(hp->root)];
+    if (e & PREFIX_SUB) {
+        M.bitpos += (u32)hp->root;
+        e = hp->tab[(e >> 8) + peekbits((int)(e & 0x3F))];
     }
+    if (!(e & 0x3F)) return 0;                      /* a code that is not one */
+    M.bitpos += e & 0x3F;
+    return (int)(e >> 8);
 }
 
 static const u16 *sfb_long(void)  { return M.lsf ? SFB_LONG2[(M.ver - 1) * 3 + M.sr_index] : SFB_LONG1[M.sr_index]; }
@@ -357,6 +368,7 @@ static void huffman(int g, int ch, u32 end, int *is)
         for (k = 0; k < 4; k++) is[i + k] = q[k];
         i += 4;
     }
+    M.nz[ch] = i;
     for (; i < 576; i++) is[i] = 0;
     M.bitpos = end;
 }
@@ -392,12 +404,17 @@ static void requantize(int g, int ch, const int *is)
         for (; i < 576; i++) xr[i] = 0;
         return;
     }
-    for (sfb = 0, i = 0; sfb < 22; sfb++)
-        for (; i < bl[sfb + 1]; i++) {
-            int e = gg - mult * (M.sf_l[ch][sfb] + (G->preflag ? PRETAB[sfb] : 0)), a = is[i] < 0 ? -is[i] : is[i];
-            float v = a ? s_pow43[a > 8206 ? 8206 : a] * POW2Q(e) : 0.0f;
-            xr[i] = is[i] < 0 ? -v : v;
+    /* Only up to the last line Huffman gave anything for; one scale a band. */
+    for (sfb = 0, i = 0; sfb < 22 && i < M.nz[ch]; sfb++) {
+        float sc = POW2Q(gg - mult * (M.sf_l[ch][sfb] + (G->preflag ? PRETAB[sfb] : 0)));
+        for (; i < bl[sfb + 1] && i < M.nz[ch]; i++) {
+            int v = is[i], a;
+            if (!v) { xr[i] = 0; continue; }
+            a = v < 0 ? -v : v;
+            xr[i] = v < 0 ? -(s_pow43[a > 8206 ? 8206 : a] * sc) : s_pow43[a > 8206 ? 8206 : a] * sc;
         }
+    }
+    for (; i < 576; i++) xr[i] = 0;
 }
 
 /* Short blocks come window by window inside each band; the transform wants
@@ -428,6 +445,7 @@ static void antialias(int g, int ch)
     if (G->window_switching && G->block_type == 2 && !G->mixed) return;
     lim = G->window_switching && G->block_type == 2 ? 2 : 32;
     if (M.half && lim > 17) lim = 17;
+    if (lim > M.aalim) lim = M.aalim;
     for (sb = 1; sb < lim; sb++)
         for (i = 0; i < 8; i++) {
             float a = xr[18 * sb - 1 - i], b = xr[18 * sb + i];
@@ -447,6 +465,15 @@ static void imdct(int g, int ch)
     for (sb = 0; sb < nsb; sb++) {
         float z[36];
         const float *X = xr + 18 * sb;
+        if (sb >= M.sblim) {             /* silent: only what overlaps from before */
+            for (i = 0; i < 18; i++) {
+                float v = M.overlap[ch][sb][i];
+                M.overlap[ch][sb][i] = 0;
+                if ((sb & 1) && (i & 1)) v = -v;
+                M.sb[i][sb] += v;
+            }
+            continue;
+        }
         int bt = G->window_switching && G->mixed && sb < 2 ? 0 : G->block_type;
         if (bt == 2) {
             for (i = 0; i < 36; i++) z[i] = 0;
@@ -457,10 +484,20 @@ static void imdct(int g, int ch)
                     z[6 * w + i + 6] += s * s_win[2][i];
                 }
         } else {
-            for (i = 0; i < 36; i++) {
+            /* The 36-point inverse MDCT is an 18-point DCT-IV read out
+             * from its middle, carried on past its ends by the DCT-IV's
+             * own symmetries (as in mdct.c): half the multiplications. */
+            float u[18];
+            for (i = 0; i < 18; i++) {
+                const float *c = s_dct4[i];
                 float s = 0;
-                for (k = 0; k < 18; k++) s += X[k] * s_imdct_l[k][i];
-                z[i] = s * s_win[bt][i];
+                for (k = 0; k < 18; k++) s += X[k] * c[k];
+                u[i] = s;
+            }
+            for (i = 0; i < 36; i++) {
+                int j = i + 9;
+                float y = j < 18 ? u[j] : j < 36 ? -u[35 - j] : -u[j - 36];
+                z[i] = y * s_win[bt][i];
             }
         }
         for (i = 0; i < 18; i++) {
@@ -479,24 +516,31 @@ static void synth(s16 *out)
     int slot, i, k, nsb = M.half ? 16 : 32, step = M.half ? 2 : 1, n = 0;
     float scale = 32768.0f * AUDIO_HEADROOM / (float)M.nch;
     for (slot = 0; slot < 18; slot++) {
-        float *v;
+        float *v, X[32];
         const float *S = M.sb[slot];
         M.voff = (M.voff - 64) & 1023;
         v = M.v + M.voff;
-        for (i = 0; i < 64; i++) {
-            float s = 0;
-            const float *row = s_synth_n[i];
-            for (k = 0; k < nsb; k++) s += row[k] * S[k];
-            v[i] = s;
-        }
+        /* The matrixing -- 64 sums over k of cos((16 + i)(2k + 1) pi/64) S[k]
+         * -- is one 32-point cosine transform X laid out by its symmetries:
+         * v[i] is X[16 + i] below 16, nothing at 16, -X[48 - i] up to 47 and
+         * -X[i - 48] after.  80 multiplications instead of 2048. */
+        for (k = 0; k < nsb; k++) X[k] = S[k];
+        for (; k < 32; k++) X[k] = 0;
+        dsp_dct2(X, 32);
+        for (i = 0; i < 16; i++) v[i] = X[16 + i];
+        v[16] = 0;
+        for (i = 17; i < 48; i++) v[i] = -X[48 - i];
+        for (i = 48; i < 64; i++) v[i] = -X[i - 48];
+        /* The history is kept twice over, so the window below reads it in
+         * one straight run from voff, with no wrapping round. */
+        for (i = 0; i < 64; i++) M.v[M.voff + 1024 + i] = v[i];
         for (k = 0; k < 32; k += step) {
+            const float *a = M.v + M.voff + k, *d = SYNTH_D + k;
             float s = 0;
-            for (i = 0; i < 8; i++) {
-                s += M.v[(M.voff + i * 128 + k) & 1023] * SYNTH_D[i * 64 + k];
-                s += M.v[(M.voff + i * 128 + 96 + k) & 1023] * SYNTH_D[i * 64 + 32 + k];
-            }
-            s *= scale;
-            out[n++] = (s16)(s > 32767.0f ? 32767 : s < -32768.0f ? -32768 : (int)s);
+            int o;
+            for (i = 0; i < 8; i++, a += 128, d += 64) s += a[0] * d[0] + a[96] * d[32];
+            o = dsp_round(s * scale);
+            out[n++] = (s16)(o > 32767 ? 32767 : o < -32768 ? -32768 : o);
         }
     }
 }
@@ -562,7 +606,7 @@ static int frame(AudioIn *in)
     M.frame_len = len;
     si = M.lsf ? (nch == 1 ? 9 : 17) : (nch == 1 ? 17 : 32);
     if (4 + (M.crc ? 2 : 0) + si > len) { in->pos += (u32)len; return 2; }   /* skipped */
-    side_info(p + 4 + (M.crc ? 2 : 0));
+    side_info(p + 4 + (M.crc ? 2 : 0), si);
 
     /* The main data: this frame's, after what earlier frames left in the
      * reservoir; where it starts is main_begin bytes back. */
@@ -578,6 +622,7 @@ static int frame(AudioIn *in)
         }
         for (k = 0; k < body; k++) M.res[M.res_len + k] = b[k];
         M.res_len += body;
+        for (k = 0; k < 4; k++) M.res[M.res_len + k] = 0;
     }
     in->pos += (u32)len;
     for (g = 0; g < 18; g++) for (ch = 0; ch < 32; ch++) M.sb[g][ch] = 0;
@@ -599,10 +644,25 @@ static int frame(AudioIn *in)
             huffman(g, ch, part_start + (u32)M.gr[g][ch].part23, is);
             requantize(g, ch, is);
         }
+        /* Above the last line with anything in it, in every channel, the
+         * spectrum is silent, and so are those subbands after the
+         * transform: they need none (but one, which the alias reduction
+         * reaches into).  Short blocks move lines about, so not then. */
+        {
+            int nzmax = 0, shortb = 0, nsb = M.half ? 16 : 32;
+            for (ch = 0; ch < M.nch; ch++) {
+                if (M.nz[ch] > nzmax) nzmax = M.nz[ch];
+                if (M.gr[g][ch].window_switching && M.gr[g][ch].block_type == 2) shortb = 1;
+            }
+            M.aalim = shortb ? 32 : (nzmax + 17) / 18 + 1;
+            M.sblim = M.aalim > nsb ? nsb : M.aalim;
+            if (shortb) M.nz[0] = M.nz[1] = 576;
+            else M.nz[0] = M.nz[1] = nzmax;
+        }
         /* Mid/side back to left/right -- for mono, only their sum counts. */
         if (M.nch == 2 && M.mode == 1 && (M.mode_ext & 2)) {
             int i;
-            for (i = 0; i < 576; i++) {
+            for (i = 0; i < M.nz[0]; i++) {
                 float m = M.xr[0][i], s = M.xr[1][i];
                 M.xr[0][i] = (m + s) * 0.70710678f;
                 M.xr[1][i] = (m - s) * 0.70710678f;

@@ -112,10 +112,13 @@ long, and **s** stops it.
 the station's name, what the station says is on now, and how long you have
 been listening. **Esc** stops it.
 
-It starts once about three seconds have arrived. If the network falls
-behind and the sound runs out, it waits for three seconds again before
-going on, rather than stuttering through each scrap as it comes. A station
-that hangs up is called back, up to five times in a row.
+It starts once about three seconds have arrived, and the player screen
+shows how many seconds are in hand. The decoding is done by the system's
+timer, whatever browzer is doing, so the music doesn't pause for pages,
+drawing or the network (see [techniques.md](techniques.md)). If the
+network ever falls behind and the sound runs out, it gathers a bigger
+cushion before going on, rather than stuttering through each scrap. A
+station that hangs up is called back, up to five times in a row.
 
 Everything plays in mono, at about 22 kHz, which is what the laptop's Sound
 Blaster plays. To keep up on a 120 MHz Pentium, mp3, AAC and Ogg Vorbis at

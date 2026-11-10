@@ -66,11 +66,14 @@ static void after_prompt(void)
 static u32 s_last_frame;
 static int s_pumping;                    /* a menu has the keyboard        */
 
+/* At 800x600 a frame every 33 ms, on a steady beat: one drawn late does
+ * not push all the later ones back with it. */
 static int frame_due(void)
 {
-    u32 every = vga_is_big() ? 33 : 0;
-    if (ms_now() - s_last_frame < every) return 0;
-    s_last_frame = ms_now();
+    u32 every = vga_is_big() ? 33 : 0, now = ms_now();
+    if (now - s_last_frame < every) return 0;
+    s_last_frame += every;
+    if (now - s_last_frame >= every) s_last_frame = now;    /* far behind: start over */
     return 1;
 }
 
@@ -91,10 +94,17 @@ static void draw_frame_now(u32 t)
 {
     u32 a, b;
 
+    int covered = term_win_covers();
+
+    /* Under a window that covers the whole screen nothing can be seen,
+     * so nothing is drawn there; see term.c. */
     a = perf_clock();
-    mood_draw(g_back, t);
-    banana_draw(g_back, t);              /* over the background, always    */
-    vga_compose();                       /* and blown up, if we are big    */
+    if (!covered) {
+        mood_draw(g_back, t);
+        banana_draw(g_back, t);          /* over the background, always    */
+        vga_compose();                   /* and blown up, if we are big    */
+    } else
+        vga_keep_composed();
     b = perf_clock(); perf_add(PERF_ROOM, b - a); a = b;
 
     /* The text goes on last and at the real size, which is the whole point
@@ -111,7 +121,14 @@ static void draw_frame_now(u32 t)
     if (!vga_is_big()) vga_wait_retrace();
     b = perf_clock(); perf_add(PERF_WAIT, b - a); a = b;
 
-    vga_present();
+    if (covered && vga_is_big()) {
+        int y0, y1;
+        if (term_dirty_rows(&y0, &y1)) vga_present_rows(y0, y1);
+    } else {
+        int y0, y1;
+        (void)term_dirty_rows(&y0, &y1);
+        vga_present();
+    }
     b = perf_clock(); perf_add(PERF_BLIT, b - a);
 
     s_frames++;
@@ -134,6 +151,7 @@ void main_pump(int now)
 {
     u32 t = ms_now();
     if (net_ready()) ip_poll();
+    audio_tell(s_fps);
     s_pumping = 1;
     if (now || frame_due()) draw_frame_now(t);
     s_pumping = 0;

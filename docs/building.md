@@ -94,6 +94,23 @@ The encryption code was also tested on the PC against OpenSSL and Python
 across thousands of random inputs, and ML-KEM against NIST's official test
 vectors, before it went into FLOPOS.
 
+### As slow as the laptop
+
+The emulator normally runs far faster than a 120 MHz Pentium, which hides
+anything that only goes wrong on a slow machine. To hold it to about the
+laptop's speed:
+
+    qemu-system-i386 ... -icount shift=4,sleep=on,align=on
+
+`align=on` keeps the emulated clock with the real one. Without it, a radio
+stream from the real world arrives ten times too slowly.
+
+The emulator's network card never loses anything, and a real 3Com does.
+`net drop 10` makes FLOPOS throw away every tenth frame that arrives, to
+test recovery; `net drop 0` stops it. While sound plays, the serial cable
+reports every ten seconds what decoding costs, the screen's frame rate and
+how much music is in hand (see [techniques.md](techniques.md)).
+
 ## Version numbers
 
 `MAJOR.MINOR.PATCH`, kept in `VERSION`:

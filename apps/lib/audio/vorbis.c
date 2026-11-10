@@ -453,6 +453,8 @@ static struct {
     int flac;                            /* the Ogg holds FLAC, not Vorbis  */
     u32 serial;
     float *prev;                          /* the last block, windowed         */
+    float *slope[2];                      /* the window's rising edges, worked out once */
+    int    slope_n[2];
     int prev_n, have_prev;
     float *vec[MAXCH];
     s16 out[16384];
@@ -477,6 +479,8 @@ static int setup_ident(const u8 *p, int len)
     V.half = V.rate >= 32000;
     return 1;
 }
+
+static float wslope(int i, int n);
 
 static int setup_main(const u8 *p, int len)
 {
@@ -539,7 +543,18 @@ static int setup_main(const u8 *p, int len)
         if (!V.vec[i]) return 0;
     }
     V.prev = (float *)take((u32)V.bs[1] * 4);
-    return V.prev != 0;
+    if (!V.prev) return 0;
+    /* The window's edges come in only two lengths, half a short block and
+     * half a long one (at half rate, half that): worked out here once, not
+     * with two sines at every sample of every block. */
+    for (i = 0; i < 2; i++) {
+        int len = (V.half ? V.bs[i] / 2 : V.bs[i]) / 2;
+        V.slope[i] = (float *)take((u32)len * 4);
+        if (!V.slope[i]) return 0;
+        V.slope_n[i] = len;
+        for (j = 0; j < len; j++) V.slope[i][j] = wslope(j, len);
+    }
+    return 1;
 }
 
 /* The window's rising edge, n samples long. */
@@ -608,15 +623,12 @@ static void audio_packet(const u8 *p, int len)
         int bs0 = V.half ? V.bs[0] / 2 : V.bs[0];
         int ln = blk && !prevw ? bs0 / 2 : n2 / 2, rn = blk && !nextw ? bs0 / 2 : n2 / 2;
         int ls = n2 / 4 - ln / 2, rs = n2 * 3 / 4 - rn / 2;
-        for (i = 0; i < n2; i++) {
-            float w;
-            if (i < ls) w = 0;
-            else if (i < ls + ln) w = wslope(i - ls, ln);
-            else if (i < rs) w = 1;
-            else if (i < rs + rn) w = wslope(rs + rn - 1 - i, rn);
-            else w = 0;
-            tbuf[i] *= w;
-        }
+        const float *lw = ln == V.slope_n[0] ? V.slope[0] : V.slope[1];
+        const float *rw = rn == V.slope_n[0] ? V.slope[0] : V.slope[1];
+        for (i = 0; i < ls; i++) tbuf[i] = 0;
+        for (; i < ls + ln; i++) tbuf[i] *= lw[i - ls];
+        for (i = rs; i < rs + rn; i++) tbuf[i] *= rw[rs + rn - 1 - i];
+        for (; i < n2; i++) tbuf[i] = 0;
     }
 
     /* Overlap with the block before: from its centre to this one's. */
