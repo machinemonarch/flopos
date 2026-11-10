@@ -43,6 +43,15 @@ void timer_irq(void)
 
 void clock_watch(void);
 
+/* Nothing to do until the next interrupt (a millisecond at most): the
+ * processor halts, and the time is counted as idle for the HUD. */
+void idle_wait(void)
+{
+    u32 a = g_cpu_mhz ? tsc32() : 0;
+    __asm__ __volatile__("sti; hlt");
+    if (g_cpu_mhz) g_idle_cycles += tsc32() - a;
+}
+
 /* ticks * 4 exactly; at 250Hz one tick is 4ms.
  *
  * Every wait in FLOPOS asks this what time it is, which makes it the one
@@ -154,5 +163,5 @@ void delay_ms(u32 ms)
     /* No cycle counter on a 486, so nothing to referee with: trust the
      * tick, which with every BIOS call going through bios_int() is now
      * safe to trust. */
-    while ((s32)(g_ticks - target) < 0) hlt();
+    while ((s32)(g_ticks - target) < 0) idle_wait();
 }

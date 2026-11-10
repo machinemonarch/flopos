@@ -111,6 +111,32 @@ test recovery; `net drop 0` stops it. While sound plays, the serial cable
 reports every ten seconds what decoding costs, the screen's frame rate and
 how much music is in hand (see [techniques.md](techniques.md)).
 
+## The test tools
+
+Kept here, so they are never written again:
+
+- `tools/audiotest/render.c` plays a tracker song on this PC through
+  FLOPOS's own tracker; `compare.py` holds the result up against
+  libopenmpt. `songs.txt` lists the songs from The Mod Archive that test
+  it, and `fetch.py` fetches them (they are their authors', so they are
+  never kept here).
+- `tools/bench/site.py` is a small web site that imitates the sites
+  browzer has had trouble with: The Mod Archive's downloads, DuckDuckGo's
+  front page, ERICADE Radio, 72fm.com and an AzuraCast station.
+- `tools/bench/run.py` boots the image in the emulator, opens pages and
+  presses keys, and checks each step against what FLOPOS says on its
+  serial wire. It prints a line per step: ok, or what was wrong.
+  browzer writes a line there for each page it gets (`[page] ...`) and the
+  HUD for each time it closes (`[hud] ...`). It also records everything
+  the Sound Blaster played, which `findsong.py` can find a song in.
+
+`run.py` waits for FLOPOS's own messages rather than pausing, and lets the
+emulated clock run ahead of the wall's. A full check takes about half a
+minute. `--slow` holds it to the laptop's speed, for timing:
+
+    tools/bench/run.py dist/flopos.img /tmp/out --site SONGS \
+        'm/201549=>octet-stream' 'key:ctrl-shift-f10' 'type:whoami\n=>alright'
+
 ## Version numbers
 
 `MAJOR.MINOR.PATCH`, kept in `VERSION`:

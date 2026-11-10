@@ -116,14 +116,16 @@ static void draw_frame_now(u32 t)
         term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
     term_render(vga_canvas(), t);
     if (g_frame_fx) g_frame_fx(vga_canvas(), vga_width(), vga_height(), t);
+    hud_frame(vga_canvas(), t);
     b = perf_clock(); perf_add(PERF_TEXT, b - a); a = b;
 
     if (!vga_is_big()) vga_wait_retrace();
     b = perf_clock(); perf_add(PERF_WAIT, b - a); a = b;
 
     if (covered && vga_is_big()) {
-        int y0, y1;
+        int y0, y1, hx0, hy0, hx1, hy1;
         if (term_dirty_rows(&y0, &y1)) vga_present_rows(y0, y1);
+        if (hud_rect(&hx0, &hy0, &hx1, &hy1)) vga_present_rect(hx0, hy0, hx1, hy1);
     } else {
         int y0, y1;
         (void)term_dirty_rows(&y0, &y1);
@@ -147,14 +149,22 @@ static void draw_frame_now(u32 t)
  * network answered, the clock refereed, the screen drawn when a frame is
  * due.  `now` draws one regardless, for putting up a message before
  * something slow starts. */
+static u32 s_pump_out;                   /* the cycle counter, when it last returned */
+
 void main_pump(int now)
 {
-    u32 t = ms_now();
+    u32 t;
+    /* Called again at once, with nothing done in between: whoever calls
+     * is only waiting.  So the machine waits for the next interrupt --
+     * a millisecond at most -- and the HUD counts it as idle. */
+    if (!now && g_cpu_mhz && tsc32() - s_pump_out < g_cpu_mhz * 40u) idle_wait();
+    t = ms_now();
     if (net_ready()) ip_poll();
     audio_tell(s_fps);
     s_pumping = 1;
     if (now || frame_due()) draw_frame_now(t);
     s_pumping = 0;
+    if (g_cpu_mhz) s_pump_out = tsc32();
 }
 
 void kmain(void)
@@ -356,5 +366,6 @@ void kmain(void)
         }
 
         if (frame_due()) draw_frame_now(t);
+        else idle_wait();                /* nothing to do: wait, counted    */
     }
 }

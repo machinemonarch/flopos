@@ -58,7 +58,9 @@ int    glyph_index(int c);
  * adding an offset and can animate by walking one.  mood.c builds it.
  */
 #define PAL_MOOD    1                    /*   1..63   the background field  */
-#define PAL_MOOD_N  63
+#define PAL_MOOD_N  55                   /*   1..55; 56..63 are the HUD's    */
+#define PAL_HUD     56                   /*  56..63   the HUD's brain        */
+#define PAL_HUD_N   8
 #define PAL_SHADOW  64                   /*  64..71   text drop shadow      */
 #define PAL_SHADOW_N 8
 #define PAL_TEXT    72                   /*  72..103  body text             */
@@ -729,6 +731,7 @@ void   serial_set_echo(int on);
  * for the duration, so this is not cheap -- but it is the machine's own
  * disk code, which is the point. */
 u32    bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di);
+void   bios_regs(u16 *bx, u16 *cx, u16 *dx);   /* what the last call left in them */
 void   pic_to_bios(void);
 void   pic_to_kernel(void);
 void   clock_credit_cycles(u32 cycles);
@@ -837,5 +840,30 @@ void   cpu_detect(void);
 void   cpu_measure_mhz(void);
 void   reboot(void);
 int    power_off(void);  /* returns only if it could not */
+
+/* --- hud.c: ctrl-shift-f10 ------------------------------------------- */
+extern volatile int g_hud_toggle;
+extern u32 g_idle_cycles;
+void   hud_frame(u8 *canvas, u32 t);
+u32    perf_us(int phase);
+u32    perf_us(int phase);
+int    hud_rect(int *x0, int *y0, int *x1, int *y1);
+int    hud_takes_keys(void);
+void   hud_key(int ev);
+void   idle_wait(void);                  /* halt until an interrupt, counted as idle */
+int    audio_peek(u8 *out, int n);       /* what the card is playing now    */
+int    audio_rate_now(void);             /* 0 while closed                  */
+int    app_exists(const char *word);
+int    app_active(void);
+u32    app_bytes(void);
+void   term_tap(void (*fn)(int c));      /* everything printed, to fn too   */
+int    term_muted(void);
+void   term_refresh(void);               /* a window drawn again, all of it */
+void   term_cell_size(int *w, int *h);
+int    term_pitch(void);
+void   term_overlay_cell(u8 *dst, int px, int py, int c, u8 fg, u8 bg);
+void   term_overlay_fill(u8 *dst, int px, int py, int w, int h, u8 colour);
+void   vga_set_colours(int first, int n, const u8 *rgb);
+void   vga_present_rect(int x0, int y0, int x1, int y1);
 
 #endif /* FLOPOS_H */

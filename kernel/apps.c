@@ -91,6 +91,27 @@ static int memory_for_apps(void)
 
 /* Run NAME.APP if there is one.  Returns 0 if there is no such app, so
  * the shell can carry on and say it does not know the word. */
+static u32 s_app_bytes;                  /* the open app's memory, or 0     */
+int app_active(void) { return s_app_bytes != 0; }
+u32 app_bytes(void)  { return s_app_bytes; }
+
+/* Is there an app by this name on the floppy? */
+int app_exists(const char *word)
+{
+    char file[16];
+    FsFile f;
+    int i, n = 0;
+    for (i = 0; word[i] && n < 8; i++) {
+        char c = word[i];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 32);
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return 0;
+        file[n++] = c;
+    }
+    if (!n || word[i]) return 0;
+    file[n] = '.'; file[n + 1] = 'A'; file[n + 2] = 'P'; file[n + 3] = 'P'; file[n + 4] = 0;
+    return fs_find(file, &f);
+}
+
 int app_run(const char *word, int argc, char **argv)
 {
     char file[13];
@@ -145,7 +166,9 @@ int app_run(const char *word, int argc, char **argv)
 
     memset8((void *)h->image_end, 0, h->bss_end - h->image_end);
     serial_printf("[app] %s: %u bytes, %u in memory\n", file, f.size, h->bss_end - APP_BASE);
+    s_app_bytes = h->bss_end - APP_BASE;
     r = ((AppMain)h->entry)(&s_api, argc, argv);
+    s_app_bytes = 0;
     audio_feeder(0);                     /* its memory is no longer its own */
     audio_close();
     term_win_close();

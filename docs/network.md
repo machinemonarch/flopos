@@ -101,7 +101,7 @@ Links to sound play it, through the Sound Blaster:
 | **.ogg** | Ogg Vorbis, any quality; and FLAC inside Ogg |
 | **.flac** | FLAC, 8 to 24 bits, up to 8 channels |
 | **.wav** | plain PCM, 8 to 32 bits, any rate, any number of channels |
-| **.mod**, **.xm** | tracker songs (ProTracker, FastTracker 2), such as the ones on [modarchive.org](https://modarchive.org/) |
+| **.mod**, **.xm**, **.s3m**, **.it** | tracker songs (ProTracker, FastTracker 2, Scream Tracker 3, Impulse Tracker), such as the ones on [modarchive.org](https://modarchive.org/) |
 | **radio** | mp3, AAC, Ogg and FLAC stations (Shoutcast, Icecast), and their **.m3u** and **.pls** playlists |
 
 **A file of 2 MB or less** is downloaded first, then plays in the background
@@ -133,6 +133,23 @@ stops it all.
 Not yet: Opus, and AAC inside .m4a or .mp4 files (stations send AAC
 plainly, which works).
 
+A downloaded song or recording is kept in browzer's own memory, up to
+2 MB, never on the floppy. It is gone when something else plays or browzer
+is left.
+
+**Players made of JavaScript.** Many stations' pages play through a script
+that browzer doesn't run, and keep the stream's address inside it, or in
+the page's data, rather than in a link. browzer reads every page as it
+arrives for addresses of things to listen to (an mp3, AAC or Ogg file, a
+playlist, a song, or anything a page calls its "stream"), and lists them at
+the end of the page, under "Sound this page names", as links. Nothing in
+them is run. An address written out as text is a link to itself as well.
+
+AzuraCast stations (Chiptune Radio is one) draw their page entirely from
+the station's own description. On such a page browzer asks the station for
+that description, `/api/nowplaying/` and the station's name, and lists the
+streams it names in the same way.
+
 ### Pages that remember you, reload, or come in frames
 
 - **Cookies** are kept so a site can remember you between pages: a login,
@@ -156,13 +173,14 @@ plainly, which works).
 
 ### Bookmarks
 
-**b** keeps the page you are on. **m** shows them all as a page: Tab picks
-one and Enter goes there. On that page, **p** puts the picked one on the
-home page, under "Your bookmarks", or takes it off again, and **d** twice deletes it.
+**b** keeps the page you are on. The home page lists them all, and nothing
+else. **m** shows them as a page to change them: Tab picks one and Enter
+goes there. On that page, **p** puts the picked one first on the home page,
+or back among the rest, and **d** twice deletes it.
 
 They are kept in `BOOKMARK.TXT` on the floppy, one a line (the address,
-then the title, with `*` in front of those on the home page), so any
-computer can read them. Writing a new version of FLOPOS to the floppy keeps
+then the title, with `*` in front of those put first), so any computer can
+read them. Writing a new version of FLOPOS to the floppy keeps
 them.
 
 ### Forms

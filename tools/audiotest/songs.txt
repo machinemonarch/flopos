@@ -1,0 +1,18 @@
+# Songs from The Mod Archive (modarchive.org) used to check the tracker.
+# They are their authors' work, so they are fetched (fetch.py), never kept
+# in this repository.  id  name  what it tests
+201549  temperament.mod     4-channel MOD, big samples
+135819  split_sound.xm      XM, 16 channels, 16-bit samples (the double-load bug)
+145729  o-94151.xm          XM, 10 channels
+154269  poofing_town.xm     XM, 8 channels
+215671  9psy.xm             XM, 24 channels, 178,000 notes (too big for the old note store)
+215678  sm-dirty.s3m        S3M, volume slides with memory
+54606   s3m.s3m             S3M, 9 channels
+69391   moving_rhythm.s3m   S3M, 16 channels
+215679  st-dubil.it         IT, instruments carrying on (NNA), pitch slides
+215683  dx-inner.it         IT, transposing keyboards, NNA fade
+33760   dreams-v2.it        IT 2.14 packed samples, 8- and 16-bit
+33994   dreams-awake.it     IT, 64 channels: the speed test
+37256   dream-chamber.it    IT 2.14 packed samples
+32785   dream-shifter.it    IT, 50 channels, packed samples
+34682   dreameast.it        IT, fine volume slides with memory

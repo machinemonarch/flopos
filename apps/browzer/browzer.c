@@ -271,7 +271,7 @@ static int media_start(const char *ctype, const char *url, u32 length, u32 metai
         s_live = metaint || !length;
         s_conn_ms = A->ms();
         s_lock = 0;
-        return 1;
+        return 2;                        /* a stream: no "loading" counts */
     }
     s_dl_state = length > DL_MAX ? DL_BIG : DL_COMING;
     s_lock = 0;
@@ -485,24 +485,17 @@ static int  s_edit_len, s_edit_cur, s_edit_all;   /* the caret; ctrl-a picked al
 static int  s_leave_armed;               /* asked whether to leave          */
 static int  s_loading;
 
-static const char s_home[] =
+/* The home page: a few words, your bookmarks, and how browzer works. */
+static const char s_home_top[] =
     "<title>home</title>"
     "<h1>browzer</h1>"
     "<p>A very small web browser, on a floppy disk, on a Toshiba from 1996.</p>"
-    "<p>Press <b>g</b> and type an address, or just some words to search for them.</p>"
-    "<h2>Places that suit a machine like this</h2>"
-    "<ul>"
-    "<li><a href=\"http://frogfind.com/\">FrogFind</a> -- a search engine for vintage computers</li>"
-    "<li><a href=\"http://68k.news/\">68k.news</a> -- the news, for old machines</li>"
-    "<li><a href=\"https://text.npr.org/\">text.npr.org</a> -- NPR, text only</li>"
-    "<li><a href=\"https://lite.cnn.com/\">lite.cnn.com</a> -- CNN, text only</li>"
-    "<li><a href=\"http://info.cern.ch/\">info.cern.ch</a> -- the first website there ever was</li>"
-    "<li><a href=\"https://wiby.me/\">wiby.me</a> -- a search engine for the old web</li>"
-    "<li><a href=\"http://example.com/\">example.com</a></li>"
-    "</ul>"
+    "<p>Press <b>g</b> and type an address, or just some words to search for them.</p>";
+static const char s_home_help[] =
     "<p>tab picks a link, enter follows it, backspace goes back, esc leaves. "
     "Boxes on a page are typed into the same way: tab to one, enter, type, enter sends.</p>"
-    "<p>b adds the page you are on to your bookmarks, and m lists them. On that list, p puts a bookmark on this home page.</p>"
+    "<p>b adds the page you are on to your bookmarks, and m lists them, to change them. "
+    "On that list, p puts one first here.</p>"
     "<p>Secure pages are encrypted, and the site has to prove who it is.</p>";
 
 /* ---- drawing ------------------------------------------------------------ */
@@ -828,28 +821,34 @@ static int put(char *out, int n, int cap, const char *t)
 
 static void home(void)
 {
-    static char page[sizeof s_home + MARKS * (PAGE_HREF_MAX + 120) + 200];
-    int n = 0, i, cap = (int)sizeof page, any = 0;
-    const char *at = s_home;
+    static char page[sizeof s_home_top + sizeof s_home_help + MARKS * (PAGE_HREF_MAX * 5 + 140) + 200];
+    int n = 0, i, pass, cap = (int)sizeof page;
 
     marks_read();
-    /* The home page, with your pinned bookmarks first. */
-    while (*at && !(at[0] == '<' && at[1] == 'h' && at[2] == '2')) page[n++] = *at++;
-    for (i = 0; i < s_nmarks; i++) if (s_mark[i].home) any = 1;
-    if (any) {
-        n = put(page, n, cap, "<h2>Your bookmarks</h2><ul>");
-        for (i = 0; i < s_nmarks; i++) {
-            if (!s_mark[i].home) continue;
-            n = put(page, n, cap, "<li><a href=\"");
-            n = html_text(page, n, cap, s_mark[i].url);
-            n = put(page, n, cap, "\">");
-            n = html_text(page, n, cap, s_mark[i].title[0] ? s_mark[i].title : s_mark[i].url);
-            n = put(page, n, cap, "</a></li>");
-        }
+    n = put(page, n, cap, s_home_top);
+    n = put(page, n, cap, "<h2>Your bookmarks</h2>");
+    if (!s_nmarks)
+        n = put(page, n, cap, "<p>None yet. On any page, b keeps it here.</p>");
+    else {
+        n = put(page, n, cap, "<ul>");
+        for (pass = 0; pass < 2; pass++)              /* the ones put first, then the rest */
+            for (i = 0; i < s_nmarks; i++) {
+                if ((s_mark[i].home ? 0 : 1) != pass) continue;
+                n = put(page, n, cap, "<li><a href=\"");
+                n = html_text(page, n, cap, s_mark[i].url);
+                n = put(page, n, cap, "\">");
+                n = html_text(page, n, cap, s_mark[i].title[0] ? s_mark[i].title : s_mark[i].url);
+                n = put(page, n, cap, "</a></li>");
+            }
         n = put(page, n, cap, "</ul>");
     }
-    n = put(page, n, cap, at);
+    n = put(page, n, cap, s_home_help);
     page[n] = 0;
+    {
+        char t[64];
+        fmt_str(t, sizeof t, "[page] home: %u bookmarks\n", (u32)s_nmarks);
+        A->wire(t);
+    }
     http_page_html(page, &s_pg);
     fmt_str(s_pg.url, sizeof s_pg.url, "flopos:home");
     s_top = 0;
@@ -867,11 +866,11 @@ static void marks_page(void)
     if (!s_nmarks)
         n = put(page, n, cap, "<p>None yet. On any page, b keeps it here.</p>");
     else {
-        n = put(page, n, cap, "<p>tab picks one, enter goes there, p puts it on the home page "
-                              "or takes it off, d deletes it.</p><ul>");
+        n = put(page, n, cap, "<p>tab picks one, enter goes there, p puts it first on the home page "
+                              "or back among the rest, d deletes it.</p><ul>");
         for (i = 0; i < s_nmarks; i++) {
             n = put(page, n, cap, "<li>");
-            if (s_mark[i].home) n = put(page, n, cap, "<b>home</b> ");
+            if (s_mark[i].home) n = put(page, n, cap, "<b>first</b> ");
             n = put(page, n, cap, "<a href=\"");
             n = html_text(page, n, cap, s_mark[i].url);
             n = put(page, n, cap, "\">");
@@ -907,7 +906,7 @@ static void mark_this(void)
     m->title[i] = 0;
     m->home = 0;
     s_nmarks++;
-    say(marks_write() ? "Added to your bookmarks. m lists them, and p on that list puts one on the home page."
+    say(marks_write() ? "Added to your bookmarks, which the home page lists. m lists them too, to change them."
                       : "Could not write BOOKMARK.TXT to the floppy.", C_ACCENT);
 }
 
@@ -1002,10 +1001,11 @@ static void go_with(const char *url, const u8 *post, int postlen)
         }
         if (what) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1>%s", name, name, what);
-        } else if (st == DL_CAME && tracker_load(s_dl, s_dl_len, 22050)) {
+        } else if (st == DL_CAME && tracker_load(s_dl, s_dl_len, DL_MAX, 22050)) {
+            /* Loaded once only: loading changes the file where it lies. */
             if (music_start(1, 0)) {
                 s_lock = 1;
-                (void)tracker_load(s_dl, s_dl_len, s_rate);
+                tracker_rate(s_rate);
                 s_lock = 0;
                 music_feed();
                 fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>A %u-channel %s song, playing.</p>"
@@ -1039,7 +1039,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     s_now[0] ? "<p>Last playing: " : "", s_now[0] ? s_now : "", s_now[0] ? "</p>" : "");
         } else if (st == DL_UNPLAYABLE) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is %s, which browzer cannot play "
-                    "(mp3, AAC, Ogg, FLAC, wav, .mod and .xm it can).</p>", name, name, s_dl_type);
+                    "(mp3, AAC, Ogg, FLAC, wav, .mod, .xm, .s3m and .it it can).</p>", name, name, s_dl_type);
         } else if (st == DL_NOCARD) {
             fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>This machine has no sound card "
                     "that plays recordings.</p>", name);
@@ -1431,18 +1431,25 @@ void browzer_run(const char *start)
     s_editing = 0;
 
     for (;;) {
-        draw();
+        /* Drawn when something has happened, and otherwise ten times a
+         * second for what changes on its own (a stream's seconds in
+         * hand).  Not on every pass: a loop with nothing to do should
+         * look idle, and the HUD's 'Thunking counts it so. */
+        static u32 drawn_at;
+        static int stale = 1;
+        if (stale || A->ms() - drawn_at >= 100) { draw(); drawn_at = A->ms(); stale = 0; }
         k = ui_key();
         if (k < 0) {
             static u32 loads_seen, due;
             music_feed();
-            if (s_loads != loads_seen) { loads_seen = s_loads; due = A->ms() + (u32)s_pg.refresh * 1000u; }
+            if (s_loads != loads_seen) { loads_seen = s_loads; due = A->ms() + (u32)s_pg.refresh * 1000u; stale = 1; }
             if (refresh_wanted() && !s_editing && s_typing < 0 && s_choosing < 0 && !s_leave_armed &&
                 (s32)(A->ms() - due) >= 0)
                 refresh_page();
             main_pump(0);
             continue;
         }
+        stale = 1;
 
         if (s_choosing >= 0) {           /* up and down through a list      */
             PageField *f = &s_pg.fields[s_choosing];

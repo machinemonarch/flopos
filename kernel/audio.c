@@ -291,3 +291,17 @@ void audio_report(void)
                 (u32)rate, moved, el, el ? moved * 1000 / el : 0);
     term_newline();
 }
+
+/* The n samples the card has just played: what can be heard this moment.
+ * For the HUD's bars.  0 while the card is closed. */
+int audio_peek(u8 *out, int n)
+{
+    u32 pos;
+    int i;
+    if (!s_dma || !s_rate || n > DMA_LEN) return 0;
+    pos = dma_pos();
+    for (i = 0; i < n; i++) out[i] = s_dma[(pos + DMA_LEN - (u32)n + (u32)i) % DMA_LEN];
+    return 1;
+}
+
+int audio_rate_now(void) { return s_dma ? (int)s_rate : 0; }

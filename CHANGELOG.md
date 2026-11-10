@@ -6,6 +6,34 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.24.0 — 2026-11-10
+
+- **Songs from The Mod Archive play.** XM songs came out as noise:
+  browzer loaded every song twice, and loading changes an XM where it
+  lies. Now **S3M and IT songs play too**, Impulse Tracker's packed
+  samples included, and long songs load: the score is read from the file
+  as it plays instead of being unpacked first. A song with 64 channels
+  takes under a fifth of the machine and the screen keeps its 30 frames.
+- **Sound a page names without linking to it** is listed at the end of the
+  page as links, without running anything: ERICADE Radio's stations, and
+  stream addresses written out as text, as on 72fm.com. An address written
+  as text anywhere is now a link. **Chiptune Radio** and other AzuraCast
+  stations are asked for their streams.
+- **DuckDuckGo works**: its front page sends a browser without JavaScript
+  on to its plain page, and browzer now follows, without first reading the
+  200 KB of script behind it.
+- **The home page shows your bookmarks** and nothing else.
+- **A download says how far it has got.**
+- **The HUD, on ctrl-shift-f10**: bars that move with whatever is playing,
+  the battery, 'Thunking (how busy the processor is), 'Membering: (how much
+  memory is in use), a brain that turns, blue when the machine is idle and
+  red when it is working hard, and a command line that takes the shell's
+  commands. esc gives the keys back; ctrl-shift-f10 again closes it.
+- **browzer draws much less.** Its window was drawn whole every time it
+  looked for a key; now only what changed is drawn. Of each frame, the
+  drawing fell from about 13 ms to 3 ms on the slowed test machine.
+- The test tools are kept in `tools/audiotest` and `tools/bench`.
+
 ## 1.23.0 — 2026-11-10
 
 - **"The timer had stopped" is gone.** It was a false alarm, raised two or

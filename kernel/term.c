@@ -204,8 +204,12 @@ static void style_birth(u32 abs)
 void term_quirks(int on) { s_quirks = on ? 1 : 0; }
 int  term_quirks_on(void) { return s_quirks; }
 
+static void (*s_tap)(int c);              /* the HUD, while a command of its runs */
+void term_tap(void (*fn)(int c)) { s_tap = fn; }
+
 void term_newline(void)
 {
+    if (s_tap) s_tap('\n');
     /* The mirror lives here rather than in term_putc, because almost
      * nothing writes a newline as a character -- they call this. */
     if (serial_echo()) serial_putc('\n');
@@ -223,6 +227,7 @@ void term_newline(void)
  * for me, and there is no reason to make somebody sit and watch it
  * scroll past on the machine itself. */
 void term_mute(int on) { s_mute = on; }
+int  term_muted(void) { return s_mute; }
 void term_cursor(int on) { s_nocursor = !on; }
 
 /* Hidden, only windows are drawn: the shell, locked behind the wizard. */
@@ -234,6 +239,7 @@ void term_putc(int c)
     Cell *r;
 
     if (c == '\n') { term_newline(); return; }   /* mirrors on its own */
+    if (s_tap) s_tap(c);
 
     /* Everything FLOPOS says to itself, it also says down the wire, so a
      * session can be watched live from another machine. */
@@ -699,6 +705,7 @@ static int s_win_bare;                   /* no paper, no shadow             */
  * pixel; the machine does a small part of the work. */
 static u8  s_dr_ch[WIN_H][WIN_W], s_dr_fg[WIN_H][WIN_W], s_dr_bg[WIN_H][WIN_W], s_dr_at[WIN_H][WIN_W];
 static int s_win_fresh = 1;              /* draw every cell next time       */
+static int s_open_w, s_open_h, s_open_c, s_open_r;   /* the window as last opened */
 static int s_dirty_y0 = -1, s_dirty_y1 = -1;   /* pixel rows drawn this frame */
 
 
@@ -722,9 +729,15 @@ int term_win_open(int w, int h)
             s_win_bg[y][x] = WIN_PAPER;
             s_win_at[y][x] = 0;
         }
+    /* Drawn whole only when it is new, or has moved or changed size.  An
+     * app opening the same window again to redraw its contents -- browzer
+     * does, every time -- needs only the cells that differ, which the
+     * shadow arrays find. */
+    if (!s_win_on || s_win_bare || w != s_open_w || h != s_open_h || s_win_c != s_open_c || s_win_r != s_open_r)
+        s_win_fresh = 1;
+    s_open_w = w; s_open_h = h; s_open_c = s_win_c; s_open_r = s_win_r;
     s_win_on = 1;
     s_win_bare = 0;
-    s_win_fresh = 1;
     return w;
 }
 
@@ -1017,4 +1030,32 @@ void term_render(u8 *dst, u32 t)
             p[1] = C_ACCENT;
         }
     }
+}
+
+/* ---- drawing over everything: the HUD ------------------------------------
+ * The same face, the same frame pieces, on paper, at any place on the
+ * canvas -- so something laid over the screen looks like the rest of it. */
+void term_refresh(void) { s_win_fresh = 1; }
+int  term_pitch(void) { return s_pitch; }
+
+void term_cell_size(int *w, int *h)
+{
+    *w = s_face->adv * s_scale;
+    *h = s_face->pitch * s_scale;
+}
+
+void term_overlay_fill(u8 *dst, int px, int py, int w, int h, u8 colour)
+{
+    if (px < 0 || py < 0 || w <= 0 || h <= 0 || px + w > s_vw || py + h > s_vh) return;
+    fill_rect(dst, px, py, w, h, colour);
+}
+
+void term_overlay_cell(u8 *dst, int px, int py, int c, u8 fg, u8 bg)
+{
+    int w = s_face->adv * s_scale, h = s_face->pitch * s_scale;
+    if (px < 0 || py < 0 || px + w > s_vw || py + h > s_vh) return;
+    fill_rect(dst, px, py, w, h, bg);
+    if (c == ' ' || c == 0) return;
+    if (CH_IS_CELL(c)) { blit_cell(dst, px, py, c, fg); return; }
+    blit_styled(dst, px, py, c, fg, 0);
 }

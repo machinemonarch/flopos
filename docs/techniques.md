@@ -127,6 +127,36 @@ decoders: mpg123, FAAD2, libvorbis, libFLAC.
 | Ogg Vorbis, 136 kbps, 44.1 kHz | 26% |
 | a MOD song | under 1% |
 
+## Tracker songs: the score read as it plays
+
+*apps/lib/audio/tracker.c.*
+
+- **No score in memory.** A song's patterns used to be unpacked into a
+  table of notes before it played, and a long one didn't fit. Now each row
+  is read from the file when it is reached, carrying on from where the last
+  one ended; only a jump makes it read its pattern again from the top.
+- **Four formats, one player.** S3M and IT are put into XM's terms as
+  they are read: their effects become XM's, and each sample's own rate
+  becomes XM's relative note and finetune. Where XM has nothing alike (IT's
+  shared slide memories, its channel volume, its notes that ring on under
+  new ones), the player learns the one thing more.
+- **IT's packed samples** (Impulse Tracker 2.14's own compression) are
+  unpacked into the download buffer's spare room behind the file, so they
+  cost no memory of their own.
+- **Mixing in long strides.** Between a voice's loop points, nothing needs
+  checking: those stretches are mixed in a tight loop with the position in
+  registers. Only the samples at the ends are done one at a time.
+- **Twenty voices at most.** A voice too quiet to move an 8-bit sample is
+  skipped. Past twenty at once, the quietest wait silently, still keeping
+  their place. A 64-channel song went from a third of the machine, and a
+  stuttering screen, to under a fifth.
+
+Every format was checked against libopenmpt on real songs from The Mod
+Archive: most match at 0.8 to 0.999 (`tools/audiotest`).
+
+**Also good for:** any app that plays a song: a game's music, a DAW's
+sample player.
+
 ## Out of 8 bits: noise shaping
 
 *apps/lib/audio/decode.c `lines`.*
@@ -149,6 +179,18 @@ buffer emptied each time. It showed up first on the laptop's serial cable.
 The watchdog now looks with interrupts held off.
 
 
+
+Drawing only what changed (1.22) never worked inside browzer. browzer
+opens its window again each time it draws, and opening a window marked it
+to be drawn whole. So every cell was drawn every time: about 8 ms of each
+frame. A window is now drawn whole only when it is new or has changed size.
+
+How busy the processor is, for the HUD's 'Thunking, is the time it
+spends halted. FLOPOS halts it whenever it waits for the next interrupt
+with nothing to do (`idle_wait`), and counts those cycles. A loop that only
+waits is now seen to: called again at once with nothing done in between,
+`main_pump` halts. That also kept browzer's window from being drawn on
+every pass of its loop, which a loop with nothing to do shouldn't.
 
 The kernel's own memory once grew past 0x70000, where the floppy
 and the video BIOS keep their buffers. Every disk read then wrote over the

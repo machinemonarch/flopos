@@ -88,6 +88,24 @@ More in [The network](network.md).
 
 **Ctrl-Alt-Delete** restarts from anywhere, including the crash screen.
 
+## The HUD
+
+**Ctrl-Shift-F10**, from anywhere, opens a small window in the top right
+corner, over whatever is on the screen:
+
+- bars that move with whatever sound is playing
+- the battery, as the laptop's power management reports it
+- **'Thunking**: how busy the processor is
+- **'Membering:** how much of the memory is in use
+- a brain, turning, coloured by the two together: blue while the machine
+  is idle, then green, yellow and orange, and red when it works as hard
+  as it can
+- a command line of its own, which takes the same commands as `here>`
+
+While it is open its command line has the keys. **Esc** gives them back to
+whatever had them, and leaves it showing; **Ctrl-Shift-F10** again closes
+it. An app can't be started from it while another one is open.
+
 ## Keys at the prompt
 
 | Key | What it does |

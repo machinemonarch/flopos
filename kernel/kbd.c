@@ -125,6 +125,7 @@ void kbd_irq(void)
     }
 
     if (!s_down[code]) {                 /* drop the hardware auto-repeat  */
+        if (code == 0x44 && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_hud_toggle = 1; return; }
         u8 nxt = (u8)((s_head + 1) % QLEN);
         if (nxt != s_tail) {
             s_queue[s_head] = (u16)(code | modifier_bits()
@@ -141,10 +142,13 @@ void kbd_irq(void)
 int kbd_event(void)
 {
     int e;
-    if (s_tail == s_head) return -1;
-    e = s_queue[s_tail];
-    s_tail = (u8)((s_tail + 1) % QLEN);
-    return e;
+    for (;;) {
+        if (s_tail == s_head) return -1;
+        e = s_queue[s_tail];
+        s_tail = (u8)((s_tail + 1) % QLEN);
+        if (!hud_takes_keys()) return e;
+        hud_key(e);                      /* the HUD's command line has them */
+    }
 }
 
 int kbd_down(u8 scancode)

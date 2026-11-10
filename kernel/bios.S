@@ -159,9 +159,13 @@ real_mode:
 call15: int     $0x15
         jmp     called
 call10: int     $0x10
-called: popw    %bx
+called: movw    %bx, %si             /* the BIOS's BX, kept: bios_regs  */
+        popw    %bx
 
         movw    %ax, 4(%bx)
+        movw    %cx, 6(%bx)
+        movw    %dx, 8(%bx)
+        movw    %si, 36(%bx)
         jnc     1f
         movw    $1, 12(%bx)
 1:
@@ -218,6 +222,7 @@ blk:
 blk_far_off:  .word 0                    /*  0 */
 blk_far_seg:  .word 0                    /*  2 */
 blk_ax:       .word 0                    /*  4 */
+.globl blk_bx, blk_cx, blk_dx
 blk_cx:       .word 0                    /*  6 */
 blk_dx:       .word 0                    /*  8 */
 blk_es:       .word 0                    /* 10 */

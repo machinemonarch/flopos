@@ -170,7 +170,7 @@ into each app that asks for it in the Makefile:
 
 | Library | What it does |
 |---|---|
-| `audio` | `tracker.c`: .mod and .xm songs into samples (`tracker_load`, `tracker_render`). `decode.c`, `mp3.c`, `aac.c`, `vorbis.c`, `flac.c`: recordings (mp3, AAC, Ogg Vorbis, FLAC, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a noise-shaped resampler to the card's 8 bits. Needs `bits` and `dsp`. |
+| `audio` | `tracker.c`: .mod, .xm, .s3m and .it songs into samples (`tracker_load`, which changes the file where it lies, so a file is loaded once, then `tracker_rate` and `tracker_render`). `decode.c`, `mp3.c`, `aac.c`, `vorbis.c`, `flac.c`: recordings (mp3, AAC, Ogg Vorbis, FLAC, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a noise-shaped resampler to the card's 8 bits. Needs `bits` and `dsp`. |
 | `bits` | `bits.h`: reading 1 to 25 bits at once, high-first or low-first. `prefix.h`: Huffman and other prefix codes decoded by table (`prefix_build`, `prefix_get`, `prefix_lget`). For anything compressed: audio now, and JPEG, gzip and PNG would use the same. |
 | `dsp` | `dsp.h`: `dsp_round` (float to int without the x87's slow cast), `dsp_dct2` (the cosine transform of 2 to 64 numbers, fast). `mdct.h`: the inverse MDCT by FFT, its tables kept per size. |
 

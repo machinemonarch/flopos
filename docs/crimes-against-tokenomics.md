@@ -86,5 +86,22 @@ DONE, CLAUDE. ABSOLUTELY FANTASTIC."*
 cable, once plugged in, showed a watchdog crying wolf two or three times
 a second. Gone.
 
+## The crime of the heads-up display
+
+**"I want a HUD. CPU is displayed by "'Thunking" and RAM is called
+"'Membering:". An average of both is displayed by a rotating human brain
+in 3D going from blue-green-yellow-orange-red. Toggled with
+ctrl-shift-f10. It integrates nicely with whatever else is on screen."**
+And then: **"HUD also has a small cli that takes the same commands as the
+regular cli."** A brain of 226 points and 414 lines, turning fifteen
+times a second, folded with sines. 'Thunking is measured in the time the
+processor spends halted, and 'Membering: in bytes. The command line hears
+everything the shell says. It all costs 1.6 ms a frame. Building it found
+that browzer had been drawing its whole window on every frame since 1.22.
+
+**"Well I didn't HEAR any music from the mod and xm files."** Every XM was
+being turned into noise on its way in. Then S3M and IT, with Impulse
+Tracker's own compression, because the Mod Archive is full of them.
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

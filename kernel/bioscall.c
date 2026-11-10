@@ -39,6 +39,9 @@
 #include "io.h"
 
 u32 bios_int_raw(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di);
+extern u16 blk_bx, blk_cx, blk_dx;
+
+void bios_regs(u16 *bx, u16 *cx, u16 *dx) { *bx = blk_bx; *cx = blk_cx; *dx = blk_dx; }
 
 u32 bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di)
 {

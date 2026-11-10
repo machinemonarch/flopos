@@ -156,6 +156,7 @@ static int  s_checked;                   /* the tag says checked or selected */
 #define OPT_LAB 60                       /* bytes of a choice's words kept  */
 static char s_alt[60];
 static char s_equiv[16], s_content[256], s_src[PAGE_HREF_MAX];   /* meta, frames */
+static int  s_refresh_go;                 /* a refresh of 0 s elsewhere: stop reading */
 static char s_wattr[8], s_hattr[8];      /* an image's width and height    */
 static char *s_aval;
 static int  s_aval_len, s_aval_max;
@@ -165,11 +166,15 @@ static u8 colour_now(void)
     return s_dim ? C_DIM : s_bold ? C_BRIGHT : s_link ? C_ACCENT : C_TEXT;
 }
 
+static int  s_word_cont;                 /* the word goes on past what is flushed */
+static void bare_link(void);
+
 static void flush_word(void)
 {
     int i, w = out_width();
 
     if (!s_word_len) return;
+    bare_link();
     if (s_col && s_col + 1 + s_word_len > w) { out_newline(); s_col = 0; }
     else if (s_col && s_space) {
         /* A space inside a link belongs to the link, so a highlighted link
@@ -207,7 +212,7 @@ static void push(u8 g, u8 col)
         s_word_link[s_word_len] = s_linkid;
         s_word_len++;
     }
-    if (s_word_len == (int)sizeof s_word) flush_word();
+    if (s_word_len == (int)sizeof s_word) { s_word_cont = 1; flush_word(); s_word_cont = 0; }
 }
 
 static u8 glyph_for(u32 c)
@@ -416,6 +421,261 @@ static u16 add_link(void)
     ++s_pg->nlinks;
     if (s_pg->link_field) s_pg->link_field[s_pg->nlinks] = 0;
     return (u16)s_pg->nlinks;
+}
+
+static int eq_ci(const char *a, const char *b);
+static int lower_eq(const char *a, const char *b, int n);
+static int conn_write(const u8 *d, int n);
+static int conn_read(u8 *b, int n, int w);
+static void conn_close(void);
+
+/* One line down the serial cable, for whoever is testing: what a page
+ * turned out to be, and the links browzer made itself. */
+static void wire_line(const char *what, const char *t)
+{
+    char line[PAGE_HREF_MAX + 80];
+    fmt_str(line, sizeof line, "[page] %s%s\n", what, t);
+    A->wire(line);
+}
+
+/* A link made from an address, not from s_href (which a tag may be using). */
+static u16 add_link_to(const char *u)
+{
+    int i;
+    if (!s_pg || !u[0] || s_pg->nlinks >= PAGE_LINKS) return 0;
+    for (i = 0; u[i] && i < PAGE_HREF_MAX - 1; i++) s_pg->href[s_pg->nlinks][i] = u[i];
+    s_pg->href[s_pg->nlinks][i] = 0;
+    ++s_pg->nlinks;
+    if (s_pg->link_field) s_pg->link_field[s_pg->nlinks] = 0;
+    return (u16)s_pg->nlinks;
+}
+
+static int is_http(const u8 *w, int n)
+{
+    return n > 10 && (w[0] | 32) == 'h' && w[1] == 't' && w[2] == 't' && w[3] == 'p' &&
+           ((w[4] == ':' && w[5] == '/' && w[6] == '/') || (w[4] == 's' && w[5] == ':' && w[6] == '/' && w[7] == '/'));
+}
+
+/* An address written out as text, not as a link -- 72fm.com shows its
+ * stations' stream addresses so -- is made a link to itself.  A long one
+ * arrives in pieces of a word's length; s_bare is its link meanwhile. */
+static u16 s_bare;
+
+static void bare_link(void)
+{
+    int i, k;
+    if (!s_pg) { s_bare = 0; return; }
+    if (s_bare) {                                  /* the rest of a long one */
+        char *h = s_pg->href[s_bare - 1];
+        for (k = 0; h[k]; k++) { }
+        for (i = 0; i < s_word_len && k < PAGE_HREF_MAX - 1; i++) h[k++] = (char)s_word[i];
+        h[k] = 0;
+        for (i = 0; i < s_word_len; i++) { s_word_link[i] = s_bare; s_word_col[i] = C_ACCENT; }
+    } else if (!s_word_link[0] && is_http(s_word, s_word_len)) {
+        char u[PAGE_HREF_MAX];
+        u16 id;
+        for (i = 0; i < s_word_len && i < PAGE_HREF_MAX - 1; i++) u[i] = (char)s_word[i];
+        u[i] = 0;
+        id = add_link_to(u);
+        if (id) {
+            s_bare = id;
+            for (i = 0; i < s_word_len; i++) { s_word_link[i] = id; s_word_col[i] = C_ACCENT; }
+        }
+    }
+    if (s_bare && !s_word_cont) {
+        /* It has ended.  A full stop or bracket after it is the sentence's. */
+        char *h = s_pg->href[s_bare - 1];
+        for (k = 0; h[k]; k++) { }
+        while (k > 0 && (h[k - 1] == '.' || h[k - 1] == ',' || h[k - 1] == ')' || h[k - 1] == ';' ||
+                         h[k - 1] == ':' || h[k - 1] == '!' || h[k - 1] == '?' || h[k - 1] == '"' || h[k - 1] == '\''))
+            h[--k] = 0;
+        wire_line("an address in the text: ", h);
+        s_bare = 0;
+    }
+}
+
+/* ---- sound a page names without a link to it ----------------------------
+ * A player written in JavaScript keeps its stream's address in a script,
+ * or in a data attribute, as JSON: "stream":"/sc/stream/1/", or
+ * "url":"https:\/\/host\/show.mp3".  browzer runs no scripts.  It only
+ * reads the page as it arrives, as plain text, for such addresses, and
+ * lists them at the end as links.  Nothing in them is run. */
+#define SNIFF_MAX 12
+static char s_sniffed[SNIFF_MAX][PAGE_HREF_MAX];
+static int  s_nsniffed;
+static char s_sn[PAGE_HREF_MAX];         /* the address being read          */
+static int  s_sn_len, s_sn_on;           /* 1 an absolute address, 2 a "stream" key's value */
+static int  s_azura;                     /* the page is an AzuraCast station's */
+static char s_ring[32];                  /* the page's last 32 bytes        */
+static u32  s_ring_at;
+
+static int ring_ends(const char *p)
+{
+    int n = 0, i;
+    while (p[n]) n++;
+    for (i = 0; i < n; i++) {
+        char c = s_ring[(s_ring_at - 1 - (u32)i) & 31], want = p[n - 1 - i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        if (c != want) return 0;
+    }
+    return 1;
+}
+
+static int has_at(const char *u, int n, const char *w)
+{
+    int i, k;
+    for (i = 0; i < n; i++) {
+        for (k = 0; w[k] && i + k < n; k++) {
+            char c = u[i + k];
+            if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+            if (c != w[k]) break;
+        }
+        if (!w[k]) return 1;
+    }
+    return 0;
+}
+
+/* Does it look like something to listen to? */
+static int sounds(const char *u, int mode)
+{
+    static const char *const ext[] = { ".mp3", ".aac", ".aacp", ".ogg", ".oga", ".flac", ".wav",
+                                       ".m3u", ".pls", ".mod", ".xm", ".s3m", ".it", 0 };
+    int n = 0, k, e;
+    while (u[n] && u[n] != '?' && u[n] != '#') n++;      /* the path's end   */
+    for (k = 0; ext[k]; k++) {
+        for (e = 0; ext[k][e]; e++) { }
+        if (n > e && has_at(u + n - e, e, ext[k])) return 1;
+    }
+    if (has_at(u, n, "/stream") || has_at(u, n, "/;") || has_at(u, n, "icecast") || has_at(u, n, "shoutcast"))
+        return 1;
+    return mode == 2 && has_at(u, n, "/");                /* a stream key's address */
+}
+
+static void sniff_end(void)
+{
+    char u[PAGE_HREF_MAX];
+    int i, k = 0, mode = s_sn_on;
+    s_sn_on = 0;
+    s_sn[s_sn_len] = 0;
+    /* JSON's \/ and \u0026, and HTML's &amp; */
+    for (i = 0; s_sn[i] && k < PAGE_HREF_MAX - 1; i++) {
+        const char *q = s_sn + i;
+        if (q[0] == '\\' && q[1] == '/') { u[k++] = '/'; i++; }
+        else if (q[0] == '\\' && q[1] == 'u' && q[2] == '0' && q[3] == '0' && q[4] == '2' && ((q[5] | 32) == '6' || (q[5] | 32) == 'f')) {
+            u[k++] = (q[5] | 32) == '6' ? '&' : '/'; i += 5;
+        } else if (q[0] == '&' && q[1] == 'a' && q[2] == 'm' && q[3] == 'p' && q[4] == ';') { u[k++] = '&'; i += 4; }
+        else u[k++] = q[0];
+    }
+    while (k && (u[k - 1] == '&' || u[k - 1] == '\\')) k--;   /* what began &quot; or a \" */
+    u[k] = 0;
+    if (!k || !sounds(u, mode) || s_nsniffed >= SNIFF_MAX) return;
+    for (i = 0; i < s_nsniffed; i++) if (eq_ci(s_sniffed[i], u)) return;
+    for (i = 0; i <= k; i++) s_sniffed[s_nsniffed][i] = u[i];
+    s_nsniffed++;
+}
+
+static void sniff(u8 b)
+{
+    s_ring[s_ring_at++ & 31] = (char)b;
+    if (b == '/' && ring_ends("/api/nowplaying/")) s_azura = 1;
+    if (s_sn_on) {
+        if (b == '"' || b == '\'' || b == '<' || b == '>' || b <= ' ' || b == ',' || b == '}' || b == ']' ||
+            (b == 'q' && s_sn_len && s_sn[s_sn_len - 1] == '&')) { sniff_end(); return; }
+        if (s_sn_len < PAGE_HREF_MAX - 1) s_sn[s_sn_len++] = (char)b;
+        else s_sn_on = 0;                          /* too long to be one      */
+        return;
+    }
+    if (b == '/') {
+        int sec = ring_ends("https://") || ring_ends("https:\\/\\/");
+        if (sec || ring_ends("http://") || ring_ends("http:\\/\\/")) {
+            const char *pre = sec ? "https://" : "http://";
+            for (s_sn_len = 0; pre[s_sn_len]; s_sn_len++) s_sn[s_sn_len] = pre[s_sn_len];
+            s_sn_on = 1;
+        }
+    } else if (b == '"' || b == ';') {
+        static const char *const keys[] = { "stream", "streamurl", "stream_url", "listen_url", "listenurl",
+                                            "audiourl", "audio_url", "mp3", 0 };
+        static const char *const seps[] = { "\":\"", "\": \"", "&quot;:&quot;", 0 };
+        char pat[40];
+        int k, j, a, c;
+        for (k = 0; keys[k]; k++)
+            for (j = 0; seps[j]; j++) {
+                for (a = 0; keys[k][a]; a++) pat[a] = keys[k][a];
+                for (c = 0; seps[j][c]; c++) pat[a + c] = seps[j][c];
+                pat[a + c] = 0;
+                if (ring_ends(pat)) { s_sn_len = 0; s_sn_on = 2; return; }
+            }
+    }
+}
+
+/* AzuraCast's station pages (radio.zelerk.com/public/chiptune, behind
+ * watch.chiptune.fm) are drawn by JavaScript from the station's own
+ * description at /api/nowplaying/<station>: JSON that names its streams.
+ * browzer asks for it the same way, and reads it for addresses as it does
+ * a page.  Nothing in it is run. */
+static void azuracast(const Url *u)
+{
+    static u8 buf[2048];
+    char req[PAGE_HREF_MAX + 200], st[48];
+    int n, i, k, status = 0, state = 0, sp = 0;
+    u32 got = 0, last = 0;
+    if (!lower_eq(u->path, "/public/", 8)) return;
+    for (k = 0; u->path[8 + k] && u->path[8 + k] != '/' && u->path[8 + k] != '?' && u->path[8 + k] != '#'; k++) {
+        char c = u->path[8 + k];
+        if (k >= (int)sizeof st - 1 || !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return;
+        st[k] = c;
+    }
+    st[k] = 0;
+    if (!k || !A->conn_open(u->host, u->port, u->secure, tls_note)) return;
+    note("Asking the station (AzuraCast) for its streams...", C_DIM);
+    fmt_str(req, sizeof req, "GET /api/nowplaying/%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+            "Accept: application/json\r\nConnection: close\r\n\r\n", st, u->host, A->os_version());
+    for (n = 0; req[n]; n++) { }
+    conn_write((const u8 *)req, n);
+    while (got < 65536) {
+        n = conn_read(buf, sizeof buf, 15000);
+        if (n <= 0) break;
+        for (i = 0; i < n; i++) {
+            u8 b = buf[i];
+            if (!state) {                          /* the headers: "HTTP/1.1 200", up to a blank line */
+                if (sp == 1 && b >= '0' && b <= '9') status = status * 10 + (b - '0');
+                if (b == ' ' && sp < 2) sp++;
+                last = (last << 8) | b;
+                if (last == 0x0D0A0D0Au || (last & 0xFFFF) == 0x0A0A) state = 1;
+                continue;
+            }
+            if (status != 200) break;
+            sniff(b);
+            got++;
+        }
+        if (state && status != 200) break;
+        main_pump(0);
+    }
+    conn_close();
+}
+
+/* At the end of a page: what it named, as links, unless it links to them. */
+static void sniff_list(void)
+{
+    int i, j, shown = 0;
+    if (s_sn_on) sniff_end();
+    for (i = 0; i < s_nsniffed; i++) {
+        for (j = 0; j < s_pg->nlinks && !eq_ci(s_pg->href[j], s_sniffed[i]); j++) { }
+        if (j < s_pg->nlinks) continue;
+        if (!shown++) {
+            newline(2);
+            emit_text("Sound this page names, without a link to it:", C_BRIGHT);
+            newline(1);
+        }
+        s_linkid = add_link_to(s_sniffed[i]);
+        if (!s_linkid) break;
+        wire_line("sound it names: ", s_sniffed[i]);
+        s_link = 1;
+        for (j = 0; s_sniffed[i][j]; j++) emit((u8)s_sniffed[i][j]);
+        flush_word();
+        s_link = 0; s_linkid = 0;
+        newline(1);
+    }
 }
 
 /* ---- forms ------------------------------------------------------------- */
@@ -845,9 +1105,10 @@ static void tag_ended(void)
     if (tag_is("meta")) {
         if (s_pg && eq_ci(s_equiv, "refresh") && !s_tag_close) {
             const char *c = s_content;
-            int secs = 0, k = 0;
+            int secs = 0, k = 0, digits = 0;
+            decode_entities(s_content);          /* url=&quot;...&quot; is common */
             while (*c == ' ') c++;
-            while (*c >= '0' && *c <= '9') secs = secs * 10 + (*c++ - '0');
+            while (*c >= '0' && *c <= '9') { secs = secs * 10 + (*c++ - '0'); digits++; }
             s_pg->refresh = secs > 0 ? secs : 1;
             for (; *c; c++)
                 if ((c[0] | 32) == 'u' && (c[1] | 32) == 'r' && (c[2] | 32) == 'l' && c[3] == '=') {
@@ -857,6 +1118,10 @@ static void tag_ended(void)
                     break;
                 }
             s_pg->refresh_url[k] = 0;
+            /* At once, to somewhere else: the rest of this page is not
+             * worth the wait.  (DuckDuckGo sends 200 KB of scripts after
+             * pointing a page without them to its plain version.) */
+            if (digits && secs == 0 && k) s_refresh_go = 1;
         }
         return;
     }
@@ -1136,6 +1401,7 @@ static void filter_reset(int html)
 
 static void body_byte(u8 b)
 {
+    if (s_pg) sniff(b);
     if (s_html) { html_byte(b); return; }
     if (b == '\n') { flush_word(); out_newline(); s_col = 0; s_newlines = 1; return; }
     if (b == '\r') return;
@@ -1221,6 +1487,8 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     station[0] = 0;
 
     s_secure = u->secure;
+    s_refresh_go = 0;
+    s_nsniffed = 0; s_sn_on = 0; s_bare = 0; s_azura = 0;
     if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->who[0] = 0; }
     if (!s_pg) main_pump(1);
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) {
@@ -1386,13 +1654,14 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
         if (s_pg) {
             s_pg->bytes = body;
-            if (body - said >= 2048 && !media) {
+            if (body - said >= (media ? 16384u : 2048u) && media != 2) {
                 said = body;
-                fmt_str(line, sizeof line, "loading... %u bytes", body);
+                if (clen && media) fmt_str(line, sizeof line, "loading... %u KB of %u KB", body >> 10, clen >> 10);
+                else fmt_str(line, sizeof line, "loading... %u bytes", body);
                 note(line, C_DIM);
             }
         }
-        if (stopped) break;
+        if (stopped || s_refresh_go) break;
         if (stop_asked()) {
             flush_word();
             note("Stopped.", C_ACCENT);
@@ -1404,6 +1673,13 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
     flush_word();
     conn_close();
+    if (s_pg && !media && !counting && in_body) {
+        char t[80];
+        if (s_azura && status == 200) azuracast(u);
+        sniff_list();
+        fmt_str(t, sizeof t, "%u, %u links: ", (u32)status, (u32)s_pg->nlinks);
+        wire_line(t, s_pg->title[0] ? s_pg->title : "(no title)");
+    }
     if (media) web_media_end(asked ? -1 : whole && !stopped);
     if (!s_pg) {
         if (s_col) term_newline();

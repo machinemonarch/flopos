@@ -379,3 +379,31 @@ void vga_fade_out(int steps)
     for (i = 0; i < 768; i++) black[i] = 0;
     vga_fade_to(black, steps);
 }
+
+/* A few palette entries, straight to the card, without waiting for the
+ * retrace: eight colours are over in microseconds. */
+void vga_set_colours(int first, int n, const u8 *rgb)
+{
+    int i;
+    outb(DAC_WRITE_INDEX, (u8)first);
+    for (i = 0; i < n * 3; i++) {
+        s_current[first * 3 + i] = rgb[i];
+        outb(DAC_DATA, rgb[i]);
+    }
+}
+
+/* Only a rectangle of the canvas to the card: the HUD, over a window
+ * that is otherwise unchanged, is a third of the width it would be. */
+void vga_present_rect(int x0, int y0, int x1, int y1)
+{
+    int y;
+    if (!s_hi) { vga_present(); return; }
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    x0 &= ~3; x1 |= 3;
+    if (x1 >= HI_W) x1 = HI_W - 1;
+    if (y1 >= HI_H) y1 = HI_H - 1;
+    s_composed = 0;
+    for (y = y0; y <= y1; y++)
+        memcpy32((u8 *)s_lfb + y * HI_W + x0, s_hi + y * HI_W + x0, (u32)(x1 - x0 + 1) / 4);
+}

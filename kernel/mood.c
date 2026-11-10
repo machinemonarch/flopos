@@ -196,6 +196,7 @@ static void build_palette(u8 *p)
     /* Its own ramp, because no part of a mood palette is ever yellow and
      * a banana is not negotiable about this. */
     ramp(p, PAL_BANANA, PAL_BANANA_N, 16, 12, 2, 63, 60, 20);
+    ramp(p, PAL_HUD, PAL_HUD_N, 2, 4, 16, 10, 20, 63);
 
 }
 
