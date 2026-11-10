@@ -43,9 +43,11 @@ static PageForm  s_forms[PAGE_FORMS];
 static PageField s_fields[PAGE_FIELDS];
 static char      s_pool[PAGE_POOL];
 static u16       s_link_field[PAGE_LINKS + 1];
+static PageOption s_opts[PAGE_OPTIONS];
 static u8        s_body[PAGE_POOL * 3];  /* a form, ready to send          */
 static int  s_ready;
 static int  s_typing = -1;               /* the field being typed into     */
+static int  s_choosing = -1, s_chose_was;   /* a list being chosen from   */
 
 /* ---- music ------------------------------------------------------------------
  * A link that is not a page comes here instead.  Two ways:
@@ -503,7 +505,12 @@ static void draw(void)
     }
 
     /* Status: what is happening, or where the picked link goes. */
-    if (s_typing >= 0) {
+    if (s_choosing >= 0) {
+        PageField *f = &s_pg.fields[s_choosing];
+        fmt_str(line, sizeof line, "choosing, %u of %u: up and down change it, enter keeps it",
+                (u32)f->sel + 1, (u32)f->nopt);
+        put_text_clipped(2, s_h - 2, line, C_ACCENT, pp, s_w - 12);
+    } else if (s_typing >= 0) {
         put_text_clipped(2, s_h - 2, s_pg.fields[s_typing].kind == FK_AREA
                          ? "typing: enter is a new line, tab finishes"
                          : "typing: enter sends it, esc stops", C_ACCENT, pp, s_w - 12);
@@ -516,7 +523,11 @@ static void draw(void)
             term_win_text(2, s_h - 2, "sends to", C_ACCENT, pp);
             put_text_clipped(11, s_h - 2, where, C_TEXT, pp, s_w - 12);
         } else
-            put_text_clipped(2, s_h - 2, "a box: enter to type into it", C_ACCENT, pp, s_w - 12);
+            put_text_clipped(2, s_h - 2,
+                             f->kind == FK_CHECK  ? "a tick box: enter ticks or unticks it" :
+                             f->kind == FK_RADIO  ? "one of a set: enter picks this one" :
+                             f->kind == FK_SELECT ? "a list: enter to choose from it" :
+                                                    "a box: enter to type into it", C_ACCENT, pp, s_w - 12);
     } else if (s_sel && !s_loading) {
         char where[PAGE_HREF_MAX + 16];
         if (!url_resolve(s_pg.url, s_pg.href[s_sel - 1], where, sizeof where))
@@ -534,7 +545,8 @@ static void draw(void)
 
     /* Keys, let into the bottom of the frame. */
     {
-        const char *keys = s_typing >= 0 ? " type  enter send  tab done  esc stop "
+        const char *keys = s_choosing >= 0 ? " up down choose  enter keep  esc undo "
+                         : s_typing >= 0 ? " type  enter send  tab done  esc stop "
                          : s_w >= 66 ? " tab link  enter go  bksp back  g go to  b mark  m marks  esc "
                          : s_w >= 60 ? " tab link  enter go  bksp back  g go to  esc leave "
                                      : " tab enter bksp g esc ";
@@ -775,6 +787,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
     s_top = 0;
     s_sel = 0;
     s_typing = -1;
+    s_choosing = -1;
     if (url[0] == 'f' && url[1] == 'l' && url[2] == 'o' && url[3] == 'p') { home(); return; }
     s_loading = 1;
     s_pg.title[0] = 0;
@@ -937,6 +950,8 @@ static void submit(PageField *by)
         PageField *f = &s_pg.fields[i];
         if (f->form != by->form || !f->nlen) continue;
         if (f->kind == FK_SUBMIT && f != by) continue;
+        if ((f->kind == FK_CHECK || f->kind == FK_RADIO) && !f->on) continue;
+        if (f->kind == FK_SELECT && !f->nopt) continue;
         if (n) s_body[n++] = '&';
         n = urlenc(s_body, n, cap, s_pg.pool + f->name, f->nlen);
         s_body[n++] = '=';
@@ -1033,6 +1048,48 @@ static void go_typed(const char *t)
     go(url);
 }
 
+/* One of a set of choices picked: the others with its name let go. */
+static void radio_pick(PageField *f)
+{
+    int i;
+    for (i = 0; i < s_pg.nfields; i++) {
+        PageField *g = &s_pg.fields[i];
+        u32 k;
+        if (g->kind != FK_RADIO || g->form != f->form || g->nlen != f->nlen) continue;
+        for (k = 0; k < f->nlen && s_pg.pool[g->name + k] == s_pg.pool[f->name + k]; k++) { }
+        if (k < f->nlen) continue;
+        g->on = g == f;
+        page_field_show(&s_pg, i);
+    }
+}
+
+/* A list's choice changed to number i (kept in range). */
+static void choose(PageField *f, int i)
+{
+    const PageOption *o;
+    if (i < 0) i = 0;
+    if (i >= f->nopt) i = f->nopt - 1;
+    f->sel = (u16)i;
+    o = &s_pg.opts[f->opt0 + i];
+    f->val = o->val;
+    f->vlen = o->vlen;
+    page_field_show(&s_pg, (int)(f - s_pg.fields));
+}
+
+/* The next choice after the current one whose words start with ch. */
+static void choose_letter(PageField *f, int ch)
+{
+    int i;
+    if (ch >= 'A' && ch <= 'Z') ch += 32;
+    for (i = 1; i <= f->nopt; i++) {
+        int at = (f->sel + i) % f->nopt;
+        const PageOption *o = &s_pg.opts[f->opt0 + at];
+        int c = o->llen ? (u8)s_pg.pool[o->lab] : 0;
+        if (c >= 'A' && c <= 'Z') c += 32;
+        if (c == ch) { choose(f, at); return; }
+    }
+}
+
 static void follow(void)
 {
     char url[PAGE_HREF_MAX + 16];
@@ -1040,6 +1097,9 @@ static void follow(void)
     if (!s_sel) return;
     if ((f = field_of(s_sel)) != 0) {
         if (f->kind == FK_SUBMIT) submit(f);
+        else if (f->kind == FK_CHECK) { f->on = !f->on; page_field_show(&s_pg, (int)(f - s_pg.fields)); }
+        else if (f->kind == FK_RADIO) radio_pick(f);
+        else if (f->kind == FK_SELECT) { s_choosing = (int)(f - s_pg.fields); s_chose_was = f->sel; }
         else s_typing = (int)(f - s_pg.fields);
         return;
     }
@@ -1116,6 +1176,7 @@ void browzer_run(const char *start)
         s_pg.fields = s_fields;
         s_pg.pool = s_pool;
         s_pg.link_field = s_link_field;
+        s_pg.opts = s_opts;
         s_pg.max_lines = MAX_LINES;
         s_pg.progress = progress;
         web_media_start = media_start;
@@ -1142,6 +1203,21 @@ void browzer_run(const char *start)
         draw();
         k = ui_key();
         if (k < 0) { music_feed(); main_pump(0); continue; }
+
+        if (s_choosing >= 0) {           /* up and down through a list      */
+            PageField *f = &s_pg.fields[s_choosing];
+            if (k == UK_UP) choose(f, f->sel - 1);
+            else if (k == UK_DOWN) choose(f, f->sel + 1);
+            else if (k == UK_PGUP) choose(f, f->sel - 10);
+            else if (k == UK_PGDN) choose(f, f->sel + 10);
+            else if (k == UK_HOME) choose(f, 0);
+            else if (k == UK_END) choose(f, f->nopt - 1);
+            else if (k == UK_ESC) { choose(f, s_chose_was); s_choosing = -1; }
+            else if (k == UK_ENTER) s_choosing = -1;
+            else if (k == UK_TAB) { s_choosing = -1; pick(+1); }
+            else if (k > 32 && k < 127) choose_letter(f, k);
+            continue;
+        }
 
         if (s_typing >= 0) {             /* into a box on the page          */
             PageField *f = &s_pg.fields[s_typing];

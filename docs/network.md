@@ -125,8 +125,9 @@ them.
 
 ### Forms
 
-Text boxes and buttons on a page work, so search boxes, logins and chat
-pages like nojs.chat can be used.
+Text boxes, tick boxes, choices, lists and buttons on a page work, so
+search boxes, logins, settings pages and chat pages like nojs.chat can be
+used.
 
 - A box is drawn as `[__________]` and a button as `[ Send ]`. Tab
   reaches them the same way it reaches links.
@@ -136,12 +137,18 @@ pages like nojs.chat can be used.
   new line instead, and Tab finishes.
 - **Enter on a button** sends the form with that button.
 - **Esc** stops typing without sending.
+- A tick box is `[x]` or `[ ]`: **Enter** ticks or unticks it.
+- One of a set of choices is `(*)` or `( )`: **Enter** picks it, and the
+  others in its set let go.
+- A drop-down list is a box showing the current choice, `[Sverige    v]`.
+  **Enter** opens it; **up** and **down** change the choice (Page Up and
+  Page Down jump ten), a letter jumps to the next choice starting with
+  it, **Enter** keeps it and **Esc** puts back the one before.
 
 Hidden values the page keeps in its forms are sent back exactly as they
 came. Both ways of sending work (GET puts the form in the address, POST
 sends it separately), and the redirect most sites answer a form with is
-followed. Not yet: checkboxes, radio buttons, drop-down lists and file
-uploads.
+followed. Not yet: file uploads.
 
 Text typed into a page goes to that site, so on a secure page check the
 status line says who vouched for it first.

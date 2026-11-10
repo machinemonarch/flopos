@@ -6,6 +6,12 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.20.0 — 2026-11-10
+
+- **Tick boxes, choices and drop-down lists in browzer's forms**, all plain
+  HTML. Enter ticks a box or picks a choice; on a list, Enter opens it, up
+  and down change it, a letter jumps to a choice starting with it.
+
 ## 1.19.0 — 2026-11-10
 
 - **Ogg Vorbis and FLAC in browzer**, as files and as radio. Vorbis is

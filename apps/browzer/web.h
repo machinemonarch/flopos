@@ -99,6 +99,7 @@ int    url_resolve(const char *base, const char *href, char *out, int max);
 #define PAGE_FORMS    24
 #define PAGE_FIELDS   64
 #define PAGE_POOL     65536              /* field names and values          */
+#define PAGE_OPTIONS  512                /* the choices in drop-down lists  */
 
 /* One character of the page: what it is, its colour, and which link or
  * field it belongs to (0 for none). */
@@ -108,7 +109,10 @@ typedef struct { u8 ch, col; u16 link; } PageCell;
 typedef struct { char action[PAGE_HREF_MAX]; u8 post; } PageForm;
 
 /* The kinds of field browzer understands. */
-enum { FK_TEXT = 1, FK_HIDDEN, FK_SUBMIT, FK_AREA, FK_PASSWORD };
+enum { FK_TEXT = 1, FK_HIDDEN, FK_SUBMIT, FK_AREA, FK_PASSWORD, FK_CHECK, FK_RADIO, FK_SELECT };
+
+/* One choice in a drop-down list: what is sent, and what is shown. */
+typedef struct { u32 val, vlen, lab, llen; } PageOption;
 
 /* A field of a form.  Its name and value are bytes in the page's pool,
  * UTF-8, as they will be sent; a box that can be typed into has room to
@@ -116,7 +120,9 @@ enum { FK_TEXT = 1, FK_HIDDEN, FK_SUBMIT, FK_AREA, FK_PASSWORD };
  * box is on the page at line, col, width cells wide. */
 typedef struct {
     u8  form, kind;
+    u8  on;                              /* a tick box or choice: ticked    */
     u16 link;
+    u16 opt0, nopt, sel;                 /* a list: its choices, the one picked */
     u16 line, col, width;
     u32 name, nlen;
     u32 val, vlen, vcap;
@@ -145,6 +151,8 @@ typedef struct {
     char      *pool;                     /* PAGE_POOL bytes                 */
     u32        pool_used;
     u16       *link_field;               /* PAGE_LINKS + 1: link -> field+1 */
+    PageOption *opts;                    /* PAGE_OPTIONS                    */
+    int        nopts;
 } Page;
 
 void   page_clear(Page *pg);

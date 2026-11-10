@@ -89,6 +89,8 @@ static void out_char(u8 ch, u8 col, u16 link)
     c->ch = ch; c->col = col; c->link = link;
 }
 
+static int s_select, s_opt;              /* a list being read (below)       */
+
 void page_clear(Page *pg)
 {
     Page *keep = s_pg;
@@ -100,6 +102,8 @@ void page_clear(Page *pg)
     pg->nlinks = 0;
     pg->nforms = 0;
     pg->nfields = 0;
+    pg->nopts = 0;
+    s_select = s_opt = -1;
     pg->pool_used = 0;
     pg->title[0] = 0;
     pg->note[0] = 0;
@@ -130,7 +134,7 @@ static u32  s_cp, s_cp_left;
 
 /* Attributes: only href and alt are kept. */
 static int  s_astate;
-static char s_aname[8];
+static char s_aname[12];
 static int  s_aname_len;
 static char s_quote;
 static char s_href[PAGE_HREF_MAX];
@@ -143,6 +147,10 @@ static char s_action[PAGE_HREF_MAX], s_method[8], s_type[12], s_fname[64], s_siz
 static char s_val[VAL_MAX];
 static int  s_has_val;
 static int  s_form = -1, s_area = -1, s_area_w, s_button = -1, s_area_fresh;
+static int  s_select = -1;               /* the <select> being read; -2 one with no room */
+static int  s_opt = -1, s_opt_val, s_opt_sel;   /* the <option> being read     */
+static int  s_checked;                   /* the tag says checked or selected */
+#define OPT_LAB 60                       /* bytes of a choice's words kept  */
 static char s_alt[60];
 static char s_wattr[8], s_hattr[8];      /* an image's width and height    */
 static char *s_aval;
@@ -233,6 +241,23 @@ static int put_utf8(char *o, u32 c)
 /* One character of readable text, already decoded. */
 static void emit(u32 c)
 {
+    /* Inside a drop-down list, the words are its choices'; anything
+     * between them is not shown. */
+    if (s_select != -1 && s_pg) {
+        if (s_opt >= 0) {
+            PageOption *o = &s_pg->opts[s_opt];
+            char b[4];
+            int n, k;
+            if (c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == 0xA0) {
+                if (!o->llen || s_pg->pool[o->lab + o->llen - 1] == ' ') return;
+                c = ' ';
+            }
+            n = put_utf8(b, c);
+            if (o->llen + (u32)n <= OPT_LAB)
+                for (k = 0; k < n; k++) s_pg->pool[o->lab + o->llen++] = b[k];
+        }
+        return;
+    }
     /* Inside a text area, the text is the box's value, not the page's. */
     if (s_area >= 0 && s_pg) {
         PageField *f = &s_pg->fields[s_area];
@@ -445,7 +470,8 @@ static int add_field(int kind, const char *val, int vlen, int vcap)
     if (vcap < vlen) vcap = vlen;
     if (p->pool_used + (u32)nlen + (u32)vcap > PAGE_POOL) return -1;
     f = &p->fields[p->nfields];
-    f->form = (u8)s_form; f->kind = (u8)kind; f->link = 0;
+    f->form = (u8)s_form; f->kind = (u8)kind; f->link = 0; f->on = 0;
+    f->opt0 = f->nopt = f->sel = 0;
     f->line = f->col = f->width = 0;
     f->name = p->pool_used; f->nlen = (u32)nlen;
     for (i = 0; i < nlen; i++) p->pool[p->pool_used++] = s_fname[i];
@@ -509,9 +535,31 @@ void page_field_show(Page *pg, int fi)
     int n = 0, skip, i;
 
     if (!f->width) return;
+    c = &pg->cells[f->line * pg->width + f->col];
+    if (f->kind == FK_CHECK || f->kind == FK_RADIO) {       /* [x]  (*)      */
+        c[0].ch = f->on ? (f->kind == FK_RADIO ? '*' : 'x') : ' ';
+        c[0].col = C_BRIGHT;
+        return;
+    }
+    if (f->kind == FK_SELECT) {                              /* [words v]     */
+        const PageOption *o = &pg->opts[f->opt0 + f->sel];
+        v = (const u8 *)pg->pool + o->lab;
+        for (i = 0; i < f->width; i++) { c[i].ch = ' '; c[i].col = C_BRIGHT; }
+        for (k = 0, i = 0; k < o->llen && i < f->width - 2; i++) {
+            u32 cp = v[k++];
+            if (cp >= 0xC0) {
+                int more = cp >= 0xF0 ? 3 : cp >= 0xE0 ? 2 : 1;
+                cp &= more == 3 ? 0x07 : more == 2 ? 0x0F : 0x1F;
+                while (more-- && k < o->llen) cp = (cp << 6) | (v[k++] & 0x3F);
+            }
+            c[i].ch = glyph_for(cp);
+        }
+        c[f->width - 1].ch = 'v';
+        c[f->width - 1].col = C_GREY;
+        return;
+    }
     for (k = 0; k < f->vlen; k++) if ((v[k] & 0xC0) != 0x80) n++;     /* characters */
     skip = n > f->width - 1 ? n - (f->width - 1) : 0;                 /* room for the caret */
-    c = &pg->cells[f->line * pg->width + f->col];
     for (i = 0; i < f->width; i++) { c[i].ch = '_'; c[i].col = C_DIM; }
     for (k = 0, i = 0; k < f->vlen; ) {
         u32 cp = v[k++];
@@ -554,6 +602,104 @@ static void submit_button(const char *label)
     s_newlines = 0;
 }
 
+/* [x] or (*): a tick box, or one of a set of choices. */
+static void tick_box(int fi)
+{
+    Page *p = s_pg;
+    PageField *f = &p->fields[fi];
+    u16 id = field_link(fi);
+    int radio = f->kind == FK_RADIO;
+    make_room(3);
+    out_char(radio ? '(' : '[', C_GREY, id); s_col++;
+    f->line = (u16)(p->lines - 1);
+    f->col = (u16)p->col;
+    f->width = 1;
+    out_char(' ', C_BRIGHT, id); s_col++;
+    out_char(radio ? ')' : ']', C_GREY, id); s_col++;
+    s_space = 1;
+    s_newlines = 0;
+    page_field_show(p, fi);
+}
+
+static int same_name(const PageField *a, const PageField *b)
+{
+    u32 k;
+    if (a->form != b->form || a->nlen != b->nlen) return 0;
+    for (k = 0; k < a->nlen; k++) if (s_pg->pool[a->name + k] != s_pg->pool[b->name + k]) return 0;
+    return 1;
+}
+
+/* The end of a choice in a list: words tidied, and its value is its words
+ * if it was given none. */
+static void option_end(void)
+{
+    PageOption *o;
+    PageField *f;
+    if (s_opt < 0) return;
+    o = &s_pg->opts[s_opt];
+    f = &s_pg->fields[s_select];
+    while (o->llen && s_pg->pool[o->lab + o->llen - 1] == ' ') o->llen--;
+    if (!s_opt_val) { o->val = o->lab; o->vlen = o->llen; }
+    f->nopt = (u16)(s_opt - f->opt0 + 1);
+    if (s_opt_sel) f->sel = (u16)(s_opt - f->opt0);
+    s_opt = -1;
+}
+
+static void option_begin(void)
+{
+    Page *p = s_pg;
+    PageOption *o;
+    int n, i;
+    if (s_select < 0 || p->nopts >= PAGE_OPTIONS) return;
+    decode_entities(s_val);
+    for (n = 0; s_val[n]; n++) { }
+    if (p->pool_used + (u32)n + OPT_LAB > PAGE_POOL) return;
+    o = &p->opts[p->nopts];
+    o->val = p->pool_used; o->vlen = s_has_val ? (u32)n : 0;
+    for (i = 0; i < (int)o->vlen; i++) p->pool[p->pool_used++] = s_val[i];
+    o->lab = p->pool_used; o->llen = 0;
+    p->pool_used += OPT_LAB;
+    s_opt_val = s_has_val;
+    s_opt_sel = s_checked;
+    s_opt = p->nopts++;
+}
+
+/* </select>: the list drawn as a box showing the choice, [words v]. */
+static void select_end(void)
+{
+    Page *p = s_pg;
+    PageField *f;
+    int w = 4, i, fi = s_select;
+    u16 id;
+    option_end();
+    s_select = -1;
+    if (fi < 0) return;
+    f = &p->fields[fi];
+    if (!f->nopt) return;
+    for (i = 0; i < f->nopt; i++) {
+        const PageOption *o = &p->opts[f->opt0 + i];
+        u32 k;
+        int n = 0;
+        for (k = 0; k < o->llen; k++) if ((p->pool[o->lab + k] & 0xC0) != 0x80) n++;
+        if (n > w) w = n;
+    }
+    if (w > 30) w = 30;
+    if (w > out_width() - 6) w = out_width() - 6;
+    f->val = p->opts[f->opt0 + f->sel].val;
+    f->vlen = p->opts[f->opt0 + f->sel].vlen;
+    id = field_link(fi);
+    make_room(w + 4);
+    out_char('[', C_GREY, id); s_col++;
+    f->line = (u16)(p->lines - 1);
+    f->col = (u16)p->col;
+    f->width = (u16)(w + 2);
+    for (i = 0; i < w + 2; i++) { out_char(' ', C_BRIGHT, id); s_col++; }
+    out_char(']', C_GREY, id); s_col++;
+    s_space = 1;
+    s_newlines = 0;
+    page_field_show(p, fi);
+}
+
 static void input_tag(void)
 {
     int n;
@@ -570,6 +716,21 @@ static void input_tag(void)
             submit_button(lab);
         } else
             submit_button("Send");
+    } else if (eq_ci(s_type, "checkbox") || eq_ci(s_type, "radio")) {
+        int radio = eq_ci(s_type, "radio");
+        int fi = add_field(radio ? FK_RADIO : FK_CHECK, s_has_val ? s_val : "on", s_has_val ? n : 2, 0);
+        if (fi >= 0) {
+            PageField *f = &s_pg->fields[fi];
+            int i;
+            f->on = (u8)s_checked;
+            if (radio && f->on)                  /* only one of a set is picked */
+                for (i = 0; i < fi; i++)
+                    if (s_pg->fields[i].kind == FK_RADIO && same_name(&s_pg->fields[i], f)) {
+                        s_pg->fields[i].on = 0;
+                        page_field_show(s_pg, i);
+                    }
+            tick_box(fi);
+        }
     } else if (!s_type[0] || eq_ci(s_type, "text") || eq_ci(s_type, "search") ||
                eq_ci(s_type, "email") || eq_ci(s_type, "url") || eq_ci(s_type, "tel") ||
                eq_ci(s_type, "number") || eq_ci(s_type, "password")) {
@@ -577,8 +738,7 @@ static void input_tag(void)
         int w = s_size[0] ? number(s_size) : 24;
         if (fi >= 0) field_box(fi, w);
     }
-    /* Checkboxes, radio buttons, files, and buttons that only do
-     * something with JavaScript: not yet. */
+    /* Files, and buttons that only do something with JavaScript: not yet. */
 }
 
 static void tag_ended(void)
@@ -595,6 +755,20 @@ static void tag_ended(void)
             s_hstate = H_SKIP;
             return;
         }
+    }
+    if (tag_is("select")) {
+        if (!s_tag_close) {
+            int fi;
+            if (s_select != -1) select_end();
+            fi = add_field(FK_SELECT, "", 0, 0);
+            s_select = fi >= 0 ? fi : -2;
+            if (fi >= 0) s_pg->fields[fi].opt0 = (u16)s_pg->nopts;
+        } else if (s_select != -1) select_end();
+        return;
+    }
+    if (s_select != -1) {                /* inside a list: only its choices */
+        if (tag_is("option")) { option_end(); if (!s_tag_close) option_begin(); }
+        return;
     }
     if (tag_is("form")) {
         newline(2);
@@ -723,6 +897,14 @@ static void entity_ended(void)
     for (i = 0; s_ent[i]; i++) emit((u8)s_ent[i]);
 }
 
+/* An attribute's name is complete: the ones that matter with no value. */
+static void attr_named(void)
+{
+    if (s_aname_len >= (int)sizeof s_aname) return;
+    s_aname[s_aname_len] = 0;
+    if (eq_ci(s_aname, "checked") || eq_ci(s_aname, "selected")) s_checked = 1;
+}
+
 static void attr_begin_value(void)
 {
     s_aname[s_aname_len] = 0;
@@ -778,6 +960,7 @@ static void tag_start(void)
     s_action[0] = s_method[0] = s_type[0] = s_fname[0] = s_size[0] = 0;
     s_val[0] = 0;
     s_has_val = 0;
+    s_checked = 0;
     s_hstate = H_TAG;
 }
 
@@ -797,6 +980,7 @@ static void html_byte(u8 b)
         if (b == '>') {
             s_tag[s_tag_len] = 0;
             s_hstate = H_TEXT;
+            if (s_tag_done && s_astate == A_NAME) attr_named();
             tag_ended();
             return;
         }
@@ -816,8 +1000,8 @@ static void html_byte(u8 b)
             }
             return;
         case A_NAME:
-            if (b == '=') { attr_begin_value(); s_astate = A_EQ; }
-            else if (ws) s_astate = A_NONE;
+            if (b == '=') { attr_named(); attr_begin_value(); s_astate = A_EQ; }
+            else if (ws || b == '/') { attr_named(); s_astate = A_NONE; }
             else if (s_aname_len < (int)sizeof s_aname - 1)
                 s_aname[s_aname_len++] = (char)((b >= 'A' && b <= 'Z') ? b + 32 : b);
             else s_aname_len = (int)sizeof s_aname;        /* too long to be one of ours */
