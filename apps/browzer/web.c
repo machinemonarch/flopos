@@ -109,6 +109,9 @@ void page_clear(Page *pg)
     pg->note[0] = 0;
     pg->bytes = 0;
     pg->status = 0;
+    pg->refresh = 0;
+    pg->refresh_url[0] = 0;
+    pg->gen++;
     pg->secure = 0;
     pg->pq = 0;
     s_pg = keep;
@@ -152,6 +155,7 @@ static int  s_opt = -1, s_opt_val, s_opt_sel;   /* the <option> being read     *
 static int  s_checked;                   /* the tag says checked or selected */
 #define OPT_LAB 60                       /* bytes of a choice's words kept  */
 static char s_alt[60];
+static char s_equiv[16], s_content[256], s_src[PAGE_HREF_MAX];   /* meta, frames */
 static char s_wattr[8], s_hattr[8];      /* an image's width and height    */
 static char *s_aval;
 static int  s_aval_len, s_aval_max;
@@ -835,6 +839,47 @@ static void tag_ended(void)
         if (s_tag_close) newline(1);
         return;
     }
+    /* <meta http-equiv="refresh" content="5; url=...">: chat pages without
+     * JavaScript reload themselves this way to show what is new.  Kept for
+     * browzer to act on (browzer.c). */
+    if (tag_is("meta")) {
+        if (s_pg && eq_ci(s_equiv, "refresh") && !s_tag_close) {
+            const char *c = s_content;
+            int secs = 0, k = 0;
+            while (*c == ' ') c++;
+            while (*c >= '0' && *c <= '9') secs = secs * 10 + (*c++ - '0');
+            s_pg->refresh = secs > 0 ? secs : 1;
+            for (; *c; c++)
+                if ((c[0] | 32) == 'u' && (c[1] | 32) == 'r' && (c[2] | 32) == 'l' && c[3] == '=') {
+                    c += 4;
+                    while (*c == ' ' || *c == '\'' || *c == '"') c++;
+                    while (c[k] && c[k] != '\'' && c[k] != '"' && k < PAGE_HREF_MAX - 1) { s_pg->refresh_url[k] = c[k]; k++; }
+                    break;
+                }
+            s_pg->refresh_url[k] = 0;
+        }
+        return;
+    }
+    /* A frame: not drawn inside the page, but a link to open it by. */
+    if ((tag_is("iframe") || tag_is("frame")) && !s_tag_close && s_src[0] && s_pg) {
+        int i, last = 0;
+        const char *lab = "[a frame: ";
+        for (i = 0; s_src[i] && i < PAGE_HREF_MAX - 1; i++) { s_href[i] = s_src[i]; if (s_src[i] == '/' && s_src[i + 1]) last = i + 1; }
+        s_href[i] = 0;
+        flush_word();
+        newline(1);
+        s_linkid = add_link();
+        if (s_linkid) {
+            s_link = 1;
+            for (i = 0; lab[i]; i++) emit((u8)lab[i]);
+            for (i = last; s_src[i] && s_src[i] != '?' && i < last + 40; i++) emit((u8)s_src[i]);
+            emit(']');
+            flush_word();
+            s_link = 0; s_linkid = 0;
+        }
+        newline(1);
+        return;
+    }
     if (tag_is("a")) {
         if (s_tag_close) { flush_word(); s_link = 0; s_linkid = 0; }
         else if (s_href[0]) { flush_word(); s_link = 1; s_linkid = add_link(); }
@@ -926,6 +971,7 @@ static void attr_begin_value(void)
         static const struct { const char *n; char *buf; int max; } more[] = {
             { "action", s_action, PAGE_HREF_MAX }, { "method", s_method, 8 },
             { "type", s_type, 12 }, { "name", s_fname, 64 },
+            { "http-equiv", s_equiv, 16 }, { "content", s_content, 256 }, { "src", s_src, PAGE_HREF_MAX },
             { "value", s_val, VAL_MAX }, { "size", s_size, 6 }, { "cols", s_size, 6 },
         };
         int k, j;
@@ -961,6 +1007,7 @@ static void tag_start(void)
     s_val[0] = 0;
     s_has_val = 0;
     s_checked = 0;
+    s_equiv[0] = s_content[0] = s_src[0] = 0;
     s_hstate = H_TAG;
 }
 
@@ -1161,7 +1208,7 @@ static void conn_close(void) { A->conn_close(); }
 static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, int postlen)
 {
     static u8 buf[4096];
-    static char head[2048];
+    static char head[8192];
     char req[PAGE_HREF_MAX + 200], line[96];
     int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0, asked = 0;
     u32 clen = 0, metaint = 0;
@@ -1209,15 +1256,23 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                 "POST %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
                 "Accept: text/html, text/plain, */*\r\n"
                 "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: %u\r\n"
-                "Connection: close\r\n\r\n",
+                "Connection: close\r\n",
                 u->path, u->host, A->os_version(), (u32)postlen);
     else
         fmt_str(req, sizeof req,
                 "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
-                "Accept: text/html, text/plain, */*\r\nIcy-MetaData: 1\r\nConnection: close\r\n\r\n",
+                "Accept: text/html, text/plain, */*\r\nIcy-MetaData: 1\r\nConnection: close\r\n",
                 u->path, u->host, A->os_version());
     for (n = 0; req[n]; n++) { }
     conn_write((const u8 *)req, n);
+    {
+        /* Cookies the site gave us before (cookie.c), then the blank line
+         * that ends the headers. */
+        static char ck[4096];
+        int cn = cookie_header(u, ck, (int)sizeof ck);
+        if (cn) conn_write((const u8 *)ck, cn);
+        conn_write((const u8 *)"\r\n", 2);
+    }
     for (i = 0; post && i < postlen; i += 4096)        /* the form itself   */
         conn_write(post + i, postlen - i < 4096 ? postlen - i : 4096);
     s_status = 0;
@@ -1225,7 +1280,10 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     filter_reset(1);
 
     for (;;) {
-        n = conn_read(buf, sizeof buf, 15000);
+        /* An answer worked out before it is sent -- an AI's, say -- can
+         * take a while to begin: a minute for the first byte, then fifteen
+         * seconds of silence at most. */
+        n = conn_read(buf, sizeof buf, head_len || body ? 15000 : 60000);
         if (n == 0) { whole = 1; break; }                /* they finished  */
         if (n < 0) {
             flush_word();
@@ -1268,6 +1326,8 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                         while (*v == ' ') v++;
                         while (v < end && *v != '\r' && k < moved_max - 1) moved[k++] = *v++;
                         moved[k] = 0;
+                    } else if (lower_eq(ln, "set-cookie:", 11)) {
+                        cookie_set(u, ln + 11);
                     } else if (lower_eq(ln, "content-length:", 15)) {
                         clen = number_at(ln + 15);
                     } else if (lower_eq(ln, "icy-metaint:", 12)) {

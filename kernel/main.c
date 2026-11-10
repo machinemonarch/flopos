@@ -224,6 +224,13 @@ void kmain(void)
      * the machine remembers anything. */
     boot_step("Flippely-Flopping");
     store_init();
+    if (rtc_lost_power() || !rtc_battery_ok()) {
+        boot_step("The clock dozed off without its battery...");
+        boot_result(rtc_battery_ok() ? "it lost its power while unplugged" : "its battery is flat");
+        if (store_ready())
+            store_journal_printf("the clock %s", rtc_battery_ok() ? "had lost its power while switched off"
+                                                                  : "reports its battery flat");
+    }
     if (store_ready() && clock_from_goodbye()) {
         boot_step("Winding the clock forward to our last goodbye...");
         boot_result("near enough");

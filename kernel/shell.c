@@ -246,6 +246,20 @@ static void cmd_time(void)
     term_colour(C_DIM);
     term_printf("awake for %u min %u sec", up / 60, up % 60);
     term_newline();
+    {
+        /* And how the clock has been keeping: its battery, as the chip and
+         * the BIOS see it, and how far out the network found it. */
+        s32 d;
+        term_printf("its battery: %s", !rtc_battery_ok() ? "flat, says the clock chip" :
+                    rtc_lost_power() ? "good now, but it lost its power while switched off" : "good");
+        term_newline();
+        if (clock_drift(&d)) {
+            u32 a = d < 0 ? (u32)-d : (u32)d;
+            term_printf("the network found it %u days %u h %u min %s", a / 86400, (a / 3600) % 24,
+                        (a / 60) % 60, d < 0 ? "ahead" : "behind");
+            term_newline();
+        }
+    }
 }
 
 static void cmd_sys(void)

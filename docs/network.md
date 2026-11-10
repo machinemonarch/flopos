@@ -133,6 +133,27 @@ stops it all.
 Not yet: Opus, and AAC inside .m4a or .mp4 files (stations send AAC
 plainly, which works).
 
+### Pages that remember you, reload, or come in frames
+
+- **Cookies** are kept so a site can remember you between pages: a login,
+  a chat's name. They are kept as close to harmless as they can be: in
+  memory only, forgotten when browzer closes, never written to the floppy.
+  They go back only to the site that set them, only along the path it
+  named, and if marked Secure only over https. browzer never loads what a
+  page merely embeds, so no other site can set one through it.
+- **A page that reloads itself** (`<meta http-equiv="refresh">`) is
+  reloaded if it asks every 30 seconds or less, as chat pages without
+  JavaScript do, and it comes back where it was scrolled to. Slower ones,
+  such as a news page that refreshes every few minutes, are left alone.
+  Nothing reloads while you are typing or choosing.
+- **Frames** aren't drawn inside the page. Each shows as a link,
+  `[a frame: messages]`, that opens it.
+- **A slow answer**, such as an AI's, gets a minute to begin, then up to 15
+  seconds of silence before browzer gives up.
+- **Big pages**: up to 2,048 links each. SomaFM's front page has 1,123.
+- **Playlists** list a station's servers in order. If the first doesn't
+  answer, the next is tried.
+
 ### Bookmarks
 
 **b** keeps the page you are on. **m** shows them all as a page: Tab picks

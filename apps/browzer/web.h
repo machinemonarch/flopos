@@ -94,7 +94,7 @@ void   url_text(const Url *u, char *out, int max);
 int    url_resolve(const char *base, const char *href, char *out, int max);
 
 /* ---- a page ------------------------------------------------------------------ */
-#define PAGE_LINKS    240                /* links and form fields, together */
+#define PAGE_LINKS    2048               /* links and form fields, together */
 #define PAGE_HREF_MAX 200
 #define PAGE_FORMS    24
 #define PAGE_FIELDS   64
@@ -141,6 +141,9 @@ typedef struct {
     int   checked, untrusted;
     u8    note_col;
     int   status, secure, pq;
+    int   refresh;                       /* <meta refresh>: seconds, or 0   */
+    u32   gen;                           /* counts every clearing: a new page */
+    char  refresh_url[PAGE_HREF_MAX];    /* and where to, if not here again */
     u32   bytes;
     void  (*progress)(void);
 
@@ -156,6 +159,8 @@ typedef struct {
 } Page;
 
 void   page_clear(Page *pg);
+void   cookie_set(const Url *u, const char *line);     /* a Set-Cookie's value */
+int    cookie_header(const Url *u, char *out, int cap); /* "Cookie: ...\r\n", or 0 */
 int    http_page(const char *url, Page *pg);
 int    http_load(const char *url, Page *pg, const u8 *post, int postlen);
 void   http_page_html(const char *html, Page *pg);

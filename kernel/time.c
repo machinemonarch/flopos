@@ -106,18 +106,27 @@ void clock_restart(void)
 /* Called from the main loop and from anything that waits.  A tick is due
  * every 4ms; a hundred milliseconds of cycles with none means the timer
  * has stopped, not that it is running late. */
+/* With interrupts held off while it looks, because the sound card's
+ * refill (audio.c) calls this too, from inside the timer's interrupt: if
+ * that came between reading the cycle counter and comparing it, "now" was
+ * older than "last seen", the difference wrapped round to hours, and a
+ * healthy timer was restarted for nothing -- two or three times a second,
+ * with the keyboard's buffer emptied each time. */
 void clock_watch(void)
 {
-    u32 now;
+    u32 now, f;
+    int stopped = 0;
 
     if (!g_cpu_mhz) return;
+    f = irq_save();
     now = tsc32();
     if (g_ticks != s_seen_ticks) {
         s_seen_ticks = g_ticks;
         s_seen_tsc = now;
-        return;
-    }
-    if (now - s_seen_tsc > g_cpu_mhz * 100000u) clock_restart();
+    } else if ((s32)(now - s_seen_tsc) > (s32)(g_cpu_mhz * 100000u))
+        stopped = 1;
+    irq_restore(f);
+    if (stopped) clock_restart();
 }
 
 /* Waits on the tick, refereed by the cycle counter.  If the tick has not

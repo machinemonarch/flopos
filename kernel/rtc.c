@@ -182,9 +182,25 @@ static u32 sweden(u32 utc)
     return utc >= mar * 86400u + 3600u && utc < oct * 86400u + 3600u ? 7200u : 3600u;
 }
 
+/* ---- is the clock's battery any good? ---------------------------------------
+ * The clock chip says so itself: register D's top bit stays set while its
+ * battery holds up.  And the BIOS, at power-on, notes in byte 0x0E whether
+ * the clock had lost its power (bit 7) or its time was nonsense (bit 2) --
+ * which is what a laptop left unplugged for long enough shows, battery new
+ * or not, since on many laptops of the time it charges only while the
+ * machine is on. */
+int rtc_battery_ok(void) { return (cmos_read(0x0D) & 0x80) != 0; }
+int rtc_lost_power(void) { return (cmos_read(0x0E) & 0x84) != 0; }
+
+/* How far out the clock was when the network last set it, in seconds
+ * (positive: it was behind); and whether that has happened. */
+static s32 s_drift;
+static int s_drift_known;
+int clock_drift(s32 *secs) { *secs = s_drift; return s_drift_known; }
+
 int clock_from_network(void)
 {
-    u32 utc = ip_ntp_time(), local, was = store_clock_get();
+    u32 utc = ip_ntp_time(), local, was = store_clock_get(), before;
     if (!utc) return 0;
     local = utc + sweden(utc);
     if (local < 24u * 365u * 86400u) return 0;            /* before 2024: no */
@@ -192,8 +208,19 @@ int clock_from_network(void)
         serial_printf("[clock] the time server says earlier than the last goodbye; not believed\n");
         return 0;
     }
+    before = rtc_seconds();
     rtc_set_seconds(local);
-    serial_printf("[clock] set from the network\n");
+    if (before) {
+        u32 a;
+        s_drift = (s32)(local - before);
+        s_drift_known = 1;
+        a = s_drift < 0 ? (u32)-s_drift : (u32)s_drift;
+        serial_printf("[clock] set from the network: it was %u days %u h %u min %s\n",
+                      a / 86400, (a / 3600) % 24, (a / 60) % 60, s_drift < 0 ? "ahead" : "behind");
+        store_journal_printf("the clock was %u days %u h %u min %s; the network set it",
+                             a / 86400, (a / 3600) % 24, (a / 60) % 60, s_drift < 0 ? "ahead" : "behind");
+    } else
+        serial_printf("[clock] set from the network\n");
     return 1;
 }
 

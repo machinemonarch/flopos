@@ -78,5 +78,13 @@ What it took, in [techniques.md](techniques.md):
 
 The screen stays at its full 30 frames a second while the radio plays.
 
+Then it was tried on the laptop: SomaFM's Drone Zone, AAC over https,
+fifteen minutes without a pause, with sixteen seconds in hand. *"WELL
+DONE, CLAUDE. ABSOLUTELY FANTASTIC."*
+
+**"Yeah can we have that go away? It's super annoying."** The serial
+cable, once plugged in, showed a watchdog crying wolf two or three times
+a second. Gone.
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

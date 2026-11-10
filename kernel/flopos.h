@@ -316,6 +316,9 @@ int    rtc_read(u8 *hour, u8 *min, u8 *sec,
 u32    rtc_seconds(void);                /* since 2000; 0 if unreadable    */
 void   rtc_set_seconds(u32 s);
 int    clock_from_network(void);         /* ask a time server; 1 if set    */
+int    rtc_battery_ok(void);              /* the clock chip says its battery is good */
+int    rtc_lost_power(void);              /* the BIOS found it had lost power */
+int    clock_drift(s32 *secs);            /* how far out the network found it */
 int    clock_from_goodbye(void);         /* at boot: no earlier than bye   */
 void   clock_remember(void);             /* at bye                         */
 u32    ip_ntp_time(void);                /* UTC seconds since 2000, or 0   */

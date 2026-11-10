@@ -138,9 +138,19 @@ with the error the last one left added in. The rounding error then comes
 out as a faint, even hiss in the treble. For a quiet tone, that is 14 dB
 less error where the ear listens hardest.
 
-## A lesson on the way
+## Lessons on the way
 
-The kernel's own memory had grown, today, past 0x70000, where the floppy
+The refill routine calls the clock. The clock's watchdog reads the cycle
+counter, then compares it with when the tick was last seen to move. If
+the refill came between those two steps, "last seen" was newer than "now",
+and the difference wrapped round to hours. A healthy timer was then
+restarted for nothing, two or three times a second, with the keyboard's
+buffer emptied each time. It showed up first on the laptop's serial cable.
+The watchdog now looks with interrupts held off.
+
+
+
+The kernel's own memory once grew past 0x70000, where the floppy
 and the video BIOS keep their buffers. Every disk read then wrote over the
 kernel's variables, and the first one to go was the keyboard's record of
 which keys are held. The machine believed Shift was down. `linker.ld` now

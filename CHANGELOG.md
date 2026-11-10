@@ -6,6 +6,27 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.23.0 — 2026-11-10
+
+- **"The timer had stopped" is gone.** It was a false alarm, raised two or
+  three times a second while music played: the timer's watchdog could be
+  interrupted halfway through looking by the music's own refill, and then
+  misread the time. Each false alarm also emptied the keyboard's buffer.
+- **browzer for chat sites and other pages without JavaScript:**
+  - cookies, kept in memory only and sent only to the site that set them
+  - pages that reload themselves every 30 seconds or less, coming back
+    where they were scrolled to
+  - frames, shown as links
+  - a minute's patience for an answer that is slow to begin
+- **SomaFM's front page works**: up to 2,048 links a page instead of 240,
+  and picking among them is now instant (it used to search the whole page
+  for every link). A station's playlist falls back to its next server if
+  the first doesn't answer.
+- **The clock checks its own battery**: `time` says whether the clock chip
+  and the BIOS report its battery good, or that it lost its power while
+  switched off, and how far out the network found the clock. Both go in
+  the journal.
+
 ## 1.22.0 — 2026-11-10
 
 - **Radio plays without pausing**, on the laptop as well as the emulator.

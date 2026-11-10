@@ -97,6 +97,7 @@ static int  s_rate_in;                   /* the recording's rate, as playing */
 static int  s_live, s_redial, s_redials; /* radio: called again if it hangs up */
 static u32  s_conn_ms;                   /* when this stream's call began   */
 static volatile int s_lock;              /* browzer is changing what feed() reads */
+static int  s_answered;                  /* a server answered with sound    */
 static volatile int s_feeding_ok;        /* a decoder is ready for feed()   */
 static volatile u32 s_ran_dry;           /* times the sound ran out mid-stream */
 static volatile u32 s_cushion_x = 1;     /* cushions of three seconds to gather */
@@ -259,6 +260,7 @@ static int media_start(const char *ctype, const char *url, u32 length, u32 metai
     s_dl_len = 0;
     s_esc = 0;
     audio = type_is(ctype, "audio/") || type_is(ctype, "application/ogg");
+    if (audio && !is_playlist()) s_answered = 1;
     if (!is_playlist() && audio && (metaint || !length || length > DL_MAX)) {
         s_dl_state = DL_STREAM;
         s_metaint = metaint; s_meta_count = metaint; s_meta_len = -1;
@@ -431,8 +433,9 @@ static void media_end(int whole)
     }
 }
 
-/* The first address in a playlist: .pls says File1=..., .m3u just lists them. */
-static int playlist_url(char *out, int cap)
+/* The nth address in a playlist (from 0): .pls says File1=..., File2=...,
+ * .m3u just lists them.  Stations name a few servers, in case one is down. */
+static int playlist_url(char *out, int cap, int nth)
 {
     u32 i = 0;
     while (i < s_dl_len) {
@@ -446,6 +449,7 @@ static int playlist_url(char *out, int cap)
         }
         while (a < e && (s_dl[a] == ' ' || s_dl[a] == '\t')) a++;
         if (e - a > 7 && s_dl[a] == 'h' && s_dl[a + 1] == 't' && s_dl[a + 2] == 't' && s_dl[a + 3] == 'p') {
+            if (nth-- > 0) { i = e + 1; continue; }
             while (a < e && k < cap - 1 && s_dl[a] > ' ') out[k++] = (char)s_dl[a++];
             out[k] = 0;
             return 1;
@@ -502,13 +506,30 @@ static const char s_home[] =
     "<p>Secure pages are encrypted, and the site has to prove who it is.</p>";
 
 /* ---- drawing ------------------------------------------------------------ */
+static u32 s_loads;                      /* pages loaded: a new one restarts the refresh wait */
+
+/* Which line each link starts on, found in one pass over the page and
+ * kept until the page changes, rather than the whole page searched for
+ * every link asked about (a page of 1200 links took twenty million looks
+ * for one press of shift-tab). */
+static s16 s_link_line[PAGE_LINKS + 1];
+static u32 s_link_lines_for;            /* the page they were found for   */
+static int s_link_lines_n;
+
 static int link_line(int id)
 {
-    int y, x;
-    for (y = 0; y < s_pg.lines; y++)
-        for (x = 0; x < s_pg.width; x++)
-            if (s_pg.cells[y * s_pg.width + x].link == id) return y;
-    return -1;
+    if (s_link_lines_for != s_pg.gen || s_link_lines_n != s_pg.lines) {
+        int y, x, i;
+        for (i = 0; i <= PAGE_LINKS; i++) s_link_line[i] = -1;
+        for (y = 0; y < s_pg.lines; y++)
+            for (x = 0; x < s_pg.width; x++) {
+                u16 l = s_pg.cells[y * s_pg.width + x].link;
+                if (l && l <= PAGE_LINKS && s_link_line[l] < 0) s_link_line[l] = (s16)y;
+            }
+        s_link_lines_for = s_pg.gen;
+        s_link_lines_n = s_pg.lines;
+    }
+    return id > 0 && id <= PAGE_LINKS ? s_link_line[id] : -1;
 }
 
 static void put_text_clipped(int x, int y, const char *t, u8 fg, u8 bg, int maxx)
@@ -914,10 +935,12 @@ static void mark_change(int key)
     say(key == 'd' ? "Deleted." : "Changed. h shows the home page.", C_DIM);
 }
 
+
 /* A page, or the answer to a form sent to url (post, of postlen bytes). */
 static void go_with(const char *url, const u8 *post, int postlen)
 {
     int loaded;
+    s_loads++;
     s_top = 0;
     s_sel = 0;
     s_typing = -1;
@@ -965,8 +988,16 @@ static void go_with(const char *url, const u8 *post, int postlen)
         }
 
         if (st == DL_CAME && is_playlist()) {
-            char next[PAGE_HREF_MAX + 16];
-            if (playlist_url(next, (int)sizeof next)) { go_with(next, 0, 0); return; }
+            /* Each of its servers in turn, until one answers with sound. */
+            char cand[4][PAGE_HREF_MAX + 16];
+            int nc = 0, c;
+            while (nc < 4 && playlist_url(cand[nc], (int)sizeof cand[0], nc)) nc++;
+            for (c = 0; c < nc; c++) {
+                s_answered = 0;
+                go_with(cand[c], 0, 0);
+                if (s_answered || s_esc) return;
+            }
+            if (nc) return;
             what = "<p>A playlist, but with no address in it that browzer can follow.</p>";
         }
         if (what) {
@@ -1072,6 +1103,35 @@ static void go_with(const char *url, const u8 *post, int postlen)
 }
 
 static void go(const char *url) { go_with(url, 0, 0); }
+
+/* A page that asked to be loaded again (<meta refresh>): chat pages without
+ * JavaScript show new messages this way.  Only short waits are kept --
+ * thirty seconds or less, or ten to go somewhere else -- so a page that
+ * merely refreshes its news now and then is left alone.  The same page
+ * comes back where it was scrolled to. */
+static int refresh_wanted(void)
+{
+    if (!s_pg.refresh) return 0;
+    return s_pg.refresh_url[0] ? s_pg.refresh <= 10 : s_pg.refresh <= 30;
+}
+
+static void refresh_page(void)
+{
+    char u[PAGE_HREF_MAX + 16];
+    int top = s_top, sel = s_sel, same = 1, i;
+    if (s_pg.refresh_url[0]) {
+        if (!url_resolve(s_pg.url, s_pg.refresh_url, u, sizeof u)) { s_pg.refresh = 0; return; }
+    } else {
+        for (i = 0; s_pg.url[i] && i < (int)sizeof u - 1; i++) u[i] = s_pg.url[i];
+        u[i] = 0;
+    }
+    for (i = 0; u[i] || s_pg.url[i]; i++) if (u[i] != s_pg.url[i]) { same = 0; break; }
+    go(u);
+    if (same) {
+        s_top = top < s_pg.lines ? top : 0;
+        s_sel = sel <= s_pg.nlinks ? sel : 0;
+    }
+}
 
 /* ---- forms ----------------------------------------------------------------- */
 /* Bytes as a form sends them: letters and digits as they are, a space as
@@ -1373,7 +1433,16 @@ void browzer_run(const char *start)
     for (;;) {
         draw();
         k = ui_key();
-        if (k < 0) { music_feed(); main_pump(0); continue; }
+        if (k < 0) {
+            static u32 loads_seen, due;
+            music_feed();
+            if (s_loads != loads_seen) { loads_seen = s_loads; due = A->ms() + (u32)s_pg.refresh * 1000u; }
+            if (refresh_wanted() && !s_editing && s_typing < 0 && s_choosing < 0 && !s_leave_armed &&
+                (s32)(A->ms() - due) >= 0)
+                refresh_page();
+            main_pump(0);
+            continue;
+        }
 
         if (s_choosing >= 0) {           /* up and down through a list      */
             PageField *f = &s_pg.fields[s_choosing];

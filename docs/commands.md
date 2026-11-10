@@ -18,7 +18,7 @@ this page are left out of `help` on purpose.
 | `look` | What is around. |
 | `here` | Where you are. |
 | `echo words` | Says the words back. |
-| `time` | The time and date from the laptop's clock, and how long FLOPOS has been awake. |
+| `time` | The time and date, how long FLOPOS has been awake, whether the clock's battery is good (as the clock chip and the BIOS see it), and how far out the network found the clock when it last set it. |
 | `sys` | What this machine actually is: processor, measured speed, memory, screen mode, panel. |
 | `version` | Which FLOPOS this is. |
 | `help` | The list. |
