@@ -83,11 +83,14 @@ for decades:
 | XM format notes (XM.TXT, Triton) | `apps/lib/audio/tracker.c` |
 | ISO/IEC 11172-3 and 13818-3 (MPEG audio) | `apps/lib/audio/mp3.c` |
 | [PDMP3](https://github.com/technosaurus/PDMP3), public domain | `mp3tab.h`: the standard's tables |
+| ISO/IEC 13818-7 and 14496-3 (AAC) | `apps/lib/audio/aac.c` |
+| [VisualOn AAC encoder](https://github.com/mstorsjo/vo-aacenc), Apache 2.0 | `aactab.h`: the codebooks |
 | [Vorbis I specification](https://xiph.org/vorbis/doc/Vorbis_I_spec.html) | `apps/lib/audio/vorbis.c` |
 | [Ogg, RFC 3533](https://www.rfc-editor.org/rfc/rfc3533) | `vorbis.c`: pages and packets |
 | [FLAC, RFC 9639](https://www.rfc-editor.org/rfc/rfc9639) | `apps/lib/audio/flac.c` |
 | [Ogg FLAC mapping](https://xiph.org/flac/ogg_mapping.html) | `vorbis.c`: FLAC inside Ogg |
 | SHOUTcast/Icecast metadata (ICY) | browzer: station titles |
+| [NTP, RFC 5905](https://www.rfc-editor.org/rfc/rfc5905) | `ip.c`, `rtc.c`: setting the clock |
 | VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
 
@@ -114,7 +117,8 @@ and no Toshiba code, firmware or text is in FLOPOS.
 | Tool | Used for |
 |---|---|
 | [NIST ACVP test vectors](https://github.com/usnistgov/ACVP-Server) | Official ML-KEM-768 test answers |
-| mpg123, LAME, libvorbis, libFLAC | Reference decodes, test audio |
+| mpg123, LAME, libvorbis, libFLAC, FAAD2 | Reference decodes, test audio |
+| SomaFM and Radio Paradise | Recordings of real AAC stations to test with |
 | [OpenSSL](https://www.openssl.org/) | Cross-checking the encryption; a local TLS test server |
 | [Python](https://www.python.org/) `hashlib` | Cross-checking SHA-3, SHAKE, SHA-384, SHA-512 |
 | [pyca/cryptography](https://cryptography.io/) | Test signatures and test certificate chains |

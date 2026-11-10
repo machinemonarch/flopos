@@ -44,11 +44,18 @@ static int detect(AudioIn *in, Decoder *d, const char *ctype)
     if (n >= 10 && is(b, "ID3")) {
         u32 t = 10 + ((u32)(b[6] & 127) << 21 | (u32)(b[7] & 127) << 14 | (u32)(b[8] & 127) << 7 | (b[9] & 127));
         if (t + 4 <= n && is(b + t, "fLaC")) { in->pos += t; return flac_open(in, d); }
+        /* or AAC, which aac_open steps over the tag for */
+        if (t + 2 <= n && b[t] == 0xFF && (b[t + 1] & 0xF6) == 0xF0) return aac_open(in, d);
     }
     /* a FLAC station, joined wherever it is (before mp3: its frames start
      * with bits an mp3 header would too) */
     if (ctype && (ctype_is(ctype, "audio/flac") || ctype_is(ctype, "audio/x-flac")))
         return flac_open(in, d);
+    /* AAC in ADTS frames: a sync word like mp3's, but with "layer" 0 -- or
+     * the server saying so (audio/aac, audio/aacp, audio/x-aac). */
+    if ((n >= 2 && b[0] == 0xFF && (b[1] & 0xF6) == 0xF0) ||
+        (ctype && (ctype_is(ctype, "audio/aac") || ctype_is(ctype, "audio/x-aac"))))
+        return aac_open(in, d);
     /* mp3: an ID3 tag in front, or a frame header straight away, or the
      * server saying so (radio starts wherever it likes). */
     if ((n >= 3 && is(b, "ID3")) || (n >= 2 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0) ||

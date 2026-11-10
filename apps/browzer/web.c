@@ -1160,7 +1160,7 @@ static void conn_close(void) { A->conn_close(); }
 /* post: a form's contents to send, or 0 for an ordinary request. */
 static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, int postlen)
 {
-    static u8 buf[1024];
+    static u8 buf[4096];
     static char head[2048];
     char req[PAGE_HREF_MAX + 200], line[96];
     int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0, asked = 0;

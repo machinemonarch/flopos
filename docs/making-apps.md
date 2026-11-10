@@ -159,7 +159,7 @@ into each app that asks for it in the Makefile:
 
 | Library | What it does |
 |---|---|
-| `audio` | `tracker.c`: .mod and .xm songs into samples (`tracker_load`, `tracker_render`). `decode.c`, `mp3.c`, `vorbis.c`, `flac.c`, `mdct.c`: recordings (mp3, Ogg Vorbis, FLAC, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a resampler to the card's rate. |
+| `audio` | `tracker.c`: .mod and .xm songs into samples (`tracker_load`, `tracker_render`). `decode.c`, `mp3.c`, `aac.c`, `vorbis.c`, `flac.c`, `mdct.c`: recordings (mp3, AAC, Ogg Vorbis, FLAC, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a resampler to the card's rate. |
 
 An app that uses floating point (the audio library does) also needs the
 Pentium's FPU switched on for it in the Makefile (`APPFLAGS_browzer :=

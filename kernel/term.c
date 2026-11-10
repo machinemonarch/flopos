@@ -225,6 +225,10 @@ void term_newline(void)
 void term_mute(int on) { s_mute = on; }
 void term_cursor(int on) { s_nocursor = !on; }
 
+/* Hidden, only windows are drawn: the shell, locked behind the wizard. */
+static int s_hidden;
+void term_hide(int on) { s_hidden = on; }
+
 void term_putc(int c)
 {
     Cell *r;
@@ -872,7 +876,7 @@ void term_render(u8 *dst, u32 t)
     if ((u32)s_view <= base) base -= (u32)s_view;
     else base = 0;
 
-    for (r = 0; r < ROWS; r++) {
+    for (r = 0; r < ROWS && !s_hidden; r++) {
         u32 abs = base + (u32)r;
         Cell *row;
         int c, y;

@@ -23,15 +23,45 @@ static double fcos(double x) { double r; __asm__("fcos" : "=t"(r) : "0"(x)); ret
 #define PI 3.14159265358979323846
 
 #define MAXN 8192
-static float s_tw_c[MAXN / 4], s_tw_s[MAXN / 4];    /* exp(-i pi (k + 1/4) / M)  */
-static float s_po_c[MAXN / 4], s_po_s[MAXN / 4];    /* exp(-i pi n / M)          */
-static float s_fft_c[MAXN / 8], s_fft_s[MAXN / 8];  /* exp(-2 pi i k / (M/2))    */
+/* The turning factors for one size, worked out the first time that size
+ * is asked for and kept: formats switch between a long and a short block
+ * all the time, and working the factors out again at every switch costs
+ * more than the transforms do.  Every size there can be fits in the pool:
+ * about 1.25 n each, and the sizes double. */
+typedef struct {
+    float *tw_c, *tw_s;                  /* exp(-i pi (k + 1/4) / M)       */
+    float *po_c, *po_s;                  /* exp(-i pi n / M)               */
+    float *fft_c, *fft_s;                /* exp(-2 pi i k / (M/2))         */
+} Turns;
+static Turns s_size[14];                 /* by log2 of n                   */
+static float s_pool[3 * MAXN];
+static u32   s_pool_used;
+static float *s_tw_c, *s_tw_s, *s_po_c, *s_po_s, *s_fft_c, *s_fft_s;
 static int   s_n;
+
+static float *carve(int n)
+{
+    float *p = s_pool + s_pool_used;
+    s_pool_used += (u32)n;
+    return p;
+}
 
 static void setup(int n)
 {
-    int k, M = n / 2, h = M / 2;
+    int k, M = n / 2, h = M / 2, lg = 0;
+    Turns *t;
     if (s_n == n) return;
+    while ((1 << lg) < n) lg++;
+    t = &s_size[lg];
+    s_n = n;
+    if (t->tw_c) {
+        s_tw_c = t->tw_c; s_tw_s = t->tw_s; s_po_c = t->po_c; s_po_s = t->po_s;
+        s_fft_c = t->fft_c; s_fft_s = t->fft_s;
+        return;
+    }
+    t->tw_c = s_tw_c = carve(h); t->tw_s = s_tw_s = carve(h);
+    t->po_c = s_po_c = carve(h); t->po_s = s_po_s = carve(h);
+    t->fft_c = s_fft_c = carve(h / 2 + 1); t->fft_s = s_fft_s = carve(h / 2 + 1);
     for (k = 0; k < h; k++) {
         double a = PI * (k + 0.25) / M;
         s_tw_c[k] = (float)fcos(a);
@@ -44,7 +74,6 @@ static void setup(int n)
         s_fft_c[k] = (float)fcos(a);
         s_fft_s[k] = (float)-fsin(a);
     }
-    s_n = n;
 }
 
 /* In place, forward (e^-i), radix 2, m a power of two. */

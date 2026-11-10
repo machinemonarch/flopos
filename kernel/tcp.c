@@ -13,11 +13,14 @@
  *
  * Two numbers matter more than anything else here:
  *
- *   The window we offer is small, three full segments.  The 3C589 has a
- *   few kilobytes of receive FIFO, and drawing one frame of the screen
- *   takes the best part of 30ms on the laptop; a server allowed to send
- *   more than the FIFO holds while we are drawing would have the rest
- *   thrown away by the card, and then have to send it all again.
+ *   The window we offer is twelve full segments, about 17 KB.  The 3C589
+ *   has only a few kilobytes of receive FIFO, and drawing one frame of the
+ *   screen takes the best part of 30ms on the laptop, so this used to be
+ *   three segments, to keep a server from sending more than the card could
+ *   hold while we were busy.  That held a radio stream from far away to
+ *   barely more than it needs to play.  Now the timer empties the card
+ *   into a queue 250 times a second (net.c), whatever else is going on,
+ *   and the window can be as big as the queue.
  *
  *   The retransmit timeout starts at a second and doubles, eight times,
  *   before the conversation is given up for dead.
@@ -35,8 +38,8 @@ enum { CLOSED, SYN_SENT, ESTAB, FIN_WAIT1, FIN_WAIT2, CLOSE_WAIT, LAST_ACK };
 #define F_ACK 0x10
 
 #define MSS      1460
-#define RX_SIZE  16384                   /* a power of two                 */
-#define RX_WIN   (3 * MSS)               /* what we let them have in flight */
+#define RX_SIZE  65536                   /* a power of two                 */
+#define RX_WIN   (12 * MSS)              /* what we let them have in flight */
 #define TX_SIZE  8192
 
 static int s_state;

@@ -98,6 +98,7 @@ int ip_apply_saved(void)
     if (!store_net_get(&how, &a, &m, &g, &d) || how != 1 || !a) return 0;
     ip_configure(a, m, g);
     ip_set_dns(d, 53);
+    clock_from_network();
     return 1;
 }
 
@@ -309,6 +310,7 @@ static int udp_send(u32 to, u16 sport, u16 dport, const u8 *data, int len)
 
 static u32 s_xid;
 static int s_dhcp;                       /* 1 waiting offer, 2 ack, 3 done */
+static u32 s_ntp_srv;                    /* the time server DHCP named, or 0 */
 static u32 s_off_ip, s_off_server, s_off_mask, s_off_gw, s_off_dns;
 
 static int dhcp_send(int type)
@@ -337,7 +339,7 @@ static int dhcp_send(int type)
     b[n++] = 12; b[n++] = 6;                       /* what to call us     */
     b[n++] = 'f'; b[n++] = 'l'; b[n++] = 'o';
     b[n++] = 'p'; b[n++] = 'o'; b[n++] = 's';
-    b[n++] = 55; b[n++] = 3; b[n++] = 1; b[n++] = 3; b[n++] = 6;
+    b[n++] = 55; b[n++] = 4; b[n++] = 1; b[n++] = 3; b[n++] = 6; b[n++] = 42;
     b[n++] = 255;
 
     /* BOOTP's own minimum, which some servers still insist on. */
@@ -349,7 +351,7 @@ static void take_dhcp(const u8 *p, int len)
 {
     const u8 *mac = net_mac();
     int i, type = 0;
-    u32 server = 0, mask = 0, gw = 0, dns = 0;
+    u32 server = 0, mask = 0, gw = 0, dns = 0, ntp = 0;
 
     if (len < 240 || p[0] != 2 || get32(p + 4) != s_xid) return;
     for (i = 0; i < 6; i++) if (p[28 + i] != mac[i]) return;
@@ -365,6 +367,7 @@ static void take_dhcp(const u8 *p, int len)
         if (code == 1  && l >= 4) mask = get32(p + i + 2);
         if (code == 3  && l >= 4) gw = get32(p + i + 2);
         if (code == 6  && l >= 4) dns = get32(p + i + 2);
+        if (code == 42 && l >= 4) ntp = get32(p + i + 2);
         i += 2 + l;
     }
 
@@ -376,6 +379,7 @@ static void take_dhcp(const u8 *p, int len)
         s_off_dns = dns;
         s_dhcp = 2;
     } else if (type == DHCP_ACK && s_dhcp == 2) {
+        s_ntp_srv = ntp;
         s_ip = get32(p + 16);
         s_mask = mask ? mask : s_off_mask;
         s_gw = gw ? gw : s_off_gw;
@@ -414,6 +418,7 @@ int ip_dhcp(void)
         if (s_dhcp == 3) {
             s_arp_next = 0;
             memset8((u8 *)s_arp, 0, sizeof s_arp);
+            clock_from_network();
             return 1;
         }
     }
@@ -508,6 +513,51 @@ u32 ip_lookup(const char *name)
     return 0;
 }
 
+/* ---- the time -----------------------------------------------------------
+ * One question to a time server: 48 bytes, and the answer's seconds since
+ * 1900 sit in the middle of 48 coming back.  The question carries eight
+ * random bytes where the time would go, and an answer is believed only if
+ * it comes from the server that was asked and carries them back -- so a
+ * stranger cannot tell this machine what time it is with a guess.
+ */
+static u16 s_ntp_port;
+static u32 s_ntp_asked, s_ntp_nonce[2], s_ntp_got;
+
+static void take_ntp(const u8 *ip_hdr, const u8 *p, int len)
+{
+    if (len < 48 || get32(ip_hdr + 12) != s_ntp_asked) return;
+    if ((p[0] & 7) != 4 || p[1] == 0 || p[1] > 15) return;     /* a server, and not refusing */
+    if (get32(p + 24) != s_ntp_nonce[0] || get32(p + 28) != s_ntp_nonce[1]) return;
+    s_ntp_got = get32(p + 40) - 3155673600u;    /* since 2000; past 2036 too */
+    if (!s_ntp_got) s_ntp_got = 1;
+}
+
+u32 ip_ntp_time(void)
+{
+    u8 q[48];
+    u32 srv = s_ntp_srv, until;
+    int i, tries;
+
+    if (!net_ready() || !s_ip) return 0;
+    if (!srv) srv = ip_lookup("pool.ntp.org");
+    if (!srv) return 0;
+    s_ntp_got = 0;
+    for (tries = 0; tries < 2 && !s_ntp_got; tries++) {
+        for (i = 0; i < 48; i++) q[i] = 0;
+        q[0] = 0x23;                     /* version 4, a client           */
+        rand_bytes((u8 *)s_ntp_nonce, 8);
+        put32(q + 40, s_ntp_nonce[0]);
+        put32(q + 44, s_ntp_nonce[1]);
+        s_ntp_asked = srv;
+        s_ntp_port = (u16)(49152 + (s_ntp_nonce[0] & 0x3FFF));
+        if (!udp_send(srv, s_ntp_port, 123, q, 48)) break;
+        until = ms_now() + 1500;
+        while (ms_now() < until && !s_ntp_got) ip_poll();
+    }
+    s_ntp_port = 0;
+    return s_ntp_got;
+}
+
 static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
 {
     u16 dport;
@@ -521,6 +571,7 @@ static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
 
     if (dport == 68 && s_dhcp && s_dhcp < 3) take_dhcp(u + 8, ulen - 8);
     else if (dport == s_dns_port && s_dns_port) take_dns(u + 8, ulen - 8);
+    else if (dport == s_ntp_port && s_ntp_port) take_ntp(ip_hdr, u + 8, ulen - 8);
 }
 
 /* ---- everything that arrives ------------------------------------------
@@ -533,7 +584,7 @@ void ip_poll(void)
     u8 f[NET_MTU];
     int len, guard;
 
-    for (guard = 0; guard < 8; guard++) {
+    for (guard = 0; guard < 48; guard++) {
         len = net_recv(f, (int)sizeof f);
         if (len < 14) return;
         rand_add((u32)len ^ ((u32)f[len - 1] << 16));

@@ -73,13 +73,22 @@ the rest.
 | Tab / Shift-Tab | Next / previous link |
 | Enter | Follow the selected link |
 | Backspace or Left | Back |
-| `g` | Go somewhere: type an address |
+| `g` | Go somewhere: the current address, ready to change |
 | `r` | Load the page again |
 | `h` | Home |
 | `b` | Bookmark this page |
 | `s` | Stop the music |
 | `m` | Your bookmarks |
-| Esc | Cancel a page that is taking too long, or leave |
+| Esc | Cancel a page that is taking too long; on its own, it asks whether to leave (`y` leaves) |
+
+After `g`, Left and Right move along the address (the letter under the
+caret is underlined), Home and End jump to its ends, Backspace and Delete
+remove a letter, and Ctrl-A picks all of it, so the next letter typed
+replaces it. Enter goes there; Esc leaves it as it was.
+
+Esc never leaves browzer by itself: it asks first, and only `y` answers
+yes. The laptop's Esc key can bounce, and a second Esc used to close
+browzer when the first was meant to stop a page loading.
 
 ### Music and radio
 
@@ -88,11 +97,12 @@ Links to sound play it, through the Sound Blaster:
 | What | How |
 |---|---|
 | **.mp3** | MPEG-1, -2 and -2.5 layer III, any bitrate |
+| **.aac** | AAC LC and HE-AAC (AAC+), as ADTS: what most AAC stations send |
 | **.ogg** | Ogg Vorbis, any quality; and FLAC inside Ogg |
 | **.flac** | FLAC, 8 to 24 bits, up to 8 channels |
 | **.wav** | plain PCM, 8 to 32 bits, any rate, any number of channels |
 | **.mod**, **.xm** | tracker songs (ProTracker, FastTracker 2), such as the ones on [modarchive.org](https://modarchive.org/) |
-| **radio** | mp3, Ogg and FLAC stations (Shoutcast, Icecast), and their **.m3u** and **.pls** playlists |
+| **radio** | mp3, AAC, Ogg and FLAC stations (Shoutcast, Icecast), and their **.m3u** and **.pls** playlists |
 
 **A file of 2 MB or less** is downloaded first, then plays in the background
 while you go on browsing. The top edge shows what is playing and for how
@@ -102,15 +112,23 @@ long, and **s** stops it.
 the station's name, what the station says is on now, and how long you have
 been listening. **Esc** stops it.
 
+It starts once about three seconds have arrived. If the network falls
+behind and the sound runs out, it waits for three seconds again before
+going on, rather than stuttering through each scrap as it comes. A station
+that hangs up is called back, up to five times in a row.
+
 Everything plays in mono, at about 22 kHz, which is what the laptop's Sound
-Blaster plays. To keep up on a 120 MHz Pentium, mp3 and Ogg Vorbis at 44.1
-or 48 kHz are decoded at half rate, which skips everything above 11 kHz
-that the card couldn't play anyway. FLAC is decoded in full, then
+Blaster plays. To keep up on a 120 MHz Pentium, mp3, AAC and Ogg Vorbis at
+44.1 or 48 kHz are decoded at half rate, which skips everything above 11 kHz
+that the card couldn't play anyway. HE-AAC is AAC at half the rate plus a
+little extra data that rebuilds the treble; browzer plays the half-rate
+part as it is, which at 22 kHz loses next to nothing. FLAC is decoded in full, then
 neighbouring samples are averaged so the highs don't fold back down as
 noise. The FM music steps aside while anything plays, and leaving browzer
 stops it all.
 
-Not yet: AAC and Opus, which some stations use instead.
+Not yet: Opus, and AAC inside .m4a or .mp4 files (stations send AAC
+plainly, which works).
 
 ### Bookmarks
 
@@ -210,7 +228,15 @@ FLOPOS refuses the page and says why:
 | nobody this machine trusts vouches for it | a self-made certificate, an unknown authority, or a site that forgot to send its authority's certificate |
 | a signature in its certificate chain does not check out | something in the chain was altered |
 | it could not prove the certificate is its own | it showed a certificate but couldn't sign with its key |
-| this laptop's clock says 1995 … | the CMOS clock is wrong, so nothing can be dated; fix it in the BIOS setup |
+| this laptop's clock says 1995 … | the clock is wrong, so nothing can be dated; see below |
+
+**The clock.** Certificates are only good between two dates, so the laptop
+has to know roughly what day it is, and its clock battery may long since
+have died. So the clock sets itself: whenever the network comes up, it asks
+a time server (the one the network names, or pool.ntp.org) and keeps
+Swedish time, summer time included. With no network, it starts from the
+time `bye` wrote down at the last goodbye, which is near enough for
+certificates. It never lets a time server put it back before that goodbye.
 
 Any of these can mean somebody is pretending to be the site. In browzer, the
 refusal page offers **a** to go there anyway. The page then loads with

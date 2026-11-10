@@ -53,6 +53,7 @@ int  wav_open(AudioIn *in, Decoder *d);
 int  mp3_open(AudioIn *in, Decoder *d);
 int  vorbis_open(AudioIn *in, Decoder *d);
 int  flac_open(AudioIn *in, Decoder *d);
+int  aac_open(AudioIn *in, Decoder *d);
 
 /* Ogg carries FLAC too: vorbis.c reads the Ogg pages and hands flac.c the
  * STREAMINFO block's 34 bytes (the rate, or 0 if it cannot be played), then

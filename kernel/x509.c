@@ -551,7 +551,7 @@ int x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
     if (!roots_load()) { fmt_str(why, (usize)whycap, "ROOTS.DAT is missing from this floppy"); return 0; }
 
     if (!rtc_read(&h, &mi, &se, &yr, &mo, &da) || yr < 2024) {
-        fmt_str(why, (usize)whycap, "this laptop's clock says %u, so no certificate can be dated; set the date in the BIOS",
+        fmt_str(why, (usize)whycap, "this laptop's clock says %u, so no certificate can be dated; once the network is up it sets itself",
                 (u32)yr);
         return 0;
     }

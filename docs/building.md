@@ -38,6 +38,7 @@ On a Linux PC:
 | `tools/mkimage.py` | Builds the floppy image: a real FAT12 disk that also boots |
 | `tools/mkfont.py` | Generates the text faces from readable glyph art |
 | `tools/mksplash.py` | Turns a photograph into the boot picture |
+| `tools/mkaactab.py` | Makes `aactab.h`, the AAC codebooks, from the VisualOn AAC encoder's tables |
 | `tools/mkroots.py` | Turns a Linux PC's list of trusted authorities into `boot/roots.dat` |
 | `tools/writefloppy.sh` | Writes the image to a real floppy, safely |
 | `tools/99-flopos-floppy.rules` | Lets you write floppies without a password |

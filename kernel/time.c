@@ -29,6 +29,7 @@ void timer_irq(void)
     g_ticks++;
     snd_tick();
     audio_tick();
+    net_tick();
 }
 
 void clock_watch(void);

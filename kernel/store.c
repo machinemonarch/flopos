@@ -194,6 +194,32 @@ typedef struct {
 
 static Settings *s_set;
 
+/* The clock's reading at the last goodbye, just before the settings. */
+typedef struct {
+    char magic[4];                       /* "TIME"                         */
+    u32  when;                           /* seconds since 2000             */
+    u32  sum;
+} SavedClock;
+
+static SavedClock *s_clk;
+
+u32 store_clock_get(void)
+{
+    if (!s_ready || !s_clk) return 0;
+    if (s_clk->magic[0] != 'T' || s_clk->magic[1] != 'I' || s_clk->magic[2] != 'M' ||
+        s_clk->magic[3] != 'E' || s_clk->sum != (s_clk->when ^ 0x7153C10Cu)) return 0;
+    return s_clk->when;
+}
+
+void store_clock_set(u32 s)
+{
+    if (!s_ready || !s_clk) return;
+    s_clk->magic[0] = 'T'; s_clk->magic[1] = 'I'; s_clk->magic[2] = 'M'; s_clk->magic[3] = 'E';
+    s_clk->when = s;
+    s_clk->sum = s ^ 0x7153C10Cu;
+    s_taught_dirty = 1;
+}
+
 static u32 settings_sum(const Settings *t)
 {
     return 0x5E7u ^ t->net_how ^ t->ip ^ (t->mask * 3) ^ (t->gw * 5) ^ (t->dns * 7);
@@ -236,6 +262,7 @@ void store_init(void)
     statebuf  = (u8 *)halloc(g_diskmap.state_sectors * SECTOR);
     s_taught  = (Taught *)(statebuf + sizeof(StateHdr));
     s_set     = (Settings *)(statebuf + g_diskmap.state_sectors * SECTOR - 64);
+    s_clk     = (SavedClock *)(statebuf + g_diskmap.state_sectors * SECTOR - 128);
 
     if (!disk_read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
         return;

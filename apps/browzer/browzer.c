@@ -53,7 +53,7 @@ static int  s_choosing = -1, s_chose_was;   /* a list being chosen from   */
  * A link that is not a page comes here instead.  Two ways:
  *
  *   A file of 2 MB or less is downloaded whole, then looked at.  A song
- *   (.mod, .xm) or a recording (mp3, Ogg, FLAC, wav) plays in the
+ *   (.mod, .xm) or a recording (mp3, AAC, Ogg, FLAC, wav) plays in the
  *   background: the sound card's queue is topped up whenever browzer
  *   waits for anything, so it goes on while you browse, until it ends or
  *   s stops it.  A playlist (.m3u, .pls) is followed to the stream it
@@ -62,8 +62,10 @@ static int  s_choosing = -1, s_chose_was;   /* a list being chosen from   */
  *   Radio, and recordings too big to keep, are played as they arrive:
  *   the player screen shows the station and what it says is on, and esc
  *   stops it.  The bytes come into a buffer that is decoded as the sound
- *   card makes room; when it is full, browzer simply stops reading, and
- *   the server waits. */
+ *   card makes room.  Nothing is played until about three seconds have
+ *   gathered, and if the network falls behind and the sound runs dry, it
+ *   waits for three seconds again rather than play each scrap as it comes,
+ *   which is what stutters.  A station that hangs up is called again. */
 #define DL_MAX (2u << 20)
 #define ST_MAX (256u << 10)
 static u8   s_dl[DL_MAX];                /* a whole file, or a stream's bytes */
@@ -83,6 +85,10 @@ static u32  s_metaint, s_meta_count;     /* radio: song titles in the stream */
 static int  s_meta_len, s_meta_got;
 static char s_meta[512];
 static u32  s_drawn;
+static int  s_buffering;                 /* gathering a cushion before playing */
+static int  s_rate_in;                   /* the recording's rate, as playing */
+static int  s_live, s_redial, s_redials; /* radio: called again if it hangs up */
+static u32  s_conn_ms;                   /* when this stream's call began   */
 
 static void music_stop(void)
 {
@@ -150,6 +156,7 @@ static int music_start(int src, int rate_in)
     s_src = src;
     s_written = 0;
     if (src == 2) rs_init(&s_rs, rate_in, s_rate);
+    s_rate_in = rate_in;
     s_music = 1;
     return 1;
 }
@@ -188,7 +195,9 @@ static int is_playlist(void)
 static int media_start(const char *ctype, const char *url, u32 length, u32 metaint, const char *station)
 {
     int i, audio;
-    music_stop();                        /* its memory is about to be used  */
+    /* Its memory is about to be used -- except when a station is called
+     * again, when what is still queued plays on while it answers. */
+    if (!s_redial) { music_stop(); s_redials = 0; }
     for (i = 0; ctype[i] && i < (int)sizeof s_dl_type - 1; i++) s_dl_type[i] = ctype[i];
     s_dl_type[i] = 0;
     for (i = 0; url[i] && i < (int)sizeof s_dl_url - 1; i++) s_dl_url[i] = url[i];
@@ -206,6 +215,9 @@ static int media_start(const char *ctype, const char *url, u32 length, u32 metai
         s_in.buf = s_dl; s_in.len = 0; s_in.pos = 0; s_in.done = 0;
         s_dec.decode = 0;
         s_drawn = 0;
+        s_buffering = 0;
+        s_live = metaint || !length;
+        s_conn_ms = A->ms();
         return 1;
     }
     s_dl_state = length > DL_MAX ? DL_BIG : DL_COMING;
@@ -233,16 +245,38 @@ static void meta_done(void)
     }
 }
 
+/* Three seconds of the recording, in bytes, from what it says its rate is. */
+static u32 cushion(void)
+{
+    u32 kbps = s_dec.kbps > 8 ? (u32)s_dec.kbps : 128, c = kbps * 375;
+    return c > ST_MAX / 2 ? ST_MAX / 2 : c;
+}
+
+static void stream_draw(void)
+{
+    if (A->ms() - s_drawn > 400) { s_drawn = A->ms(); draw(); }
+}
+
 static int stream_play(void)
 {
     if (!s_dec.decode) {
         int r = audio_detect(&s_in, &s_dec, s_dl_type);
         if (r == AUDIO_MORE && s_in.len < 65536) return 1;
         if (r != 1) { s_dl_state = DL_UNPLAYABLE; return 0; }
-        if (!music_start(2, s_dec.rate)) { s_dl_state = DL_NOCARD; return 0; }
+        if (s_music && s_rate_in != s_dec.rate) music_stop();   /* called again, and changed */
+        s_buffering = 1;
+    }
+    if (s_buffering) {
+        if (s_in.len - s_in.pos < cushion()) { stream_draw(); return 1; }
+        if (!s_music && !music_start(2, s_dec.rate)) { s_dl_state = DL_NOCARD; return 0; }
+        s_buffering = 0;
+    } else if (s_music == 1 && A->audio_queued() == 0) {
+        s_buffering = 1;                 /* ran dry: gather a cushion again */
+        stream_draw();
+        return 1;
     }
     if (!decode_some()) { s_music = 2; return 1; }
-    if (A->ms() - s_drawn > 400) { s_drawn = A->ms(); draw(); }
+    stream_draw();
     return 1;
 }
 
@@ -312,13 +346,15 @@ static void media_end(int whole)
     if (whole < 0) { s_esc = 1; whole = 0; }          /* esc, while reading */
     if (s_dl_state == DL_COMING) s_dl_state = whole ? DL_CAME : DL_BROKE;
     else if (s_dl_state == DL_STREAM) {
+        /* What is left is played out by music_feed, as browzer waits; or,
+         * for a station about to be called again, as much as fits now. */
         s_dl_state = DL_STREAM_END;
         s_in.done = 1;
-        if (s_esc || !whole) music_stop();
-        else if (s_music) {                             /* play out what is left */
-            while (decode_some() && s_music == 1 && A->audio_space() < 3400) { }
-            s_music = 2;
-        }
+        if (s_esc || (!whole && !s_live)) music_stop();
+        else if (s_dec.decode && !s_music && s_in.len > s_in.pos) {
+            if (music_start(2, s_dec.rate)) decode_some();    /* too short to wait for */
+        } else if (s_music == 1) decode_some();
+        s_buffering = 0;
     }
 }
 
@@ -346,9 +382,12 @@ static int playlist_url(char *out, int cap)
     return 0;
 }
 
+#define UK_SELALL 1                      /* ctrl-a                         */
+
 int ui_key(void)
 {
     int mods, k = A->key(&mods);
+    if (k >= 0 && (mods & M_CTRL) && (k == 'a' || k == 'A')) return UK_SELALL;
     if (k >= 0 && (mods & (M_CTRL | M_ALT))) return -1;
     return k;
 }
@@ -365,7 +404,8 @@ static char s_hist[HISTORY][PAGE_HREF_MAX + 16];
 static int  s_hist_n;
 static int  s_editing;
 static char s_edit[PAGE_HREF_MAX];
-static int  s_edit_len;
+static int  s_edit_len, s_edit_cur, s_edit_all;   /* the caret; ctrl-a picked all */
+static int  s_leave_armed;               /* asked whether to leave          */
 static int  s_loading;
 
 static const char s_home[] =
@@ -442,12 +482,21 @@ static void draw(void)
 
     /* The address. */
     if (s_editing) {
+        /* The address being edited: the caret underlines the letter it is
+         * at, or sits after the end; all of it picked shows reversed. */
+        int vis = s_w - 10;
         term_win_band(1, 1, s_w - 2, WIN_HILITE);
         term_win_text(2, 1, "go:", C_ACCENT, WIN_HILITE);
-        x = 6;
-        i = s_edit_len > s_w - 10 ? s_edit_len - (s_w - 10) : 0;
-        for (; i < s_edit_len; i++) term_win_put(x++, 1, (u8)s_edit[i], C_BRIGHT, WIN_HILITE);
-        term_win_put(x, 1, '_', C_ACCENT, WIN_HILITE);
+        i = s_edit_cur > vis - 1 ? s_edit_cur - (vis - 1) : 0;
+        for (x = 6; i <= s_edit_len && x < 6 + vis; i++, x++) {
+            if (i == s_edit_len)
+                term_win_put(x, 1, '_', C_ACCENT, WIN_HILITE);
+            else if (s_edit_all)
+                term_win_put(x, 1, (u8)s_edit[i], WIN_HILITE, C_ACCENT);
+            else
+                term_win_put_at(x, 1, (u8)s_edit[i], i == s_edit_cur ? C_ACCENT : C_BRIGHT, WIN_HILITE,
+                                i == s_edit_cur ? AT_UNDERLINE : 0);
+        }
     } else {
         term_win_text(2, 1, s_pg.secure ? "*" : ">", s_pg.secure ? C_ACCENT : C_DIM, pp);
         put_text_clipped(4, 1, s_pg.url, C_TEXT, pp, s_w - 2);
@@ -470,8 +519,13 @@ static void draw(void)
         if (s_dec.decode) {
             fmt_str(t, sizeof t, "%s%s, mono, %u Hz", s_dec.kind, kbps_text(), (u32)s_dec.rate);
             term_win_text(4, 8, t, C_DIM, pp);
-            fmt_str(t, sizeof t, "listening for %u:%02u", secs / 60, secs % 60);
-            term_win_text(4, 10, t, C_ACCENT, pp);
+            if (s_buffering)
+                term_win_text(4, 10, s_music ? "it ran short; gathering a few seconds again..."
+                                             : "gathering a few seconds before it plays...", C_ACCENT, pp);
+            else {
+                fmt_str(t, sizeof t, "listening for %u:%02u", secs / 60, secs % 60);
+                term_win_text(4, 10, t, C_ACCENT, pp);
+            }
         } else
             term_win_text(4, 8, "listening for the first of it...", C_DIM, pp);
         term_win_text(4, 12, "esc stops it", C_DIM, pp);
@@ -505,7 +559,9 @@ static void draw(void)
     }
 
     /* Status: what is happening, or where the picked link goes. */
-    if (s_choosing >= 0) {
+    if (s_leave_armed) {
+        put_text_clipped(2, s_h - 2, "Leave browzer? y leaves; any other key stays.", C_ACCENT, pp, s_w - 12);
+    } else if (s_choosing >= 0) {
         PageField *f = &s_pg.fields[s_choosing];
         fmt_str(line, sizeof line, "choosing, %u of %u: up and down change it, enter keeps it",
                 (u32)f->sel + 1, (u32)f->nopt);
@@ -546,6 +602,7 @@ static void draw(void)
     /* Keys, let into the bottom of the frame. */
     {
         const char *keys = s_choosing >= 0 ? " up down choose  enter keep  esc undo "
+                         : s_editing ? " type  arrows move  ctrl-a all  enter go  esc cancel "
                          : s_typing >= 0 ? " type  enter send  tab done  esc stop "
                          : s_w >= 66 ? " tab link  enter go  bksp back  g go to  b mark  m marks  esc "
                          : s_w >= 60 ? " tab link  enter go  bksp back  g go to  esc leave "
@@ -814,6 +871,22 @@ static void go_with(const char *url, const u8 *post, int postlen)
         name[k] = 0;
         if (!name[0]) fmt_str(name, sizeof name, "%s", s_station[0] ? s_station : "this");
 
+        /* A station that hung up is called again, five times at most in a
+         * row; a minute of listening starts the count again. */
+        if (st == DL_STREAM_END && !s_esc && s_live) {
+            if (A->ms() - s_conn_ms > 60000) s_redials = 0;
+            if (s_redials < 5) {
+                char again[PAGE_HREF_MAX + 16];
+                for (i = 0; s_dl_url[i] && i < (int)sizeof again - 1; i++) again[i] = s_dl_url[i];
+                again[i] = 0;
+                s_redials++;
+                s_redial = 1;
+                go_with(again, 0, 0);
+                s_redial = 0;
+                return;
+            }
+        }
+
         if (st == DL_CAME && is_playlist()) {
             char next[PAGE_HREF_MAX + 16];
             if (playlist_url(next, (int)sizeof next)) { go_with(next, 0, 0); return; }
@@ -850,11 +923,12 @@ static void go_with(const char *url, const u8 *post, int postlen)
         } else if (st == DL_STREAM_END) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s</p>%s%s%s",
                     s_station[0] ? s_station : name, s_station[0] ? s_station : name,
-                    s_esc ? "Stopped." : s_music ? "That was all of it; the last of it is still playing." : "The stream ended.",
+                    s_esc ? "Stopped." : s_live ? "The station stopped answering, five times running." :
+                    s_music ? "That was all of it; the last of it is still playing." : "The stream ended.",
                     s_now[0] ? "<p>Last playing: " : "", s_now[0] ? s_now : "", s_now[0] ? "</p>" : "");
         } else if (st == DL_UNPLAYABLE) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is %s, which browzer cannot play "
-                    "(mp3, Ogg, FLAC, wav, .mod and .xm it can).</p>", name, name, s_dl_type);
+                    "(mp3, AAC, Ogg, FLAC, wav, .mod and .xm it can).</p>", name, name, s_dl_type);
         } else if (st == DL_NOCARD) {
             fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>This machine has no sound card "
                     "that plays recordings.</p>", name);
@@ -1048,6 +1122,23 @@ static void go_typed(const char *t)
     go(url);
 }
 
+/* g: the address, ready to change, the caret at its end. */
+static void edit_start(void)
+{
+    int i = 0;
+    s_editing = 1;
+    s_edit_all = 0;
+    if (!(s_pg.url[0] == 'f' && s_pg.url[1] == 'l' && s_pg.url[2] == 'o' && s_pg.url[3] == 'p'))
+        for (; s_pg.url[i] && i < PAGE_HREF_MAX - 1; i++) s_edit[i] = s_pg.url[i];
+    s_edit_len = s_edit_cur = i;
+}
+
+static void edit_cut(int at)
+{
+    memmove(s_edit + at, s_edit + at + 1, (u32)(s_edit_len - at - 1));
+    s_edit_len--;
+}
+
 /* One of a set of choices picked: the others with its name let go. */
 static void radio_pick(PageField *f)
 {
@@ -1238,20 +1329,45 @@ void browzer_run(const char *start)
                 if (s_edit_len) go_typed(s_edit);
             } else if (k == UK_ESC) {
                 s_editing = 0;
-            } else if (k == UK_BKSP) {
-                if (s_edit_len) s_edit_len--;
-            } else if (k >= 32 && k < 127 && s_edit_len < PAGE_HREF_MAX - 1) {
-                s_edit[s_edit_len++] = (char)k;
+            } else if (k == UK_SELALL) {
+                s_edit_all = s_edit_len > 0;
+            } else if (k == UK_LEFT || k == UK_HOME) {
+                s_edit_cur = (s_edit_all || k == UK_HOME) ? 0 : s_edit_cur > 0 ? s_edit_cur - 1 : 0;
+                s_edit_all = 0;
+            } else if (k == UK_RIGHT || k == UK_END) {
+                s_edit_cur = (s_edit_all || k == UK_END) ? s_edit_len
+                           : s_edit_cur < s_edit_len ? s_edit_cur + 1 : s_edit_len;
+                s_edit_all = 0;
+            } else if (k == UK_BKSP || k == UK_DEL) {
+                if (s_edit_all) { s_edit_len = s_edit_cur = 0; s_edit_all = 0; }
+                else if (k == UK_BKSP && s_edit_cur > 0) { edit_cut(s_edit_cur - 1); s_edit_cur--; }
+                else if (k == UK_DEL && s_edit_cur < s_edit_len) edit_cut(s_edit_cur);
+            } else if (k >= 32 && k < 127) {
+                if (s_edit_all) { s_edit_len = s_edit_cur = 0; s_edit_all = 0; }
+                if (s_edit_len < PAGE_HREF_MAX - 1) {
+                    memmove(s_edit + s_edit_cur + 1, s_edit + s_edit_cur, (u32)(s_edit_len - s_edit_cur));
+                    s_edit[s_edit_cur++] = (char)k;
+                    s_edit_len++;
+                }
             }
+            continue;
+        }
+
+        /* Esc, or q, asked whether to leave: only y does.  The laptop's
+         * esc key can bounce, so a second esc must not be the answer. */
+        if (s_leave_armed) {
+            s_leave_armed = 0;
+            if (k == 'y' || k == 'Y') { music_stop(); term_win_close(); return; }
+            say("Staying.", C_DIM);
             continue;
         }
 
         if (k != 'd') s_del_armed = 0;
         switch (k) {
         case UK_ESC: case 'q':
-            music_stop();
-            term_win_close();
-            return;
+            s_leave_armed = 1;
+            say("Leave browzer? y leaves; any other key stays.", C_ACCENT);
+            break;
         case UK_UP:    scroll(-1); break;
         case UK_DOWN:  scroll(+1); break;
         case UK_PGUP:  scroll(-(s_vh - 1)); break;
@@ -1262,7 +1378,7 @@ void browzer_run(const char *start)
         case UK_BTAB:  pick(-1); break;
         case UK_ENTER: follow(); break;
         case UK_BKSP: case UK_LEFT: back(); break;
-        case 'g': case '/': s_editing = 1; s_edit_len = 0; break;
+        case 'g': case '/': edit_start(); break;
         case 'r': if (s_pg.url[0]) { char u[PAGE_HREF_MAX + 16]; int i;
                       for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
                       u[i] = 0; go(u); } break;

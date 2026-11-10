@@ -88,6 +88,18 @@ everything else. **Stops:** a single bug taking over everything. This is
 the biggest gain and also the most work, and every call an app makes would
 cost a little speed.
 
+### 9. The time from the network is not signed (medium)
+
+`rtc.c`, `ip.c`. The clock sets itself from a time server, and plain NTP
+has no signature. The answer is checked to come from the server asked and
+to carry back a random number from the question, so nobody off the path
+can fake it. Someone on your own network still could.
+
+**Fix:** NTS, Network Time Security (RFC 8915), which is NTP with a TLS
+handshake first. **Stops:** a faked time making a recently expired
+certificate look valid. The clock already refuses to go back past the last
+`bye`, which limits how far back that can reach.
+
 ## In progress
 
 - **Four ways a crafted Ogg file can write past its buffers**, in

@@ -206,6 +206,10 @@ void kmain(void)
      * the machine remembers anything. */
     boot_step("Flippely-Flopping");
     store_init();
+    if (store_ready() && clock_from_goodbye()) {
+        boot_step("Winding the clock forward to our last goodbye...");
+        boot_result("near enough");
+    }
     if (store_ready()) {
         u8 h, mi, se, mo, da; u16 yr;
         if (rtc_read(&h, &mi, &se, &yr, &mo, &da))
@@ -271,7 +275,7 @@ void kmain(void)
      * cyberdelia -- without answering his riddle, and every answer is the
      * right one.  He leaves the palette as the mood's own. */
     vga_set_palette(black);
-    wizard_gate();
+    wizard_gate(0);
 
     shell_banner();
     shell_prompt();

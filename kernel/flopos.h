@@ -272,6 +272,7 @@ void   term_newline(void);
 void   term_render(u8 *dst, u32 t);
 void   term_mute(int on);
 void   term_cursor(int on);              /* the terminal's own, on or off   */
+void   term_hide(int on);                /* the shell unseen; windows still drawn */
 void   term_plain(int on);
 int    term_win_open(int w, int h);
 void   term_win_close(void);
@@ -308,6 +309,14 @@ void   term_input_line(int from_col, const char *s, int caret, u8 colour);
 /* --- rtc.c ------------------------------------------------------------- */
 int    rtc_read(u8 *hour, u8 *min, u8 *sec,
                 u16 *year, u8 *month, u8 *day);
+u32    rtc_seconds(void);                /* since 2000; 0 if unreadable    */
+void   rtc_set_seconds(u32 s);
+int    clock_from_network(void);         /* ask a time server; 1 if set    */
+int    clock_from_goodbye(void);         /* at boot: no earlier than bye   */
+void   clock_remember(void);             /* at bye                         */
+u32    ip_ntp_time(void);                /* UTC seconds since 2000, or 0   */
+u32    store_clock_get(void);
+void   store_clock_set(u32 s);
 
 /* --- panel.c ----------------------------------------------------------- */
 void   panel_init(void);
@@ -333,7 +342,7 @@ void   boot_result(const char *fmt, ...);   /* ...and what it found          */
 void   boot_end(void);                      /* hold, then fade out           */
 
 /* --- wizard.c, cyberdelia.c: the way into the shell -------------------- */
-void   wizard_gate(void);                   /* until a riddle is answered    */
+void   wizard_gate(int lock);               /* until a riddle is answered    */
 void   cyberdelia_jingle(void (*each)(void));  /* a secret, found          */
 void   cyberdelia_enter(void (*each)(void));   /* the screen ripples you in */
 
@@ -484,6 +493,8 @@ typedef struct {
     const char *(*why)(void);            /* why it did not come up         */
     int  (*link)(void);                  /* is anybody at the other end    */
 } Nic;
+
+void net_tick(void);                     /* from the timer: empty the card  */
 
 extern const Nic g_nic_el3;
 extern const Nic g_nic_ne2000;

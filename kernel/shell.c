@@ -1321,8 +1321,16 @@ static void cmd_version(void)
     say_dim("built from nothing in particular");
 }
 
+/* `wizard`: the screen locked behind the gate again, until a riddle is
+ * answered -- his, or, when he has wandered off, your own. */
+static void cmd_wizard(void)
+{
+    wizard_gate(1);
+}
+
 static void cmd_bye(void)
 {
+    clock_remember();                    /* for a clock with a flat battery */
     if (store_unsaved()) {
         say_dim("Writing things down first...");
         screen_now();
@@ -1397,6 +1405,7 @@ static const Cmd s_cmds[] = {
     { "fetch",   "read a web page",              cmd_fetch   },
     { "browzer", "a small web browser",          cmd_browzer },
     { "report",  "tell Claude how you are",      cmd_report  },
+    { "wizard",  "lock the screen behind a riddle", cmd_wizard },
     { "bye",     "write everything down and stop", cmd_bye   },
     { "reboot",  "start the machine again",      cmd_reboot  },
 };

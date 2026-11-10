@@ -6,6 +6,29 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.21.0 — 2026-11-10
+
+- **AAC in browzer**: AAC and HE-AAC (AAC+) stations and .aac files, such
+  as SomaFM's. HE-AAC plays its 22 kHz core, which is all the Sound
+  Blaster plays anyway. Checked against FAAD2: the same sound.
+- **Radio no longer stutters.** The 3Com card holds only a few packets,
+  so browzer used to let a server send just 4 KB at a time, and on the
+  laptop that barely kept up with a 128 kbps station. Now the system timer
+  empties the card into memory 250 times a second, the window is four
+  times bigger, and the player gathers three seconds before it plays, and
+  again if it ever runs dry, instead of stuttering. A station that hangs
+  up is called back.
+- **The clock sets itself**, so certificates can be checked on a laptop
+  whose clock battery has died: from a time server when the network comes
+  up (in Swedish time, summer time included), or else from the time saved
+  at the last `bye`.
+- **`wizard`** locks the screen behind the wizard's riddle. Sometimes he
+  is out, and has left a note asking you to riddle yourself.
+- browzer: **g** keeps the address to edit (arrows move, Ctrl-A picks it
+  all), and **Esc** asks before leaving, since the laptop's Esc key can
+  bounce.
+- The RAGA rhythm is gone.
+
 ## 1.20.0 — 2026-11-10
 
 - **Tick boxes, choices and drop-down lists in browzer's forms**, all plain

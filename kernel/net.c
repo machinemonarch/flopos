@@ -18,6 +18,38 @@
 static const Nic *s_nic;
 static char s_why[160] = "nothing has been tried yet";
 
+/* ---- frames waiting ---------------------------------------------------
+ * A card keeps only a few frames in its own memory, and one that arrives
+ * while that is full is thrown away and has to be sent again, a second or
+ * more later.  FLOPOS is often busy for longer than that takes -- drawing
+ * the screen, decoding a song -- so the timer, 250 times a second, moves
+ * whatever the card holds into a queue here, and everything above reads
+ * the queue.  Only one side talks to the card at a time: anything else
+ * that touches it marks it busy first, and the timer leaves it alone.
+ */
+#define RXQ 48                           /* frames; a big TCP window's worth */
+static u8 *s_q;
+static u16 s_qlen[RXQ];
+static volatile u32 s_qin, s_qout;
+static volatile int s_busy;
+
+static void drain(int most)
+{
+    while (most-- > 0 && s_qin - s_qout < RXQ) {
+        int n = s_nic->recv(s_q + (s_qin % RXQ) * NET_MTU, NET_MTU);
+        if (n <= 0) break;
+        s_qlen[s_qin % RXQ] = (u16)n;
+        s_qin++;
+    }
+}
+
+/* From the timer. */
+void net_tick(void)
+{
+    if (!s_nic || !s_q || s_busy) return;
+    drain(8);
+}
+
 /* In order of preference: the real card first, since on the machine this
  * is for, the real card is the one that is there. */
 static const Nic *const s_cards[] = { &g_nic_el3, &g_nic_ne2000 };
@@ -52,18 +84,32 @@ int net_up(void)
          * the 3Com's registers, so it is not looked for at all. */
         if (s_cards[i] == &g_nic_ne2000 && pcic_probe()) continue;
 
-        if (s_cards[i]->start()) { s_nic = s_cards[i]; return 1; }
+        if (s_cards[i]->start()) {
+            if (!s_q) s_q = (u8 *)halloc(RXQ * NET_MTU);
+            s_qin = s_qout = 0;
+            s_nic = s_cards[i];
+            return 1;
+        }
         note_why(s_cards[i]->name, s_cards[i]->why());
     }
     return 0;
 }
 
-int net_link(void) { return s_nic && s_nic->link ? s_nic->link() : 0; }
+int net_link(void)
+{
+    int r;
+    if (!s_nic || !s_nic->link) return 0;
+    s_busy++; r = s_nic->link(); s_busy--;
+    return r;
+}
 
 void net_down(void)
 {
+    s_busy++;
     if (s_nic) s_nic->stop();
     s_nic = 0;
+    s_qin = s_qout = 0;
+    s_busy--;
 }
 
 int          net_ready(void) { return s_nic != 0; }
@@ -81,18 +127,36 @@ int net_send(const u8 *frame, int len)
     static u8 pad[60];
     int i;
 
-    if (!s_nic || len < 14 || len > NET_MTU) return 0;
-    if (len >= 60) return s_nic->send(frame, len);
+    int r;
 
-    for (i = 0; i < len; i++) pad[i] = frame[i];
-    for (; i < 60; i++) pad[i] = 0;
-    return s_nic->send(pad, 60) ? len : 0;
+    if (!s_nic || len < 14 || len > NET_MTU) return 0;
+    s_busy++;
+    if (len >= 60) r = s_nic->send(frame, len);
+    else {
+        for (i = 0; i < len; i++) pad[i] = frame[i];
+        for (; i < 60; i++) pad[i] = 0;
+        r = s_nic->send(pad, 60) ? len : 0;
+    }
+    s_busy--;
+    return r;
 }
 
+/* The next frame that came, from the queue -- asking the card first if
+ * the queue is empty, rather than wait for the timer. */
 int net_recv(u8 *frame, int max)
 {
+    const u8 *src;
+    int n, i;
+
     if (!s_nic) return 0;
-    return s_nic->recv(frame, max);
+    if (s_qin == s_qout) { s_busy++; drain(8); s_busy--; }
+    if (s_qin == s_qout) return 0;
+    src = s_q + (s_qout % RXQ) * NET_MTU;
+    n = s_qlen[s_qout % RXQ];
+    if (n > max) n = max;
+    for (i = 0; i < n; i++) frame[i] = src[i];
+    s_qout++;
+    return n;
 }
 
 /* ---- what a frame looks like ------------------------------------------

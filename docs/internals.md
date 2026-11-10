@@ -197,9 +197,9 @@ Each layer is its own file:
 | Layer | File | What it does |
 |---|---|---|
 | PC Card | `pcic.c` | Powers the slots, reads each card's description, maps its registers into I/O space |
-| Cards | `el3.c`, `ne2000.c`, `net.c` | The 3Com 3C589, the emulator's NE2000, and a common interface for both. Polled: no interrupts. |
+| Cards | `el3.c`, `ne2000.c`, `net.c` | The 3Com 3C589, the emulator's NE2000, and a common interface for both. No card interrupts: the timer empties the card into a 48-frame queue 250 times a second, so nothing is lost while FLOPOS is busy drawing or decoding. |
 | Addresses | `ip.c` | ARP (finding the hardware behind an address), IPv4, ICMP (ping), UDP, DHCP (being given an address), DNS (names) |
-| Conversations | `tcp.c` | TCP: ordered, reliable, retransmitted. Its receive window is kept small to fit the card's buffer. |
+| Conversations | `tcp.c` | TCP: ordered, reliable, retransmitted. Its receive window is twelve segments, about 17 KB, which the frame queue can always hold. |
 | Connections | `conn.c` | One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close |
 | Secure web | `tls.c` | TLS 1.3, client side |
 | Programs | `netui.c` | The network menu |
@@ -235,7 +235,8 @@ The server must then prove who it is (`tls.c`, `x509.c`):
 1. Its Certificate message is copied out and split into the chain.
 2. `x509_check` reads each certificate and checks the site's own: its name
    against the host asked for (with `*.` standing for exactly one label),
-   its dates against the CMOS clock, that it is for websites, and that it
+   its dates against the clock (which sets itself from a time server when
+   the network comes up, or from the time saved at the last `bye`), that it is for websites, and that it
    makes no critical demand this code doesn't understand.
 3. It walks up the chain. At each step it tries the roots in `ROOTS.DAT`
    whose name matches the issuer; failing that, the certificates sent with

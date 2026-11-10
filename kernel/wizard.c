@@ -15,6 +15,11 @@
  *
  * The riddle and the answer go into the journal, so the floppy remembers
  * what was asked and what was said.
+ *
+ * `wizard` brings the gate back, to lock the screen: the shell is hidden
+ * until a riddle is answered again.  Some of the time he is not there --
+ * gone off to do something silly -- and has left a note asking whoever
+ * comes along to riddle themselves while he is away.
  * ===========================================================================
  */
 #include "flopos.h"
@@ -214,9 +219,65 @@ static const char *s_key[10] = {
 #define ART_W 15
 #define ART_H 10
 
+/* When he is away: his hat on a post, and the note pinned under it.
+ * P the paper, I the ink. */
+static const char *s_away_art[10] = {
+    "      *        ",
+    "     /^\\       ",
+    "    /___\\      ",
+    "      |        ",
+    "  .--------.   ",
+    "  | ~~ ~~~ |   ",
+    "  | ~~~ ~  |   ",
+    "  |   ~W.  |   ",
+    "  '--------'   ",
+    "      |        ",
+};
+static const char *s_away_key[10] = {
+    "      Y        ",
+    "     HHH       ",
+    "    HHHHH      ",
+    "      S        ",
+    "  PPPPPPPPPP   ",
+    "  PIIIIIIIIP   ",
+    "  PIIIIIIIIP   ",
+    "  PIIIIIIIIP   ",
+    "  PPPPPPPPPP   ",
+    "      S        ",
+};
+
+static const char *s_gone[] = {
+    "teach the moon to whistle",
+    "count the stairs of the spiral staircase, again",
+    "argue with a teapot about the weather",
+    "look for my other sock in 1987",
+    "help Saffran keep an eye on a sunbeam",
+    "return an overdue spell to the library",
+    "polish the star on my hat",
+    "untangle a rainbow that got into the drawer",
+    "ask a cloud for directions",
+    "find out where the floppy goes when it spins",
+    "nap somewhere quieter",
+    "water the crystal",
+};
+static const char *s_back[] = {
+    "Back soon-ish.",
+    "Back before the kettle boils. Or after.",
+    "Back when I remember the way.",
+    "Back in a jiffy, or a fortnight.",
+};
+static const char *s_alone[] = {
+    "The note says nothing back. It is a note. In you go.",
+    "You nod at your own answer. It seems right. It always does.",
+    "On the back of the note, in smaller writing: Correct. In you go.",
+    "Somewhere far off, a wizard yawns in agreement. In you go.",
+};
+
 static u8 art_colour(char k, u32 t)
 {
     switch (k) {
+    case 'P': return C_TEXT;
+    case 'I': return C_ACCENT;
     case 'Y': return PAL_BANANA + 6;
     case 'H': return C_ACCENT;
     case 'F': return C_TEXT;
@@ -261,6 +322,17 @@ static void draw_wizard(int x0, int y0, u32 t)
     }
 }
 
+static void draw_away(int x0, int y0)
+{
+    int r, c;
+    for (r = 0; r < ART_H; r++)
+        for (c = 0; c < ART_W; c++) {
+            char ch = s_away_art[r][c];
+            if (ch == ' ') continue;
+            term_win_put_at(x0 + c, y0 + r, (u8)ch, art_colour(s_away_key[r][c], 0), 0, ATTR_CLEAR);
+        }
+}
+
 /* ---- the box ---------------------------------------------------------------- */
 #define LINES_MAX 4
 
@@ -300,13 +372,15 @@ typedef struct {
     char said[LINES_MAX][64]; int nsaid;
     char riddle[LINES_MAX][64]; int nriddle;
     char answer[ANSWER_MAX + 1]; int len;
+    char mine[ANSWER_MAX + 1]; int mlen;        /* away: your own riddle   */
+    int  away, stage;                           /* stage 0: typing mine    */
     int  done;
 } Gate;
 
 static void draw_gate(const Gate *g, u32 t)
 {
     int W = term_cols() < 60 ? term_cols() : 60;
-    int boxh = 7 + g->nsaid + g->nriddle;
+    int boxh = 7 + g->nsaid + g->nriddle + (g->away ? 1 : 0);
     int H = ART_H + boxh, x, y, i, row, top, bot;
 
     /* On a short screen the box keeps its rows and the top of his hat is
@@ -317,7 +391,8 @@ static void draw_gate(const Gate *g, u32 t)
     term_win_bare();
     top = H - boxh;
     bot = H - 1;
-    draw_wizard((W - ART_W) / 2, top - ART_H, t);
+    if (g->away) draw_away((W - ART_W) / 2, top - ART_H);
+    else         draw_wizard((W - ART_W) / 2, top - ART_H, t);
 
     for (y = top; y <= bot && y < H; y++)
         for (x = 0; x < W; x++) {
@@ -337,9 +412,16 @@ static void draw_gate(const Gate *g, u32 t)
             term_win_put_at(2 + k, row, (u8)g->riddle[i][k], C_ACCENT, WIN_PAPER, ATTR_BOLD);
     }
     row++;
+    if (g->away) {
+        x = term_win_text(2, row, "your riddle: ", C_DIM, WIN_PAPER);
+        for (i = 0; i < g->mlen; i++) term_win_put(x + i, row, (u8)g->mine[i], C_TEXT, WIN_PAPER);
+        if (!g->done && g->stage == 0 && ((t / 450) & 1) == 0)
+            term_win_put(x + g->mlen, row, '_', C_BRIGHT, WIN_PAPER);
+        row++;
+    }
     x = term_win_text(2, row, "your answer: ", C_DIM, WIN_PAPER);
     for (i = 0; i < g->len; i++) term_win_put(x + i, row, (u8)g->answer[i], C_TEXT, WIN_PAPER);
-    if (!g->done && ((t / 450) & 1) == 0)
+    if (!g->done && (!g->away || g->stage == 1) && ((t / 450) & 1) == 0)
         term_win_put(x + g->len, row, '_', C_BRIGHT, WIN_PAPER);
 }
 
@@ -359,25 +441,35 @@ static u32  s_t0;
 
 static void gate_frame(void) { draw_gate(&s_g, ms_now() - s_t0); }
 
-void wizard_gate(void)
+void wizard_gate(int lock)
 {
-    char riddle[RIDDLE_MAX];
-    int inner, mods, k;
+    char riddle[RIDDLE_MAX], *field;
+    const char *gone = 0;
+    int inner, mods, k, *flen;
 
     s_t0 = ms_now();
     term_cursor(0);                      /* the terminal has nothing to type into yet */
+    if (lock) term_hide(1);              /* nothing of the shell shows meanwhile */
     reckon();
     make_riddle(riddle);
 
     inner = (term_cols() < 60 ? term_cols() : 60) - 4;
-    s_g.nsaid = wrap(s_hold, s_g.said, inner);
+    s_g.away = lock && luck() % 3 == 0;
+    if (s_g.away) {
+        gone = pick(s_gone, N_OF(s_gone));
+        fmt_str(riddle, sizeof riddle, "Gone to %s. %s Riddle yourself while I am away. -- W.",
+                gone, pick(s_back, N_OF(s_back)));
+        s_g.nsaid = wrap("Nobody is here. A note, pinned up where he usually sits:", s_g.said, inner);
+    } else
+        s_g.nsaid = wrap(s_hold, s_g.said, inner);
     s_g.nriddle = wrap(riddle, s_g.riddle, inner);
-    s_g.len = 0;
+    s_g.len = s_g.mlen = 0;
+    s_g.stage = s_g.away ? 0 : 1;
     s_g.done = 0;
 
     draw_gate(&s_g, 0);
     main_pump(1);
-    mood_apply_palette(28);              /* he comes up out of the dark    */
+    if (!lock) mood_apply_palette(28);   /* he comes up out of the dark    */
     tell_wire(&s_g);
 
     while (!s_g.done) {
@@ -385,30 +477,48 @@ void wizard_gate(void)
         main_pump(0);
 
         while ((k = ui_key_mods(&mods)) >= 0) {
+            field = s_g.stage == 0 ? s_g.mine : s_g.answer;
+            flen  = s_g.stage == 0 ? &s_g.mlen : &s_g.len;
             if (mods & (KEV_CTRL | KEV_ALT)) continue;
-            if (k == UK_ENTER) { s_g.done = 1; break; }
+            if (k == UK_ENTER) {
+                if (s_g.stage == 0) {            /* your riddle asked; now answer it */
+                    s_g.stage = 1;
+                    if (serial_present()) serial_print("\n  your answer: ");
+                    continue;
+                }
+                s_g.done = 1;
+                break;
+            }
             if (k == UK_BKSP) {
-                if (s_g.len > 0) {
-                    s_g.len--;
+                if (*flen > 0) {
+                    (*flen)--;
                     if (serial_present()) serial_print("\b \b");
                 }
                 continue;
             }
-            if (((k >= 32 && k < 127) || (k >= 0x80 && k <= 0x88)) && s_g.len < ANSWER_MAX) {
-                s_g.answer[s_g.len++] = (char)k;
+            if (((k >= 32 && k < 127) || (k >= 0x80 && k <= 0x88)) && *flen < ANSWER_MAX) {
+                field[(*flen)++] = (char)k;
                 if (serial_present()) serial_putc(k < 127 ? k : '?');
             }
         }
     }
     s_g.answer[s_g.len] = 0;
+    s_g.mine[s_g.mlen] = 0;
 
-    store_journal_printf("the wizard asked: %s", riddle);
+    if (s_g.away) {
+        store_journal_printf("the wizard was away, gone to %s", gone);
+        store_journal_printf("you asked yourself: %s", s_g.mlen ? s_g.mine : "(nothing)");
+    } else
+        store_journal_printf("the wizard asked: %s", riddle);
     store_journal_printf("you answered: %s", s_g.len ? s_g.answer : "(nothing)");
 
     /* Every answer is the right one.  Even none. */
-    s_g.nsaid = wrap(s_g.len ? pick(s_weary, N_OF(s_weary))
-                         : "You said nothing. Also correct. In you go.",
-                   s_g.said, inner);
+    if (s_g.away)
+        s_g.nsaid = wrap(pick(s_alone, N_OF(s_alone)), s_g.said, inner);
+    else
+        s_g.nsaid = wrap(s_g.len ? pick(s_weary, N_OF(s_weary))
+                             : "You said nothing. Also correct. In you go.",
+                       s_g.said, inner);
     if (serial_present()) {
         int i;
         serial_print("\n\n");
@@ -421,4 +531,5 @@ void wizard_gate(void)
     cyberdelia_enter(gate_frame);
     term_win_close();
     term_cursor(1);
+    if (lock) term_hide(0);
 }

@@ -35,7 +35,7 @@ clock.
 | Word | What it does |
 |---|---|
 | `mood` | Changes the light: the colours of the moving background. Moves to the next one, or name it: `mood dusk`. The five are STILL, WARM, DEEP, DUSK and VOID. |
-| `listen` | A different rhythm: JUNGLE, BREAKS, DRIFT, ACID, RAGA, TEMPLE, SPIRAL. |
+| `listen` | A different rhythm: JUNGLE, BREAKS, DRIFT, ACID, TEMPLE, SPIRAL. |
 | `sound` / `quiet` | Music on or off. |
 | `whaaat` | Pulls the screen through a hole in itself, turns it inside out, and drops you back somewhere colder. Say it again to come back up. |
 | `quirks` | Lines of text sometimes misbehave on purpose. This holds them still, or lets them go again. |
@@ -82,6 +82,7 @@ More in [The network](network.md).
 
 | Word | What it does |
 |---|---|
+| `wizard` | Locks the screen: the wizard comes back, and the shell stays hidden until his riddle is answered. Some of the time he has wandered off and left a note asking you to riddle yourself. |
 | `bye` | Writes everything down and switches the laptop off. |
 | `reboot` | Starts the machine again. |
 
