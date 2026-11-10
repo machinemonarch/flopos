@@ -477,7 +477,7 @@ static void imdct(int g, int ch)
 static void synth(s16 *out)
 {
     int slot, i, k, nsb = M.half ? 16 : 32, step = M.half ? 2 : 1, n = 0;
-    float scale = 32768.0f / (float)M.nch;
+    float scale = 32768.0f * AUDIO_HEADROOM / (float)M.nch;
     for (slot = 0; slot < 18; slot++) {
         float *v;
         const float *S = M.sb[slot];
@@ -525,12 +525,12 @@ static int sync(AudioIn *in)
     for (;;) {
         int ver, sri, nch, kbps, len, v2, s2, n2, k2;
         const u8 *p;
-        if (in->len - in->pos < 4) return in->done ? AUDIO_END : AUDIO_MORE;
+        if (in->pos >= in->len || in->len - in->pos < 4) return in->done ? AUDIO_END : AUDIO_MORE;
         p = in->buf + in->pos;
         if (p[0] == 'I' && p[1] == 'D' && p[2] == '3') {
             int r = skip_id3(in);
             if (r == AUDIO_MORE) return r;
-            if (r) continue;
+            if (r || in->buf + in->pos != p) continue;      /* past it, or a tag that ran off the end */
         }
         len = header(p, &ver, &sri, &nch, &kbps);
         if (len >= 21) {

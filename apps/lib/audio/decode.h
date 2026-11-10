@@ -28,6 +28,11 @@ typedef struct {
 #define AUDIO_MORE  (-1)                 /* not enough bytes yet            */
 #define AUDIO_BAD   (-2)                 /* cannot be read                  */
 
+/* Loud recordings are mastered right up to full scale, and decoding one
+ * overshoots it: without a little room the peaks are cut off and crackle.
+ * About 3 dB, applied by every decoder that makes its own samples. */
+#define AUDIO_HEADROOM 0.7f
+
 typedef struct Decoder {
     const char *kind;                    /* "WAV", "MP3", ...               */
     int   rate;                          /* of the recording                */
@@ -46,9 +51,19 @@ int  audio_detect(AudioIn *in, Decoder *d, const char *ctype);
 /* Each format. */
 int  wav_open(AudioIn *in, Decoder *d);
 int  mp3_open(AudioIn *in, Decoder *d);
+int  vorbis_open(AudioIn *in, Decoder *d);
+int  flac_open(AudioIn *in, Decoder *d);
 
-/* From the recording's rate to the card's, as 8-bit unsigned. */
-typedef struct { u32 step, phase; s16 prev; } Resampler;
+/* Ogg carries FLAC too: vorbis.c reads the Ogg pages and hands flac.c the
+ * STREAMINFO block's 34 bytes (the rate, or 0 if it cannot be played), then
+ * one frame at a time (how many samples it gave, or 0). */
+int  flac_info(const u8 *streaminfo, int *channels);
+int  flac_one(const u8 *frame, u32 len, s16 *out);
+
+/* From the recording's rate to the card's, as 8-bit unsigned.  From twice
+ * the card's rate or more, neighbouring samples are averaged first, so
+ * what is too high to play does not fold back down as noise. */
+typedef struct { u32 step, phase; s16 prev; int taps, h; s32 sum; s16 hist[8]; } Resampler;
 void rs_init(Resampler *r, int from, int to);
 int  rs_run(Resampler *r, const s16 *in, int n, u8 *out);   /* out: n * to / from + 2 room */
 

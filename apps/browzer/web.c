@@ -979,7 +979,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     static u8 buf[1024];
     static char head[2048];
     char req[PAGE_HREF_MAX + 200], line[96];
-    int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0;
+    int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0, asked = 0;
     u32 clen = 0, metaint = 0;
     char station[48];
     u32 body = 0, said = 0;
@@ -1152,6 +1152,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
         if (stop_asked()) {
             flush_word();
             note("Stopped.", C_ACCENT);
+            asked = 1;
             break;
         }
         main_pump(0);
@@ -1159,7 +1160,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
     flush_word();
     conn_close();
-    if (media) web_media_end(whole && !stopped);
+    if (media) web_media_end(asked ? -1 : whole && !stopped);
     if (!s_pg) {
         if (s_col) term_newline();
         fmt_str(line, sizeof line, "%u bytes.", body);

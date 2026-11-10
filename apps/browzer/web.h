@@ -159,7 +159,8 @@ void   browzer_run(const char *start);
 /* What a page that is not a page is handed to.  browzer sets these; the
  * reader calls them.  start: its type, address, length if the server
  * said (else 0), and for radio the metadata interval and station name;
- * 1 to take the bytes.  bytes: 0 to stop.  end: 1 if all of it came. */
+ * 1 to take the bytes.  bytes: 0 to stop.  end: 1 if all of it came,
+ * 0 if not, -1 if esc stopped it. */
 extern int  (*web_media_start)(const char *ctype, const char *url, u32 length,
                                u32 metaint, const char *station);
 extern int  (*web_media_bytes)(const u8 *p, int n);

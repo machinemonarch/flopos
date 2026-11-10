@@ -21,13 +21,34 @@ static int ctype_is(const char *c, const char *s)
     return 1;
 }
 
+static int detect(AudioIn *in, Decoder *d, const char *ctype);
+
+/* Too slow or too fast a rate is not music, and would not resample sanely. */
 int audio_detect(AudioIn *in, Decoder *d, const char *ctype)
+{
+    int r = detect(in, d, ctype);
+    if (r == 1 && (d->rate < 4000 || d->rate > 384000)) return 0;
+    return r;
+}
+
+static int detect(AudioIn *in, Decoder *d, const char *ctype)
 {
     const u8 *b = in->buf + in->pos;
     u32 n = in->len - in->pos;
 
     if (n < 12 && !in->done) return AUDIO_MORE;
     if (n >= 12 && is(b, "RIFF") && is(b + 8, "WAVE")) return wav_open(in, d);
+    if (n >= 4 && is(b, "OggS")) return vorbis_open(in, d);
+    if (n >= 4 && is(b, "fLaC")) return flac_open(in, d);
+    /* FLAC with an ID3 tag in front, which some programs put there */
+    if (n >= 10 && is(b, "ID3")) {
+        u32 t = 10 + ((u32)(b[6] & 127) << 21 | (u32)(b[7] & 127) << 14 | (u32)(b[8] & 127) << 7 | (b[9] & 127));
+        if (t + 4 <= n && is(b + t, "fLaC")) { in->pos += t; return flac_open(in, d); }
+    }
+    /* a FLAC station, joined wherever it is (before mp3: its frames start
+     * with bits an mp3 header would too) */
+    if (ctype && (ctype_is(ctype, "audio/flac") || ctype_is(ctype, "audio/x-flac")))
+        return flac_open(in, d);
     /* mp3: an ID3 tag in front, or a frame header straight away, or the
      * server saying so (radio starts wherever it likes). */
     if ((n >= 3 && is(b, "ID3")) || (n >= 2 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0) ||
@@ -59,7 +80,7 @@ static int wav_decode(Decoder *d, AudioIn *in, s16 *out, int max)
         }
         p = in->buf + in->pos;
         for (c = 0; c < d->channels; c++, p += s_wav_bytes) {
-            if (s_wav_bytes == 1) sum += ((s32)p[0] - 128) << 8;
+            if (s_wav_bytes == 1) sum += ((s32)p[0] - 128) * 256;
             else                  sum += (s32)(short)le16(p + s_wav_bytes - 2);  /* the top 16 bits */
         }
         out[n++] = (s16)(sum / d->channels);
@@ -104,14 +125,20 @@ int wav_open(AudioIn *in, Decoder *d)
 /* ---- the card's rate ---------------------------------------------------------- */
 void rs_init(Resampler *r, int from, int to)
 {
+    int i;
     r->step = (u32)(((double)from / (double)to) * 65536.0);
     r->phase = 0;
     r->prev = 0;
+    r->taps = (from + to / 2) / to;
+    if (r->taps < 1) r->taps = 1;
+    if (r->taps > 8) r->taps = 8;
+    r->h = 0; r->sum = 0;
+    for (i = 0; i < 8; i++) r->hist[i] = 0;
 }
 
 /* Straight lines between the samples it has: plenty, at these rates, for
  * an 8-bit speaker. */
-int rs_run(Resampler *r, const s16 *in, int n, u8 *out)
+static int lines(Resampler *r, const s16 *in, int n, u8 *out)
 {
     int k = 0;
     while (n > 0) {
@@ -123,6 +150,25 @@ int rs_run(Resampler *r, const s16 *in, int n, u8 *out)
         v = a + (((b - a) * (s32)(r->phase & 0xFFFF)) >> 16);
         out[k++] = (u8)((v >> 8) + 128);
         r->phase += r->step;
+    }
+    return k;
+}
+
+int rs_run(Resampler *r, const s16 *in, int n, u8 *out)
+{
+    static s16 f[1024];
+    int k = 0;
+    if (r->taps < 2) return lines(r, in, n, out);
+    while (n > 0) {                      /* the average of the last few     */
+        int m = n < 1024 ? n : 1024, i;
+        for (i = 0; i < m; i++) {
+            r->sum += in[i] - r->hist[r->h];
+            r->hist[r->h] = in[i];
+            if (++r->h == r->taps) r->h = 0;
+            f[i] = (s16)(r->sum / r->taps);
+        }
+        k += lines(r, f, m, out + k);
+        in += m; n -= m;
     }
     return k;
 }

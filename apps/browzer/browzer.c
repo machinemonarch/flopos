@@ -51,10 +51,11 @@ static int  s_typing = -1;               /* the field being typed into     */
  * A link that is not a page comes here instead.  Two ways:
  *
  *   A file of 2 MB or less is downloaded whole, then looked at.  A song
- *   (.mod, .xm) or a recording (mp3, wav) plays in the background: the
- *   sound card's queue is topped up whenever browzer waits for anything,
- *   so it goes on while you browse, until it ends or s stops it.  A
- *   playlist (.m3u, .pls) is followed to the stream it names.
+ *   (.mod, .xm) or a recording (mp3, Ogg, FLAC, wav) plays in the
+ *   background: the sound card's queue is topped up whenever browzer
+ *   waits for anything, so it goes on while you browse, until it ends or
+ *   s stops it.  A playlist (.m3u, .pls) is followed to the stream it
+ *   names.
  *
  *   Radio, and recordings too big to keep, are played as they arrive:
  *   the player screen shows the station and what it says is on, and esc
@@ -99,8 +100,12 @@ static int decode_some(void)
 {
     static s16 pcm[1152];
     static u8 out[3400];
+    /* The resampler makes up to in * card rate / recording rate + 2: ask
+     * for no more than out has room for, however slow the recording. */
+    int want = (int)((sizeof out - 4) * (u32)s_dec.rate / (u32)s_rate);
+    if (want > 1152) want = 1152;
     while (A->audio_space() >= (int)sizeof out) {
-        int n = s_dec.decode(&s_dec, &s_in, pcm, 1152), k;
+        int n = s_dec.decode(&s_dec, &s_in, pcm, want), k;
         if (n == AUDIO_MORE) return 1;
         if (n <= 0) return 0;
         k = rs_run(&s_rs, pcm, n, out);
@@ -125,6 +130,15 @@ static void music_feed(void)
         if (!decode_some()) s_music = 2;
     }
     if (s_music == 2 && A->audio_queued() == 0) music_stop();
+}
+
+/* ", 128 kbps", or nothing when the recording does not say. */
+static const char *kbps_text(void)
+{
+    static char t[24];
+    t[0] = 0;
+    if (s_dec.kbps > 0) fmt_str(t, sizeof t, ", %u kbps", (u32)s_dec.kbps);
+    return t;
 }
 
 static int music_start(int src, int rate_in)
@@ -293,6 +307,7 @@ static int media_bytes(const u8 *p, int n)
 
 static void media_end(int whole)
 {
+    if (whole < 0) { s_esc = 1; whole = 0; }          /* esc, while reading */
     if (s_dl_state == DL_COMING) s_dl_state = whole ? DL_CAME : DL_BROKE;
     else if (s_dl_state == DL_STREAM) {
         s_dl_state = DL_STREAM_END;
@@ -389,7 +404,7 @@ static void put_text_clipped(int x, int y, const char *t, u8 fg, u8 bg, int maxx
 static void draw(void)
 {
     char line[96];
-    int x, y, i;
+    int x, y, i, play_x = s_w - 2;         /* where the playing label starts */
     u8 pp = WIN_PAPER;
 
     term_win_open(s_w, s_h);
@@ -406,7 +421,7 @@ static void draw(void)
                          : s_now[0] ? s_now : s_station[0] ? s_station : s_title[0] ? s_title : s_dec.kind;
         fmt_str(m, sizeof m, " playing %s %u:%02u ", what, t / 60, t % 60);
         for (ml = 0; m[ml]; ml++) { }
-        if (ml < s_w - 30) term_win_text(s_w - 2 - ml, 0, m, C_ACCENT, pp);
+        if (ml < s_w - 30) { play_x = s_w - 2 - ml; term_win_text(play_x, 0, m, C_ACCENT, pp); }
     }
 
     /* The name, with the z in banana. */
@@ -419,8 +434,8 @@ static void draw(void)
         term_win_put(11, 0, FR_H, C_GREY, pp);
         term_win_put(12, 0, ' ', C_GREY, pp);
         x = 13;
-        for (i = 0; s_pg.title[i] && x < s_w - 3; i++) term_win_put(x++, 0, (u8)s_pg.title[i], C_TEXT, pp);
-        term_win_put(x, 0, ' ', C_GREY, pp);
+        for (i = 0; s_pg.title[i] && x < play_x - 2; i++) term_win_put(x++, 0, (u8)s_pg.title[i], C_TEXT, pp);
+        term_win_put(x, 0, ' ', C_GREY, pp);         /* the title stops short of it */
     }
 
     /* The address. */
@@ -451,7 +466,7 @@ static void draw(void)
         term_win_text(4, 4, s_station[0] ? s_station : "A stream", C_BRIGHT, pp);
         if (s_now[0]) { term_win_text(4, 6, "now:", C_DIM, pp); put_text_clipped(9, 6, s_now, C_TEXT, pp, s_w - 3); }
         if (s_dec.decode) {
-            fmt_str(t, sizeof t, "%s, %u kbps, mono, %u Hz", s_dec.kind, (u32)s_dec.kbps, (u32)s_dec.rate);
+            fmt_str(t, sizeof t, "%s%s, mono, %u Hz", s_dec.kind, kbps_text(), (u32)s_dec.rate);
             term_win_text(4, 8, t, C_DIM, pp);
             fmt_str(t, sizeof t, "listening for %u:%02u", secs / 60, secs % 60);
             term_win_text(4, 10, t, C_ACCENT, pp);
@@ -810,9 +825,9 @@ static void go_with(const char *url, const u8 *post, int postlen)
                 if (music_start(2, s_dec.rate)) {
                     fmt_str(s_title, sizeof s_title, "%s", name);
                     music_feed();
-                    fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s, %u kbps, playing.</p>"
+                    fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s%s, playing.</p>"
                             "<p>It goes on playing while you browse. s stops it.</p>",
-                            name, name, s_dec.kind, (u32)s_dec.kbps);
+                            name, name, s_dec.kind, kbps_text());
                 } else
                     fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A recording -- but this "
                             "machine has no sound card that plays recordings.</p>", name);
@@ -826,7 +841,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     s_now[0] ? "<p>Last playing: " : "", s_now[0] ? s_now : "", s_now[0] ? "</p>" : "");
         } else if (st == DL_UNPLAYABLE) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is %s, which browzer cannot play "
-                    "(mp3, wav, .mod and .xm it can).</p>", name, name, s_dl_type);
+                    "(mp3, Ogg, FLAC, wav, .mod and .xm it can).</p>", name, name, s_dl_type);
         } else if (st == DL_NOCARD) {
             fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>This machine has no sound card "
                     "that plays recordings.</p>", name);

@@ -6,6 +6,25 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.19.0 — 2026-11-10
+
+- **Ogg Vorbis and FLAC in browzer**, as files and as radio. Vorbis is
+  checked against libvorbis and FLAC against libFLAC: the same sound, to
+  within rounding. FLAC inside Ogg (how most FLAC stations send it) plays
+  too, and so does a FLAC station joined part way through.
+- 44.1 kHz FLAC and WAV sound cleaner: neighbouring samples are averaged
+  before they go to the Sound Blaster's 22 kHz, so the highs it can't play
+  no longer fold back down as noise.
+- Loud mp3s no longer clip: a little headroom in the decoder, and the
+  master volume a step below full.
+- A long page title no longer runs into "playing ..." at the top.
+- Esc on a station always says "Stopped." now; sometimes it said "The
+  stream ended."
+- Fixed: a WAV file of a very low rate could make browzer write past a
+  buffer. Recordings slower than 4 kHz are not played now.
+- The new decoders were fed thousands of deliberately broken files on the
+  PC, with memory checking on, before release.
+
 ## 1.18.0 — 2026-11-09
 
 - **mp3 and radio in browzer.** mp3 files play (MPEG-1, -2 and -2.5, any

@@ -12,7 +12,7 @@ itself.
 | Memory | 32MB | Measures it at boot. Uses the memory above 1MB for screen buffers and tables, and 10–18MB for apps. |
 | Video | Chips & Technologies 65550, 2MB, VESA 2.0 | 800×600 in 256 colours (VESA mode 103) through a flat frame buffer at address 0x7000000. Falls back to VGA 320×200. |
 | Screen | 11.3" 800×600 TFT panel | Runs at its native size by default, so nothing is stretched. |
-| Sound | Sound Blaster Pro compatible, with a Yamaha OPL2 FM chip | Plays music on the OPL2 at port 0x388 (three voices), or on the PC speaker if the OPL2 doesn't answer. Plays recordings (songs, and soon mp3s) through the Sound Blaster's DSP by DMA; `dsp` checks it. |
+| Sound | Sound Blaster Pro compatible, with a Yamaha OPL2 FM chip | Plays music on the OPL2 at port 0x388 (three voices), or on the PC speaker if the OPL2 doesn't answer. Plays recordings (songs, mp3, Ogg, FLAC, WAV) through the Sound Blaster's DSP by DMA; `dsp` checks it. |
 | Keyboard | Swedish layout | Its own keyboard driver and Swedish keymap. |
 | Floppy | External 1.44MB drive on a dedicated port | Read and written through the laptop's own BIOS, which knows how this drive is wired. |
 | Serial | COM1 at 0x3F8, IRQ 4, a 16550-compatible chip | 115200 baud. Everything FLOPOS prints is copied down it, and it accepts typing. |

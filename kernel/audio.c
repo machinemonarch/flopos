@@ -148,8 +148,10 @@ int audio_open(int rate)
     dsp_reset(s_base);
     dsp_w(0xD1);                                 /* speaker on             */
 
-    /* Mixer, for the cards that have one: master and samples up. */
-    outb((u16)(s_base + 4), 0x22); outb((u16)(s_base + 5), 0xEE);
+    /* Mixer, for the cards that have one: samples up, and the master a
+     * step below full, so the laptop's own amplifier is not driven into
+     * clipping. */
+    outb((u16)(s_base + 4), 0x22); outb((u16)(s_base + 5), 0xCC);
     outb((u16)(s_base + 4), 0x04); outb((u16)(s_base + 5), 0xEE);
 
     a = (u32)s_dma;

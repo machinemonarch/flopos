@@ -88,9 +88,11 @@ Links to sound play it, through the Sound Blaster:
 | What | How |
 |---|---|
 | **.mp3** | MPEG-1, -2 and -2.5 layer III, any bitrate |
+| **.ogg** | Ogg Vorbis, any quality; and FLAC inside Ogg |
+| **.flac** | FLAC, 8 to 24 bits, up to 8 channels |
 | **.wav** | plain PCM, 8 to 32 bits, any rate, any number of channels |
 | **.mod**, **.xm** | tracker songs (ProTracker, FastTracker 2), such as the ones on [modarchive.org](https://modarchive.org/) |
-| **radio** | mp3 streams (Shoutcast, Icecast), and the **.m3u** and **.pls** playlists stations link to |
+| **radio** | mp3, Ogg and FLAC stations (Shoutcast, Icecast), and their **.m3u** and **.pls** playlists |
 
 **A file of 2 MB or less** is downloaded first, then plays in the background
 while you go on browsing. The top edge shows what is playing and for how
@@ -101,13 +103,14 @@ the station's name, what the station says is on now, and how long you have
 been listening. **Esc** stops it.
 
 Everything plays in mono, at about 22 kHz, which is what the laptop's Sound
-Blaster plays. To keep up on a 120 MHz Pentium, mp3s at 44.1 or 48 kHz are
-decoded at half rate, which skips everything above 11 kHz that the card
-couldn't play anyway. The FM music steps aside while anything plays, and
-leaving browzer stops it all.
+Blaster plays. To keep up on a 120 MHz Pentium, mp3 and Ogg Vorbis at 44.1
+or 48 kHz are decoded at half rate, which skips everything above 11 kHz
+that the card couldn't play anyway. FLAC is decoded in full, then
+neighbouring samples are averaged so the highs don't fold back down as
+noise. The FM music steps aside while anything plays, and leaving browzer
+stops it all.
 
-Not yet: Ogg Vorbis and FLAC (next), and AAC, which some stations use
-instead of mp3.
+Not yet: AAC and Opus, which some stations use instead.
 
 ### Bookmarks
 

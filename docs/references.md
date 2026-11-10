@@ -83,6 +83,10 @@ for decades:
 | XM format notes (XM.TXT, Triton) | `apps/lib/audio/tracker.c` |
 | ISO/IEC 11172-3 and 13818-3 (MPEG audio) | `apps/lib/audio/mp3.c` |
 | [PDMP3](https://github.com/technosaurus/PDMP3), public domain | `mp3tab.h`: the standard's tables |
+| [Vorbis I specification](https://xiph.org/vorbis/doc/Vorbis_I_spec.html) | `apps/lib/audio/vorbis.c` |
+| [Ogg, RFC 3533](https://www.rfc-editor.org/rfc/rfc3533) | `vorbis.c`: pages and packets |
+| [FLAC, RFC 9639](https://www.rfc-editor.org/rfc/rfc9639) | `apps/lib/audio/flac.c` |
+| [Ogg FLAC mapping](https://xiph.org/flac/ogg_mapping.html) | `vorbis.c`: FLAC inside Ogg |
 | SHOUTcast/Icecast metadata (ICY) | browzer: station titles |
 | VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
