@@ -44,12 +44,13 @@ void timer_irq(void)
 void clock_watch(void);
 
 /* Nothing to do until the next interrupt (a millisecond at most): the
- * processor halts, and the time is counted as idle for the HUD. */
+ * processor halts, and the time halted is counted as idle for the HUD. */
 void idle_wait(void)
 {
-    u32 a = g_cpu_mhz ? tsc32() : 0;
+    u32 a = g_cpu_mhz ? tsc32() : 0, i0 = g_irq_cycles;
     __asm__ __volatile__("sti; hlt");
-    if (g_cpu_mhz) g_idle_cycles += tsc32() - a;
+    /* Halted, less what the interrupt that ended it did: that was work. */
+    if (g_cpu_mhz) g_idle_cycles += (tsc32() - a) - (g_irq_cycles - i0);
 }
 
 /* ticks * 4 exactly; at 250Hz one tick is 4ms.

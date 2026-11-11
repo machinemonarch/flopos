@@ -105,6 +105,7 @@ void   irq_unmask(int irq);
 /* --- time.c ------------------------------------------------------------ */
 #define TICK_HZ 250
 extern volatile u32 g_ticks;
+extern u32 g_irq_cycles;              /* cycles spent in interrupts (idt.c) */
 void   time_init(void);
 u32    ms_now(void);
 void   delay_ms(u32 ms);
@@ -284,6 +285,7 @@ int    term_win_open(int w, int h);
 void   term_win_close(void);
 int    term_win_covers(void);            /* an opaque window over everything */
 int    term_dirty_rows(int *y0, int *y1);  /* pixel rows drawn since last asked */
+int    term_dirty_peek(int *y0, int *y1);  /* the same, without forgetting them */
 int    term_win_width(void);
 int    term_win_height(void);
 void   term_win_put(int x, int y, int ch, u8 fg, u8 bg);

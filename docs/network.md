@@ -150,6 +150,13 @@ the station's own description. On such a page browzer asks the station for
 that description, `/api/nowplaying/` and the station's name, and lists the
 streams it names in the same way.
 
+72fm.com's country pages (`/radio/il` for Israel, `/radio/se` for Sweden)
+name their stations as plain text, and their script fetches the list from
+the open Radio Browser directory, which the page names. browzer asks that
+directory the same question and lists the country's 40 most voted stations
+as links, each with its format and bit rate. A name in a script the font
+can't draw is shown as "(a name in Hebrew)", or its Latin part alone.
+
 ### Pages that remember you, reload, or come in frames
 
 - **Cookies** are kept so a site can remember you between pages: a login,

@@ -22,6 +22,13 @@ static volatile u8  s_ext;               /* an E0 prefix is pending        */
 static volatile u8  s_shift_l, s_shift_r;
 static volatile u8  s_ctrl, s_alt, s_altgr;
 static volatile u8  s_caps;
+/* The keys that move something repeat while held: the card's own
+ * auto-repeat is dropped, and these are made instead, when a key is
+ * asked for, so they never pile up behind a busy program. */
+#define REP_FIRST 400                    /* ms before the first repeat     */
+#define REP_EVERY 66                     /* ms between them: 15 a second   */
+static volatile u16 s_rep_code;          /* code | KEV_EXT; 0 none held    */
+static volatile u32 s_rep_at;            /* ms_now() of the next repeat    */
 
 void kbd_init(void)
 {
@@ -121,6 +128,7 @@ void kbd_irq(void)
 
     if (release) {
         s_down[code] = 0;
+        if ((s_rep_code & 0x7F) == code) s_rep_code = 0;
         return;
     }
 
@@ -132,6 +140,11 @@ void kbd_irq(void)
                                          | (ext ? KEV_EXT : 0));
             s_head = nxt;
         }
+        if (code == 0x0F || code == 0x0E || (ext && (code == 0x48 || code == 0x50 || code == 0x4B ||
+                                                      code == 0x4D || code == 0x49 || code == 0x51 || code == 0x53))) {
+            s_rep_code = (u16)(code | (ext ? KEV_EXT : 0));
+            s_rep_at = ms_now() + REP_FIRST;
+        } else s_rep_code = 0;               /* another key ends a repeat */
     }
     s_down[code] = 1;
 
@@ -143,9 +156,16 @@ int kbd_event(void)
 {
     int e;
     for (;;) {
-        if (s_tail == s_head) return -1;
-        e = s_queue[s_tail];
-        s_tail = (u8)((s_tail + 1) % QLEN);
+        if (s_tail == s_head) {
+            u32 now = ms_now();
+            u16 r = s_rep_code;
+            if (!r || !s_down[r & 0x7F] || (s32)(now - s_rep_at) < 0) return -1;
+            s_rep_at = now + REP_EVERY;
+            e = r | modifier_bits();
+        } else {
+            e = s_queue[s_tail];
+            s_tail = (u8)((s_tail + 1) % QLEN);
+        }
         if (!hud_takes_keys()) return e;
         hud_key(e);                      /* the HUD's command line has them */
     }

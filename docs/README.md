@@ -26,6 +26,7 @@ of it, and how it works inside.
 | [Making apps](making-apps.md) | Programs that live on the floppy beside the system, and the table of things they can ask for |
 | [Building and releasing](building.md) | Tools, the emulator, tests, version numbers, the changelog |
 | [Techniques](techniques.md) | How radio plays without a pause on a 120 MHz Pentium, and the shared pieces it took |
+| [Roadmap](roadmap.md) | Ideas waiting their turn: cassette backup, a chat app, the mystical protocol, a wizard who answers |
 | [Security roadmap](security-roadmap.md) | Known weak spots, what fixing each would take, and what is done |
 | [Crimes against tokenomics](crimes-against-tokenomics.md) | The most unreasonable requests, and what became of them |
 | [References](references.md) | Standards, datasheets and tools consulted along the way |

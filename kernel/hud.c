@@ -26,17 +26,24 @@
 
 extern char _bss_end[];
 
-#define HW 26                            /* the window, in cells            */
-#define HH 16
-#define OUT_N 4                          /* lines of what commands said     */
-#define IN_MAX (HW - 4)
+/* Its size, in cells.  It grows for an answer longer than its four
+ * lines, and scrolls (pgup, pgdn, the arrows) until esc. */
+#define HW_SMALL 26
+#define HW_BIG   46                      /* help's widest line, and a margin */
+#define HH_SMALL 16
+#define IN_MAX (HW_SMALL - 4)
+#define LOG_N 128                        /* lines kept of what commands said */
+#define HUD_LINE 80
+static int s_hw = HW_SMALL, s_hh = HH_SMALL;
+static int s_big, s_back;                /* grown; lines scrolled back      */
+#define OUT_N (s_hh - 12)                /* lines of it shown               */
 
 volatile int g_hud_toggle;               /* ctrl-shift-f10, from the keyboard interrupt */
 u32 g_idle_cycles;                       /* halted, waiting: see idle_wait  */
 
 static int s_on, s_keys, s_running;      /* shown; its line has the keys; a command is running */
 static int s_px, s_py, s_cw, s_ch;       /* where it is, and a cell, in pixels */
-static int s_drawn;                      /* drawn this frame                */
+static int s_drawn, s_full;              /* drawn this frame; all of it      */
 static u32 s_cost;
 static u32 s_ver = 1;                    /* bumped when the words change     */                       /* its own drawing, cycles, averaged */
 
@@ -158,14 +165,16 @@ static void ellipsoid(int cx, int cy, int cz, int rx, int ry, int rz, int nlat, 
             int ph = j * SINLEN / nlon;
             int r = 4096, x, y, z, c;
             if (cortex) {
-                r += (SIN(ph * 6 + (SIN(th * 4) >> 8)) * (s32)SIN(th * 7 + ph * 3)) >> 15;   /* the folds */
-                c = COS(ph); if (c < 0) c = -c;                    /* near the middle line */
-                if (SIN(th) > 0 && c < 900) r -= (900 - c) * SIN(th) / 1400;               /* the fissure */
+                /* Smooth: slow, shallow swells the mesh can follow, and the
+                 * middle line as a soft crease that fades out at the crown. */
+                r += (SIN(ph * 3) * (s32)SIN(th * 4)) >> 17;
+                c = COS(ph); if (c < 0) c = -c;
+                if (th > 0 && c < 900) r -= ((900 - c) * (900 - c) / 900) * SIN(th * 2) / 9000;
             }
             x = (int)(((s32)COS(th) * COS(ph) >> 12) * rx >> 12) * r >> 12;
             y = (int)((s32)SIN(th) * ry >> 12) * r >> 12;
             z = (int)(((s32)COS(th) * SIN(ph) >> 12) * rz >> 12) * r >> 12;
-            if (cortex && z < 0) x = x * 11 / 10;                  /* wider at the back */
+            if (cortex) x = x * (600 - z) / 600;                    /* a little wider at the back */
             if (y < 0) y = y * 7 / 10;                              /* flat below */
             s_vx[s_nv] = (s16)(cx + x); s_vy[s_nv] = (s16)(cy - y); s_vz[s_nv] = (s16)(cz + z);
             s_nv++;
@@ -181,7 +190,7 @@ static void ellipsoid(int cx, int cy, int cz, int rx, int ry, int rz, int nlat, 
 
 static void build(void)
 {
-    ellipsoid(0, 0, 0, 44, 40, 60, LAT, LON, -150, 240, 1);        /* the cerebrum   */
+    ellipsoid(0, 0, 0, 44, 40, 60, LAT, LON, -150, 256, 1);        /* the cerebrum   */
     ellipsoid(0, 30, -40, 28, 12, 15, CLAT, CLON, -200, 200, 0);   /* the cerebellum */
     s_vx[s_nv] = 0; s_vy[s_nv] = 22; s_vz[s_nv] = -14; s_nv++;     /* the stem      */
     s_vx[s_nv] = 0; s_vy[s_nv] = 50; s_vz[s_nv] = -22; s_nv++;
@@ -247,46 +256,64 @@ static void brain(u8 *dst, int pitch, int bx, int by, int bw, int bh, u32 t)
 /* ---- its command line ------------------------------------------------- */
 static char s_in[IN_MAX + 1];
 static int  s_in_len;
-static char s_out[OUT_N][HW + 8];       /* \1 marks a key: pink, and no room */
-static char s_cur[HW + 8];
+static char s_log[LOG_N][HUD_LINE + 1]; /* \1 marks a key: pink, and no room */
+static u32  s_log_n;                     /* lines ever ended                */
+static char s_cur[HUD_LINE + 1];
 static int  s_cur_len;
 
 static void out_line(void)
 {
+    char *d = s_log[s_log_n % LOG_N];
     int i;
-    for (i = 0; i + 1 < OUT_N; i++) memcpy8(s_out[i], s_out[i + 1], sizeof s_out[0]);
-    s_cur[s_cur_len] = 0;
-    memcpy8(s_out[OUT_N - 1], s_cur, sizeof s_cur);
+    for (i = 0; i < s_cur_len; i++) d[i] = s_cur[i];
+    d[i] = 0;
+    s_log_n++;
     s_cur_len = 0;
+    s_back = 0;
     s_ver++;
 }
 
-/* What a command prints, while it runs from here (see term_tap). */
+/* What a command prints, while it runs from here (see term_tap).  Lines
+ * are kept whole, and broken to the window's width when drawn. */
 static void out_char(int c)
 {
     if (c == '\r') return;
     if (c == '\n') { out_line(); return; }
     if (c == '\t') c = ' ';
-    if (c != 1) {
-        int i, seen = 0;
-        for (i = 0; i < s_cur_len; i++) seen += s_cur[i] != 1;
-        if (seen < HW - 2) goto room;
-    } else if (s_cur_len < (int)sizeof s_cur - 2) goto room;
-    {
-        /* Full: break at the last space, and carry the word on. */
-        char rest[HW + 8];
-        int i, k = s_cur_len, n = 0;
-        while (k > 0 && s_cur[k - 1] != ' ') k--;
-        if (k > 0 && c != ' ') {
-            for (i = k; i < s_cur_len; i++) rest[n++] = s_cur[i];
-            s_cur_len = k - 1;
+    if (s_cur_len >= HUD_LINE) out_line();
+    s_cur[s_cur_len++] = (char)c;
+}
+
+/* A line broken at spaces into pieces of at most w cells (the \1 marks
+ * take none): where each begins and how long it is.  Returns how many. */
+#define PIECES 8
+static int wrap(const char *t, int w, int *at, int *len)
+{
+    int n = 0, i = 0, L = strlen8(t);
+    if (!L) { at[0] = 0; len[0] = 0; return 1; }
+    while (i < L && n < PIECES) {
+        int e = i, vis = 0, sp = -1;
+        while (e < L && (vis < w || t[e] == 1)) {
+            if (t[e] != 1) { if (t[e] == ' ') sp = e; vis++; }
+            e++;
         }
-        out_line();
-        for (i = 0; i < n; i++) s_cur[s_cur_len++] = rest[i];
-        if (c == ' ') return;
+        at[n] = i;
+        if (e >= L) { len[n++] = L - i; break; }
+        if (t[e] == ' ') { len[n++] = e - i; i = e + 1; }
+        else if (sp > i) { len[n++] = sp - i; i = sp + 1; }
+        else { len[n++] = e - i; i = e; }
     }
-room:
-    if (s_cur_len < (int)sizeof s_cur - 1) s_cur[s_cur_len++] = (char)c;
+    return n;
+}
+
+/* How many lines the log takes at w cells, from line `from` on. */
+static int log_lines(int w, u32 from)
+{
+    int at[PIECES], len[PIECES], n = 0;
+    u32 first = s_log_n > LOG_N ? s_log_n - LOG_N : 0, i;
+    if (from < first) from = first;
+    for (i = from; i < s_log_n; i++) n += wrap(s_log[i % LOG_N], w, at, len);
+    return n;
 }
 
 static void say(const char *t)
@@ -299,11 +326,13 @@ static void run(void)
 {
     char word[16];
     int i, k = 0, screen = 0;
+    u32 from;
     s_in[s_in_len] = 0;
     for (i = 0; s_in[i] == ' '; i++) { }
     while (s_in[i] && s_in[i] != ' ' && k < (int)sizeof word - 1) word[k++] = s_in[i++];
     word[k] = 0;
     if (!k) return;
+    from = s_log_n;
     screen = app_exists(word) || (word[0] == 'w' && word[1] == 'i' && word[2] == 'z' && word[3] == 'a' &&
                                   word[4] == 'r' && word[5] == 'd' && !word[6]);
     out_char('>'); out_char(' ');
@@ -326,6 +355,13 @@ static void run(void)
         term_mute(was);
         term_tap(0);
         if (s_cur_len) out_line();
+        /* An answer longer than the four lines: grown, from its top. */
+        s_big = log_lines(HW_SMALL - 2, from) > HH_SMALL - 12;
+        if (s_big) {
+            int rows = (vga_height() / (s_ch ? s_ch : 16)) - 2;
+            int n = log_lines(HW_BIG - 2, from), shown = (rows > 40 ? 40 : rows) - 12;
+            s_back = n > shown ? n - shown : 0;
+        }
     }
     s_in_len = 0;
 }
@@ -336,7 +372,14 @@ void hud_key(int ev)
 {
     int sc = KEV_SCAN(ev), c;
     s_ver++;
-    if (sc == SC_ESC) { s_keys = 0; return; }
+    if (sc == SC_ESC) { s_keys = 0; s_big = 0; s_back = 0; return; }
+    if ((ev & KEV_EXT) && (sc == SC_PGUP || sc == SC_PGDN || sc == SC_UP || sc == SC_DOWN)) {
+        int most = log_lines(s_hw - 2, 0) - OUT_N, by = sc == SC_UP || sc == SC_DOWN ? 1 : OUT_N - 1;
+        s_back += sc == SC_PGUP || sc == SC_UP ? by : -by;
+        if (s_back > most) s_back = most;
+        if (s_back < 0) s_back = 0;
+        return;
+    }
     if (sc == SC_ENTER) { run(); return; }
     if (sc == SC_BKSP) { if (s_in_len) s_in_len--; return; }
     c = keymap_char(ev);
@@ -349,13 +392,17 @@ static void cell(u8 *dst, int cx, int cy, int c, u8 fg)
     term_overlay_cell(dst, s_px + cx * s_cw, s_py + cy * s_ch, c, fg, WIN_PAPER);
 }
 
-static void text(u8 *dst, int cx, int cy, const char *t, u8 fg)
+static void text_n(u8 *dst, int cx, int cy, const char *t, int n, u8 fg, int key)
 {
-    int key = 0;
-    for (; *t && cx < HW - 1; t++) {
+    for (; *t && n-- && cx < s_hw - 1; t++) {
         if (*t == 1) { key = !key; continue; }           /* a key: pink */
         cell(dst, cx++, cy, (u8)*t, key ? C_KEY : fg);
     }
+}
+
+static void text(u8 *dst, int cx, int cy, const char *t, u8 fg)
+{
+    text_n(dst, cx, cy, t, -1, fg, 0);
 }
 
 static void toggle(void)
@@ -363,12 +410,12 @@ static void toggle(void)
     s_ver++;
     if (!s_on) {
         s_on = 1; s_keys = 1; s_batt_at = 0;
-        if (!s_out[OUT_N - 1][0] && !s_out[OUT_N - 2][0]) {
+        if (!s_log_n) {
             say("Commands, as at here>.");
             say("\1esc\1 gives the keys back.");
         }
     } else {
-        s_on = 0; s_keys = 0;
+        s_on = 0; s_keys = 0; s_big = 0; s_back = 0;
         term_refresh();                      /* what was under it, drawn again */
         serial_printf("[hud] 'Thunking %u%%, 'Membering: %u%%, battery %d; it took %u us a frame, the text %u, sending %u\n",
                       (u32)s_cpu, (u32)s_mem, s_batt, g_cpu_mhz ? s_cost / g_cpu_mhz : 0, perf_us(1), perf_us(2));
@@ -380,13 +427,13 @@ static void toggle(void)
 static void paint(u8 *dst)
 {
     int x, y, k;
-    char v[HW];
+    char v[HW_BIG];
 
     /* The frame, with a rule above the command line, on paper. */
-    for (y = 0; y < HH; y++)
-        for (x = 0; x < HW; x++) {
+    for (y = 0; y < s_hh; y++)
+        for (x = 0; x < s_hw; x++) {
             int c = ' ';
-            int top = y == 0, bot = y == HH - 1, rule = y == HH - OUT_N - 3, lft = x == 0, rgt = x == HW - 1;
+            int top = y == 0, bot = y == s_hh - 1, rule = y == s_hh - OUT_N - 3, lft = x == 0, rgt = x == s_hw - 1;
             if ((top || bot || rule) && !lft && !rgt) c = CH_FRAME | FR_LEFT | FR_RIGHT;
             else if ((lft || rgt) && !top && !bot && !rule) c = CH_FRAME | FR_UP | FR_DOWN;
             else if (top && lft) c = CH_FRAME | FR_RIGHT | FR_DOWN;
@@ -416,9 +463,23 @@ static void paint(u8 *dst)
     fmt_str(v, sizeof v, "%u%%", (u32)s_mem); text(dst, 16 - strlen8(v), 5, v, C_BRIGHT);
 
     /* What commands said, and the line being typed. */
-    for (k = 0; k < OUT_N; k++) text(dst, 1, HH - OUT_N - 2 + k, s_out[k], C_TEXT);
-    cell(dst, 1, HH - 2, '>', s_keys ? C_ACCENT : C_DIM);
-    for (k = 0; k < s_in_len; k++) cell(dst, 3 + k, HH - 2, (u8)s_in[k], s_keys ? C_BRIGHT : C_DIM);
+    {
+        int at[PIECES], len[PIECES], row = OUT_N - 1, skip = s_back, n, j, m, key;
+        u32 first = s_log_n > LOG_N ? s_log_n - LOG_N : 0, i = s_log_n;
+        while (i > first && row >= 0) {
+            const char *t = s_log[--i % LOG_N];
+            n = wrap(t, s_hw - 2, at, len);
+            for (j = n - 1; j >= 0 && row >= 0; j--) {
+                if (skip) { skip--; continue; }
+                for (m = 0, key = 0; m < at[j]; m++) key ^= t[m] == 1;   /* pink carried on */
+                text_n(dst, 1, s_hh - OUT_N - 2 + row, t + at[j], len[j], C_TEXT, key);
+                row--;
+            }
+        }
+    }
+    if (s_big) text(dst, s_hw - 18, s_hh - 1, " \1pgup\1 \1pgdn\1 \1esc\1 ", C_DIM);
+    cell(dst, 1, s_hh - 2, '>', s_keys ? C_ACCENT : C_DIM);
+    for (k = 0; k < s_in_len; k++) cell(dst, 3 + k, s_hh - 2, (u8)s_in[k], s_keys ? C_BRIGHT : C_DIM);
 }
 
 void hud_frame(u8 *dst, u32 t)
@@ -433,9 +494,18 @@ void hud_frame(u8 *dst, u32 t)
     if (!s_on) return;
     c0 = g_cpu_mhz ? tsc32() : 0;
     term_cell_size(&s_cw, &s_ch);
-    px = (vw - (HW + 1) * s_cw) & ~3; if (px < 0) px = 0;
+    {
+        int hw = s_big ? HW_BIG : HW_SMALL, hh = HH_SMALL;
+        if (s_big) { hh = vh / s_ch - 2; if (hh > 40) hh = 40; if (hh < HH_SMALL) hh = HH_SMALL; }
+        if ((hw + 1) * s_cw > vw) hw = vw / s_cw - 1;
+        if (hw != s_hw || hh != s_hh) {
+            if (hw < s_hw || hh < s_hh) term_refresh();       /* what it uncovers */
+            s_hw = hw; s_hh = hh; s_ver++;
+        }
+    }
+    px = (vw - (s_hw + 1) * s_cw) & ~3; if (px < 0) px = 0;
     py = s_ch;
-    if (py + HH * s_ch > vh) py = 0;
+    if (py + s_hh * s_ch > vh) py = 0;
     if (px != s_px || py != s_py) { s_px = px; s_py = py; s_ver++; }
 
     measure();
@@ -446,7 +516,7 @@ void hud_frame(u8 *dst, u32 t)
      * to the screen each frame.  The frame and the words are drawn into
      * it only when they change, a few times a second at most; the bars
      * and the brain fifteen times a second. */
-    if (!strip) strip = (u8 *)halloc((u32)pitch * (u32)(HH * s_ch));
+    if (!strip) strip = (u8 *)halloc((u32)pitch * (u32)vh);           /* room for it grown */
     {
         static u32 moved_at;
         u8 *to = strip ? strip - s_py * pitch : dst;
@@ -462,20 +532,34 @@ void hud_frame(u8 *dst, u32 t)
                 if (h < 1) h = 1;
                 term_overlay_fill(to, bx + k * each + 1, by + bh - h, each - 2, h, C_ACCENT);
             }
-            bx = s_px + 17 * s_cw; by = s_py + 3 * s_ch;               /* the brain */
+            bx = s_px + (s_hw - 9) * s_cw; by = s_py + 3 * s_ch;      /* the brain */
             term_overlay_fill(to, bx, by, 8 * s_cw, 6 * s_ch, WIN_PAPER);
             brain(to, pitch, bx, by, 8 * s_cw, 6 * s_ch, t);
         }
         if (strip) {
-            int w4 = (HW * s_cw + 3) & ~3, y;
-            for (y = 0; y < HH * s_ch; y++)
+            /* Only the top of it moves.  The rest is copied when its words
+             * change, when the caret blinks, and where the screen under it
+             * was drawn again: grown, it is six times the size. */
+            static int caret_was = -1;
+            int w4 = (s_hw * s_cw + 3) & ~3, y, all = s_hh * s_ch, band = 9 * s_ch;
+            int caret = s_keys && ((t >> 9) & 1), d0, d1;
+            s_full = fresh || caret != caret_was || !term_win_covers() || g_frame_fx != 0;
+            caret_was = caret;
+            for (y = 0; y < (s_full ? all : band); y++)
                 memcpy32(dst + (s_py + y) * pitch + s_px, strip + y * pitch + s_px, (u32)w4 / 4);
-        }
+            if (!s_full && term_dirty_peek(&d0, &d1)) {
+                d0 -= s_py; d1 -= s_py;
+                if (d0 < band) d0 = band;
+                if (d1 >= all) d1 = all - 1;
+                for (y = d0; y <= d1; y++)
+                    memcpy32(dst + (s_py + y) * pitch + s_px, strip + y * pitch + s_px, (u32)w4 / 4);
+            }
+        } else s_full = 1;
     }
 
     /* The caret. */
     if (s_keys && ((t >> 9) & 1))
-        term_overlay_fill(dst, s_px + (3 + s_in_len) * s_cw, s_py + (HH - 1) * s_ch - 3, s_cw - 1, 2, C_ACCENT);
+        term_overlay_fill(dst, s_px + (3 + s_in_len) * s_cw, s_py + (s_hh - 1) * s_ch - 3, s_cw - 1, 2, C_ACCENT);
     s_drawn = 1;
     if (g_cpu_mhz) s_cost = s_cost - (s_cost >> 3) + ((tsc32() - c0) >> 3);
 }
@@ -484,6 +568,7 @@ void hud_frame(u8 *dst, u32 t)
 int hud_rect(int *x0, int *y0, int *x1, int *y1)
 {
     if (!s_drawn) return 0;
-    *x0 = s_px; *y0 = s_py; *x1 = s_px + HW * s_cw - 1; *y1 = s_py + HH * s_ch - 1;
+    *x0 = s_px; *y0 = s_py; *x1 = s_px + s_hw * s_cw - 1;
+    *y1 = s_py + (s_full ? s_hh : 9) * s_ch - 1;      /* rows drawn again under it are sent anyway */
     return 1;
 }

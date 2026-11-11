@@ -775,6 +775,13 @@ int term_dirty_rows(int *y0, int *y1)
     return any;
 }
 
+/* The same, without forgetting them: for the HUD, which draws over them. */
+int term_dirty_peek(int *y0, int *y1)
+{
+    *y0 = s_dirty_y0; *y1 = s_dirty_y1;
+    return s_dirty_y0 >= 0;
+}
+
 static void dirty(int y0, int y1)
 {
     if (y0 < 0) y0 = 0;

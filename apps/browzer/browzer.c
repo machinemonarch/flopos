@@ -1375,6 +1375,11 @@ static void pick(int dir)
         if (s_sel < 1) s_sel = s_pg.nlinks;
         if (s_sel > s_pg.nlinks) s_sel = 1;
     }
+    {
+        char t[24];
+        fmt_str(t, sizeof t, "[pick] %u\n", (u32)s_sel);
+        A->wire(t);                       /* for whoever is testing */
+    }
     ln = link_line(s_sel);
     if (ln >= 0 && (ln < s_top || ln >= s_top + s_vh)) {
         s_top = ln - s_vh / 3;

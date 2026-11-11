@@ -106,6 +106,15 @@ While it is open its command line has the keys. **Esc** gives them back to
 whatever had them, and leaves it showing; **Ctrl-Shift-F10** again closes
 it. An app can't be started from it while another one is open.
 
+An answer longer than its four lines, such as `help`'s, makes the window
+grow to fit it. **PgUp**, **PgDn** and the arrows scroll through what was
+said, and **Esc** makes it small again.
+
+'Thunking counts the time the processor is not halted, the work done in
+interrupts included (sound is decoded there). 'Membering: counts what is
+claimed: the kernel, its buffers, and the whole of an open app's memory,
+which is why it steps when an app opens and stays still while it runs.
+
 ## Keys at the prompt
 
 | Key | What it does |

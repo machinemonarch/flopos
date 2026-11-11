@@ -122,7 +122,8 @@ Kept here, so they are never written again:
   never kept here).
 - `tools/bench/site.py` is a small web site that imitates the sites
   browzer has had trouble with: The Mod Archive's downloads, DuckDuckGo's
-  front page, ERICADE Radio, 72fm.com and an AzuraCast station.
+  front page, ERICADE Radio, 72fm.com (and the Radio Browser directory
+  its country pages ask) and an AzuraCast station.
 - `tools/bench/run.py` boots the image in the emulator, opens pages and
   presses keys, and checks each step against what FLOPOS says on its
   serial wire. It prints a line per step: ok, or what was wrong.

@@ -506,6 +506,7 @@ static int  s_nsniffed;
 static char s_sn[PAGE_HREF_MAX];         /* the address being read          */
 static int  s_sn_len, s_sn_on;           /* 1 an absolute address, 2 a "stream" key's value */
 static int  s_azura;                     /* the page is an AzuraCast station's */
+static char s_rb[PAGE_HREF_MAX];         /* the Radio Browser directory it names */
 static char s_ring[32];                  /* the page's last 32 bytes        */
 static u32  s_ring_at;
 
@@ -566,8 +567,10 @@ static void sniff_end(void)
         } else if (q[0] == '&' && q[1] == 'a' && q[2] == 'm' && q[3] == 'p' && q[4] == ';') { u[k++] = '&'; i += 4; }
         else u[k++] = q[0];
     }
-    while (k && (u[k - 1] == '&' || u[k - 1] == '\\')) k--;   /* what began &quot; or a \" */
+    while (k && (u[k - 1] == '&' || u[k - 1] == '\\' || u[k - 1] == '.')) k--;   /* what began &quot; or a \", or a sentence's end */
     u[k] = 0;
+    if (mode == 1 && !s_rb[0] && has_at(u, k, "radio-browser") && k < PAGE_HREF_MAX)
+        for (i = 0; i <= k; i++) s_rb[i] = u[i];
     if (!k || !sounds(u, mode) || s_nsniffed >= SNIFF_MAX) return;
     for (i = 0; i < s_nsniffed; i++) if (eq_ci(s_sniffed[i], u)) return;
     for (i = 0; i <= k; i++) s_sniffed[s_nsniffed][i] = u[i];
@@ -608,28 +611,19 @@ static void sniff(u8 b)
     }
 }
 
-/* AzuraCast's station pages (radio.zelerk.com/public/chiptune, behind
- * watch.chiptune.fm) are drawn by JavaScript from the station's own
- * description at /api/nowplaying/<station>: JSON that names its streams.
- * browzer asks for it the same way, and reads it for addresses as it does
- * a page.  Nothing in it is run. */
-static void azuracast(const Url *u)
+/* Asks a page's server, or the directory it names, for something the
+ * page's script would have asked for, and hands each byte of the answer
+ * to eat().  Nothing in it is run. */
+static void side_fetch(const Url *u, const char *path, const char *what, void (*eat)(u8))
 {
     static u8 buf[2048];
-    char req[PAGE_HREF_MAX + 200], st[48];
-    int n, i, k, status = 0, state = 0, sp = 0;
+    char req[PAGE_HREF_MAX + 300];
+    int n, i, status = 0, state = 0, sp = 0;
     u32 got = 0, last = 0;
-    if (!lower_eq(u->path, "/public/", 8)) return;
-    for (k = 0; u->path[8 + k] && u->path[8 + k] != '/' && u->path[8 + k] != '?' && u->path[8 + k] != '#'; k++) {
-        char c = u->path[8 + k];
-        if (k >= (int)sizeof st - 1 || !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return;
-        st[k] = c;
-    }
-    st[k] = 0;
-    if (!k || !A->conn_open(u->host, u->port, u->secure, tls_note)) return;
-    note("Asking the station (AzuraCast) for its streams...", C_DIM);
-    fmt_str(req, sizeof req, "GET /api/nowplaying/%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
-            "Accept: application/json\r\nConnection: close\r\n\r\n", st, u->host, A->os_version());
+    if (!A->conn_open(u->host, u->port, u->secure, tls_note)) return;
+    note(what, C_DIM);
+    fmt_str(req, sizeof req, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+            "Accept: application/json\r\nConnection: close\r\n\r\n", path, u->host, A->os_version());
     for (n = 0; req[n]; n++) { }
     conn_write((const u8 *)req, n);
     while (got < 65536) {
@@ -645,13 +639,157 @@ static void azuracast(const Url *u)
                 continue;
             }
             if (status != 200) break;
-            sniff(b);
+            eat(b);
             got++;
         }
         if (state && status != 200) break;
         main_pump(0);
     }
     conn_close();
+}
+
+/* AzuraCast's station pages (radio.zelerk.com/public/chiptune, behind
+ * watch.chiptune.fm) are drawn by JavaScript from the station's own
+ * description at /api/nowplaying/<station>: JSON that names its streams.
+ * browzer asks for it the same way, and reads it for addresses as it does
+ * a page. */
+static void azuracast(const Url *u)
+{
+    char path[80], st[48];
+    int k;
+    if (!lower_eq(u->path, "/public/", 8)) return;
+    for (k = 0; u->path[8 + k] && u->path[8 + k] != '/' && u->path[8 + k] != '?' && u->path[8 + k] != '#'; k++) {
+        char c = u->path[8 + k];
+        if (k >= (int)sizeof st - 1 || !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return;
+        st[k] = c;
+    }
+    st[k] = 0;
+    if (!k) return;
+    fmt_str(path, sizeof path, "/api/nowplaying/%s", st);
+    side_fetch(u, path, "Asking the station (AzuraCast) for its streams...", sniff);
+}
+
+/* 72fm.com's country pages (/radio/il) name their stations without links:
+ * its script asks the open Radio Browser directory, which the page names
+ * in a <link rel="preconnect">.  browzer asks it the same way, and lists
+ * the stations, most voted first, as links to their streams. */
+static struct {
+    char str[PAGE_HREF_MAX], key[16], name[96], url[PAGE_HREF_MAX], codec[12];
+    int  in_str, esc, hex, nhex, len, want, depth, n;
+    u32  kbps, u;
+} s_rj;
+
+static void rb_station(void)
+{
+    const u8 *p = (const u8 *)s_rj.name;
+    char t[40];
+    int shown = 0, heb = 0, arab = 0;
+    s_linkid = add_link_to(s_rj.url);
+    if (!s_linkid) return;
+    wire_line("station: ", s_rj.url);
+    s_link = 1;
+    while (*p) {                                  /* UTF-8, to what the font can show */
+        u32 c = *p++;
+        int more = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+        if (more) c &= 0x3F >> more;
+        while (more-- && (*p & 0xC0) == 0x80) c = (c << 6) | (*p++ & 0x3F);
+        if (c >= 0x590 && c < 0x600) heb = 1;
+        if (c >= 0x600 && c < 0x700) arab = 1;
+        if (glyph_for(c) == '?' && c != '?') continue;
+        if (!shown && (c == ' ' || c == '-' || c == '|')) continue;
+        emit(c);
+        shown++;
+    }
+    if (!shown) emit_text(heb ? "(a name in Hebrew)" : arab ? "(a name in Arabic)" : "(a name in another script)", C_ACCENT);
+    flush_word();
+    s_link = 0; s_linkid = 0;
+    if (s_rj.codec[0]) {
+        if (s_rj.kbps) fmt_str(t, sizeof t, " - %s, %u kbps", s_rj.codec, s_rj.kbps);
+        else fmt_str(t, sizeof t, " - %s", s_rj.codec);
+        emit_text(t, C_DIM);
+        flush_word();
+    }
+    newline(1);
+    s_rj.n++;
+}
+
+static void rb_eat(u8 b)
+{
+    if (s_rj.in_str) {
+        char c[4];
+        int n = 1, k;
+        if (s_rj.hex) {                           /* \uXXXX */
+            int v = b >= '0' && b <= '9' ? b - '0' : (b | 32) >= 'a' && (b | 32) <= 'f' ? (b | 32) - 'a' + 10 : 0;
+            s_rj.u = (s_rj.u << 4) | (u32)v;
+            if (++s_rj.nhex < 4) return;
+            s_rj.hex = 0;
+            n = put_utf8(c, s_rj.u);
+        } else if (s_rj.esc) {
+            s_rj.esc = 0;
+            if (b == 'u') { s_rj.hex = 1; s_rj.nhex = 0; s_rj.u = 0; return; }
+            c[0] = b == 'n' || b == 't' || b == 'r' ? ' ' : (char)b;
+        } else if (b == '\\') { s_rj.esc = 1; return; }
+        else if (b == '"') {
+            s_rj.in_str = 0;
+            s_rj.str[s_rj.len] = 0;
+            if (!s_rj.want) {
+                for (k = 0; k < 15 && s_rj.str[k]; k++) s_rj.key[k] = s_rj.str[k];
+                s_rj.key[k] = 0;
+            } else if (s_rj.depth == 2) {
+                char *to = eq_ci(s_rj.key, "name") ? s_rj.name : eq_ci(s_rj.key, "url_resolved") ? s_rj.url :
+                           eq_ci(s_rj.key, "codec") ? s_rj.codec : 0;
+                int max = to == s_rj.name ? (int)sizeof s_rj.name : to == s_rj.codec ? (int)sizeof s_rj.codec : PAGE_HREF_MAX;
+                if (to) {
+                    for (k = 0; k < max - 1 && s_rj.str[k]; k++) to[k] = s_rj.str[k];
+                    to[k] = 0;
+                }
+            }
+            s_rj.want = 0;
+            return;
+        } else c[0] = (char)b;
+        for (k = 0; k < n; k++) if (s_rj.len < PAGE_HREF_MAX - 1) s_rj.str[s_rj.len++] = c[k];
+        return;
+    }
+    if (b == '"') { s_rj.in_str = 1; s_rj.len = 0; return; }
+    if (b == ':') { s_rj.want = 1; if (eq_ci(s_rj.key, "bitrate")) s_rj.kbps = 0; return; }
+    if (b >= '0' && b <= '9' && s_rj.want && s_rj.depth == 2 && eq_ci(s_rj.key, "bitrate")) {
+        s_rj.kbps = s_rj.kbps * 10 + (b - '0');
+        return;
+    }
+    if (b == '{' || b == '[') {
+        if (++s_rj.depth == 2) { s_rj.name[0] = s_rj.url[0] = s_rj.codec[0] = 0; s_rj.kbps = 0; }
+    } else if (b == '}' || b == ']') {
+        if (s_rj.depth == 2 && b == '}' && s_rj.url[0]) rb_station();
+        s_rj.depth--;
+    }
+    if (b == ',' || b == '{' || b == '}') s_rj.want = 0;
+}
+
+static void radiobrowser(const Url *page)
+{
+    const char *p = page->path;
+    char path[PAGE_HREF_MAX + 120], cc[3];
+    Url d;
+    int k;
+    if (!s_rb[0] || !lower_eq(p, "/radio/", 7)) return;
+    for (k = 0; k < 2; k++) {
+        char c = p[7 + k];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return;
+        cc[k] = (char)(c & ~32);
+    }
+    cc[2] = 0;
+    if (p[9] && p[9] != '/' && p[9] != '?' && p[9] != '#') return;
+    if (!url_parse(s_rb, &d)) return;
+    for (k = 0; d.path[k]; k++) { }
+    while (k && d.path[k - 1] == '/') d.path[--k] = 0;
+    fmt_str(path, sizeof path, "%s/json/stations/bycountrycodeexact/%s?order=votes&reverse=true&hidebroken=true&limit=40",
+            d.path, cc);
+    for (k = 0; k < (int)sizeof s_rj; k++) ((u8 *)&s_rj)[k] = 0;
+    newline(2);
+    emit_text("Its stations, from the Radio Browser directory:", C_BRIGHT);
+    newline(1);
+    side_fetch(&d, path, "Asking the Radio Browser directory for the stations...", rb_eat);
+    if (!s_rj.n) { emit_text("(It named none.)", C_DIM); flush_word(); newline(1); }
 }
 
 /* At the end of a page: what it named, as links, unless it links to them. */
@@ -1489,7 +1627,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
     s_secure = u->secure;
     s_refresh_go = 0;
-    s_nsniffed = 0; s_sn_on = 0; s_bare = 0; s_azura = 0;
+    s_nsniffed = 0; s_sn_on = 0; s_bare = 0; s_azura = 0; s_rb[0] = 0;
     if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->who[0] = 0; }
     if (!s_pg) main_pump(1);
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) {
@@ -1677,6 +1815,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     if (s_pg && !media && !counting && in_body) {
         char t[80];
         if (s_azura && status == 200) azuracast(u);
+        if (status == 200) radiobrowser(u);
         sniff_list();
         fmt_str(t, sizeof t, "%u, %u links: ", (u32)status, (u32)s_pg->nlinks);
         wire_line(t, s_pg->title[0] ? s_pg->title : "(no title)");

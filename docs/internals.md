@@ -86,7 +86,10 @@ conventional memory. Everything the system itself needs fits in about
   time, the clock restarts it and logs that it had to.
 - `kernel/kbd.c`, `kernel/keymap.c`: the keyboard on IRQ 1, which keys
   are held, a queue of presses, the modifier keys, and the Swedish
-  layout.
+  layout. The keyboard's own auto-repeat is dropped. The keys that move
+  something (Tab, the arrows, PgUp, PgDn, Backspace, Delete) repeat while
+  held, 15 times a second after 0.4 s, made when a program asks for a
+  key so that they never pile up behind a busy one.
 
 ## Borrowing the BIOS
 

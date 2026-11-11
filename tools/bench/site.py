@@ -14,6 +14,9 @@ QEMU's guest reaches it at http://10.0.2.2:PORT/.  Pages:
                      entity-encoded, one relative, one with \\/ escapes
   /public/chiptune   an AzuraCast station page: no stream, only its art
   /api/nowplaying/chiptune   the station's JSON, naming its streams
+  /radio/il          72fm.com's country page: names only, and the Radio
+                     Browser directory named in a <link rel="preconnect">
+  /radio-browser/json/stations/bycountrycodeexact/IL   that directory's answer
 """
 import glob, http.server, json, os, sys
 
@@ -32,6 +35,8 @@ PAGES = {
               "&quot;:&quot;Show 170&quot;,&quot;image&quot;:&quot;http:\\/\\/10.0.2.2:%d\\/art.webp&quot;,"
               "&quot;url&quot;:&quot;http:\\/\\/10.0.2.2:%d\\/Flashback\\/170.mp3&quot;}\"></div>"
               "<script>var api='%s/api/radio/v2/listening';</script>" % (PORT, PORT, HOST)),
+    "/radio/il": ("<html><head><link rel=\"preconnect\" href=\"%s/radio-browser\" /><title>72fm-like</title></head>"
+                  "<body><h1>Radio stations from Israel</h1><ul><li>Radio 103FM</li><li>Glglz</li></ul></body></html>" % HOST),
     "/public/chiptune": ("<title>24/7 Chiptune Radio</title><div id=\"app\"></div>"
                          "<img src=\"/api/nowplaying/chiptune/art/1.jpg\"><script>/* a player */</script>"),
 }
@@ -67,6 +72,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                               {"url": HOST + "/listen/chiptune/low.ogg", "format": "ogg", "bitrate": 64}]},
                        "now_playing": {"song": {"art": HOST + "/api/nowplaying/chiptune/art/1.jpg", "title": "A tune"}}}
             return self.send(200, "application/json", json.dumps(station).replace("/", "\\/").encode())
+        if p.startswith("/radio-browser/json/stations/bycountrycodeexact/IL?"):
+            st = [{"name": "Radio 103FM", "url_resolved": HOST + "/listen/103.mp3", "codec": "MP3", "bitrate": 0, "tags": "a,b"},
+                  {"name": "\u05d2\u05dc\u05d2\u05dc\u05e6 - Glglz", "url_resolved": HOST + "/listen/glglz_mp3", "codec": "MP3", "bitrate": 128},
+                  {"name": "\u05d2\u05dc\u05e6", "url_resolved": HOST + "/listen/glz?a=1&b=2", "codec": "AAC+", "bitrate": 64}]
+            # UTF-8 as it is in the first two, \\u escapes in the third, \\/ throughout
+            body = (json.dumps(st[:2], ensure_ascii=False)[:-1] + ", " + json.dumps(st[2]) + "]").replace("/", "\\/")
+            return self.send(200, "application/json", body.encode())
         if p in PAGES: return self.send(200, "text/html", PAGES[p].encode())
         self.send(404, "text/plain", b"not here")
 

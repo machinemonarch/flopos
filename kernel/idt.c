@@ -223,11 +223,18 @@ static void panic(Regs *r)
     }
 }
 
+/* Cycles spent in interrupts: work, even when it interrupts a halt (the
+ * sound is decoded here), so the HUD takes it out of the idle time. */
+u32 g_irq_cycles;
+
 void isr_dispatch(Regs *r)
 {
-    u32 v = r->vector;
+    static int depth;
+    u32 v = r->vector, c0;
 
     if (v < 32) { panic(r); return; }
+    c0 = g_cpu_mhz ? tsc32() : 0;
+    depth++;
 
     switch (v) {
     case 32: timer_irq(); break;
@@ -242,4 +249,6 @@ void isr_dispatch(Regs *r)
     /* After the timer's acknowledgement, with the interrupt's own work
      * done: the sound queue refilled, if an app has asked for that. */
     if (v == 32) audio_deferred();
+    cli();                                /* the sound's work may have let others in */
+    if (--depth == 0 && g_cpu_mhz) g_irq_cycles += tsc32() - c0;
 }

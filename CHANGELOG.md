@@ -6,6 +6,28 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.26.0 — 2026-11-11
+
+- **72fm.com's stations can be picked**, Israel's and every other
+  country's. Its country pages name the stations as plain text and leave
+  the rest to a script; browzer now asks the same open directory the
+  script asks (Radio Browser) and lists the 40 most voted stations as
+  links, with format and bit rate.
+- **Holding a key repeats it**: Tab runs through a page's links, and the
+  arrows, PgUp, PgDn, Backspace and Delete repeat too, everywhere.
+- **The HUD's window grows** for an answer longer than its four lines,
+  such as `help`'s, and **pgup**, **pgdn** and the arrows scroll it.
+  **esc** makes it small again. Grown, it costs 1.8 ms a frame; small,
+  1.4 ms, less than before.
+- **The brain is smooth**: the spikes are gone.
+- **'Thunking was reading too low while sound played.** Sound is decoded
+  in the timer's interrupt, and that time was counted as idle whenever
+  the interrupt woke a halted processor. It is counted as work now, and
+  agrees with the decoder's own count. 'Membering: was checked against
+  the sizes it adds up, and was right.
+- A full stop after an address written in a sentence is no longer taken
+  as part of the address.
+
 ## 1.25.0 — 2026-11-10
 
 - **Songs play on round their loop** until **s** stops them. They used
