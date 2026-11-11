@@ -45,6 +45,7 @@ static int s_on, s_keys, s_running;      /* shown; its line has the keys; a comm
 static int s_px, s_py, s_cw, s_ch;       /* where it is, and a cell, in pixels */
 static int s_drawn, s_full;              /* drawn this frame; all of it      */
 static u32 s_cost;
+static u32 s_tver = 1;                   /* bumped when the meters change: the top only */
 static u32 s_ver = 1;                    /* bumped when the words change     */                       /* its own drawing, cycles, averaged */
 
 /* ---- 'Thunking and 'Membering ------------------------------------------- */
@@ -62,7 +63,7 @@ static void measure(void)
     if (s_t0) {
         int busy = 100 - (int)(idle / (span / 100 + 1));
         busy = busy < 0 ? 0 : busy > 100 ? 100 : busy;
-        if (busy != s_cpu) { s_cpu = busy; s_ver++; }
+        if (busy != s_cpu) { s_cpu = busy; s_tver++; }
     }
     s_t0 = now; s_idle0 = g_idle_cycles;
     {
@@ -70,7 +71,7 @@ static void measure(void)
         u32 used = heap_used() + app_bytes() + (u32)_bss_end;
         int mem = total ? (int)(used / (total / 100 + 1)) : 0;
         if (mem > 100) mem = 100;
-        if (mem != s_mem) { s_mem = mem; s_ver++; }
+        if (mem != s_mem) { s_mem = mem; s_tver++; }
     }
 }
 
@@ -424,13 +425,13 @@ static void toggle(void)
 
 /* The frame and the words, into dst: drawn again only when one of them
  * changes, into a strip of its own (see hud_frame). */
-static void paint(u8 *dst)
+static void paint(u8 *dst, int top_only)
 {
-    int x, y, k;
+    int x, y, k, rows = top_only ? 9 : s_hh;       /* the meters change far more often than the rest */
     char v[HW_BIG];
 
     /* The frame, with a rule above the command line, on paper. */
-    for (y = 0; y < s_hh; y++)
+    for (y = 0; y < rows; y++)
         for (x = 0; x < s_hw; x++) {
             int c = ' ';
             int top = y == 0, bot = y == s_hh - 1, rule = y == s_hh - OUT_N - 3, lft = x == 0, rgt = x == s_hw - 1;
@@ -462,6 +463,8 @@ static void paint(u8 *dst)
     text(dst, 1, 5, "'Membering:", C_TEXT);
     fmt_str(v, sizeof v, "%u%%", (u32)s_mem); text(dst, 16 - strlen8(v), 5, v, C_BRIGHT);
 
+    if (top_only) return;
+
     /* What commands said, and the line being typed. */
     {
         int at[PIECES], len[PIECES], row = OUT_N - 1, skip = s_back, n, j, m, key;
@@ -485,7 +488,7 @@ static void paint(u8 *dst)
 void hud_frame(u8 *dst, u32 t)
 {
     static u8 *strip;                        /* the frame and words, as last drawn */
-    static u32 painted;
+    static u32 painted, tpainted;
     int vw = vga_width(), vh = vga_height(), pitch = term_pitch(), k, px, py;
     u32 c0;
 
@@ -509,7 +512,7 @@ void hud_frame(u8 *dst, u32 t)
     if (px != s_px || py != s_py) { s_px = px; s_py = py; s_ver++; }
 
     measure();
-    if (!s_batt_at || ms_now() - s_batt_at > 30000) { s_batt_at = ms_now() | 1; battery(); s_ver++; }
+    if (!s_batt_at || ms_now() - s_batt_at > 30000) { s_batt_at = ms_now() | 1; battery(); s_tver++; }
     colours();
 
     /* Everything is drawn into a strip of its own, and the strip copied
@@ -521,7 +524,8 @@ void hud_frame(u8 *dst, u32 t)
         static u32 moved_at;
         u8 *to = strip ? strip - s_py * pitch : dst;
         int fresh = !strip;
-        if (painted != s_ver || !strip) { paint(to); painted = s_ver; fresh = 1; }
+        if (painted != s_ver || !strip) { paint(to, 0); painted = s_ver; tpainted = s_tver; fresh = 1; }
+        else if (tpainted != s_tver) { paint(to, 1); tpainted = s_tver; fresh = 2; }   /* the bars and brain again, at once */
         if (fresh || ms_now() - moved_at >= 66) {
             int bx = s_px + s_cw, by = s_py + s_ch, bw = 10 * s_cw, bh = 2 * s_ch, each = bw / BARS;
             moved_at = ms_now();
@@ -543,7 +547,7 @@ void hud_frame(u8 *dst, u32 t)
             static int caret_was = -1;
             int w4 = (s_hw * s_cw + 3) & ~3, y, all = s_hh * s_ch, band = 9 * s_ch;
             int caret = s_keys && ((t >> 9) & 1), d0, d1;
-            s_full = fresh || caret != caret_was || !term_win_covers() || g_frame_fx != 0;
+            s_full = fresh == 1 || caret != caret_was || !term_win_covers() || g_frame_fx != 0;
             caret_was = caret;
             for (y = 0; y < (s_full ? all : band); y++)
                 memcpy32(dst + (s_py + y) * pitch + s_px, strip + y * pitch + s_px, (u32)w4 / 4);

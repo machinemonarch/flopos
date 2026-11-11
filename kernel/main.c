@@ -117,6 +117,7 @@ static void draw_frame_now(u32 t)
     term_render(vga_canvas(), t);
     if (g_frame_fx) g_frame_fx(vga_canvas(), vga_width(), vga_height(), t);
     hud_frame(vga_canvas(), t);
+    mood_neon(ms_now());
     b = perf_clock(); perf_add(PERF_TEXT, b - a); a = b;
 
     if (!vga_is_big()) vga_wait_retrace();

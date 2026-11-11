@@ -6,6 +6,15 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.27.0 — 2026-11-12
+
+- **Window frames shine in neon**, in every program: each frame and rule
+  is coloured along a rainbow that runs down the screen's diagonal, and
+  the colours turn slowly. The turning is done in the palette, so it
+  costs no drawing.
+- The HUD repaints only its top when a meter changes, not the whole of
+  its grown window: 1.4 ms a frame, grown or small.
+
 ## 1.26.0 — 2026-11-11
 
 - **72fm.com's stations can be picked**, Israel's and every other

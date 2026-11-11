@@ -571,20 +571,29 @@ static int style_cell(u8 st, int c, u32 abs, u32 t,
     return 0;
 }
 
+/* Frames shine: every frame piece, whoever draws it, is coloured from a
+ * loop of sixteen neon colours by where it is on the screen (down the
+ * diagonal, so neighbouring cells join), with every other pixel taken
+ * half a band on, which blends the bands.  The loop itself turns in the
+ * palette (mood_neon), so the shimmer costs no drawing at all. */
+#define NEON(x, y) ((u8)(PAL_NEON + ((((x) + (y) + ((((x) ^ (y)) & 1) << 3)) >> 4) & (PAL_NEON_N - 1))))
+
 static void hrun(u8 *dst, int x0, int x1, int y, u8 colour)
 {
+    (void)colour;
     if (y < 0 || y >= s_vh) return;
     if (x0 < 0) x0 = 0;
     if (x1 >= s_pitch) x1 = s_pitch - 1;
-    while (x0 <= x1) dst[y * s_pitch + x0++] = colour;
+    for (; x0 <= x1; x0++) dst[y * s_pitch + x0] = NEON(x0, y);
 }
 
 static void vrun(u8 *dst, int x, int y0, int y1, u8 colour)
 {
+    (void)colour;
     if (x < 0 || x >= s_pitch) return;
     if (y0 < 0) y0 = 0;
     if (y1 >= s_vh) y1 = s_vh - 1;
-    while (y0 <= y1) { dst[y0 * s_pitch + x] = colour; y0++; }
+    for (; y0 <= y1; y0++) dst[y0 * s_pitch + x] = NEON(x, y0);
 }
 
 /* Frames, rules and shading are drawn to the cell instead of being carried

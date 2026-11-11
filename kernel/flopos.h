@@ -70,8 +70,10 @@ int    glyph_index(int c);
 #define PAL_BRIGHT_N 32
 #define PAL_ACCENT  136                  /* 136..167  the complementary hue */
 #define PAL_ACCENT_N 32
-#define PAL_PROMPT  168                  /* 168..199  prompt, animated      */
-#define PAL_PROMPT_N 32
+#define PAL_PROMPT  168                  /* 168..183  prompt, animated      */
+#define PAL_PROMPT_N 16
+#define PAL_NEON    184                  /* 184..199  frames: a loop of neon */
+#define PAL_NEON_N  16
 #define PAL_CURSOR  200                  /* 200..231  cursor, animated      */
 #define PAL_CURSOR_N 32
 #define PAL_GREY    232                  /* 232..247  rules and furniture   */
@@ -105,6 +107,7 @@ void   irq_unmask(int irq);
 /* --- time.c ------------------------------------------------------------ */
 #define TICK_HZ 250
 extern volatile u32 g_ticks;
+void   mood_neon(u32 t);               /* turns the frames' colours (mood.c) */
 extern u32 g_irq_cycles;              /* cycles spent in interrupts (idt.c) */
 void   time_init(void);
 u32    ms_now(void);

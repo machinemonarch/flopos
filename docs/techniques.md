@@ -197,3 +197,15 @@ and the video BIOS keep their buffers. Every disk read then wrote over the
 kernel's variables, and the first one to go was the keyboard's record of
 which keys are held. The machine believed Shift was down. `linker.ld` now
 refuses to build a kernel that reaches that line.
+
+## Frames that shine without being redrawn
+
+Every frame piece is drawn as geometry in one place (`blit_cell` in
+`kernel/term.c`), so colouring it there colours every program's frames.
+Each pixel takes one of sixteen palette entries (`PAL_NEON`) by its place
+on the screen's diagonal, so neighbouring cells join without a seam, and
+every other pixel is taken half a band on, which blends one band into the
+next. The sixteen entries hold a full turn of the colour wheel at full
+strength. `mood_neon` turns that wheel in the palette fifteen times a
+second: 48 bytes to the card, and not one pixel drawn again. The entries
+came out of the prompt's ramp, which had 32 and needed 16.

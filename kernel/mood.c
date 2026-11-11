@@ -115,6 +115,32 @@ void mood_set(int which)
     s_which = ((which % MOOD_N) + MOOD_N) % MOOD_N;
 }
 
+/* The frames' neon: sixteen full colours round the wheel, turned a
+ * little further each time it is asked for. */
+static void neon_fill(u8 *rgb, u32 t)
+{
+    int i, r, g, b;
+    for (i = 0; i < PAL_NEON_N; i++) {
+        int a = (int)((t >> 4) + (u32)i * (1024 / PAL_NEON_N)) & 1023;
+        /* Full strength, unlike the moods' soft hues: twice the swing, cut off at the ends. */
+        r = (COS(a) * 2 + 4096) * 63 >> 13;
+        g = (COS(a - 341) * 2 + 4096) * 63 >> 13;
+        b = (COS(a - 682) * 2 + 4096) * 63 >> 13;
+        r = r < 0 ? 0 : r > 63 ? 63 : r; g = g < 0 ? 0 : g > 63 ? 63 : g; b = b < 0 ? 0 : b > 63 ? 63 : b;
+        rgb[i * 3] = (u8)r; rgb[i * 3 + 1] = (u8)g; rgb[i * 3 + 2] = (u8)b;
+    }
+}
+
+void mood_neon(u32 t)
+{
+    static u32 at;
+    u8 rgb[PAL_NEON_N * 3];
+    if (t - at < 66) return;                 /* fifteen times a second */
+    at = t;
+    neon_fill(rgb, t);
+    vga_set_colours(PAL_NEON, PAL_NEON_N, rgb);
+}
+
 /* The far side of the vortex.
  *
  * Inverting the palette was the obvious thing and it was wrong: the
@@ -152,6 +178,7 @@ static void build_deep(u8 *p, const Mood *m)
     ramp(p, PAL_GREY,   PAL_GREY_N,    1,  3,  5,  15, 23, 26);
     /* Still yellow down here, just colder and further off. */
     ramp(p, PAL_BANANA, PAL_BANANA_N,  8,  8,  4,  44, 46, 20);
+    neon_fill(p + PAL_NEON * 3, ms_now());
 }
 
 static void build_palette(u8 *p)
@@ -197,6 +224,7 @@ static void build_palette(u8 *p)
      * a banana is not negotiable about this. */
     ramp(p, PAL_BANANA, PAL_BANANA_N, 16, 12, 2, 63, 60, 20);
     ramp(p, PAL_HUD, PAL_HUD_N, 2, 4, 16, 10, 20, 63);
+    neon_fill(p + PAL_NEON * 3, ms_now());
     p[PAL_KEY * 3 + 0] = 63; p[PAL_KEY * 3 + 1] = 26; p[PAL_KEY * 3 + 2] = 46;   /* keys: pink */
 
 }
