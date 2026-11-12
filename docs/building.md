@@ -134,6 +134,11 @@ Kept here, so they are never written again:
   and six local OpenSSL servers (TLS 1.2 in each form FLOPOS takes, TLS
   1.3, and a TLS 1.1 one that must be refused), and checks them all.
 
+- `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
+  own code (`apps/lib/tape`), runs it through a pretend tape (wrong
+  speed, wavering, quiet, noisy, dull, upside down, a dropout) and reads
+  it back.
+
 `run.py` waits for FLOPOS's own messages rather than pausing, and lets the
 emulated clock run ahead of the wall's. A full check takes about half a
 minute. `--slow` holds it to the laptop's speed, for timing:

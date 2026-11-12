@@ -8,11 +8,25 @@ in [security-roadmap.md](security-roadmap.md).
 
 ### Data backup to cassette
 
-Saving files to an ordinary audio cassette (types I, II and IV) and reading
-them back, on a PYE Audio Automatic Data Recorder D6600/35P: documents from
-`write`, and pages from browzer. The likely way is the Sound Blaster's line
-out and line in, with the sound turned into bits the way home computers of
-the 1980s did it (FSK), and a checksum on every block.
+**Begun.** Saving files to an ordinary audio cassette and reading them
+back, on a PYE Audio Automatic Data Recorder D6600/35P: the documents from
+`write`, the bookmarks, the journal and the taught words.
+
+Done so far: the sound itself (`apps/lib/tape`). Two tones, 1200 and
+2400 Hz, as the home computers of the 1980s used; 120 bytes a second;
+the file in blocks of 256 bytes, each with its own check, so a damaged
+block is dropped and the tape can be played again to fill it in. It is
+tested against a pretend tape on this PC (`tools/tapetest/run.sh`): 6%
+fast or slow, wavering, quiet, clipped, noisy, dull, upside down, and a
+dropout. A full 16 KB document takes about two and a half minutes.
+
+Still to do:
+1. Recording from the sound card (FLOPOS only plays today), and choosing
+   the microphone or line input.
+2. A `tape` app: save, check against the floppy, load, with a level
+   meter for setting the recorder's volume.
+3. Trying it on the laptop with the recorder. Recording can't be tried in
+   the emulator, so this is where the surprises will be.
 
 ### A chat app
 
