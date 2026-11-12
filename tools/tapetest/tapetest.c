@@ -61,6 +61,7 @@ typedef struct {
     const char *name;
     double speed, wow, gain, noise, dc, dull;
     int flip, drop_at_ms, drop_ms, missing_ok;
+    double lop, thin;                    /* halves made unequal; the low notes thinned */
 } Case;
 
 static double rnd(void) { return (rand() / (double)RAND_MAX) * 2 - 1; }
@@ -69,7 +70,7 @@ static int run(const Case *c, const u8 *src, int n)
 {
     static u8 out[TAPE_RATE * 100];
     TapeRx r;
-    double pos = 0, lp = 0, drift = 0;
+    double pos = 0, lp = 0, drift = 0, hp = 0;
     int m = 0, i, missing = 0, blocks = (FILE_N + TAPE_PIECE - 1) / TAPE_PIECE;
     while (pos < n - 2 && m < (int)sizeof out) {
         int k = (int)pos;
@@ -79,6 +80,12 @@ static int run(const Case *c, const u8 *src, int n)
         v *= c->gain;
         if (c->drop_ms && ms >= c->drop_at_ms && ms < c->drop_at_ms + c->drop_ms) v *= 0.02;
         if (c->dull > 0) { lp += (v - lp) * c->dull; v = lp; }
+        if (c->lop > 0) {                /* a recorder's hot, lopsided output: shifted, then flattened */
+            v = v * 6 + c->lop * 600;
+            if (v > 100) v = 100;
+            if (v < -100) v = -100;
+        }
+        if (c->thin > 0) { hp += (v - hp) * c->thin; v -= hp; }   /* and no low notes, as through a small capacitor */
         drift = c->dc * sin(ms / 1000.0 * 2 * M_PI * 0.7);
         v += drift + rnd() * c->noise;
         if (v > 127) v = 127;
@@ -130,6 +137,9 @@ int main(int argc, char **argv)
         { "dull",              1.00,  0,     1.0,  0,    0,  0.3, 0,   0, 0, 0 },
         { "upside down",       1.00,  0,     1.0,  0,    0,  0,   1,   0, 0, 0 },
         { "a worn tape",       0.97,  0.006, 0.3,  4,    10, 0.4, 1,   0, 0, 0 },
+        { "lopsided",          1.00,  0,     1.0,  0,    0,  0,   0,   0, 0, 0, 0.35, 0 },
+        { "more lopsided",     1.00,  0,     1.0,  0,    0,  0,   1,   0, 0, 0, 0.55, 0 },
+        { "lopsided and thin", 0.97,  0.006, 1.0,  2,    0,  0.5, 0,   0, 0, 0, 0.45, 0.2 },
         { "a dropout",         1.00,  0,     1.0,  1,    0,  0,   0,   9000, 300, 2 },
     };
     int n, i, ok = 1;

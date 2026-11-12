@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.33.0 — 2026-11-12
+
 - **A wall between apps and the system.** An app can now touch only its
   own memory and has to ask FLOPOS for everything else. One that reaches
   outside, or tries something only the system may do, is closed with a
@@ -14,6 +16,16 @@ without it. Each version's notes are also written next to its image, as
   sound takes 7.1% of the machine instead of 6.8% while the browser plays
   a song, and the screen keeps its 30 frames a second. Not yet run on the
   laptop.
+- **The tape reader heard nothing from a real recorder.** It timed each
+  half of a wave, and a recorder gives the halves back unequal. It now
+  times whole waves, either way up. The pretend tape in
+  `tools/tapetest` has three lopsided cases, which the old reader failed
+  entirely. Still to be tried on the real recorder.
+- `tape load`: the level bar is twice as fine and follows the sound
+  more closely; sound that is not a tape's shows its pitch. The key line
+  says which socket is listening (`Tab` line-in socket active). The
+  instructions start "Plug a cable from".
+- `tape help` is five short lines.
 - `tools/walltest` checks the wall with an app that breaks each rule.
 
 ## 1.32.2 — 2026-11-12

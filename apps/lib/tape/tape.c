@@ -81,82 +81,85 @@ int tape_tx_samples(TapeTx *t, u8 *out, int max)
 }
 
 /* ---- reading ------------------------------------------------------------- */
+#define WAVE0 (SHORT0 * 2)               /* a whole 2400 Hz wave, 1/16 samples */
+
 void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), void *ctx)
 {
+    int k;
     r->block = block; r->ctx = ctx;
-    r->mid = 128 * 256; r->last = 0; r->sign = 1; r->since = 0;
-    r->shrt = SHORT0; r->shorts = 0; r->pend = 0;
-    r->state = 0; r->nbit = 0; r->byte = 0;
-    r->n = 0; r->want = 0; r->sync = 0;
-    r->good = r->bad = 0; r->loud = 0; r->tone = 0;
+    r->mid = 128 * 256; r->last = 0; r->sign = 1; r->since = 0; r->prev = 0; r->n = 0;
+    for (k = 0; k < 2; k++) {
+        TapeEar *e = &r->ear[k];
+        e->shrt = WAVE0; e->shorts = 0; e->state = 0; e->nbit = 0; e->byte = 0;
+        e->n = 0; e->want = 0; e->sync = 0; e->tone = 0;
+    }
+    r->good = r->bad = 0; r->loud = 0; r->tone = 0; r->pitch = 0;
 }
 
-static void lost(TapeRx *r)
+static void lost(TapeRx *r, TapeEar *e)
 {
-    if (r->sync == 2) r->bad++;
-    r->sync = 0; r->state = 0; r->shorts = 0; r->pend = 0; r->tone = 0;
+    if (e->sync == 2) r->bad++;
+    e->sync = 0; e->state = 0; e->shorts = 0; e->tone = 0;
 }
 
-static void got_byte(TapeRx *r, u8 b)
+static void got_byte(TapeRx *r, TapeEar *e, u8 b)
 {
-    if (r->sync == 0) { if (b == MAGIC0) r->sync = 1; return; }
-    if (r->sync == 1) {
-        if (b == MAGIC1) { r->sync = 2; r->n = 0; r->want = 0; }
-        else if (b != MAGIC0) r->sync = 0;
+    if (e->sync == 0) { if (b == MAGIC0) e->sync = 1; return; }
+    if (e->sync == 1) {
+        if (b == MAGIC1) { e->sync = 2; e->n = 0; e->want = 0; }
+        else if (b != MAGIC0) e->sync = 0;
         return;
     }
-    r->buf[r->n++] = b;
-    if (r->n == 5) {
-        int len = r->buf[3] | (r->buf[4] << 8);
-        if (len > TAPE_PIECE || r->buf[0] < TAPE_HEAD || r->buf[0] > TAPE_END) { r->bad++; r->sync = 0; return; }
-        r->want = 5 + len + 2;
+    e->buf[e->n++] = b;
+    if (e->n == 5) {
+        int len = e->buf[3] | (e->buf[4] << 8);
+        if (len > TAPE_PIECE || e->buf[0] < TAPE_HEAD || e->buf[0] > TAPE_END) { r->bad++; e->sync = 0; return; }
+        e->want = 5 + len + 2;
     }
-    if (r->want && r->n == r->want) {
-        int len = r->want - 7;
-        u16 c = (u16)(r->buf[5 + len] | (r->buf[6 + len] << 8));
-        if (c == tape_crc(r->buf, 5 + len)) {
+    if (e->want && e->n == e->want) {
+        int len = e->want - 7;
+        u16 c = (u16)(e->buf[5 + len] | (e->buf[6 + len] << 8));
+        if (c == tape_crc(e->buf, 5 + len)) {
             r->good++;
-            if (r->block) r->block(r->ctx, r->buf[0], r->buf[1] | (r->buf[2] << 8), r->buf + 5, len);
+            if (r->block) r->block(r->ctx, e->buf[0], e->buf[1] | (e->buf[2] << 8), e->buf + 5, len);
         } else r->bad++;
-        r->sync = 0;
+        e->sync = 0;
     }
 }
 
-static void got_bit(TapeRx *r, int one)
+static void got_bit(TapeRx *r, TapeEar *e, int one)
 {
-    if (r->state == 0) {                 /* between bytes: a 0 starts one  */
-        if (!one) { r->state = 1; r->nbit = 0; r->byte = 0; }
+    if (e->state == 0) {                 /* between bytes: a 0 starts one  */
+        if (!one) { e->state = 1; e->nbit = 0; e->byte = 0; }
         return;
     }
-    if (r->nbit < 8) {
-        if (one) r->byte |= (u8)(1 << r->nbit);
-        r->nbit++;
+    if (e->nbit < 8) {
+        if (one) e->byte |= (u8)(1 << e->nbit);
+        e->nbit++;
         return;
     }
-    r->state = 0;
-    if (one) got_byte(r, r->byte);       /* the 1 that ends it             */
-    else { if (r->sync == 2) r->bad++; r->sync = 0; }
+    e->state = 0;
+    if (one) got_byte(r, e, e->byte);    /* the 1 that ends it             */
+    else { if (e->sync == 2) r->bad++; e->sync = 0; }
 }
 
-/* One half-wave, d sixteenths of a sample long. */
-static void half_wave(TapeRx *r, u32 d)
+/* One whole wave, d sixteenths of a sample long. */
+static void wave(TapeRx *r, TapeEar *e, u32 d)
 {
-    u32 s = r->shrt;
-    if (d < s / 2 || d > s * 3) { lost(r); return; }
-    r->tone = 1;
-    if (d < s * 3 / 2) {                 /* short: a quarter of a 1        */
-        r->shrt = (s * 15 + d + 8) / 16;
-        if (r->pend) { r->pend = 0; r->shorts = 0; }   /* half a 0, and then this: out of step */
-        if (++r->shorts == 4) { r->shorts = 0; got_bit(r, 1); }
-    } else {                             /* long: half of a 0              */
-        r->shrt = (s * 15 + d / 2 + 8) / 16;
-        r->shorts = 0;                   /* a 0 always starts on a boundary */
-        r->pend ^= 1;
-        if (!r->pend) got_bit(r, 0);
+    u32 s = e->shrt;
+    if (d < s / 2 || d > s * 3) { lost(r, e); return; }
+    e->tone = 1;
+    if (d < s * 3 / 2) {                 /* short: half of a 1             */
+        e->shrt = (s * 15 + d + 8) / 16;
+        if (++e->shorts == 2) { e->shorts = 0; got_bit(r, e, 1); }
+    } else {                             /* long: a 0                      */
+        e->shrt = (s * 15 + d / 2 + 8) / 16;
+        e->shorts = 0;                   /* a 0 always starts on a boundary */
+        got_bit(r, e, 0);
     }
     /* The tape's speed is followed, but not out of all reason. */
-    if (r->shrt < SHORT0 * 3 / 4) r->shrt = SHORT0 * 3 / 4;
-    if (r->shrt > SHORT0 * 4 / 3) r->shrt = SHORT0 * 4 / 3;
+    if (e->shrt < WAVE0 * 3 / 4) e->shrt = WAVE0 * 3 / 4;
+    if (e->shrt > WAVE0 * 4 / 3) e->shrt = WAVE0 * 4 / 3;
 }
 
 void tape_rx_samples(TapeRx *r, const u8 *in, int n)
@@ -167,21 +170,31 @@ void tape_rx_samples(TapeRx *r, const u8 *in, int n)
         x = v >> 8;
         a = x < 0 ? -x : x;
         if (a > r->loud) r->loud = a;
-        else if ((r->since & 0xFF) == 0 && r->loud > 0) r->loud--;
+        else if ((++r->n & 63) == 0 && r->loud > 0) r->loud--;   /* falls away in a third of a second */
         h = r->loud / 4 + 2;             /* this far past the middle counts */
         r->since += 16;
         if ((r->sign > 0 && x < -h) || (r->sign < 0 && x > h)) {
             /* Where between the last sample and this one it crossed. */
             int edge = r->sign > 0 ? -h : h, den = x - r->last, f = 0;
+            u32 half;
+            TapeEar *e = &r->ear[r->sign > 0];
             if (den) f = (edge - r->last) * 16 / den;
             if (f < 0) f = 0;
             if (f > 16) f = 16;
-            half_wave(r, r->since - 16 + (u32)f);
+            half = r->since - 16 + (u32)f;
+            if (r->prev) {
+                wave(r, e, half + r->prev);
+                if (half + r->prev) r->pitch = (u32)TAPE_RATE * 16u / (half + r->prev);
+            }
+            r->prev = half;
             r->since = 16 - (u32)f;
             r->sign = -r->sign;
-        } else if (r->since > SHORT0 * 8) {
-            if (r->tone || r->sync) lost(r);
-            if (r->since > 0x40000000u) r->since = SHORT0 * 8 + 16;
+            r->tone = r->ear[0].tone | r->ear[1].tone;
+        } else if (r->since > WAVE0 * 4) {
+            if (r->ear[0].tone || r->ear[0].sync) lost(r, &r->ear[0]);
+            if (r->ear[1].tone || r->ear[1].sync) lost(r, &r->ear[1]);
+            r->prev = 0; r->tone = 0; r->pitch = 0;
+            if (r->since > 0x40000000u) r->since = WAVE0 * 4 + 16;
         }
         r->last = x;
     }

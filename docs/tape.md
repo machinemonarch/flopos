@@ -26,7 +26,7 @@ it starts.
     here> tape save
     here> tape save letter.md
 
-1. A cable from the laptop's headphone socket (on the front) to the
+1. Plug a cable from the laptop's headphone socket (on the front) to the
    recorder's MIC socket.
 2. Set the recorder recording, then press <kbd>Enter</kbd>. The first
    eight seconds are a plain tone, to get past the clear leader at the
@@ -41,7 +41,7 @@ file should come back "the same as on the floppy".
     here> tape load
     here> tape load letter.md
 
-1. A cable from the recorder's EAR socket to the laptop's line-in socket
+1. Plug a cable from the recorder's EAR socket to the laptop's line-in socket
    (left side, marked with a note and an arrow). <kbd>Tab</kbd> listens to
    the microphone socket instead.
 2. Rewind the tape and set the recorder playing. The bar shows how loud

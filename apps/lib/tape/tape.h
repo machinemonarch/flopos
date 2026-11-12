@@ -60,7 +60,24 @@ int  tape_tx_busy(const TapeTx *t);
 /* Up to max samples of it (8-bit, 128 in the middle); returns how many. */
 int  tape_tx_samples(TapeTx *t, u8 *out, int max);
 
-/* ---- reading ------------------------------------------------------------- */
+/* ---- reading -------------------------------------------------------------
+ * A recorder seldom gives the wave back even: one half comes out longer
+ * than the other.  So whole waves are timed, from one upward crossing to
+ * the next, which unevenness leaves alone; and since a tape may come back
+ * upside down, the downward crossings are timed as well, by a second
+ * reader.  Only the one in step with the bits gets blocks past their
+ * check. */
+typedef struct {
+    u32  shrt;                           /* a 2400 Hz wave's length, 1/16 samples */
+    int  shorts;                         /* short waves in a row           */
+    int  state, nbit;                    /* in a byte: which bit           */
+    u8   byte;
+    u8   buf[TAPE_PIECE + 16];
+    int  n, want;                        /* bytes of a block so far        */
+    int  sync;                           /* 0 hunting, 1 saw A5, 2 in a block */
+    int  tone;                           /* hearing leader or data now     */
+} TapeEar;
+
 typedef struct {
     void (*block)(void *ctx, int type, int seq, const u8 *data, int len);
     void *ctx;
@@ -68,17 +85,13 @@ typedef struct {
     int  last;                           /* the last sample, about its middle */
     int  sign;                           /* which side of the middle       */
     u32  since;                          /* 1/16 samples since the last crossing */
-    u32  shrt;                           /* a short half-wave's length, 1/16 samples */
-    int  shorts;                         /* short half-waves in a row      */
-    int  pend;                           /* a long half-wave waiting for its pair */
-    int  state, nbit;                    /* in a byte: which bit           */
-    u8   byte;
-    u8   buf[TAPE_PIECE + 16];
-    int  n, want;                        /* bytes of a block so far        */
-    int  sync;                           /* 0 hunting, 1 saw A5, 2 in a block */
+    u32  prev;                           /* the half-wave before this one  */
+    u32  n;                              /* samples so far                 */
+    TapeEar ear[2];                      /* upward crossings, and downward */
     u32  good, bad;                      /* blocks that passed, and failed  */
     int  loud;                           /* how strong the signal is, 0..127 */
     int  tone;                           /* hearing leader or data now      */
+    u32  pitch;                          /* waves a second, as last heard   */
 } TapeRx;
 
 void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), void *ctx);

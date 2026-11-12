@@ -338,8 +338,8 @@ static void save(void)
                 A->format(m, sizeof m, "%u file%s, %u bytes: %u min %u s of tape.", (u32)s_count, s_count == 1 ? "" : "s",
                           bytes, secs / 60, secs % 60);
                 put(3, m, A_TEXT);
-                put(5, "A cable from the headphone socket (the front)", A_TEXT);
-                put(6, "to the recorder's MIC socket. Set the recorder", A_TEXT);
+                put(5, "Plug a cable from the headphone socket (the", A_TEXT);
+                put(6, "front) into the recorder's MIC socket. Set it", A_TEXT);
                 put(7, "recording, then press \1Enter\1.", A_TEXT);
                 if (s_big) {
                     A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big);
@@ -521,18 +521,22 @@ static int listen(void)
         if (now - drawn >= 100) {
             drawn = now;
             frame("Reading a cassette");
-            put(3, "A cable from the recorder's EAR socket to the", A_TEXT);
-            put(4, line ? "line-in socket (left side, the note and arrow)." : "microphone socket (left side).", A_TEXT);
+            put(3, "Plug a cable from the recorder's EAR socket into", A_TEXT);
+            put(4, line ? "the line-in socket (left side, note and arrow)." : "the microphone socket (left side).            ", A_TEXT);
             put(5, "Rewind the tape, and set the recorder playing.", A_TEXT);
-            bar(2, 7, 24, s_rx.loud * 24 / 127);
-            A->win_text(28, 7, s_rx.loud < 6 ? "silence" : s_rx.tone ? "a tape's tones" : "sound, not a tape's",
-                        s_rx.tone ? A_BRIGHT : A_DIM, A_PAPER);
+            bar(2, 7, 48, (s_rx.loud * 48 + 63) / 127);
+            if (s_rx.loud < 4) put(8, "silence", A_DIM);
+            else if (s_rx.tone) put(8, "a tape's tones", A_BRIGHT);
+            else {
+                A->format(m, sizeof m, "sound, not a tape's (%u waves a second)", s_rx.pitch);
+                put(8, m, A_DIM);
+            }
             if (s_rx.bad) {
                 A->format(m, sizeof m, "%u spoiled", s_rx.bad);
                 A->win_text(40, 8, m, A_DIM, A_PAPER);
             }
             list(1, 0);
-            put(HH - 2, line ? "\1Tab\1 the microphone socket   \1Esc\1 enough" : "\1Tab\1 the line-in socket   \1Esc\1 enough", A_DIM);
+            put(HH - 2, line ? "\1Tab\1 line-in socket active   \1Esc\1 enough" : "\1Tab\1 microphone active   \1Esc\1 enough", A_DIM);
         }
         key = A->key(&mods);
         if (key < 0) { A->pump(0); continue; }
@@ -659,7 +663,16 @@ int app_main(const Api *api, int argc, char **argv)
         if (same_word(argv[1], "save")) what = 1;
         else if (same_word(argv[1], "load")) what = 2;
         else {
-            A->colour(A_TEXT); A->print("tape save, or tape load. A file's name after it keeps to that file."); A->newline();
+            static const char *const help[] = {
+                "tape            choose on the screen",
+                "tape save       play your files out, for a recorder",
+                "tape load       listen to a tape and compare it",
+                "tape save NAME  only the file called NAME",
+                "tape load NAME  only the file called NAME",
+            };
+            int k;
+            A->colour(A_TEXT);
+            for (k = 0; k < 5; k++) { A->print(help[k]); A->newline(); }
             return 0;
         }
     }
