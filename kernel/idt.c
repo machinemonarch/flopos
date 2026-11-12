@@ -148,6 +148,10 @@ static u32 read_cr2(void)
 
 static int s_in_panic = 0;
 
+/* A sentence for the crash screen, when the stop was asked for (the
+ * stack's tripwire in time.c) rather than stumbled into. */
+const char *g_panic_note;
+
 static void panic(Regs *r)
 {
     static u8 pal[768];
@@ -164,6 +168,7 @@ static void panic(Regs *r)
      * exactly when a fault is most likely.  This costs nothing and makes
      * it impossible for the machine to die without saying so. */
     serial_print("\n\n*** FLOPOS HAS LOST THE THREAD ***\n");
+    if (g_panic_note) { serial_print(g_panic_note); serial_print("\n"); }
     serial_printf("trap %u (%s)  err %x\n", r->vector,
                   r->vector < 32 ? s_exc_name[r->vector] : "hardware", r->err);
     serial_printf("eip %x  eflags %x  cr2 %x\n", r->eip, r->eflags, read_cr2());
@@ -206,7 +211,7 @@ static void panic(Regs *r)
     fmt_str(line, sizeof line, "esi %x  edi %x", r->esi, r->edi);
     draw_text(g_back, 20, 82, line, 15);
 
-    draw_text(g_back, 20, 104, "The trip ended early. Sorry about that.", 14);
+    draw_text(g_back, 20, 104, g_panic_note ? g_panic_note : "The trip ended early. Sorry about that.", 14);
     draw_text(g_back, 20, 120, "Press", 15);
     draw_text(g_back, 20 + 6 * 6, 120, "CTRL+ALT+DEL", PAL_KEY);      /* keys are pink everywhere */
     draw_text(g_back, 20 + 6 * 19, 120, "to reboot, or power", 15);

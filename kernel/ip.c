@@ -495,8 +495,14 @@ u32 ip_lookup(const char *name)
 
     if (!net_ready() || !s_dns || !name[0]) return 0;
 
-    s_dns_id = (u16)((g_cpu_mhz ? tsc32() : g_ticks) * 40503u);
-    s_dns_port = (u16)(49152 + (s_dns_id & 0x3FFF));
+    /* The question's number and the port it is asked from are two
+     * separate random numbers, so a faked answer has to guess both. */
+    {
+        u8 b[4];
+        rand_bytes(b, 4);
+        s_dns_id = (u16)(b[0] | b[1] << 8);
+        s_dns_port = (u16)(49152 + ((b[2] | b[3] << 8) & 0x3FFF));
+    }
     for (i = 0; i < 12; i++) q[i] = 0;
     put16(q, s_dns_id);
     q[2] = 0x01;                         /* recursion, please              */
@@ -520,8 +526,9 @@ u32 ip_lookup(const char *name)
         if (!udp_send(s_dns, s_dns_port, s_dns_srv_port, q, n)) return 0;
         until = ms_now() + 2000;
         while (ms_now() < until && !s_dns_done) ip_poll();
-        if (s_dns_done) return s_dns_got;
+        if (s_dns_done) { s_dns_port = 0; return s_dns_got; }
     }
+    s_dns_port = 0;                      /* nobody is waiting any more     */
     return 0;
 }
 
@@ -575,14 +582,17 @@ static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
     u16 dport;
     int ulen;
 
-    (void)ip_hdr;
     if (len < 8) return;
     dport = get16(u + 2);
     ulen = get16(u + 4);
     if (ulen < 8 || ulen > len) return;
 
     if (dport == 68 && s_dhcp && s_dhcp < 3) take_dhcp(u + 8, ulen - 8);
-    else if (dport == s_dns_port && s_dns_port) take_dns(u + 8, ulen - 8);
+    else if (dport == s_dns_port && s_dns_port) {
+        /* Only the name server we asked may answer, from the port we asked. */
+        if (get32(ip_hdr + 12) == s_dns && get16(u) == s_dns_srv_port)
+            take_dns(u + 8, ulen - 8);
+    }
     else if (dport == s_ntp_port && s_ntp_port) take_ntp(ip_hdr, u + 8, ulen - 8);
 }
 

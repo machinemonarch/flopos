@@ -30,6 +30,16 @@ void time_init(void)
     outb(PIT_CH0, (u8)(div >> 8));
 }
 
+/* The tripwire: a known number far down the stack, well below anything
+ * the stack should ever reach (it starts at 0x8F000 and grows down; this
+ * is 108 KB lower, just above the disk's and the video BIOS's buffers).
+ * If it ever changes, something has run wild, and it is better to stop
+ * and say so than to carry on over damaged memory.  It prevents nothing;
+ * it makes the damage visible. */
+#define TRIPWIRE   ((volatile u32 *)0x00074000)
+#define TRIP_VALUE 0x57A7CA75u
+static int s_trip_set;
+
 void timer_irq(void)
 {
     static u32 sub;
@@ -37,6 +47,12 @@ void timer_irq(void)
     if (++sub < IRQ_HZ / TICK_HZ) return;
     sub = 0;
     g_ticks++;
+    if (!s_trip_set) { TRIPWIRE[0] = TRIP_VALUE; TRIPWIRE[1] = ~TRIP_VALUE; s_trip_set = 1; }
+    else if (TRIPWIRE[0] != TRIP_VALUE || TRIPWIRE[1] != ~TRIP_VALUE) {
+        s_trip_set = 0;
+        g_panic_note = "The stack ran over its tripwire.";
+        __asm__ volatile ("ud2");        /* stop, by way of the crash screen */
+    }
     snd_tick();
     audio_tick();
 }

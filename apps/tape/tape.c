@@ -8,7 +8,7 @@
  *
  * Only what is yours goes to tape or comes back from it: everything in
  * the inventory, and three of the system's own records (the bookmarks,
- * the journal and what FLOPOS has been taught).  What comes back goes
+ * the journal and the settings).  What comes back goes
  * into the inventory, or over one of those three; nothing a tape says
  * can touch any other file.
  *
@@ -666,7 +666,7 @@ int app_main(const Api *api, int argc, char **argv)
     while (!what) {
         frame("Your files, kept on an audio cassette");
         put(3, "Everything in your inventory, the bookmarks,", A_TEXT);
-        put(4, "the journal and the words you have taught.", A_TEXT);
+        put(4, "the journal and the settings.", A_TEXT);
         put(7, "\1S\1    save them to a tape", A_TEXT);
         put(9, "\1L\1    load a tape, and compare it with the floppy", A_TEXT);
         put(11, "\1Esc\1  leave", A_TEXT);

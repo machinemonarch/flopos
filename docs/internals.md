@@ -205,7 +205,7 @@ differently.
 
 The system's own files are in the top folder. Those FLOPOS only reads, or
 overwrites in place at the size the build made them (the journal, the
-taught words, the bookmarks). The top folder itself is never written.
+settings, the bookmarks). The top folder itself is never written.
 
 Everything of the user's is in the folder `INVENTORY`. There FLOPOS does
 the whole of FAT12: makes, grows, shrinks, renames, moves and removes
@@ -220,7 +220,7 @@ go. See [The inventory](inventory.md) and
   runs where possible, via the buffer at 0x70000.
 - `kernel/store.c`: `JOURNAL.TXT` (plain text, ending with the DOS
   end-of-file character so every computer stops reading in the right
-  place) and `STATE.BIN` (taught words, settings, network settings, with a
+  place) and `STATE.BIN` (settings, network settings, with a
   checksum).
 - `kernel/fs.c`: the FAT12 filesystem: finds and reads any file by name,
   writes system files in place, and everything in the inventory (the

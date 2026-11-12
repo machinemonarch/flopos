@@ -98,6 +98,7 @@ int    heap_is_low(void);                /* using conventional memory?     */
 
 /* --- fault.c ----------------------------------------------------------- */
 void   fatal(const char *what, const char *detail);
+extern const char *g_panic_note;         /* said on the crash screen, if set */
 
 /* --- idt.c ------------------------------------------------------------- */
 void   idt_init(void);
@@ -856,11 +857,6 @@ const char *store_journal_text(void);
 u32    store_journal_used(void);
 u32    store_journal_size(void);
 
-int    store_teach(const char *word, const char *resp);  /* -1 if full     */
-int    store_forget(const char *word);
-const char *store_lookup(const char *word);
-int    store_taught_count(void);
-const Taught *store_taught_at(int i);
 
 /* --- cpu.c ------------------------------------------------------------- */
 extern char g_cpu_vendor[16];

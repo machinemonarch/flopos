@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prove FLOPOS can write to its own disk, and that what it wrote survives.
 
-Boots a throwaway copy of the image, teaches it a word over the serial
+Boots a throwaway copy of the image, types a word it does not know over the serial
 line, shuts QEMU down, and then checks the result from outside with
 mtools -- because the OS claiming it saved something is not evidence.
 Then boots the same disk again to see whether it remembers.
@@ -62,13 +62,11 @@ def send(fd, text):
     os.write(fd, text.encode()); time.sleep(0.2)
 
 
-print("=== first boot: teach it a word ===")
+print("=== first boot: a word it does not know ===")
 q, fd, early = boot(38.0)
 print("[boot said]", early.strip()[-320:])
 send(fd, 'a turnip\r')                  # the wizard's riddle: anything will do
 drain(fd, 6.0)
-send(fd, 'teach frobnicate "Done. Probably."\r')
-print(drain(fd, 4.0).strip())
 send(fd, 'blargwotsit\r')
 drain(fd, 2.0)
 send(fd, 'remember\r')
@@ -86,8 +84,6 @@ q, fd, early = boot(38.0)
 print("[boot said]", early.strip()[-320:])
 send(fd, 'a turnip\r')
 drain(fd, 6.0)
-send(fd, 'learned\r')
-print(drain(fd, 3.0).strip())
-send(fd, 'frobnicate\r')
+send(fd, 'journal\r')
 print(drain(fd, 3.0).strip())
 os.close(fd); q.terminate(); q.wait(timeout=10)

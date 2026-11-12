@@ -27,7 +27,6 @@ this page are left out of `help` on purpose.
 | `whoami` | Who you are. ("You're alright.") |
 | `look` | What is around. |
 | `here` | Where you are. |
-| `echo words` | Says the words back. |
 | `time` | The time and date, how long FLOPOS has been awake, whether the clock's battery is good (as the clock chip and the BIOS see it), and how far out the network found the clock when it last set it. |
 | `sys` | What this machine actually is: processor, measured speed, memory, screen mode, panel. |
 | `version` | Which FLOPOS this is. |
@@ -61,10 +60,7 @@ writes to them only when something asks it to.
 
 | Word | What it does |
 |---|---|
-| `teach word "answer"` | Gives FLOPOS a new word. From then on, typing the word gets the answer. Up to 48 words, kept on the disk. Example: `teach frobnicate "Done. Probably."` |
-| `forget word` | Takes a taught word away. |
-| `learned` | Lists what you have taught it. |
-| `journal` | Shows what FLOPOS has written down: words taught and forgotten, and every word it didn't recognise. |
+| `journal` | Shows what FLOPOS has written down, and every word it didn't recognise. |
 | `remember` | Writes everything to the disk now. |
 
 The journal is plain text, so you can read it on any computer: open

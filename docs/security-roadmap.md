@@ -13,21 +13,6 @@ several files or needs new tools. **Large** changes how the system works.
 
 ## Waiting for a decision
 
-### 4. Name lookups are easy to fake (small)
-
-`kernel/ip.c`, `ip_lookup` and `take_dns`. The query's ID number and port
-both come from a single 16-bit value taken from the clock. Nobody checks
-who the answer came from.
-
-**Fix:** take both from the random pool (`rand_bytes`), and accept answers
-only from the DNS server. **Stops:** fake addresses for plain-HTTP sites.
-
-### 6. A tripwire at the bottom of the stack (small)
-
-**Fix:** write a known value at the lowest point of the stack and check it
-every frame. If it has changed, stop with a clear message. This prevents
-nothing, but it turns silent memory damage into an honest crash.
-
 ### 7. Feed the parsers garbage on the host (medium)
 
 **Fix:** build the code that reads outside data on the Linux machine and
@@ -76,6 +61,13 @@ certificate look valid. The clock already refuses to go back past the last
   HTTPS still catches the harm from that.
 - **TCP's starting numbers (1.31.4).** The starting number and the port
   come from the random pool.
+- **Name lookups (1.32.0).** The question's number and the port it is
+  asked from are two separate random numbers, and an answer is taken only
+  from the name server that was asked, while a question is open.
+- **The tripwire (1.32.0).** A known number sits 108 KB down the stack
+  (`kernel/time.c`) and is checked 250 times a second. If it changes,
+  FLOPOS stops on the crash screen and says "The stack ran over its
+  tripwire." Tried in a test build (`tripwire`).
 - **Four ways a crafted Ogg file could write past its buffers**
   (`apps/lib/audio/vorbis.c`), fixed before 1.19.0 shipped.
 

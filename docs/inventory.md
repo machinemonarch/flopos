@@ -73,7 +73,7 @@ power cuts. It has not yet run on the laptop's real floppy drive.
 ## New releases
 
 Writing a new release to the floppy (`tools/writefloppy.sh`) carries the
-whole inventory across, with the journal, the taught words and the
+whole inventory across, with the journal, the settings and the
 bookmarks. Documents from releases before 1.31.0 (`WRITE1.MD` to
 `WRITE8.MD`) are moved into the inventory under the same names. If your
 files would not fit beside the new release, nothing is written.

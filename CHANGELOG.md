@@ -6,6 +6,18 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.32.0 — 2026-11-12
+
+- **A shorter `help`.** `teach`, `forget`, `learned` and `echo` are gone.
+  `browzer` and `inventory` are no longer listed among the commands: they
+  are programs, `apps` lists them, and typing their names still runs them.
+  Words taught on an older floppy are left where they are in `STATE.BIN`
+  and no longer answer.
+- **Name lookups are harder to fake** (security roadmap): two random
+  numbers to guess, and only the name server that was asked may answer.
+- **A tripwire on the stack**: if something runs wild through memory,
+  FLOPOS stops on the crash screen and says so.
+
 ## 1.31.4 — 2026-11-12
 
 - **Four network weak spots closed** (see the security roadmap): a

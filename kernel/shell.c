@@ -2,7 +2,7 @@
  * shell.c -- the prompt, the tokeniser, and the words FLOPOS knows.
  *
  * Adding a word is one line in s_cmds plus a function.  The tokeniser
- * understands double quotes, which nothing needs yet but 'teach' will.
+ * understands double quotes.
  *
  * Nothing here holds any of its own prose: every string the user sees
  * comes from voice.c, so the register can be rewritten in one place.
@@ -147,20 +147,6 @@ static void screen_now(void)
 
 static void cmd_crypto(void) { (void)crypto_selftest(); }
 
-/* The browser, BROWZER.APP on the floppy.  Listed here so `help` still
- * shows it; an address or some words after it go straight there, and
- * `browzer fetch address` reads the page out into the terminal instead. */
-static void cmd_browzer(void)
-{
-    if (!app_run("browzer", s_argc, s_argv)) say("browzer is not on this floppy.");
-}
-
-/* Your files, INVENTORY.APP on the floppy.  Listed here so `help` shows it. */
-static void cmd_inventory(void)
-{
-    if (!app_run("inventory", s_argc, s_argv)) say("The inventory is not on this floppy.");
-}
-
 static void cmd_apps(void) { apps_list(); }
 
 static void cmd_network(void)
@@ -209,18 +195,6 @@ static void cmd_help(void)
 static void cmd_clear(void)
 {
     term_clear();
-}
-
-static void cmd_echo(void)
-{
-    int i;
-    if (s_argc < 2) { say(voice(V_ECHO_NOTHING)); return; }
-    term_colour(C_TEXT);
-    for (i = 1; i < s_argc; i++) {
-        if (i > 1) term_putc(' ');
-        term_print(s_argv[i]);
-    }
-    term_newline();
 }
 
 static void cmd_time(void)
@@ -302,8 +276,7 @@ static void cmd_sys(void)
                 store_ready() ? "readable and writable" : "read only");
     term_newline();
     if (store_ready()) {
-        term_printf("memory  %u words taught, %u boots so far",
-                    store_taught_count(), store_boots());
+        term_printf("memory  %u boots so far", store_boots());
         term_newline();
     }
     term_printf("a20     %s", BOOTINFO_A20 ? "open" : "unverified");
@@ -464,80 +437,6 @@ static void cmd_disk(void)
     } else {
         term_colour(C_ACCENT);
         say("That is not a boot sector. Something is wrong.");
-    }
-}
-
-static void cmd_teach(void)
-{
-    char resp[RESP_MAX];
-    int i, n = 0;
-
-    if (!store_ready()) {
-        say("I have nowhere to keep it. The disk did not answer.");
-        return;
-    }
-    if (s_argc < 3) {
-        say("Say it like this:");
-        say_dim("  teach frobnicate \"Done. Probably.\"");
-        return;
-    }
-
-    /* Everything after the word is the answer, quoted or not. */
-    for (i = 2; i < s_argc && n < RESP_MAX - 2; i++) {
-        const char *w = s_argv[i];
-        if (i > 2) resp[n++] = ' ';
-        while (*w && n < RESP_MAX - 1) resp[n++] = *w++;
-    }
-    resp[n] = 0;
-
-    i = store_teach(s_argv[1], resp);
-    if (i < 0) {
-        say("I am full. Make me forget something first.");
-        return;
-    }
-    if (!i) { say("That will not do as a word."); return; }
-
-    term_colour(C_ACCENT);
-    say("Learned.");
-    store_journal_printf("taught: %s = %s", s_argv[1], resp);
-    if (store_save()) say_dim("Written to the disk. I will still know it tomorrow.");
-    else say("I could not write it down, so I will forget by morning.");
-}
-
-static void cmd_forget(void)
-{
-    if (!store_ready()) { say("Nothing is kept anyway."); return; }
-    if (s_argc < 2) { say("Forget what?"); return; }
-
-    if (store_forget(s_argv[1])) {
-        say("Gone.");
-        store_journal_printf("forgot: %s", s_argv[1]);
-        store_save();
-    } else {
-        say("I never knew that one.");
-    }
-}
-
-static void cmd_learned(void)
-{
-    int i, n = store_taught_count();
-
-    if (!n) { say_dim("Nothing yet. Teach me something."); return; }
-
-    term_colour(C_DIM);
-    term_printf("%u word%s, taught by you:", n, n == 1 ? "" : "s");
-    term_newline();
-    for (i = 0; i < n; i++) {
-        const Taught *t = store_taught_at(i);
-        int w = 0;
-        term_colour(C_BRIGHT);
-        term_print("  ");
-        term_print(t->word);
-        while (t->word[w]) w++;
-        while (w < 12) { term_putc(' '); w++; }
-        term_colour(C_DIM);
-        term_print(t->resp);
-        term_newline();
     }
 }
 
@@ -1410,19 +1309,13 @@ static const Cmd s_cmds[] = {
     { "time",    "the hour, and how long awake", cmd_time    },
     { "sys",     "what this machine is",         cmd_sys     },
     { "goaway",  "wipe the screen",              cmd_clear   },
-    { "echo",    "say something back",           cmd_echo    },
     { "version", "which FLOPOS this is",         cmd_version },
     { "help",    "this list",                    cmd_help    },
-    { "teach",   "give me a new word",           cmd_teach   },
-    { "forget",  "take one away",                cmd_forget  },
-    { "learned", "what you have taught me",      cmd_learned },
     { "remember","write it all to the disk",     cmd_remember},
     { "journal", "what I have written down",     cmd_journal },
     { "network", "how this machine is connected",cmd_network },
     { "apps",    "programs on the floppy",       cmd_apps    },
     { "ping",    "is anybody out there",         cmd_ping    },
-    { "browzer", "a small web browser",          cmd_browzer },
-    { "inventory","what you carry: your files",  cmd_inventory },
     { "report",  "tell Claude how you are",      cmd_report  },
     { "wizard",  "lock the screen behind a riddle", cmd_wizard },
     { "bye",     "write everything down and stop", cmd_bye   },
@@ -1430,6 +1323,9 @@ static const Cmd s_cmds[] = {
 };
 
 #ifdef FLOPOS_TEST
+/* Test build only: damage the stack's tripwire (time.c), to see it stop. */
+static void cmd_tripwire(void) { *(volatile u32 *)0x00074000 = 0; }
+
 /* ---- test build only: reproduce the freeze ---------------------------
  * Every freeze on the laptop was the same thing: a BIOS call that switches
  * interrupts on and takes a while, a timer tick arriving in the middle of
@@ -1515,6 +1411,7 @@ static const Cmd s_diag[] = {
     { "dsp",     "the sound card's sample player", cmd_dsp   },
 #ifdef FLOPOS_TEST
     { "stall",   "reproduce the freeze",         cmd_stall   },
+    { "tripwire","step on the stack's tripwire", cmd_tripwire },
 #endif
     { "ip",      "where we think we are",        cmd_ip      },
     { "crypto",  "check the encryption code",    cmd_crypto  },
@@ -1666,12 +1563,6 @@ void shell_submit(const char *line)
 
     /* 1c. A program on the floppy by that name. */
     if (app_run(s_argv[0], s_argc, s_argv)) goto tail;
-
-    /* 2. Anything you taught it. */
-    if (s_argc == 1) {
-        const char *learned = store_lookup(s_argv[0]);
-        if (learned) { say(learned); goto tail; }
-    }
 
     /* 3. Something said to it, rather than a word given to it. */
     squash(s_rawline, key, sizeof key);

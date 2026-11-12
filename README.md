@@ -29,7 +29,7 @@ proxies, no JavaScript.
 - **Boots to 800×600** with smooth text over a slowly moving, generated
   background, with music on the laptop's FM sound chip and a wireframe
   banana tumbling in the corner.
-- **Talks back** in a warm deadpan, learns words you `teach` it, and keeps
+- **Talks back** in a warm deadpan, and keeps
   a journal on the floppy that any computer can read.
 - **Gets online**: DHCP, DNS, `ping`, `browzer fetch` for reading a page as text,
   and **browzer**, a small web browser with working forms, that shows

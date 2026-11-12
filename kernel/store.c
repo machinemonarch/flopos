@@ -3,7 +3,7 @@
  *
  * Two files are laid down on the floppy at build time, each a fixed size
  * and in one piece: JOURNAL.TXT, which is plain text anybody can read on
- * any machine, and STATE.BIN, which holds the words you have taught it.
+ * any machine, and STATE.BIN, which holds the settings and the count of boots.
  *
  * Because both files never change length, FLOPOS can overwrite their data
  * sectors in place and never touch the FAT or the directory.  That is the
@@ -39,15 +39,8 @@ static int     s_taught_dirty;
 static int s_ready;
 
 int store_ready(void) { return s_ready; }
-int store_taught_count(void) { return s_taught_n; }
 u32 store_journal_used(void) { return s_journal_len; }
 u32 store_journal_size(void) { return s_journal_cap; }
-
-const Taught *store_taught_at(int i)
-{
-    if (i < 0 || i >= s_taught_n) return NULL;
-    return &s_taught[i];
-}
 
 /* ---- sectors ----------------------------------------------------------
  * As many sectors per BIOS call as the geometry allows, which is up to a
@@ -102,7 +95,10 @@ void store_journal_printf(const char *fmt, ...)
 
 const char *store_journal_text(void) { return (const char *)s_journal; }
 
-/* ---- taught words ----------------------------------------------------- */
+/* ---- taught words -------------------------------------------------------
+ * FLOPOS could once be taught words of its own.  That is gone (1.32.0),
+ * but the table keeps its place in STATE.BIN, so a floppy from before
+ * still reads, and what follows it in the file stays where it was. */
 static u32 taught_checksum(void)
 {
     u32 sum = 0x9E3779B9u;
@@ -110,64 +106,6 @@ static u32 taught_checksum(void)
     u32 i, n = (u32)(s_taught_n * (int)sizeof(Taught));
     for (i = 0; i < n; i++) sum = (sum << 1 | sum >> 31) ^ p[i];
     return sum;
-}
-
-static int lower(int c) { return (c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c; }
-
-const char *store_lookup(const char *word)
-{
-    int i, j;
-    for (i = 0; i < s_taught_n; i++) {
-        const char *a = s_taught[i].word;
-        for (j = 0; a[j] && word[j]; j++)
-            if (lower((u8)a[j]) != lower((u8)word[j])) break;
-        if (!a[j] && !word[j]) return s_taught[i].resp;
-    }
-    return NULL;
-}
-
-int store_teach(const char *word, const char *resp)
-{
-    int i, slot = -1;
-
-    if (!s_ready || !word[0] || !resp[0]) return 0;
-
-    for (i = 0; i < s_taught_n; i++) {
-        const char *a = s_taught[i].word;
-        int j;
-        for (j = 0; a[j] && word[j]; j++)
-            if (lower((u8)a[j]) != lower((u8)word[j])) break;
-        if (!a[j] && !word[j]) { slot = i; break; }
-    }
-    if (slot < 0) {
-        if (s_taught_n >= TAUGHT_MAX) return -1;
-        slot = s_taught_n++;
-    }
-
-    for (i = 0; word[i] && i < WORD_MAX - 1; i++) s_taught[slot].word[i] = word[i];
-    s_taught[slot].word[i] = 0;
-    for (i = 0; resp[i] && i < RESP_MAX - 1; i++) s_taught[slot].resp[i] = resp[i];
-    s_taught[slot].resp[i] = 0;
-
-    s_taught_dirty = 1;
-    return 1;
-}
-
-int store_forget(const char *word)
-{
-    int i, j;
-    for (i = 0; i < s_taught_n; i++) {
-        const char *a = s_taught[i].word;
-        for (j = 0; a[j] && word[j]; j++)
-            if (lower((u8)a[j]) != lower((u8)word[j])) break;
-        if (!a[j] && !word[j]) {
-            for (; i < s_taught_n - 1; i++) s_taught[i] = s_taught[i + 1];
-            s_taught_n--;
-            s_taught_dirty = 1;
-            return 1;
-        }
-    }
-    return 0;
 }
 
 /* ---- load and save ---------------------------------------------------- */

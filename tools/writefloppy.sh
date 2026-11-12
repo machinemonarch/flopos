@@ -9,9 +9,9 @@
 #   tools/writefloppy.sh --full          write all 1.44MB, not just the part
 #                                        that is used
 #   tools/writefloppy.sh --fresh         do not carry documents, the journal
-#                                        and taught words over from the disk
+#                                        and settings over from the disk
 #
-# Upgrading keeps what you wrote: documents, the journal and taught words
+# Upgrading keeps what you wrote: documents, the journal and settings
 # already on the floppy are copied into the new image before it goes down.
 #
 # It only asks for a password if it has to. Finding the drive and checking
@@ -250,8 +250,8 @@ if findmnt -n "$DEVICE" >/dev/null 2>&1; then
 fi
 
 # --- keep what was written on the old disk ----------------------------------
-# A new image carries an empty inventory, an empty journal and no taught
-# words, so writing it as it is would wipe everything made on the floppy
+# A new image carries an empty inventory, an empty journal and no settings,
+# so writing it as it is would wipe everything made on the floppy
 # since the last upgrade.  Whatever of that is on the floppy now is copied
 # into the snapshot first (tools/keepfiles.sh).  A floppy that is not a FLOPOS disk simply has none of them.
 # --fresh skips this and writes the image exactly as built.
@@ -266,7 +266,7 @@ if [ "$FRESH" -ne 1 ] && command -v mcopy >/dev/null 2>&1; then
 fi
 if [ -n "$KEEPDIR" ] && [ -d "$KEEPDIR" ] && [ "$KEEPDIR" != "/" ]; then
     # What is the user's on the old floppy goes into the snapshot first:
-    # the journal, the taught words, the bookmarks and the whole inventory
+    # the journal, the settings, the bookmarks and the whole inventory
     # (tools/keepfiles.sh).  If any of it cannot be carried, stop here,
     # before anything is written.
     kept="$("$ROOT/tools/keepfiles.sh" "$DEVICE" "$SNAP" "$KEEPDIR")" \

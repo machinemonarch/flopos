@@ -34,8 +34,7 @@ JOURNAL_HEADER = (
     "FLOPOS journal\r\n"
     "\r\n"
     "Everything below this line was written by the machine itself.\r\n"
-    "Words it did not know are recorded here, which is how they get\r\n"
-    "taught to it later.\r\n"
+    "Words it did not know are recorded here.\r\n"
     "\r\n"
 )
 

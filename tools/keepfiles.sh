@@ -7,7 +7,7 @@
 # an empty folder to work in, which is left holding a copy of everything
 # that was carried (the caller removes it once the floppy is verified).
 #
-#   - the journal, the taught words and the bookmarks, where the new image
+#   - the journal, the settings and the bookmarks, where the new image
 #     keeps them at the same size;
 #   - everything in the INVENTORY folder, folders and all;
 #   - from floppies older than the inventory: the documents WRITE1.MD to

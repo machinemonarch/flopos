@@ -253,7 +253,7 @@ void kmain(void)
                                  yr, mo, da, h, mi, store_boots());
         else
             store_journal_printf("--- awake, boot %u", store_boots());
-        boot_result("boot %u, %u words", store_boots(), (u32)store_taught_count());
+        boot_result("boot %u", store_boots());
     } else
         boot_result("nothing kept");
 

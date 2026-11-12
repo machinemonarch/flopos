@@ -29,7 +29,7 @@ The script:
    of a floppy, so a typo can't hit a hard disk.
 2. **Asks you to type `YES`.**
 3. **Keeps what you made.** Your whole inventory, the bookmarks, the
-   journal and the taught words already on the floppy are copied into the
+   journal and the settings already on the floppy are copied into the
    new version before it is written, and a copy stays on this PC until
    the floppy has been read back and found right. If your files would not
    fit beside the new version, nothing is written. Add `--fresh` to start
@@ -119,9 +119,9 @@ Both work on the laptop's own keyboard.
     here> mood          change the light
     here> listen        a different rhythm
     here> whaaat        try it
-    here> teach hej "Hej hej."
     here> write         the word processor
     here> network       how this machine is connected
+    here> apps          the programs on the floppy
     here> browzer       the web
     here> bye           save everything and switch off
 

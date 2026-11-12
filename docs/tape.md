@@ -13,7 +13,7 @@ card has never run on the laptop itself.
 
 Everything in your [inventory](inventory.md), folders and all, and three
 of the system's own records: browzer's bookmarks, the journal, and the
-words you have taught (with the network settings beside them). Nothing
+settings (the network's among them). Nothing
 else can go to a tape, and what comes back can only go into the inventory
 or over one of those three.
 
