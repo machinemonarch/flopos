@@ -28,6 +28,12 @@ cost a little speed.
 
 ### 9. The time from the network is not signed (medium)
 
+**Set aside (2026-11-12), not dropped.** The laptop's clock battery
+works, so the clock is right without the network, and it already refuses
+to go back past the last `bye`. Signed time would cost a few seconds at
+every network start and a fixed outside time server. Take it up again if
+the clock battery fails.
+
 `rtc.c`, `ip.c`. The clock sets itself from a time server, and plain NTP
 has no signature. The answer is checked to come from the server asked and
 to carry back a random number from the question, so nobody off the path

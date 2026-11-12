@@ -6,6 +6,13 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.32.2 — 2026-11-12
+
+- **A song that never ended loading.** A damaged XM song could claim a
+  tempo so fast that a tick had no length, and the tracker then turned
+  for ever, which on the laptop is a frozen machine. Found by the
+  garbage-feeding tool; the tempo is now bounded.
+
 ## 1.32.1 — 2026-11-12
 
 - **Three faults found by feeding the readers garbage, and fixed.** A

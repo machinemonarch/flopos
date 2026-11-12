@@ -462,6 +462,7 @@ static int load_xm(u8 *d, u32 n)
     }
     if (T.speed < 1) T.speed = 6;
     if (T.bpm < 32) T.bpm = 125;
+    if (T.bpm > 255) T.bpm = 255;        /* the file may say up to 65535: a tick of no length never ends */
     return 1;
 }
 
@@ -961,6 +962,7 @@ static void set_tempo(int bpm)
 {
     T.bpm = bpm < 32 ? 32 : bpm > 255 ? 255 : bpm;
     T.tick_len = T.rate * 5 / (T.bpm * 2);
+    if (T.tick_len < 1) T.tick_len = 1;
 }
 
 static void envelope(Chan *c)
@@ -1434,6 +1436,7 @@ int tracker_load(u8 *data, u32 len, u32 room, int rate)
     T.rate = rate;
     if (!T.gvol && T.fmt < F_S3M) T.gvol = 64;
     T.tick_len = T.rate * 5 / (T.bpm * 2);
+    if (T.tick_len < 1) T.tick_len = 1;
     T.tick_left = 0;
     for (i = 0; i < CHANS; i++) { T.ch[i].fade = 65536; T.ch[i].envval = 64; }
     T.playing = 1;
@@ -1445,6 +1448,7 @@ void tracker_rate(int rate)
     if (rate < 4000) return;
     T.rate = rate;
     T.tick_len = T.rate * 5 / (T.bpm * 2);
+    if (T.tick_len < 1) T.tick_len = 1;
     if (T.tick_left > T.tick_len) T.tick_left = T.tick_len;
 }
 
