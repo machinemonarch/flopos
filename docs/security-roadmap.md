@@ -13,14 +13,6 @@ several files or needs new tools. **Large** changes how the system works.
 
 ## Waiting for a decision
 
-### 7. Feed the parsers garbage on the host (medium)
-
-**Fix:** build the code that reads outside data on the Linux machine and
-feed it millions of random and mangled inputs. This is called fuzzing. It
-covers certificates, TLS, HTTP, HTML, mp3, MOD/XM, Ogg and FLAC. It finds
-overflows like the four in the Ogg code before anyone else does. **Cost:**
-setting it up, plus fixing whatever it finds.
-
 ### 8. Walls between apps and the kernel (large)
 
 Today everything shares all of memory, with full control of the machine.
@@ -68,6 +60,17 @@ certificate look valid. The clock already refuses to go back past the last
   (`kernel/time.c`) and is checked 250 times a second. If it changes,
   FLOPOS stops on the crash screen and says "The stack ran over its
   tripwire." Tried in a test build (`tripwire`).
+- **The readers fed garbage (1.32.1).** `tools/fuzz` (see
+  [Building](building.md)) gives damaged songs, recordings, certificate
+  chains, secure conversations and web answers to FLOPOS's own code,
+  built for the PC with a memory checker. Several hundred thousand
+  inputs so far. It found three faults, all fixed:
+  an XM song whose sizes wrapped round could make the tracker write far
+  outside the song's memory; an IT song with more than 128 samples and
+  no instruments wrote past the instrument table; and a page with an
+  attribute name of twelve letters or more wrote one zero byte past a
+  buffer in browzer. Not covered: the network's own packets (ARP, IP,
+  TCP, DNS, DHCP), which were read through by hand in the review.
 - **Four ways a crafted Ogg file could write past its buffers**
   (`apps/lib/audio/vorbis.c`), fixed before 1.19.0 shipped.
 

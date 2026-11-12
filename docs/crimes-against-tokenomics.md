@@ -116,5 +116,10 @@ had been getting by on eight blank documents made in advance. So: the
 rest of FAT12, folders, a move that is picking things up and putting
 them down, and several hundred power cuts on purpose.
 
+**"and implement all the security stuff you had left"** Seven words, sent
+while the previous seven jobs were still running. Among the things left:
+a tool that damages songs by the hundred thousand to see what breaks.
+Three things broke.
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

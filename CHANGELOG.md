@@ -6,6 +6,16 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.32.1 — 2026-11-12
+
+- **Three faults found by feeding the readers garbage, and fixed.** A
+  damaged XM song could make the tracker write outside its memory; so
+  could an IT song with more than 128 samples; and a web page with a
+  very long attribute name wrote one byte too far in browzer.
+- **A tool that looks for such faults** (`tools/fuzz`): songs,
+  recordings, certificates, secure connections and web pages, damaged at
+  random by the hundred thousand and read by FLOPOS's own code on the PC.
+
 ## 1.32.0 — 2026-11-12
 
 - **A shorter `help`.** `teach`, `forget`, `learned` and `echo` are gone.

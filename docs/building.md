@@ -141,6 +141,23 @@ Kept here, so they are never written again:
   mtools must agree with every one; then the same with the power cut
   after a random number of sectors. Run it after any change to `fs.c`.
 
+- `tools/fuzz/run.py` feeds FLOPOS's readers garbage. The code that
+  reads what comes from outside is built for this PC with the compiler's
+  memory checker, and given real inputs damaged at random: bits flipped,
+  sizes changed, pieces cut out, moved and repeated. The targets are
+  `audio` (mp3, Ogg Vorbis, FLAC, AAC, WAV), `tracker` (MOD, XM, S3M,
+  IT), `x509` (certificate chains and signatures), `tls` (whole secure
+  conversations, recorded from openssl servers on this PC and played
+  back damaged, with the seals opened whatever they say so the damage
+  reaches the code behind them) and `browzer` (the whole browser, on a
+  pretend system whose every connection answers with the input).
+  `tools/fuzz/run.py --runs 60000` runs them all; an input that broke
+  something is kept in `dist/fuzz/finds`. Songs come from
+  `~/.cache/flopos-songs`, and recordings from `~/.cache/flopos-fuzz/audio`
+  (the first 96 KB of any mp3, ogg or flac; never kept in the project).
+  Run it after any change to a decoder, the browser's page reading, or
+  the certificate and TLS code.
+
 - `tools/keeptest.sh` tries what `writefloppy.sh` does to carry the
   user's files to a new release (`tools/keepfiles.sh`), on images: an old
   floppy with `WRITE2.MD`, an inventory with folders, a blank disk, and

@@ -1356,7 +1356,9 @@ static void attr_named(void)
 
 static void attr_begin_value(void)
 {
-    s_aname[s_aname_len] = 0;
+    /* A name too long to be one of ours is marked by a length of the
+     * whole array: its end is the last place, not one past it. */
+    s_aname[s_aname_len < (int)sizeof s_aname ? s_aname_len : (int)sizeof s_aname - 1] = 0;
     s_aval = 0;
     if (s_aname_len == 4 && s_aname[0] == 'h' && s_aname[1] == 'r' &&
         s_aname[2] == 'e' && s_aname[3] == 'f') {

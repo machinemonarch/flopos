@@ -288,3 +288,23 @@ the writes is the whole of the safety.
 - **Cut the power on purpose.** The test stops the write after a random
   number of sectors, hundreds of times, and checks that every file is
   whole, old or new.
+
+## The whole browser on a pretend system, fed damaged pages
+
+Apps reach the system only through one table of functions (`apps/app.h`).
+So an app can be built for an ordinary PC and handed a different table:
+one whose network answers with whatever a test gives it, and whose
+keyboard is a script. `tools/fuzz/browzer.c` does that with browzer, and
+a memory checker watches every byte it touches while it reads damaged
+web answers, lays them out, follows links and plays what it is given.
+Nothing in the app is changed for the test.
+
+The secure connection is tested by playing back real conversations.
+FLOPOS's random numbers are replaced by ones that are the same every
+time, so it makes the same keys as when the conversation was recorded
+and the playback fits. Damage inside a sealed record would only fail the
+seal and be thrown away unread; so in the test the seal is opened
+whatever it says, and since these ciphers work by flipping bits, a
+flipped bit in the sealed text comes out as the same flipped bit in the
+message behind it.
+

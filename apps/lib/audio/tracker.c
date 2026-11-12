@@ -376,10 +376,14 @@ static int load_xm(u8 *d, u32 n)
     for (p = 0; p < T.npat; p++) {
         u32 ph, plen;
         int rows;
-        if (at + 9 > n) return 0;
+        /* Every size here is the file's own word for it: each is held
+         * against what is left (n - at) before it is added, so a huge one
+         * cannot wrap round to a small one. */
+        if (at > n || n - at < 9) return 0;
         ph = le32(d + at);
         rows = (int)le16(d + at + 5);
         plen = le16(d + at + 7);
+        if (ph > n - at) return 0;
         at += ph;
         if (rows < 1 || rows > 256) rows = 64;
         T.rows[p] = rows;
@@ -393,7 +397,7 @@ static int load_xm(u8 *d, u32 n)
         Instr *in = &T.ins[i];
         u32 ih, sh = 40;
         int ns, k, first;
-        if (at + 29 > n) return 0;
+        if (at > n || n - at < 29) return 0;
         ih = le32(d + at);
         ns = (int)le16(d + at + 27);
         in->nsmp = 0; in->envtype = 0; in->fadeout = 0; in->envn = 0;
@@ -401,7 +405,7 @@ static int load_xm(u8 *d, u32 n)
         if (ns > 16) ns = 16;
         if (ns > 0) {
             const u8 *h = d + at;
-            if (at + 243 > n) return 0;
+            if (n - at < 243) return 0;
             sh = le32(h + 29);
             for (k = 0; k < 96; k++) in->keymap[k] = h[33 + k] < 16 ? h[33 + k] : 0;
             for (k = 0; k < 12; k++) { in->env[k][0] = (u16)le16(h + 129 + 4 * k); in->env[k][1] = (u16)le16(h + 131 + 4 * k); }
@@ -410,12 +414,14 @@ static int load_xm(u8 *d, u32 n)
             in->envtype = h[233];
             in->fadeout = (int)le16(h + 239);
         }
+        if (ih > n - at) return 0;
         at += ih;
+        if (ns > 0 && (sh < 18 || sh > (n - at) / (u32)ns)) return 0;   /* all ns headers are inside */
         first = T.nsmp;
         for (k = 0; k < ns; k++) {
             Sample *s;
             const u8 *h = d + at + (u32)k * sh;
-            if (T.nsmp >= SAMPLES || at + (u32)(k + 1) * sh > n) return 0;
+            if (T.nsmp >= SAMPLES) return 0;
             s = &T.smp[T.nsmp++];
             s->len = le32(h); s->lstart = le32(h + 4); s->llen = le32(h + 8);
             s->vol = h[12] > 64 ? 64 : h[12];
@@ -433,7 +439,8 @@ static int load_xm(u8 *d, u32 n)
             Sample *s = &T.smp[k];
             int bits16 = s->data != 0;
             u32 j, len = s->len;
-            if (at + len > n) len = at < n ? n - at : 0;
+            if (at > n) at = n;
+            if (len > n - at) len = n - at;
             if (bits16) {
                 s16 v = 0;
                 s8 *o = (s8 *)(d + at);
@@ -801,8 +808,10 @@ static int load_it(u8 *d, u32 n, u32 room)
             }
         }
     } else {                                       /* samples played directly */
-        T.ninst = (int)nsmp;
-        for (i = 0; i < nsmp; i++) one_sample(&T.ins[i], &T.smp[i]);
+        /* There may be more samples (256) than there are instruments to
+         * stand for them (INSTRS): the ones past the end go unplayed. */
+        T.ninst = (int)(nsmp > INSTRS ? INSTRS : nsmp);
+        for (i = 0; i < (u32)T.ninst; i++) one_sample(&T.ins[i], &T.smp[i]);
     }
 
     T.npat = (int)npat;
