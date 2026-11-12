@@ -128,8 +128,10 @@ def main():
 
     # Apps, each its own file: WRITE.APP for `write`.  The kernel finds
     # them by name when they are asked for, so where they land is theirs.
+    # A name over eight letters (INVENTORY.APP) goes on whole, as a long
+    # name, and FAT12 gives it a short one beside it (INVENT~1.APP).
     for app in app_paths:
-        name = os.path.splitext(os.path.basename(app))[0].upper()[:8] + ".APP"
+        name = os.path.splitext(os.path.basename(app))[0].upper() + ".APP"
         run("mcopy", "-i", out_path, app, "::" + name)
 
     # The inventory: the one folder that is the user's.  Everything they

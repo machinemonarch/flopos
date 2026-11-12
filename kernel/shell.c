@@ -155,7 +155,7 @@ static void cmd_browzer(void)
     if (!app_run("browzer", s_argc, s_argv)) say("browzer is not on this floppy.");
 }
 
-/* Your files, INVENTOR.APP on the floppy.  Listed here so `help` shows it. */
+/* Your files, INVENTORY.APP on the floppy.  Listed here so `help` shows it. */
 static void cmd_inventory(void)
 {
     if (!app_run("inventory", s_argc, s_argv)) say("The inventory is not on this floppy.");

@@ -66,7 +66,7 @@ can be read by DOS, Windows, Linux or a Mac. On it:
 | `ROOTS.DAT` | The authorities secure sites are checked against (55 KB) |
 | `JOURNAL.TXT`, `STATE.BIN` | What FLOPOS remembers. Made at full size so they can be written in place. |
 | `INVENTORY` (folder) | Everything the user makes. Empty in a new image. |
-| `INVENTOR.APP`, `TAPE.APP` | The inventory and the cassette backup |
+| `INVENTORY.APP`, `TAPE.APP` | The inventory and the cassette backup |
 | `README.TXT` | The project's README |
 
 Alongside the image it writes `flopos.img.used`, a list of which parts of

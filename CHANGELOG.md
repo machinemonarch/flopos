@@ -6,6 +6,13 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.31.1 — 2026-11-12
+
+- **The inventory's program is named in full on the floppy.** It was
+  `INVENTOR.APP`, one letter short, because a FAT12 name holds eight
+  letters. It is now `INVENTORY.APP`, written as a long name, which is
+  what another computer shows. Nothing says "inventor" any more.
+
 ## 1.31.0 — 2026-11-12
 
 - **The inventory: your files, in real folders.** `inventory` lists what

@@ -135,15 +135,26 @@ static u32 s_app_bytes;                  /* the open app's memory, or 0     */
 int app_active(void) { return s_app_bytes != 0; }
 u32 app_bytes(void)  { return s_app_bytes; }
 
-/* The file an app's word names: the word and .APP.  A file's name holds
- * eight letters, and "inventory" has nine, so that one word is kept in
- * INVENTOR.APP. */
+/* The file an app's word names: the word and .APP.  A word longer than
+ * eight letters has its whole name on the floppy as a long name
+ * (INVENTORY.APP), which is what another computer shows, and FAT12's own
+ * short name beside it, which is the one looked for here. */
+static const struct { const char *word, *file; } s_long[] = {
+    { "inventory", "INVENT~1.APP" },
+};
+#define LONGS ((int)(sizeof s_long / sizeof s_long[0]))
+
 static int app_file(const char *word, char file[13])
 {
-    static const char inv[] = "inventory";
-    int i, n = 0;
-    for (i = 0; inv[i] && (word[i] | 32) == inv[i]; i++) { }
-    if (!inv[i] && !word[i]) word = "inventor";
+    int i, k, n = 0;
+    for (k = 0; k < LONGS; k++) {
+        const char *w = s_long[k].word;
+        for (i = 0; w[i] && (word[i] | 32) == w[i]; i++) { }
+        if (w[i] || word[i]) continue;
+        for (i = 0; s_long[k].file[i]; i++) file[i] = s_long[k].file[i];
+        file[i] = 0;
+        return 1;
+    }
     for (i = 0; word[i]; i++) {
         char c = word[i];
         if (n >= 8) return 0;
@@ -249,15 +260,19 @@ int app_run(const char *word, int argc, char **argv)
 /* ---- `apps`: what is on the floppy to run ------------------------------- */
 static void list_one(const char *name, u32 size, void *ctx)
 {
-    int i, n = 0;
+    int i, k, n = 0;
     int *count = (int *)ctx;
     for (i = 0; name[i]; i++) n = i;
     if (n < 4 || name[n - 3] != '.' || name[n - 2] != 'A' || name[n - 1] != 'P' || name[n] != 'P')
         return;
     term_colour(C_BRIGHT);
     term_print("  ");
-    for (i = 0; i < n - 3; i++) term_putc(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
-    if (n == 11 && name[0] == 'I' && name[7] == 'R') term_putc('y');   /* INVENTOR.APP is the inventory */
+    for (k = 0; k < LONGS; k++) {            /* a long name is shown whole */
+        for (i = 0; name[i] && name[i] == s_long[k].file[i]; i++) { }
+        if (!name[i] && !s_long[k].file[i]) break;
+    }
+    if (k < LONGS) term_print(s_long[k].word);
+    else for (i = 0; i < n - 3; i++) term_putc(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
     term_colour(C_DIM);
     term_printf("   %u kb", (size + 1023) / 1024);
     term_newline();

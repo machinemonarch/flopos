@@ -1,7 +1,7 @@
 /* ===========================================================================
  * inventory.c -- what you carry: your files, and the folders they are in.
  *
- * INVENTOR.APP on the floppy; typed as `inventory`.  It shows the one
+ * INVENTORY.APP on the floppy; typed as `inventory`.  It shows the one
  * folder on the floppy that is yours (INVENTORY, as any other computer
  * sees it) and lets you walk through it, open a document, make a folder,
  * rename, move and drop things.  All of the work is the system's (the
