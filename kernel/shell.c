@@ -281,6 +281,8 @@ static void cmd_sys(void)
     }
     term_printf("a20     %s", BOOTINFO_A20 ? "open" : "unverified");
     term_newline();
+    term_printf("apps    %s", wall_on() ? "kept to their own memory" : "not walled off: this CPU cannot");
+    term_newline();
 }
 
 static void cmd_mood(void)
@@ -1370,7 +1372,9 @@ static void cmd_stall(void)
         /* The old way in: straight through, controllers left as they are. */
         u32 f = irq_save();
         extern u32 bios_int_raw(u16, u16, u16, u16, u16, u16, u16);
+        wall_paging(0);
         bios_int_raw(0x10, 0, 0, 0, 0, 0, 0);
+        wall_paging(1);
         irq_restore(f);
     } else {
         bios_int(0x10, 0, 0, 0, 0, 0, 0);

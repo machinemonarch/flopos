@@ -98,6 +98,30 @@ int    heap_is_low(void);                /* using conventional memory?     */
 
 /* --- fault.c ----------------------------------------------------------- */
 void   fatal(const char *what, const char *detail);
+
+/* What an interrupt leaves on the stack (isr.S).  useresp and ss are there
+ * only when it came from an app's privilege (cs & 3). */
+typedef struct {
+    u32 edi, esi, ebp, esp_unused, ebx, edx, ecx, eax;
+    u32 vector;
+    u32 err;
+    u32 eip, cs, eflags;
+    u32 useresp, ss;
+} Regs;
+
+/* --- wall.c: apps kept to their own memory ------------------------------- */
+void   wall_init(void);
+int    wall_on(void);
+void   wall_paging(int on);              /* off and on again round a BIOS call */
+int    wall_trap(Regs *r);               /* 1 if it was one of an app's doors  */
+void   wall_fault(Regs *r, const char *what);
+int    wall_run(u32 entry, int argc, char **argv);
+u32    wall_call(u32 fn, u32 a0, u32 a1, u32 a2);     /* into the app and back */
+u32    wall_scratch(void);               /* a few hundred bytes of the app's, for handing it things */
+u32    wall_string(int slot, const char *s);          /* a string put where the app can read it */
+void   wall_kill(const char *why);
+int    app_ask(u32 n, const u32 *a, u32 *result);     /* apps.c: one request, checked */
+extern int g_irq_depth;
 extern const char *g_panic_note;         /* said on the crash screen, if set */
 
 /* --- idt.c ------------------------------------------------------------- */
@@ -778,6 +802,7 @@ int    fs_mount(void);
 int    fs_find(const char *name, FsFile *f);
 int    fs_read(const FsFile *f, u8 *buf, u32 max);
 int    fs_write_inplace(const FsFile *f, const u8 *buf);
+int    fs_is_file(const FsFile *f);      /* a real file's place and length  */
 void   fs_each(void (*fn)(const char *name, u32 size, void *ctx), void *ctx);
 
 /* The inventory: your own folder on the floppy, where files and folders

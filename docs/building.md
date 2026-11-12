@@ -141,6 +141,10 @@ Kept here, so they are never written again:
   mtools must agree with every one; then the same with the power cut
   after a random number of sectors. Run it after any change to `fs.c`.
 
+- `tools/walltest/run.py` builds an app that breaks each of the wall's
+  rules on purpose (`tools/walltest/rogue.c`), runs it in the emulator and
+  checks that FLOPOS closes it and still answers afterwards.
+
 - `tools/fuzz/run.py` feeds FLOPOS's readers garbage. The code that
   reads what comes from outside is built for this PC with the compiler's
   memory checker, and given real inputs damaged at random: bits flipped,
@@ -169,7 +173,7 @@ Kept here, so they are never written again:
   it back. The `tape` app itself is tried in a test build
   (`make EXTRA_CFLAGS=-DFLOPOS_TEST`), where the sound driver keeps what
   it plays and plays it back when asked to listen: with `tools/bench/run.py`,
-  `type:tape save\n`, `key:ret=>\[tape\] saved files 11`, `key:esc`,
+  `type:tape save\n`, `key:ret=>\[tape\] saved files 3`, `key:esc`,
   `type:tape load\n=>\[tape\] same STATE.BIN`. Delete the bench's
   `sound.wav` afterwards; it is large.
 

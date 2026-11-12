@@ -80,6 +80,11 @@ isr\vec:
         ISR_NOERR 46
         ISR_NOERR 47
 
+        /* An app's two doors into the system (wall.c): 0x80 asks for
+         * something, 0x81 comes back from a call the system made into it. */
+        ISR_NOERR 128
+        ISR_NOERR 129
+
 /* ---- the one true trampoline -----------------------------------------
  * Stack on entry to isr_dispatch, low address first:
  *   edi esi ebp esp ebx edx ecx eax   (pusha, 8 dwords)
@@ -107,6 +112,58 @@ isr_common:
         addl    $8, %esp                /* drop vector and error code      */
         iret
 
+/* ---- into an app, and back out of it -----------------------------------
+ * u32 wall_go(u32 eip, u32 usp, u32 *kesp, u32 *esp0)
+ *
+ * Leaves the system for the app: the registers a C function must keep are
+ * put on this stack, the stack's place is written to *kesp (to come back
+ * to) and to *esp0 (where the CPU puts the system's stack when the app is
+ * interrupted or asks for something), and an IRET drops to the app's
+ * privilege at eip, on its own stack.  It "returns" when wall_back is
+ * called with that kesp: with the value given there.
+ */
+        .text
+        .globl  wall_go, wall_back
+wall_go:
+        pushl   %ebp
+        pushl   %ebx
+        pushl   %esi
+        pushl   %edi
+        movl    20(%esp), %eax          /* eip                             */
+        movl    24(%esp), %ecx          /* the app's stack                 */
+        movl    28(%esp), %edx
+        movl    %esp, (%edx)
+        movl    32(%esp), %edx
+        movl    %esp, (%edx)
+        pushl   $0x33                   /* the app's data, at its privilege */
+        pushl   %ecx
+        pushl   $0x202                  /* interrupts on; no port access   */
+        pushl   $0x2B                   /* the app's code                  */
+        pushl   %eax
+        movw    $0x33, %ax
+        movw    %ax, %ds
+        movw    %ax, %es
+        movw    %ax, %fs
+        movw    %ax, %gs
+        xorl    %eax, %eax
+        xorl    %ebx, %ebx
+        xorl    %ecx, %ecx
+        xorl    %edx, %edx
+        xorl    %esi, %esi
+        xorl    %edi, %edi
+        xorl    %ebp, %ebp
+        iret
+
+/* void wall_back(u32 kesp, u32 value): wall_go returns value. */
+wall_back:
+        movl    8(%esp), %eax
+        movl    4(%esp), %esp
+        popl    %edi
+        popl    %esi
+        popl    %ebx
+        popl    %ebp
+        ret
+
 /* ---- a table so the C side can fill in the IDT ----------------------- */
         .section .rodata
         .align  4
@@ -118,3 +175,4 @@ isr_table:
         .long   isr24, isr25, isr26, isr27, isr28, isr29, isr30, isr31
         .long   isr32, isr33, isr34, isr35, isr36, isr37, isr38, isr39
         .long   isr40, isr41, isr42, isr43, isr44, isr45, isr46, isr47
+        .long   isr128, isr129

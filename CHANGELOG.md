@@ -6,6 +6,16 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- **A wall between apps and the system.** An app can now touch only its
+  own memory and has to ask FLOPOS for everything else. One that reaches
+  outside, or tries something only the system may do, is closed with a
+  line saying why, and FLOPOS carries on. `sys` says whether the wall is
+  up. Apps moved to 12MB and need 20MB of memory. Speed in the emulator:
+  sound takes 7.1% of the machine instead of 6.8% while the browser plays
+  a song, and the screen keeps its 30 frames a second. Not yet run on the
+  laptop.
+- `tools/walltest` checks the wall with an app that breaks each rule.
+
 ## 1.32.2 — 2026-11-12
 
 - **A song that never ended loading.** A damaged XM song could claim a

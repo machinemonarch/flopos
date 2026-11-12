@@ -91,6 +91,11 @@ $(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) \
 	      apps/crt.c $(wildcard apps/$*/*.c) $(foreach l,$(APPLIBS_$*),$(wildcard apps/lib/$(l)/*.c))
 	@echo "   $*.app: $$(stat -c%s $@) bytes"
 
+# Test apps (tools/walltest): built like any app, never put on the floppy.
+$(BUILD)/test/%.app: tools/walltest/%.c apps/crt.c apps/app.h apps/app.ld
+	@mkdir -p $(BUILD)/test
+	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $<
+
 $(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/roots.dat boot/wizard.wiz tools/mkimage.py README.md
 	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 

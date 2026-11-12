@@ -166,6 +166,21 @@ int fs_find(const char *name, FsFile *f)
 }
 
 /* Visit every file, for listings. */
+/* Is this (first cluster, size) a file in the top folder, no longer than
+ * the file really is?  What an app hands back is checked with this. */
+int fs_is_file(const FsFile *f)
+{
+    u32 i;
+    if (!fs_mount()) return 0;
+    for (i = 0; i < s_root_n; i++) {
+        const u8 *e = s_root + i * 32;
+        if (e[0] == 0x00) break;
+        if (e[0] == 0xE5 || (e[11] & 0x18)) continue;
+        if (get16(e + 26) == f->first && f->size <= get32(e + 28)) return 1;
+    }
+    return 0;
+}
+
 void fs_each(void (*fn)(const char *name, u32 size, void *ctx), void *ctx)
 {
     u32 i;

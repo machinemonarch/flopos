@@ -184,6 +184,7 @@ void kmain(void)
     vga_adopt();
     cpu_detect();
     idt_init();
+    wall_init();                         /* paging on; apps will be kept to their own memory */
     time_init();
     irq_enable();
 

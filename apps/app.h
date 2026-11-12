@@ -27,8 +27,9 @@ typedef unsigned long long  u64;
 #endif
 
 #define APP_API_VERSION 6
-#define APP_BASE        0x00A00000u      /* 10MB, clear of the kernel heap */
-#define APP_MAX         0x00800000u      /* 8MB: code, data and buffers    */
+#define APP_BASE        0x00C00000u      /* 12MB: two whole 4MB pages, the app's own */
+#define APP_MAX         0x00800000u      /* 8MB: code, data, buffers and the stack */
+#define APP_STACK       0x00040000u      /* the top 256KB: its stack, and a page the system fills in */
 
 typedef struct {
     char magic[8];                       /* "FLOPAPP" and a zero           */

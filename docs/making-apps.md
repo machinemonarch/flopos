@@ -19,7 +19,7 @@ Type its name. When FLOPOS doesn't know a word as a command, it looks on
 the floppy for a file of that name ending in `.APP`. `apps` lists them.
 Anything after the name is passed to the app: `write letter`.
 
-Apps need at least 18MB of memory, which the 430CDT (32MB) has.
+Apps need at least 20MB of memory, which the 430CDT (32MB) has.
 
 ## How an app is built
 
@@ -53,7 +53,7 @@ or better, no floating point, and no C library. `crt.c` provides `memset`,
 
 ## Where an app sits
 
-Every app is linked to run at address 0x00A00000 (10MB) and may use up to
+Every app is linked to run at address 0x00C00000 (12MB) and may use up to
 8MB from there. The file starts with a header, which FLOPOS checks before
 running anything:
 
@@ -61,7 +61,7 @@ running anything:
 |---|---|
 | `magic` | `FLOPAPP`, so a stray file is never run |
 | `api_version` | Which version of the `Api` table it was built for |
-| `load_addr` | Must be 0x00A00000 |
+| `load_addr` | Must be 0x00C00000 |
 | `image_end`, `bss_end` | How much of the file is code and data, and how much zeroed memory follows |
 | `entry` | Where `app_main` is |
 | `name` | The app's name |
@@ -69,6 +69,26 @@ running anything:
 FLOPOS reads the file into place, zeroes the rest of the app's memory,
 checks the header, and calls `app_main`. When it returns, you are back at
 `here>`.
+
+## The wall
+
+An app runs with fewer rights than the system (ring 3, with paging). It
+can read and write its own 8MB and nothing else: not the system's memory,
+not the screen's, not the hardware's ports. Everything it wants done it
+asks for through the `Api` table, exactly as before; each entry is now a
+small stub that hands the request over the wall (`INT 0x80`), and FLOPOS
+checks every pointer in it lies inside the app's own memory before using
+it. Functions an app hands to FLOPOS (the sound feeder, the callbacks for
+listings) are called back on the app's side of the wall.
+
+An app that reaches outside its memory, uses an instruction only the
+system may use, or divides by zero is closed with one line saying which,
+and you are back at `here>`. The line is also written in the journal.
+
+The top 4KB of the app's area belongs to the wall (the stubs and a few
+strings), and the stack sits under it. On a CPU without 4MB pages (a 486)
+there is no wall and apps are called directly, as before; `sys` says
+which.
 
 ## What an app can ask for
 

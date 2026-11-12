@@ -308,3 +308,20 @@ whatever it says, and since these ciphers work by flipping bits, a
 flipped bit in the sealed text comes out as the same flipped bit in the
 message behind it.
 
+
+## A wall the apps never notice
+
+Apps were built to call the system through a table of function addresses.
+To put them behind a wall (ring 3 and paging) without rebuilding how they
+are written, the table they are handed now points at eight-byte stubs
+that live in the app's own memory: load a number, `INT 0x80`, return. The
+arguments stay where C left them, on the app's stack, and the kernel
+reads them from there after checking the stack is the app's. Going the
+other way, when the kernel must call a function the app gave it (the
+sound feeder, from inside the timer interrupt), it builds a small frame
+on the app's stack whose return address is another stub, `INT 0x81`, and
+drops to ring 3; the stub brings it back to exactly where it left off.
+These calls nest. The paging is the plainest possible: 4MB pages, every
+address mapped to itself, two of them open to apps. It goes off for each
+BIOS call, since the BIOS runs in 16-bit mode. Sources: Intel's
+architecture manuals (privilege levels, the task segment, 4MB pages).

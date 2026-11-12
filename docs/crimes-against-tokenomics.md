@@ -121,5 +121,10 @@ while the previous seven jobs were still running. Among the things left:
 a tool that damages songs by the hundred thousand to see what breaks.
 Three things broke.
 
+**"you havent started on this even?"** Asked about the largest item on
+the security list, the one filed as "large", an hour after ordering all
+of them in seven words. A fair question. The apps now live behind a wall
+and none of them has noticed.
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

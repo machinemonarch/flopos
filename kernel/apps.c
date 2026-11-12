@@ -76,9 +76,20 @@ static int  api_read(const AppFile *f, u8 *b, u32 m)
     if (kept_file(f) && store_unsaved()) store_save();
     return fs_read((const FsFile *)f, b, m);
 }
+/* Only three of the system's files may be written in place by an app:
+ * the bookmarks, and the two the tape puts back.  Never the system itself. */
+static int may_write(const AppFile *f)
+{
+    static const char *const names[] = { "BOOKMARK.TXT", "JOURNAL.TXT", "STATE.BIN" };
+    FsFile k;
+    int i;
+    for (i = 0; i < 3; i++)
+        if (fs_find(names[i], &k) && k.first == f->first && k.size == f->size) return 1;
+    return 0;
+}
 static int  api_write(const AppFile *f, const u8 *b)
 {
-    int ok = fs_write_inplace((const FsFile *)f, b);
+    int ok = may_write(f) && fs_write_inplace((const FsFile *)f, b);
     if (ok && kept_file(f)) store_reload();
     return ok;
 }
@@ -122,6 +133,160 @@ static const Api s_api = {
     api_inv_list, inv_stat_app, inv_read, inv_write, inv_mkdir, inv_remove, inv_move, inv_room, inv_why,
     api_then,
 };
+
+/* ---- behind the wall (wall.c): one request from an app, checked -----------
+ * n is which function of the table, a its arguments as the app pushed
+ * them.  Everything that is a pointer is held against the app's own
+ * memory before it is used: a string must end inside it, a buffer must
+ * lie inside it for its whole length, a routine the system is to call
+ * must be inside it.  Returns 0 if the app asked for something it may
+ * not, and it is then closed. */
+#define APP_END (APP_BASE + APP_MAX)
+static int ok_buf(u32 at, u32 len) { return at >= APP_BASE && at <= APP_END && len <= APP_END - at; }
+static int ok_str(u32 at)
+{
+    const char *s = (const char *)at;
+    u32 i;
+    if (!ok_buf(at, 1)) return 0;
+    for (i = 0; at + i < APP_END; i++) if (!s[i]) return 1;
+    return 0;
+}
+
+/* The system calls back into the app through these; what the app is
+ * handed (a name, an item, a line of text) is copied into its own memory
+ * first, since it cannot read the system's. */
+static u32 s_cb_each, s_cb_inv, s_cb_note, s_cb_feed;
+static void each_back(const char *name, u32 size, void *ctx)
+{
+    char *d = (char *)wall_scratch();
+    int i;
+    for (i = 0; name[i] && i < 15; i++) d[i] = name[i];
+    d[i] = 0;
+    wall_call(s_cb_each, (u32)d, size, (u32)ctx);
+}
+static void inv_back(const FsItem *it, void *ctx)
+{
+    FsItem *d = (FsItem *)(wall_scratch() + 32);
+    *d = *it;
+    wall_call(s_cb_inv, (u32)d, (u32)ctx, 0);
+}
+static void note_back(const char *t)
+{
+    char *d = (char *)(wall_scratch() + 96);
+    int i;
+    for (i = 0; t[i] && i < 255; i++) d[i] = t[i];
+    d[i] = 0;
+    wall_call(s_cb_note, (u32)d, 0, 0);
+}
+static void feed_back(void) { wall_call(s_cb_feed, 0, 0, 0); }
+
+/* format(out, cap, fmt, ...): the arguments are words on the app's stack;
+ * each %s among them is a pointer and is checked like any other string. */
+static int ask_format(const u32 *a)
+{
+    const char *f = (const char *)a[2];
+    u32 args[12];
+    int n = 0;
+    if (!ok_buf(a[0], a[1]) || !a[1] || !ok_str(a[2])) return 0;
+    for (; *f; f++) {
+        if (*f != '%') continue;
+        f++;
+        while (*f >= '0' && *f <= '9') f++;
+        if (!*f) break;
+        if (*f == '%') continue;
+        if (n >= 12) return 0;
+        if (*f == 's' && a[3 + n] && !ok_str(a[3 + n])) return 0;
+        args[n] = a[3 + n];
+        n++;
+    }
+    for (; n < 12; n++) args[n] = 0;
+    fmt_str((char *)a[0], a[1], (const char *)a[2], args[0], args[1], args[2], args[3], args[4], args[5],
+            args[6], args[7], args[8], args[9], args[10], args[11]);
+    return 1;
+}
+
+int app_ask(u32 n, const u32 *a, u32 *result)
+{
+    const Api *k = &s_api;
+    u32 r = 0;
+    AppFile f;
+
+#define STR(i)     do { if (!ok_str(a[i])) return 0; } while (0)
+#define BUF(i, n)  do { if ((s32)(n) < 0 || !ok_buf(a[i], (u32)(n))) return 0; } while (0)
+#define FN(i)      do { if (a[i] && !ok_buf(a[i], 1)) return 0; } while (0)
+    switch (n) {
+    case 0:  r = (u32)k->win_open((int)a[0], (int)a[1]); break;
+    case 1:  k->win_close(); break;
+    case 2:  r = (u32)k->win_width(); break;
+    case 3:  r = (u32)k->win_height(); break;
+    case 4:  k->win_put((int)a[0], (int)a[1], (int)a[2], (u8)a[3], (u8)a[4], (u8)a[5]); break;
+    case 5:  STR(2); r = (u32)k->win_text((int)a[0], (int)a[1], (const char *)a[2], (u8)a[3], (u8)a[4]); break;
+    case 6:  k->win_band((int)a[0], (int)a[1], (int)a[2], (u8)a[3]); break;
+    case 7:  if (a[0]) STR(0); k->win_frame((const char *)a[0], (u8)a[1]); break;
+    case 8:  r = (u32)k->screen_cols(); break;
+    case 9:  r = (u32)k->screen_rows(); break;
+    case 10: STR(0); k->print((const char *)a[0]); break;
+    case 11: k->newline(); break;
+    case 12: k->colour((u8)a[0]); break;
+    case 13: if (a[0]) BUF(0, 4); r = (u32)k->key((int *)a[0]); break;
+    case 14: k->pump((int)a[0]); break;
+    case 15: r = k->ms(); break;
+    case 16: STR(0); BUF(1, sizeof f); r = (u32)k->file_find((const char *)a[0], (AppFile *)a[1]); break;
+    case 17:                                     /* file_read: the file must be one that exists */
+        BUF(0, sizeof f); f = *(const AppFile *)a[0];
+        BUF(1, a[2]);
+        if (!fs_is_file((const FsFile *)&f)) { r = (u32)-1; break; }
+        r = (u32)k->file_read(&f, (u8 *)a[1], a[2]);
+        break;
+    case 18:                                     /* file_write: as long as the file is */
+        BUF(0, sizeof f); f = *(const AppFile *)a[0];
+        if (!may_write(&f)) { r = 0; break; }
+        BUF(1, f.size);
+        r = (u32)k->file_write(&f, (const u8 *)a[1]);
+        break;
+    case 19: FN(0); if (!a[0]) break; s_cb_each = a[0]; k->file_each(each_back, (void *)a[1]); break;
+    case 20: if (!ask_format(a)) return 0; break;
+    case 21: r = wall_string(0, k->os_version()); break;
+    case 22: k->putc((int)a[0]); break;
+    case 23: k->plain((int)a[0]); break;
+    case 24: STR(0); k->wire((const char *)a[0]); break;
+    case 25: r = (u32)k->net_online(); break;
+    case 26: STR(0); FN(3); s_cb_note = a[3];
+             r = (u32)k->conn_open((const char *)a[0], (u16)a[1], (int)a[2], a[3] ? note_back : 0); break;
+    case 27: BUF(0, a[1]); r = (u32)k->conn_write((const u8 *)a[0], (int)a[1]); break;
+    case 28: BUF(0, a[1]); r = (u32)k->conn_read((u8 *)a[0], (int)a[1], (int)a[2]); break;
+    case 29: k->conn_close(); break;
+    case 30: r = wall_string(1, k->conn_why()); break;
+    case 31: BUF(0, sizeof(ConnInfo)); k->conn_info((ConnInfo *)a[0]); break;
+    case 32: k->conn_check((int)a[0]); break;
+    case 33: r = (u32)k->audio_open((int)a[0]); break;
+    case 34: r = (u32)k->audio_space(); break;
+    case 35: r = (u32)k->audio_queued(); break;
+    case 36: BUF(0, a[1]); r = (u32)k->audio_write((const u8 *)a[0], (int)a[1]); break;
+    case 37: k->audio_close(); break;
+    case 38: FN(0); s_cb_feed = a[0]; k->audio_feeder(a[0] ? feed_back : 0); break;
+    case 39: r = (u32)k->audio_listen((int)a[0], (int)a[1]); break;
+    case 40: BUF(0, a[1]); r = (u32)k->audio_heard((u8 *)a[0], (int)a[1]); break;
+    case 41: STR(0); FN(1); if (!a[1]) break; s_cb_inv = a[1];
+             r = (u32)inv_list((const char *)a[0], inv_back, (void *)a[2]); break;
+    case 42: STR(0); BUF(1, sizeof(InvItem)); r = (u32)k->inv_stat((const char *)a[0], (InvItem *)a[1]); break;
+    case 43: STR(0); BUF(1, a[2]); r = (u32)k->inv_read((const char *)a[0], (u8 *)a[1], a[2]); break;
+    case 44: STR(0); BUF(1, a[2]); r = (u32)k->inv_write((const char *)a[0], (const u8 *)a[1], a[2]); break;
+    case 45: STR(0); r = (u32)k->inv_mkdir((const char *)a[0]); break;
+    case 46: STR(0); r = (u32)k->inv_remove((const char *)a[0]); break;
+    case 47: STR(0); STR(1); r = (u32)k->inv_move((const char *)a[0], (const char *)a[1]); break;
+    case 48: r = k->inv_room(); break;
+    case 49: r = wall_string(2, k->inv_why()); break;
+    case 50: STR(0); k->then((const char *)a[0]); break;
+    default: return 0;
+    }
+#undef STR
+#undef BUF
+#undef FN
+    *result = r;
+    return 1;
+}
+_Static_assert((sizeof(Api) - 4) / 4 == 51, "a function was added to the table: give it a case in app_ask");
 
 static int memory_for_apps(void)
 {
@@ -186,7 +351,7 @@ static int run_one(const char *word, int argc, char **argv)
 
     term_colour(C_ACCENT);
     if (!memory_for_apps()) {
-        term_print("Apps need 18MB of memory; this machine has less.");
+        term_print("Apps need 20MB of memory; this machine has less.");
         term_newline();
         return 1;
     }
@@ -203,7 +368,7 @@ static int run_one(const char *word, int argc, char **argv)
     if (h->magic[0] != 'F' || h->magic[1] != 'L' || h->magic[2] != 'O' ||
         h->magic[3] != 'P' || h->magic[4] != 'A' || h->magic[5] != 'P' ||
         h->magic[6] != 'P' || h->load_addr != APP_BASE ||
-        h->bss_end > APP_BASE + APP_MAX || h->image_end > h->bss_end ||
+        h->bss_end > APP_BASE + APP_MAX - APP_STACK || h->image_end > h->bss_end ||
         h->entry < APP_BASE || h->entry >= h->image_end) {
         term_printf("%s does not look like an app.", file);
         term_newline();
@@ -221,7 +386,11 @@ static int run_one(const char *word, int argc, char **argv)
     memset8((void *)h->image_end, 0, h->bss_end - h->image_end);
     serial_printf("[app] %s: %u bytes, %u in memory\n", file, f.size, h->bss_end - APP_BASE);
     s_app_bytes = h->bss_end - APP_BASE;
-    r = ((AppMain)h->entry)(&s_api, argc, argv);
+    /* Behind the wall, at its own privilege and on its own stack (the top
+     * of its memory); or, on a CPU that cannot do that, as part of the
+     * system, the way it used to be. */
+    if (wall_on()) r = wall_run(h->entry, argc, argv);
+    else           r = ((AppMain)h->entry)(&s_api, argc, argv);
     s_app_bytes = 0;
     audio_feeder(0);                     /* its memory is no longer its own */
     audio_close();

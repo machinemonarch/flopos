@@ -13,19 +13,6 @@ several files or needs new tools. **Large** changes how the system works.
 
 ## Waiting for a decision
 
-### 8. Walls between apps and the kernel (large)
-
-Today everything shares all of memory, with full control of the machine.
-One overflow anywhere owns the whole machine and could even rewrite the
-floppy. Until this is fixed, the floppy's write-protect tab is the only
-guard.
-
-**Fix:** use paging and run apps with lower privilege (ring 3). An app
-could then touch only its own 8 MB, and would have to ask the kernel for
-everything else. **Stops:** a single bug taking over everything. This is
-the biggest gain and also the most work, and every call an app makes would
-cost a little speed.
-
 ### 9. The time from the network is not signed (medium)
 
 **Set aside (2026-11-12), not dropped.** The laptop's clock battery
@@ -45,6 +32,20 @@ certificate look valid. The clock already refuses to go back past the last
 `bye`, which limits how far back that can reach.
 
 ## Done
+
+- **Walls between apps and the kernel (1.33.0).** Apps run in ring 3
+  behind paging. An app can touch its own 8 MB only and asks the kernel
+  for everything else; every pointer it hands over is checked. An app
+  that breaks the rules is closed and FLOPOS carries on. Tested in the
+  emulator with an app that breaks each rule on purpose
+  (`tools/walltest`), and with every real app. Cost measured there: the
+  browser playing a song uses 7.1% of the machine for sound instead of
+  6.8%, and the screen stays at 30 frames a second. **Not yet run on the
+  laptop.** What it does not do: the kernel itself is still one piece,
+  so a fault in the kernel's own readers (network, files) is not
+  contained; an app may still ask for anything the `Api` offers, such as
+  the network or writing the three files it is allowed to write; and on
+  a 486 there is no wall.
 
 - **TCP's "hang up" (1.31.4).** A reset is believed only at the exact
   number expected. One that is merely close gets an answer saying where we

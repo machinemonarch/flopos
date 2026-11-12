@@ -24,14 +24,7 @@ typedef struct {
     u32 base;
 } __attribute__((packed)) IdtPtr;
 
-typedef struct {
-    u32 edi, esi, ebp, esp_unused, ebx, edx, ecx, eax;
-    u32 vector;
-    u32 err;
-    u32 eip, cs, eflags;
-} Regs;
-
-extern void *isr_table[48];
+extern void *isr_table[50];
 
 static IdtEntry s_idt[256];
 static IdtPtr   s_idtp;
@@ -114,6 +107,10 @@ void idt_init(void)
 
     for (i = 0; i < 256; i++) idt_set(i, 0), s_idt[i].flags = 0;
     for (i = 0; i < 48; i++)  idt_set(i, (u32)isr_table[i]);
+    /* The two doors an app may knock on (wall.c): the only vectors that
+     * can be raised from an app's privilege. */
+    idt_set(0x80, (u32)isr_table[48]); s_idt[0x80].flags = 0xEE;
+    idt_set(0x81, (u32)isr_table[49]); s_idt[0x81].flags = 0xEE;
 
     pic_to_kernel();
 
@@ -234,15 +231,21 @@ static void panic(Regs *r)
 /* Cycles spent in interrupts: work, even when it interrupts a halt (the
  * sound is decoded here), so the HUD takes it out of the idle time. */
 u32 g_irq_cycles;
+int g_irq_depth;                         /* interrupts inside interrupts; wall.c clears it when an app is closed from inside one */
 
 void isr_dispatch(Regs *r)
 {
-    static int depth;
     u32 v = r->vector, c0;
 
+    /* From an app: its doors, its faults (which close it, not the
+     * machine), and where its stack was, for calls made back into it. */
+    if ((r->cs & 3) == 3) {
+        if (wall_trap(r)) return;
+        if (v < 32) { g_irq_depth = 0; wall_fault(r, v < 32 ? s_exc_name[v] : "hardware"); }
+    }
     if (v < 32) { panic(r); return; }
     c0 = g_cpu_mhz ? tsc32() : 0;
-    depth++;
+    g_irq_depth++;
 
     switch (v) {
     case 32: timer_irq(); break;
@@ -258,5 +261,5 @@ void isr_dispatch(Regs *r)
      * done: the sound queue refilled, if an app has asked for that. */
     if (v == 32) audio_deferred();
     cli();                                /* the sound's work may have let others in */
-    if (--depth == 0 && g_cpu_mhz) g_irq_cycles += tsc32() - c0;
+    if (--g_irq_depth == 0 && g_cpu_mhz) g_irq_cycles += tsc32() - c0;
 }

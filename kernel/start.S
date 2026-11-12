@@ -265,6 +265,9 @@ gdt:
         .quad   0x00CF92000000FFFF      /* 0x10 data32, base 0, limit 4G   */
         .quad   0x00009A010000FFFF      /* 0x18 code16, base 0x10000, 64K  */
         .quad   0x000092010000FFFF      /* 0x20 data16, base 0x10000, 64K  */
+        .quad   0x00CFFA000000FFFF      /* 0x28 an app's code: privilege 3 */
+        .quad   0x00CFF2000000FFFF      /* 0x30 an app's data: privilege 3 */
+        .quad   0x0000000000000000      /* 0x38 the task state: wall.c     */
 gdt_end:
 gdt_desc:
         .word   gdt_end - gdt - 1

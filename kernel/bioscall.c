@@ -50,12 +50,14 @@ u32 bios_int(u16 which, u16 ax, u16 bx, u16 cx, u16 dx, u16 es, u16 di)
     flags = irq_save();
     if (g_cpu_mhz) t0 = tsc32();
 
+    wall_paging(0);                      /* real mode knows nothing of pages */
     pic_to_bios();
     outb(0x43, 0x36);                    /* ch0, lo/hi, square wave        */
     outb(0x40, 0x00);                    /* 65536: the BIOS's 18.2Hz       */
     outb(0x40, 0x00);
     r = bios_int_raw(which, ax, bx, cx, dx, es, di);
     pic_to_kernel();
+    wall_paging(1);
 
     time_init();
     if (g_cpu_mhz) clock_credit_cycles(tsc32() - t0);

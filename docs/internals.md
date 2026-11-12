@@ -67,8 +67,13 @@ source files involved; every file opens with a comment explaining itself.
 | below 640KB | The kernel's code, data and stack |
 | 0x100000 (1MB) and up | The heap: screen buffers, lookup tables, network buffers. A simple allocator that only ever hands out more. Capped below 9MB. |
 | in the heap | The wizard's model: about 1.4MB once its weights are spread out for use |
-| 0xA00000 (10MB) to 18MB | The app area (see [Making apps](making-apps.md)) |
+| 0xC00000 (12MB) to 20MB | The app area, the only memory an app can touch (see [Making apps](making-apps.md)) |
 | 0x7000000 | The video card's frame buffer, at 800×600 |
+
+Paging is on, with 4MB pages that map every address to itself; only the
+two pages of the app area are open to apps. It is switched off for the
+length of each BIOS call and on again after (`kernel/wall.c`,
+`kernel/bioscall.c`).
 
 If the BIOS admits to no memory above 1MB, the heap moves into
 conventional memory. Everything the system itself needs fits in about

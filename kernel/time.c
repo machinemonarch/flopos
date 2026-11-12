@@ -47,6 +47,13 @@ void timer_irq(void)
     if (++sub < IRQ_HZ / TICK_HZ) return;
     sub = 0;
     g_ticks++;
+#ifdef FLOPOS_TEST
+    {   /* how often apps knock on the wall's door, once a second */
+        extern u32 g_wall_asks;
+        static u32 was, n;
+        if (++n >= TICK_HZ) { n = 0; if (g_wall_asks != was) serial_printf("[wall] %u asks in a second\n", g_wall_asks - was); was = g_wall_asks; }
+    }
+#endif
     if (!s_trip_set) { TRIPWIRE[0] = TRIP_VALUE; TRIPWIRE[1] = ~TRIP_VALUE; s_trip_set = 1; }
     else if (TRIPWIRE[0] != TRIP_VALUE || TRIPWIRE[1] != ~TRIP_VALUE) {
         s_trip_set = 0;

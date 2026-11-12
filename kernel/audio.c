@@ -305,6 +305,7 @@ int audio_heard(u8 *out, int max)
 void audio_feeder(void (*fn)(void))
 {
     s_feeder = fn;
+    if (!fn) s_feeding = 0;              /* an app closed in the middle of a refill */
 }
 
 static volatile u32 s_feed_cycles;       /* spent in the refill, so far    */
