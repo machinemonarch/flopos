@@ -6,6 +6,12 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.31.3 — 2026-11-12
+
+- **`version` says where FLOPOS comes from:** "Cyberdelic Neurodivergent dream by
+  Max, vibe-coded and synthesized with Claude." and the year the release
+  was built.
+
 ## 1.31.2 — 2026-11-12
 
 - **The version number is at the top of the terminal**, next to the name:
