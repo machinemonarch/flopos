@@ -6,6 +6,11 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.31.2 — 2026-11-12
+
+- **The version number is at the top of the terminal**, next to the name:
+  `FLOPOS 1.31.2`.
+
 ## 1.31.1 — 2026-11-12
 
 - **The inventory's program is named in full on the floppy.** It was

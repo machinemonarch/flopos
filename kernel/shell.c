@@ -1608,8 +1608,9 @@ void shell_banner(void)
 {
     term_colour(C_BRIGHT);
     term_print("FLOPOS");
-    term_newline();
     term_colour(C_DIM);
+    term_print(" " FLOPOS_VERSION);
+    term_newline();
     term_print(voice(V_BANNER_SUB));
     term_newline();
     term_newline();

@@ -77,7 +77,7 @@ Put the floppy in the laptop and switch it on. You will see:
    glows softly while bells climb, and you are in **cyberdelia**, the
    shell:
 
-        FLOPOS
+        FLOPOS 1.31.2
         a place to be, on one floppy disk
 
         Go on, then.
