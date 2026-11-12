@@ -75,6 +75,7 @@ The journal is plain text, so you can read it on any computer: open
 | Word | What it does |
 |---|---|
 | `write` | The word processor. `write 3` opens document 3. See [write](write.md). |
+| `tape` | Keeps your files on an audio cassette: `tape save`, `tape load`. See [tape](tape.md). |
 | `apps` | Lists the programs on the floppy. Typing a program's name runs it. |
 | `browzer` | A small web browser, with forms. An app on the floppy. See [The network](network.md). |
 
@@ -84,7 +85,7 @@ The journal is plain text, so you can read it on any computer: open
 |---|---|
 | `network` | A menu showing the network card, the connection and the address, where you can choose automatic setup or set it by hand. |
 | `ping place` | Asks a machine on the network whether it is there and times the answer: `ping example.com`, `ping 1.1.1.1`. |
-| `browzer fetch address` | Reads a web page out as text in the terminal: `browzer fetch example.com`. `fetch address` alone does the same. (This is browzer, reading instead of showing.) |
+| `browzer fetch address` | Reads a web page out as text in the terminal: `browzer fetch example.com`. (This is browzer, reading instead of showing.) |
 
 More in [The network](network.md).
 
@@ -165,4 +166,5 @@ cable, so normally you only ever need `report`.
 | `dump address` | Shows the bytes at a place in memory. |
 
 Test builds (made with `EXTRA_CFLAGS=-DFLOPOS_TEST`) also have `stall`,
-which reproduces the old freeze on purpose to prove the fix holds.
+which reproduces the old freeze on purpose to prove the fix holds, and a
+pretend tape: whatever is played is kept, and listening plays it back.

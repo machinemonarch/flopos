@@ -165,6 +165,12 @@ the part it has just finished from a queue apps write into (about six
 seconds), or with silence. So it doesn't matter which IRQ the card was
 given. Apps reach it through the app interface's `audio_*` calls.
 
+The card listens the same way, the other way round (`audio_listen`): it
+writes what it hears into the same buffer, and the timer takes it out into
+the queue for an app to collect. The mixer picks the line-in or microphone
+socket and switches the card's input filter off. This is how `tape` reads
+a cassette; it has not yet run on the laptop.
+
 The sequencer steps aside for effects. `whaaat` slides one voice across four octaves;
 the way into cyberdelia plays square-wave notes and bells (`snd_fx_*`) on
 FM channels 3 to 5, which the music never uses.
@@ -230,7 +236,7 @@ Each layer is its own file:
 | Connections | `conn.c` | One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close |
 | Secure web | `tls.c` | TLS 1.3, and 1.2 in its AEAD-only form, client side |
 | Programs | `netui.c` | The network menu |
-| Web | `apps/browzer/` | BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`). `fetch` runs it too. |
+| Web | `apps/browzer/` | BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`). |
 
 ## Encryption
 

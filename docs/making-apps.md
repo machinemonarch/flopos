@@ -3,7 +3,7 @@
 Programs don't have to be built into the system. An **app** is a file on
 the floppy, `NAME.APP`, loaded into memory and run when you type its name.
 There are two so far: `write`, the word processor, and `browzer`, the web
-browser (which is also what `fetch` runs).
+browser.
 
 Why apps live outside the system:
 
@@ -161,6 +161,17 @@ and use its own memory, nothing else. It should come back within about
 flag the routine checks: browzer's `s_lock`. See
 [techniques.md](techniques.md).
 
+### Added in version 5: listening
+
+| Function | What it does |
+|---|---|
+| `audio_listen(rate, source)` | The card records instead of playing (never both). `source` is 1 for the line-in socket, 0 for the microphone. Returns the rate it got, or 0. |
+| `audio_heard(buf, max)` | Up to `max` samples of what has come in, oldest first. About six seconds are kept. `audio_close` ends the listening. |
+
+Reading or writing `JOURNAL.TXT` and `STATE.BIN` from an app is safe: the
+system writes its own copy down before an app reads them, and reads them
+back in after an app writes them.
+
 ## Libraries apps share
 
 Code more than one app could use lives in `apps/lib/<name>/` and is built
@@ -173,6 +184,7 @@ into each app that asks for it in the Makefile:
 | `audio` | `tracker.c`: .mod, .xm, .s3m and .it songs into samples (`tracker_load`, which changes the file where it lies, so a file is loaded once, then `tracker_rate` and `tracker_render`). `decode.c`, `mp3.c`, `aac.c`, `vorbis.c`, `flac.c`: recordings (mp3, AAC, Ogg Vorbis, FLAC, wav) through one interface (`audio_detect`, then the decoder's `decode`), from a whole file or a stream as it arrives, and a noise-shaped resampler to the card's 8 bits. Needs `bits` and `dsp`. |
 | `bits` | `bits.h`: reading 1 to 25 bits at once, high-first or low-first. `prefix.h`: Huffman and other prefix codes decoded by table (`prefix_build`, `prefix_get`, `prefix_lget`). For anything compressed: audio now, and JPEG, gzip and PNG would use the same. |
 | `dsp` | `dsp.h`: `dsp_round` (float to int without the x87's slow cast), `dsp_dct2` (the cosine transform of 2 to 64 numbers, fast). `mdct.h`: the inverse MDCT by FFT, its tables kept per size. |
+| `tape` | `tape.h`: files as cassette sound and back (`tape_tx_*`, `tape_rx_*`), whole numbers only. Used by `tape`. |
 
 An app that uses floating point (the audio library does) also needs the
 Pentium's FPU switched on for it in the Makefile (`APPFLAGS_browzer :=

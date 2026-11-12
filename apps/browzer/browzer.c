@@ -2,11 +2,12 @@
  * browzer.c -- a small web browser, and the app it is.
  *
  * BROWZER.APP on the floppy.  Typed as `browzer`, it is the browser; typed
- * as `fetch`, it reads one page out into the terminal as text and stops.
+ * as `browzer fetch address`, it reads one page out into the terminal as
+ * text and stops.
  *
  * The whole screen, framed: an address along the top, the page in the
  * middle, a status line along the bottom.  Pages come through the same
- * reader `fetch` uses, but into a Page that remembers which characters
+ * reader `browzer fetch` uses, but into a Page that remembers which characters
  * belong to which link, so they can be scrolled through and followed.
  *
  *   up / down        scroll a line         pgup / pgdn / space   a screen
@@ -1572,8 +1573,8 @@ void browzer_run(const char *start)
 }
 
 /* ---- the app ---------------------------------------------------------------- */
-/* browzer [address or words], or fetch address: the words after it are
- * where to go. */
+/* browzer [address or words], or browzer fetch address: the words after
+ * it are where to go. */
 int app_main(const Api *api, int argc, char **argv)
 {
     static char start[PAGE_HREF_MAX];
@@ -1581,14 +1582,12 @@ int app_main(const Api *api, int argc, char **argv)
 
     A = api;
     __asm__ __volatile__("fninit");      /* the songs use the FPU; nothing else here does */
-    /* `fetch address` and `browzer fetch address` are the same thing: the
-     * page read out into the terminal, not shown in a window. */
-    if (argc >= 2 && argv[0][0] != 'f' && argv[1][0] == 'f' && argv[1][1] == 'e' && argv[1][2] == 't' &&
+    /* `browzer fetch address`: the page read out into the terminal, not
+     * shown in a window. */
+    if (argc >= 2 && argv[1][0] == 'f' && argv[1][1] == 'e' && argv[1][2] == 't' &&
         argv[1][3] == 'c' && argv[1][4] == 'h' && !argv[1][5]) {
         fetch = 1;
         first = 2;
-    } else if (argc >= 1 && argv[0][0] == 'f') {
-        fetch = 1;
     }
     for (a = first; a < argc; a++) {
         if (a > first && n < PAGE_HREF_MAX - 1) start[n++] = ' ';

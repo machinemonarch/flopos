@@ -45,10 +45,10 @@ Without the menu, `ip` shows the same information and
 Finds the machine's address, asks it four times whether it is there, and
 times each answer. FLOPOS also answers pings itself.
 
-## `fetch`
+## `browzer fetch`
 
-    here> fetch example.com
-    here> fetch https://www.rfc-editor.org/
+    here> browzer fetch example.com
+    here> browzer fetch https://www.rfc-editor.org/
 
 Reads a web page and prints it as text in the terminal: headings stand out,
 links are marked, words are wrapped to the screen, Swedish letters come out
@@ -274,7 +274,7 @@ has nothing newer.
   as `ROOTS.DAT`. Then the site has to sign the handshake with the key in
   its own certificate, which proves the certificate is really its own.
 
-  `fetch` says who vouched ("Let's Encrypt vouches for it"), and so does
+  `browzer fetch` says who vouched ("Let's Encrypt vouches for it"), and so does
   browzer's status line.
 
 ### When a site can't prove who it is

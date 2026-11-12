@@ -53,6 +53,7 @@ APPFLAGS_browzer := -m80387 -mhard-float
 # it.  audio turns songs into samples, for browzer and whatever plays sound
 # next.
 APPLIBS_browzer := audio bits dsp
+APPLIBS_tape := tape
 
 .PHONY: all clean run shot write size release
 all: $(IMG)

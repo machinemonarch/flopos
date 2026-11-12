@@ -248,11 +248,54 @@ int store_net_set(u32 how, u32 ip, u32 mask, u32 gw, u32 dns)
     return store_save();
 }
 
+/* Both files, from the floppy into memory, and checked.  0 leaves the
+ * store read-only. */
+static int read_in(void)
+{
+    u8 *statebuf = (u8 *)s_taught - sizeof(StateHdr);
+    StateHdr *h = (StateHdr *)statebuf;
+    int i;
+
+    if (!disk_read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
+        return 0;
+    if (!disk_read_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
+        return 0;
+
+    /* Before trusting any of this enough to write to it, check that the
+     * sectors the build pointed us at really are the journal.  If the disk
+     * map were ever wrong, a write would land somewhere else on the floppy
+     * -- and the only copy of the kernel is on that same floppy.  A wrong
+     * address now fails safe and read-only instead of eating the disk. */
+    {
+        static const char sig[] = "FLOPOS journal";
+        int k;
+        for (k = 0; sig[k]; k++)
+            if (s_journal[k] != (u8)sig[k]) return 0;
+    }
+
+    journal_find_end();
+
+    s_taught_n = 0;
+    s_boots = 0;
+    if (h->magic[0] == 'F' && h->magic[1] == 'L' && h->version == 1) {
+        if (h->count <= TAUGHT_MAX) {
+            s_taught_n = (int)h->count;
+            s_boots = h->boots;
+            if (taught_checksum() != h->checksum) s_taught_n = 0;
+        }
+    }
+    for (i = s_taught_n; i < TAUGHT_MAX; i++) s_taught[i].word[0] = 0;
+    /* Every word and answer ends, whatever the file said. */
+    for (i = 0; i < s_taught_n; i++) {
+        s_taught[i].word[WORD_MAX - 1] = 0;
+        s_taught[i].resp[RESP_MAX - 1] = 0;
+    }
+    return 1;
+}
+
 void store_init(void)
 {
-    StateHdr *h;
     u8 *statebuf;
-    int i;
 
     s_ready = 0;
     if (g_diskmap.journal_sectors == 0 || g_diskmap.state_sectors == 0) return;
@@ -264,39 +307,22 @@ void store_init(void)
     s_set     = (Settings *)(statebuf + g_diskmap.state_sectors * SECTOR - 64);
     s_clk     = (SavedClock *)(statebuf + g_diskmap.state_sectors * SECTOR - 128);
 
-    if (!disk_read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
-        return;
-    if (!disk_read_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
-        return;
-
-    /* Before trusting any of this enough to write to it, check that the
-     * sectors the build pointed us at really are the journal.  If the disk
-     * map were ever wrong, a write would land somewhere else on the floppy
-     * -- and the only copy of the kernel is on that same floppy.  A wrong
-     * address now fails safe and read-only instead of eating the disk. */
-    {
-        static const char sig[] = "FLOPOS journal";
-        int k;
-        for (k = 0; sig[k]; k++)
-            if (s_journal[k] != (u8)sig[k]) return;
-    }
-
-    journal_find_end();
-
-    h = (StateHdr *)statebuf;
-    s_taught_n = 0;
-    s_boots = 0;
-    if (h->magic[0] == 'F' && h->magic[1] == 'L' && h->version == 1) {
-        if (h->count <= TAUGHT_MAX) {
-            s_taught_n = (int)h->count;
-            s_boots = h->boots;
-            if (taught_checksum() != h->checksum) s_taught_n = 0;
-        }
-    }
-    for (i = s_taught_n; i < TAUGHT_MAX; i++) s_taught[i].word[0] = 0;
-
+    if (!read_in()) return;
     s_boots++;
     s_taught_dirty = 1;                  /* the boot count changed         */
+    s_ready = 1;
+}
+
+/* The two files were written from outside (an app put back a copy from a
+ * tape): believe the floppy over memory.  Nothing here is marked for
+ * writing, since memory and the floppy now agree. */
+void store_reload(void)
+{
+    if (!s_journal) return;
+    s_ready = 0;
+    if (!read_in()) return;
+    s_journal_dirty = 0;
+    s_taught_dirty = 0;
     s_ready = 1;
 }
 

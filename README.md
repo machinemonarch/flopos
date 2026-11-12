@@ -31,7 +31,7 @@ proxies, no JavaScript.
   banana tumbling in the corner.
 - **Talks back** in a warm deadpan, learns words you `teach` it, and keeps
   a journal on the floppy that any computer can read.
-- **Gets online**: DHCP, DNS, `ping`, `fetch` for reading a page as text,
+- **Gets online**: DHCP, DNS, `ping`, `browzer fetch` for reading a page as text,
   and **browzer**, a small web browser with working forms, that shows
   images as captioned boxes and searches through FrogFind.
 - **Speaks TLS 1.3** with X25519MLKEM768, ML-KEM-768, ChaCha20-Poly1305 and
@@ -62,7 +62,8 @@ Everything is in **[docs/](docs/README.md)**:
 - [Getting started](docs/getting-started.md): floppy, booting, the serial line
 - [Commands](docs/commands.md): every word it knows
 - [write](docs/write.md): the word processor
-- [The network](docs/network.md): the menu, `fetch`, browzer, and how private it is
+- [tape](docs/tape.md): your files on an audio cassette
+- [The network](docs/network.md): the menu, browzer, and how private it is
 - [The hardware](docs/hardware.md): the laptop, and what it taught us
 - [How it works](docs/internals.md): a tour of the inside
 - [Making apps](docs/making-apps.md): programs that live on the floppy

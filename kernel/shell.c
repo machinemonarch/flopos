@@ -145,24 +145,11 @@ static void screen_now(void)
     vga_present();
 }
 
-/* A web page, read out as text.  That is browzer's work -- it is the app
- * that knows HTTP and HTML -- so `fetch` runs BROWZER.APP, which reads
- * the page into the terminal when it is started under this name. */
-static void cmd_fetch(void)
-{
-    if (s_argc < 2) {
-        say("Fetch what?");
-        say_dim("  fetch example.com    or    fetch info.cern.ch");
-        return;
-    }
-    if (!net_ready_here(1)) return;
-    if (!app_run("browzer", s_argc, s_argv)) say("browzer is not on this floppy, and fetch is browzer.");
-}
-
 static void cmd_crypto(void) { (void)crypto_selftest(); }
 
 /* The browser, BROWZER.APP on the floppy.  Listed here so `help` still
- * shows it; an address or some words after it go straight there. */
+ * shows it; an address or some words after it go straight there, and
+ * `browzer fetch address` reads the page out into the terminal instead. */
 static void cmd_browzer(void)
 {
     if (!app_run("browzer", s_argc, s_argv)) say("browzer is not on this floppy.");
@@ -1425,7 +1412,6 @@ static const Cmd s_cmds[] = {
     { "network", "how this machine is connected",cmd_network },
     { "apps",    "programs on the floppy",       cmd_apps    },
     { "ping",    "is anybody out there",         cmd_ping    },
-    { "fetch",   "read a web page",              cmd_fetch   },
     { "browzer", "a small web browser",          cmd_browzer },
     { "report",  "tell Claude how you are",      cmd_report  },
     { "wizard",  "lock the screen behind a riddle", cmd_wizard },

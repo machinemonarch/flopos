@@ -61,8 +61,27 @@ static int  api_win_open(int w, int h) { return term_win_open(w, h); }
 static void api_win_put(int x, int y, int ch, u8 fg, u8 bg, u8 at) { term_win_put_at(x, y, ch, fg, bg, at); }
 static int  api_key(int *mods) { return ui_key_mods(mods); }
 static int  api_find(const char *n, AppFile *f) { return fs_find(n, (FsFile *)f); }
-static int  api_read(const AppFile *f, u8 *b, u32 m) { return fs_read((const FsFile *)f, b, m); }
-static int  api_write(const AppFile *f, const u8 *b) { return fs_write_inplace((const FsFile *)f, b); }
+
+/* The journal and what FLOPOS has learned live in memory while it runs
+ * (store.c).  An app that reads those two files gets them as they stand
+ * now, and one that writes them is believed: memory follows the floppy. */
+static int kept_file(const AppFile *f)
+{
+    FsFile k;
+    return (fs_find("JOURNAL.TXT", &k) && k.first == f->first) ||
+           (fs_find("STATE.BIN", &k) && k.first == f->first);
+}
+static int  api_read(const AppFile *f, u8 *b, u32 m)
+{
+    if (kept_file(f) && store_unsaved()) store_save();
+    return fs_read((const FsFile *)f, b, m);
+}
+static int  api_write(const AppFile *f, const u8 *b)
+{
+    int ok = fs_write_inplace((const FsFile *)f, b);
+    if (ok && kept_file(f)) store_reload();
+    return ok;
+}
 
 static const Api s_api = {
     APP_API_VERSION,
@@ -81,6 +100,8 @@ static const Api s_api = {
     audio_open, audio_space, audio_queued, audio_write, audio_close,
     /* version 4 */
     audio_feeder,
+    /* version 5 */
+    audio_listen, audio_heard,
 };
 
 static int memory_for_apps(void)

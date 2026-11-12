@@ -16,6 +16,11 @@
  * Apps get it through the app interface (audio_open, audio_write, and so
  * on).  8-bit unsigned mono, at whatever rate the card manages nearest to
  * the one asked for.  While it plays, the FM music steps aside.
+ *
+ * The same card listens, too (audio_listen, audio_heard), though never
+ * while it plays: the loop runs the other way, the card writing what it
+ * hears into the buffer and the timer taking it out into the queue.  That
+ * is how a cassette is read back.
  * ===========================================================================
  */
 #include "flopos.h"
@@ -32,10 +37,46 @@ static u8 *s_dma;
 static u8 *s_ring;
 static volatile u32 s_head, s_tail;      /* apps write at head, the timer reads at tail */
 static volatile u32 s_fill;              /* where in s_dma the timer writes next */
-static volatile int s_on;
+static volatile int s_on;                /* 1 playing, 2 listening         */
 static u32 s_rate;
 static void (*volatile s_feeder)(void);  /* an app's refill routine        */
 static volatile int s_feeding;
+static int s_source;                     /* listening to: 1 line-in, 0 the microphone */
+
+#ifdef FLOPOS_TEST
+/* ---- test build only: a pretend tape ------------------------------------
+ * The emulator's card cannot record, so in a test build whatever is played
+ * is also kept, and listening plays it back at the speed it was made: the
+ * tape app can then be tried whole, saving and reading, with no recorder. */
+#define PRETEND_LEN (22050u * 80u)
+static u8 *s_pretend;
+static u32 s_pretend_n, s_pretend_at, s_pretend_t0;
+
+static void pretend_record(const u8 *p, int n)
+{
+    int k;
+    if (!s_pretend) s_pretend = (u8 *)halloc(PRETEND_LEN);
+    if (!s_pretend) return;
+    for (k = 0; k < n && s_pretend_n < PRETEND_LEN; k++) s_pretend[s_pretend_n++] = p[k];
+}
+
+static void pretend_rewind(void)
+{
+    s_pretend_at = 0;
+    s_pretend_t0 = ms_now();
+}
+
+static void pretend_tick(void)
+{
+    u32 upto = (ms_now() - s_pretend_t0) * (s_rate / 100u) / 10u;
+    while (s_pretend_at < upto) {
+        u32 next = (s_head + 1) % RING_LEN;
+        u8 v = s_pretend_at < s_pretend_n ? s_pretend[s_pretend_at] : 0x80;
+        if (next != s_tail) { s_ring[s_head] = v; s_head = next; }
+        s_pretend_at++;
+    }
+}
+#endif
 
 /* ---- the DSP ---------------------------------------------------------------- */
 static int dsp_reset(u16 b)
@@ -112,7 +153,21 @@ void audio_tick(void)
 {
     u32 pos, upto;
     if (!s_on) return;
+#ifdef FLOPOS_TEST
+    if (s_on == 2) { pretend_tick(); return; }
+#endif
     pos = dma_pos();
+    if (s_on == 2) {
+        /* Listening: take what the card has written since last time.  If
+         * nobody has collected for six seconds the newest is dropped. */
+        (void)inb((u16)(s_base + 0xE));          /* its interrupt, answered, should it wait on that */
+        while (s_fill != pos) {
+            u32 next = (s_head + 1) % RING_LEN;
+            if (next != s_tail) { s_ring[s_head] = s_dma[s_fill]; s_head = next; }
+            s_fill = (s_fill + 1) % DMA_LEN;
+        }
+        return;
+    }
     upto = (pos + DMA_LEN - GUARD) % DMA_LEN;
     while (s_fill != upto) {
         u8 v = 0x80;
@@ -122,12 +177,17 @@ void audio_tick(void)
     }
 }
 
-int audio_open(int rate)
+static void mix(u8 reg, u8 v)
 {
-    u32 tc, a, i;
+    outb((u16)(s_base + 4), reg);
+    outb((u16)(s_base + 5), v);
+}
 
-    if (!audio_probe()) return 0;
-    if (s_on) audio_close();
+/* The buffers, the rate and a fresh DSP, for playing or for listening.
+ * Returns the DSP's time constant for the rate, or 0. */
+static u32 get_ready(int rate)
+{
+    u32 tc, i;
     if (!s_dma) {
         u8 *p = (u8 *)halloc(DMA_LEN * 2);
         if (!p) return 0;
@@ -148,29 +208,89 @@ int audio_open(int rate)
 
     snd_fx_begin();                              /* the FM music steps aside */
     dsp_reset(s_base);
-    dsp_w(0xD1);                                 /* speaker on             */
+    return tc;
+}
 
-    /* Mixer, for the cards that have one: samples up, and the master a
-     * step below full, so the laptop's own amplifier is not driven into
-     * clipping. */
-    outb((u16)(s_base + 4), 0x22); outb((u16)(s_base + 5), 0xCC);
-    outb((u16)(s_base + 4), 0x04); outb((u16)(s_base + 5), 0xEE);
-
-    a = (u32)s_dma;
+/* Set the DMA controller looping round the buffer on channel 1. */
+static void loop_dma(u8 mode)
+{
+    u32 a = (u32)s_dma;
     outb(0x0A, 0x05);                            /* mask channel 1         */
     outb(0x0C, 0x00);
-    outb(0x0B, 0x59);                            /* single, auto-init, memory to card, ch 1 */
+    outb(0x0B, mode);                            /* single, auto-init, ch 1 */
     outb(0x02, (u8)a); outb(0x02, (u8)(a >> 8));
     outb(0x83, (u8)(a >> 16));                   /* the page               */
     outb(0x0C, 0x00);
     outb(0x03, (u8)(DMA_LEN - 1)); outb(0x03, (u8)((DMA_LEN - 1) >> 8));
     outb(0x0A, 0x01);                            /* and unmask it          */
+}
 
+int audio_open(int rate)
+{
+    u32 tc;
+
+    if (!audio_probe()) return 0;
+    if (s_on) audio_close();
+    tc = get_ready(rate);
+    if (!tc) return 0;
+    dsp_w(0xD1);                                 /* speaker on             */
+
+    /* Mixer, for the cards that have one: samples up, and the master a
+     * step below full, so the laptop's own amplifier is not driven into
+     * clipping. */
+    mix(0x22, 0xCC);
+    mix(0x04, 0xEE);
+
+    loop_dma(0x59);                              /* memory to card         */
     dsp_w(0x40); dsp_w((u8)tc);                  /* the rate               */
     dsp_w(0x48); dsp_w((u8)((DMA_LEN / 2 - 1) & 0xFF)); dsp_w((u8)((DMA_LEN / 2 - 1) >> 8));
     dsp_w(0x1C);                                 /* 8-bit, auto-init, go   */
     s_on = 1;
     return (int)s_rate;
+}
+
+/* ---- listening -----------------------------------------------------------
+ * The card records instead of playing; it cannot do both.  source is 1
+ * for the line-in socket, 0 for the microphone.  Returns the rate it got,
+ * or 0.  What it hears is also passed on to the loudspeaker, so a tape
+ * can be heard while it is read.  audio_close ends it. */
+int audio_listen(int rate, int source)
+{
+    u32 tc;
+
+    if (!audio_probe()) return 0;
+    if (s_on) audio_close();
+    tc = get_ready(rate);
+    if (!tc) return 0;
+    dsp_w(0xD3);                                 /* its own player: quiet  */
+
+    /* Mixer: which socket, with the card's input filter out of the way
+     * (it would dull the tones); that socket up, and the master as for
+     * playing. */
+    mix(0x0C, source ? 0x26 : 0x20);
+    mix(source ? 0x2E : 0x0A, source ? 0xCC : 0x06);
+    mix(0x22, 0xCC);
+
+    loop_dma(0x55);                              /* card to memory         */
+    dsp_w(0x40); dsp_w((u8)tc);
+    dsp_w(0x48); dsp_w((u8)((DMA_LEN / 2 - 1) & 0xFF)); dsp_w((u8)((DMA_LEN / 2 - 1) >> 8));
+    dsp_w(0x2C);                                 /* 8-bit, auto-init, listen */
+    s_source = source;
+#ifdef FLOPOS_TEST
+    pretend_rewind();
+#endif
+    s_on = 2;
+    serial_printf("[audio] listening to the %s at %u a second\n", source ? "line-in" : "microphone", s_rate);
+    return (int)s_rate;
+}
+
+/* What has been heard since the last call, oldest first: up to max. */
+int audio_heard(u8 *out, int max)
+{
+    int n = 0;
+    if (s_on != 2) return 0;
+    while (n < max && s_tail != s_head) { out[n++] = s_ring[s_tail]; s_tail = (s_tail + 1) % RING_LEN; }
+    return n;
 }
 
 /* ---- refilling, at interrupt time ---------------------------------------
@@ -194,7 +314,7 @@ void audio_deferred(void)
     static u8 fpu[128] __attribute__((aligned(16)));
     void (*fn)(void) = s_feeder;
     u32 t0;
-    if (!fn || s_feeding || !s_on || audio_space() < 2048) return;
+    if (!fn || s_feeding || s_on != 1 || audio_space() < 2048) return;
     s_feeding = 1;
     t0 = g_cpu_mhz ? tsc32() : 0;
     __asm__ __volatile__("fnsave %0" : "=m"(fpu));
@@ -214,7 +334,7 @@ void audio_tell(u32 fps)
 {
     static u32 at, cyc0;
     u32 now = ms_now(), cyc;
-    if (!s_on || !g_cpu_mhz) { at = 0; return; }
+    if (s_on != 1 || !g_cpu_mhz) { at = 0; return; }
     if (!at) { at = now; cyc0 = s_feed_cycles; return; }
     if (now - at < 10000) return;
     cyc = s_feed_cycles - cyc0;
@@ -235,20 +355,25 @@ int audio_queued(void) { return (int)((s_head + RING_LEN - s_tail) % RING_LEN); 
 int audio_write(const u8 *p, int n)
 {
     int k = 0, room = audio_space();
-    if (!s_on) return 0;
+    if (s_on != 1) return 0;
     if (n > room) n = room;
+#ifdef FLOPOS_TEST
+    pretend_record(p, n);
+#endif
     while (k < n) { s_ring[s_head] = p[k++]; s_head = (s_head + 1) % RING_LEN; }
     return n;
 }
 
 void audio_close(void)
 {
+    int was = s_on;
     s_feeder = 0;
     if (!s_on) return;
     s_on = 0;
     dsp_w(0xD0);                                 /* pause                  */
     dsp_w(0xDA);                                 /* and leave auto-init    */
     dsp_w(0xD3);                                 /* speaker off            */
+    if (was == 2) mix(s_source ? 0x2E : 0x0A, 0x00);   /* the socket: out of the loudspeaker again */
     outb(0x0A, 0x05);                            /* mask channel 1         */
     dsp_reset(s_base);
     s_head = s_tail = 0;

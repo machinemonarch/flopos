@@ -239,3 +239,24 @@ nothing, and the screen no frames.
 - **One engine, two builds.** The same C file is built for this PC and
   compared, score by score, with a plain Python version of the sums
   (`tools/wizard/enginetest.py`).
+
+## Files as sound, read by the gaps between crossings
+
+For the cassette (`apps/lib/tape`, `apps/tape`). Not yet proven on a real
+recorder; what follows holds against a simulated tape.
+
+- **Only the timing is trusted.** A cassette changes loudness, drifts the
+  wave's middle, may turn it upside down and runs a few percent off speed.
+  The time between crossings of the middle survives all of that, so that
+  is all the reader looks at, to a sixteenth of a sample, and it keeps
+  re-learning how long a short half-wave is.
+- **Missing is better than wrong.** Every block has its own check and is
+  dropped whole if it fails. The blocks say which file and which piece
+  they are, so a second playing fills only the gaps.
+- **Only what is in use.** FLOPOS's files never change size and are
+  mostly filling. The run of one repeated byte at the end is sent as a
+  count, which works for any file without knowing what it is.
+- **A pretend tape in the driver.** The emulator's sound card cannot
+  record. A test build keeps what it plays and hands it back when asked
+  to listen, so the whole app can be tried, saving and reading, without
+  a recorder.

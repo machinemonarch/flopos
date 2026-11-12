@@ -15,7 +15,8 @@ of it, and how it works inside.
 | [Getting started](getting-started.md) | Putting it on a floppy, booting it, talking to it over a serial cable |
 | [Commands](commands.md) | Every word it knows, what it says back, and the keys at the prompt |
 | [write](write.md) | The word processor: styles, the Markdown view, saving and opening |
-| [The network](network.md) | The network menu, `ping`, `fetch`, the browzer web browser, and how private it is |
+| [tape](tape.md) | Your files kept on an audio cassette, and read back |
+| [The network](network.md) | The network menu, `ping`, the browzer web browser, and how private it is |
 
 ## Under the hood
 

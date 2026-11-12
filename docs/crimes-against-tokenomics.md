@@ -103,5 +103,11 @@ that browzer had been drawing its whole window on every frame since 1.22.
 being turned into noise on its way in. Then S3M and IT, with Impulse
 Tracker's own compression, because the Mod Archive is full of them.
 
+**"And start working on that cassette-based data backup software."** A
+1.44 MB floppy, backed up to a C60 at 110 bytes a second, through the
+headphone socket of a 1996 laptop into a PYE data recorder. A full
+document takes two and a half minutes. The sound card had only ever
+played; it had to be taught to listen first.
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

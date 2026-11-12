@@ -479,6 +479,8 @@ int    audio_space(void);
 int    audio_queued(void);
 int    audio_write(const u8 *p, int n);
 void   audio_close(void);
+int    audio_listen(int rate, int source); /* record instead: 1 line-in, 0 mic */
+int    audio_heard(u8 *out, int max);     /* what has come in since last asked */
 void   audio_tick(void);
 void   audio_report(void);
 int    snd_has_fm(void);
@@ -805,6 +807,7 @@ void   store_init(void);
 int    store_ready(void);
 int    store_save(void);                 /* -> 1 if everything landed      */
 int    store_unsaved(void);
+void   store_reload(void);               /* the files changed under us     */
 int    store_net_get(u32 *how, u32 *ip, u32 *mask, u32 *gw, u32 *dns);
 int    store_net_set(u32 how, u32 ip, u32 mask, u32 gw, u32 dns);
 void   main_pump(int now);

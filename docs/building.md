@@ -61,7 +61,7 @@ can be read by DOS, Windows, Linux or a Mac. On it:
 | `SAFFRAN.PIX` | The boot picture, read first. In one unbroken run of sectors. |
 | `KERNEL.BIN` | The system, read second. Also in one unbroken run, and both positions are written into the boot sector. |
 | `WRITE.APP` | The word processor |
-| `BROWZER.APP` | The web browser, which `fetch` also runs |
+| `BROWZER.APP` | The web browser |
 | `BOOKMARK.TXT` | browzer's bookmarks, 8 KB |
 | `ROOTS.DAT` | The authorities secure sites are checked against (55 KB) |
 | `JOURNAL.TXT`, `STATE.BIN` | What FLOPOS remembers. Made at full size so they can be written in place. |
@@ -137,7 +137,12 @@ Kept here, so they are never written again:
 - `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
   own code (`apps/lib/tape`), runs it through a pretend tape (wrong
   speed, wavering, quiet, noisy, dull, upside down, a dropout) and reads
-  it back.
+  it back. The `tape` app itself is tried in a test build
+  (`make EXTRA_CFLAGS=-DFLOPOS_TEST`), where the sound driver keeps what
+  it plays and plays it back when asked to listen: with `tools/bench/run.py`,
+  `type:tape save\n`, `key:ret=>\[tape\] saved files 11`, `key:esc`,
+  `type:tape load\n=>\[tape\] same STATE.BIN`. Delete the bench's
+  `sound.wav` afterwards; it is large.
 
 `run.py` waits for FLOPOS's own messages rather than pausing, and lets the
 emulated clock run ahead of the wall's. A full check takes about half a

@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 4
+#define APP_API_VERSION 5
 #define APP_BASE        0x00A00000u      /* 10MB, clear of the kernel heap */
 #define APP_MAX         0x00800000u      /* 8MB: code, data and buffers    */
 
@@ -184,6 +184,16 @@ typedef struct {
      * again, a thousand times a second, while there is room.  The floating-point unit is saved around it.  0 stops it;
      * audio_close stops it too. */
     void (*audio_feeder)(void (*fn)(void));
+
+    /* ---- version 5 ------------------------------------------------------ */
+    /* Listening: the card records instead of playing (never both at
+     * once).  source is 1 for the line-in socket, 0 for the microphone;
+     * audio_listen returns the rate it got, 0 if it cannot.  What comes
+     * in is kept for about six seconds: audio_heard hands over up to max
+     * samples of it, oldest first, and says how many.  audio_close ends
+     * it. */
+    int  (*audio_listen)(int rate, int source);
+    int  (*audio_heard)(u8 *out, int max);
 } Api;
 
 typedef int (*AppMain)(const Api *api, int argc, char **argv);

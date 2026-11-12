@@ -6,6 +6,21 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.30.0 — 2026-11-12
+
+- **`tape`: your files on an audio cassette.** `tape save` plays the
+  documents, the bookmarks, the journal and the taught words out of the
+  headphone socket as two tones, for a cassette recorder; `tape load`
+  listens to the tape through the line-in socket, shows whether each file
+  is the same as the floppy's, and puts the different ones back if asked.
+  Missing pieces are filled in by playing the tape again. See
+  `docs/tape.md`. **Tried only in the emulator, against a pretend tape;
+  not yet with a recorder, and listening has never run on the laptop.**
+- **The sound card listens** as well as plays (line-in or microphone),
+  for apps: version 5 of the app interface.
+- **`fetch` is gone** from the commands and from `help`. `browzer fetch
+  address` does what it did.
+
 ## 1.29.0 — 2026-11-12
 
 - **`browzer fetch address`** reads a page out into the terminal. `fetch`
