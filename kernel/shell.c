@@ -1694,10 +1694,14 @@ void shell_submit(const char *line)
     /* 5. Nothing doing.  A question that went unanswered is a different
      * kind of miss from a word that was never a word, and saying so is
      * most of the difference between a shell and something you talk to. */
-    term_colour(C_ACCENT);
-    term_print(voice(asked ? V_QUESTION
-                           : (s_argc > 1 ? V_UNKNOWN_PHRASE : V_UNKNOWN)));
-    term_newline();
+    /* The wizard answers in his own words, if he is here (wizsay.c); the
+     * plain answers are for machines he can't be read on. */
+    if (!wizsay(s_argv[0])) {
+        term_colour(C_ACCENT);
+        term_print(voice(asked ? V_QUESTION
+                               : (s_argc > 1 ? V_UNKNOWN_PHRASE : V_UNKNOWN)));
+        term_newline();
+    }
     term_colour(C_DIM);
     term_printf("  \"%s\"", s_rawline);
     term_newline();

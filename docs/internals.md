@@ -66,6 +66,7 @@ source files involved; every file opens with a comment explaining itself.
 | 0x70000 | The disk buffer: below 1MB, where the BIOS can reach it |
 | below 640KB | The kernel's code, data and stack |
 | 0x100000 (1MB) and up | The heap: screen buffers, lookup tables, network buffers. A simple allocator that only ever hands out more. Capped below 9MB. |
+| in the heap | The wizard's model: about 1.4MB once its weights are spread out for use |
 | 0xA00000 (10MB) to 18MB | The app area (see [Making apps](making-apps.md)) |
 | 0x7000000 | The video card's frame buffer, at 800×600 |
 
@@ -167,6 +168,29 @@ given. Apps reach it through the app interface's `audio_*` calls.
 The sequencer steps aside for effects. `whaaat` slides one voice across four octaves;
 the way into cyberdelia plays square-wave notes and bells (`snd_fx_*`) on
 FM channels 3 to 5, which the music never uses.
+
+## The wizard's words
+
+`kernel/wizsay.c` runs a small transformer (512 word pieces, 3 layers, 96
+wide, a memory of 64 pieces; about 240,000 weights) from `WIZARD.WIZ`.
+The file is read once at boot, about eight seconds of floppy, so no answer
+waits for the drive. Each weight is a byte on the floppy and becomes a
+32-bit float in memory.
+
+It is the one kernel file built to use the floating-point unit. Nothing
+else in the kernel touches it, so interrupts have nothing to save, and the
+sound routine that runs in the timer interrupt already saves it for
+itself.
+
+A line is made a piece at a time. Each piece is three layers of sums, a
+few milliseconds each on the laptop, and between layers the engine calls
+`main_pump`, so frames are drawn and the network answered on time. Sound
+is decoded in the timer interrupt and is never behind him. The next piece
+is drawn by chance from the thirty likeliest. `@` in a line is where the
+typed word goes. The shell calls `wizsay()` only when every other meaning
+of a word has failed.
+
+How the model is made is in [Building](building.md#teaching-the-wizard).
 
 ## The floppy
 

@@ -209,3 +209,33 @@ next. The sixteen entries hold a full turn of the colour wheel at full
 strength. `mood_neon` turns that wheel in the palette fifteen times a
 second: 48 bytes to the card, and not one pixel drawn again. The entries
 came out of the prompt's ramp, which had 32 and needed 16.
+
+
+## A language model beside a kernel that fits in 640K
+
+The wizard's model had to cost the floppy little, the kernel almost
+nothing, and the screen no frames.
+
+- **A byte a weight, trained that way.** Weights are stored as bytes with
+  one scale for each row. The last fifth of the training runs with the
+  weights already rounded to bytes, so what is written to the floppy is
+  what was trained, not an approximation of it.
+- **Word pieces, not letters.** He speaks in 512 pieces of words. A line
+  is about twenty pieces instead of seventy letters, so it takes a third
+  of the sums, and the model spends itself on phrasing, not spelling.
+- **Nothing to read, so nothing to parse.** He never reads what was typed.
+  He writes `@` where the word belongs and the shell puts it there. The
+  engine needs no way of cutting text into pieces, only the list of them.
+- **Remembering instead of redoing.** What each past piece offered to the
+  ones after it is kept, so each new piece costs one pass, however long
+  the line is.
+- **A layer, then a frame.** The engine hands the machine back between
+  layers, a few milliseconds apart. Measured at the laptop's speed with a
+  song playing: 30 frames a second before, during and after.
+- **Most of the voice is a grammar.** A model this small can't learn
+  Shakespeare, but it learns a few hundred sentence shapes with their
+  slots very well, and mixes them. The books are a twentieth of his
+  training, for the oddity.
+- **One engine, two builds.** The same C file is built for this PC and
+  compared, score by score, with a plain Python version of the sums
+  (`tools/wizard/enginetest.py`).

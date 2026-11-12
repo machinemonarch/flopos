@@ -4,8 +4,18 @@ This is cyberdelia, the shell, where you land once the wizard at the gate
 has had his riddle answered (see [Getting started](getting-started.md#booting)).
 
 Type a word at `here>` and press Enter. Capital letters don't matter. A word
-FLOPOS doesn't know gets "I don't know that word." and goes into the journal,
-so it can be considered for next time.
+FLOPOS doesn't know goes into the journal, so it can be considered for next
+time, and the wizard answers it.
+
+**The wizard's answers.** He has a very small language model of his own
+(a quarter of a megabyte on the floppy, read at boot) and says one line
+with it, in one of his moods: tired, delighted, scheming, paranoid,
+singing, or reading you the rules. He doesn't understand what was typed
+and knows no facts; he only puts your word into a sentence of his. Most
+lines make sense. About one in twenty comes out as old-book gibberish,
+which is him trying Shakespeare. On a machine with no floating-point unit
+or too little memory he stays silent, and FLOPOS says "I don't know that
+word." instead.
 
 `help` lists the everyday words. The behind-the-scenes ones at the end of
 this page are left out of `help` on purpose.

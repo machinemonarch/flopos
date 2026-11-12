@@ -6,6 +6,23 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.28.0 — 2026-11-12
+
+- **The wizard answers.** A word the shell doesn't know now gets a line
+  from the wizard, in his own words: he has a very small language model
+  (a quarter of a megabyte, `WIZARD.WIZ`) and speaks in six moods, with
+  your word put into his sentence. About one line in twenty is old-book
+  gibberish. He is read from the floppy once at boot (about eight seconds
+  more), thinks between frames, and never holds up the screen or a song:
+  30 frames a second while he answers with music playing, at the laptop's
+  speed. In the HUD too.
+- He was taught on another computer, from Shakespeare and the Jargon File
+  (both public domain) and from lines written for FLOPOS. `tools/wizard`
+  holds the tools; "Teaching the wizard" in docs/building.md has the
+  steps.
+- The floppy keeps 529 KB free for files.
+- Not yet tried on the laptop itself.
+
 ## 1.27.0 — 2026-11-12
 
 - **Window frames shine in neon**, in every program: each frame and rule

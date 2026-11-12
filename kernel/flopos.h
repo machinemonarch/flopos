@@ -359,6 +359,10 @@ void   boot_end(void);                      /* hold, then fade out           */
 
 /* --- wizard.c, cyberdelia.c: the way into the shell -------------------- */
 void   wizard_gate(int lock);               /* until a riddle is answered    */
+
+/* --- wizsay.c: the wizard's own words, from WIZARD.WIZ ------------------- */
+int    wizsay_init(void);                   /* at boot; 0: he stays silent    */
+int    wizsay(const char *typed);           /* one line; 0: nothing was said  */
 void   cyberdelia_jingle(void (*each)(void));  /* a secret, found          */
 void   cyberdelia_enter(void (*each)(void));   /* the screen ripples you in */
 

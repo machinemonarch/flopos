@@ -63,6 +63,10 @@ $(OBJDIR):
 $(OBJDIR)/%.o: kernel/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# The wizard's talk is sums in floating point: the one kernel file that
+# uses the FPU (see kernel/wizsay.c).
+$(OBJDIR)/wizsay.o: CFLAGS += -m80387 -mhard-float
+
 $(OBJDIR)/%.o: kernel/%.S | $(OBJDIR)
 	$(AS) $(ASFLAGS) $< -o $@
 
@@ -86,7 +90,7 @@ $(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) \
 	      apps/crt.c $(wildcard apps/$*/*.c) $(foreach l,$(APPLIBS_$*),$(wildcard apps/lib/$(l)/*.c))
 	@echo "   $*.app: $$(stat -c%s $@) bytes"
 
-$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/roots.dat tools/mkimage.py README.md
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/roots.dat boot/wizard.wiz tools/mkimage.py README.md
 	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 
 size: $(BUILD)/kernel.bin

@@ -127,6 +127,9 @@ def main():
     # The authorities secure sites are checked against (tools/mkroots.py).
     run("mcopy", "-i", out_path, "boot/roots.dat", "::ROOTS.DAT")
 
+    # The wizard's way with words (tools/wizard), read once at boot.
+    run("mcopy", "-i", out_path, "boot/wizard.wiz", "::WIZARD.WIZ")
+
     # Apps, each its own file: WRITE.APP for `write`.  The kernel finds
     # them by name when they are asked for, so where they land is theirs.
     for app in app_paths:

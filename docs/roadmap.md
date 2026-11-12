@@ -33,19 +33,6 @@ starts with an interview of its product owner.
 
 ### A wizard who answers
 
-A very small language model on the floppy: half a million to a million
-parameters, which is what the space left on the disk holds. It would let the
-wizard talk back, and answer the words the shell doesn't know, in his own
-tired voice. It wouldn't understand what is typed or know any facts. It
-would keep the voice, and sometimes make sense and sometimes be beautifully
-nonsensical. It would think only while the machine is idle, so the screen
-and the music never wait for it: about 5 to 15 words a second.
-
-It would be trained on a modern computer, a few hours of work for it, and
-only the result goes on the floppy. Nothing outside the laptop runs once it
-is there, but the training itself is an exception to doing everything on
-the laptop's own hardware, to be decided.
-
-The work: a few thousand lines of the wizard's voice to learn from, the
-training, a small engine on FLOPOS to run the model, and the wiring into the
-wizard and the shell. About the size of the AAC decoder, or more.
+Done in 1.28.0: see [Commands](commands.md) and
+[Internals](internals.md#the-wizards-words). Still open: he answers only
+unknown words, and can't yet be talked to.
