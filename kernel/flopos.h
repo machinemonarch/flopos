@@ -337,6 +337,7 @@ void   store_clock_set(u32 s);
 /* --- panel.c ----------------------------------------------------------- */
 void   panel_init(void);
 int    panel_present(void);              /* is there a flat-panel chip?    */
+void   panel_tell(const char *when);        /* its registers, down the wire   */
 int    panel_wide(void);
 void   panel_set_wide(int on);
 

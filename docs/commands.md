@@ -84,7 +84,7 @@ The journal is plain text, so you can read it on any computer: open
 |---|---|
 | `network` | A menu showing the network card, the connection and the address, where you can choose automatic setup or set it by hand. |
 | `ping place` | Asks a machine on the network whether it is there and times the answer: `ping example.com`, `ping 1.1.1.1`. |
-| `fetch address` | Reads a web page out as text in the terminal: `fetch example.com`, `fetch https://...`. (This is browzer, reading instead of showing.) |
+| `browzer fetch address` | Reads a web page out as text in the terminal: `browzer fetch example.com`. `fetch address` alone does the same. (This is browzer, reading instead of showing.) |
 
 More in [The network](network.md).
 
@@ -107,7 +107,8 @@ corner, over whatever is on the screen:
 - the battery, as the laptop's power management reports it
 - **'Thunking**: how busy the processor is
 - **'Membering:** how much of the memory is in use
-- a brain, turning, coloured by the two together: blue while the machine
+- a brain, turning (two folded halves with the cleft between them, the
+  cerebellum and the stem), coloured by the two together: blue while the machine
   is idle, then green, yellow and orange, and red when it works as hard
   as it can
 - a command line of its own, which takes the same commands as `here>`

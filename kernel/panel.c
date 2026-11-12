@@ -90,6 +90,18 @@ void panel_init(void)
 }
 
 int panel_present(void) { return s_present; }
+
+/* The chip's flat-panel registers down the wire, for telling a start where
+ * the glass stayed dark from one where it lit: the first sixteen (which
+ * hold the panel's power and its sequencing) and the stretch ones. */
+void panel_tell(const char *when)
+{
+    int i;
+    if (!s_present || !serial_present()) return;
+    serial_printf("[panel] %s: FR00-0F", when);
+    for (i = 0; i < 16; i++) serial_printf(" %x", (u32)fp_read((u8)i));
+    serial_printf("; FR40 %x FR48 %x\n", (u32)fp_read(FR_PANEL_FORMAT), (u32)fp_read(FR_STRETCH));
+}
 int panel_wide(void)    { return s_on; }
 
 void panel_set_wide(int on)

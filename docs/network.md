@@ -117,7 +117,9 @@ shows how many seconds are in hand. The decoding is done by the system's
 timer, whatever browzer is doing, so the music doesn't pause for pages,
 drawing or the network (see [techniques.md](techniques.md)). If the
 network ever falls behind and the sound runs out, it gathers a bigger
-cushion before going on, rather than stuttering through each scrap. A
+cushion before going on, rather than stuttering through each scrap: 6
+seconds, then 12, then 24. A station that sends slower than it plays
+still runs out in the end, only less often. A
 station that hangs up is called back, up to five times in a row.
 
 Everything plays in mono, at about 22 kHz, which is what the laptop's Sound

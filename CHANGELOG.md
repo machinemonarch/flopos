@@ -6,6 +6,25 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.29.0 — 2026-11-12
+
+- **`browzer fetch address`** reads a page out into the terminal. `fetch`
+  alone still works.
+- **The brain looks like a brain**: two folded halves with a cleft between
+  them from front to back, where 1.26.0 had one smooth balloon. The folds
+  are slow swells and crooked lines, with no spikes.
+- **A black screen at the start**, with everything running behind it:
+  not certainly fixed. The panel now gets 0.4 s to settle before and after
+  it is asked for 800x600, the three VGA switches that can blank a
+  running screen are put right after the change, and the panel's
+  registers go down the serial line at every start, so a black start can
+  be compared with a lit one. Typing `screen big` blind still cures it.
+- **Radio that falls behind** gathers up to 24 seconds before going on
+  (it was 12). A station that sends slower than it plays still pauses,
+  less often.
+- Tried on the laptop in 1.28.1: the wizard answers there, and radio holds
+  a steady 15 seconds in hand with 30 frames a second.
+
 ## 1.28.1 — 2026-11-12
 
 - The boot line for the wizard is kinder: "Pouring the wizard his morning

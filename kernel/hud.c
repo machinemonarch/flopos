@@ -142,41 +142,55 @@ static void bars(void)
 }
 
 /* ---- the brain ----------------------------------------------------------- */
-/* One brain: a single folded ovoid, wider at the back, with a shallow
- * fissure along the top from front to back, a cerebellum tucked under the
- * back, and the stem below it.  Rings and meridians, so it is a wireframe
- * like the banana. */
-#define LAT 8
-#define LON 20
+/* A brain as it looks from outside: two halves side by side with a deep
+ * cleft between them from front to back, each half folded, a cerebellum
+ * tucked under the back, and the stem below it.  Rings and meridians, so
+ * it is a wireframe like the banana.
+ *
+ * The folds are made two ways, and neither is a spike.  The surface rises
+ * and falls in slow swells, never faster than the mesh can follow.  And
+ * the lines themselves wander: each corner of the mesh is slid a little
+ * along the surface, one way and then the other, so rings and meridians
+ * run crooked like the grooves of a brain while the outline stays round. */
+#define LAT 7
+#define LON 12
 #define CLAT 3
 #define CLON 10
-#define BV (LAT * LON + CLAT * CLON + 2)
-#define BE (LAT * LON + (LAT - 1) * LON + CLAT * CLON + (CLAT - 1) * CLON + 1)
+#define BV (2 * LAT * LON + CLAT * CLON + 2)
+#define BE (2 * (LAT * LON + (LAT - 1) * LON) + CLAT * CLON + (CLAT - 1) * CLON + 1)
 static s16 s_vx[BV], s_vy[BV], s_vz[BV];
 static u16 s_e0[BE], s_e1[BE];
 static int s_nv, s_ne, s_built;
 
+/* side: -1 or 1 for a half of the cerebrum, 0 for a plain shape. */
 static void ellipsoid(int cx, int cy, int cz, int rx, int ry, int rz, int nlat, int nlon,
-                      int lat0, int lat1, int cortex)
+                      int lat0, int lat1, int side)
 {
     int i, j, first = s_nv;
     for (i = 0; i < nlat; i++) {
-        int th = lat0 + (lat1 - lat0) * i / (nlat - 1);           /* 1024ths of a turn */
         for (j = 0; j < nlon; j++) {
+            int th = lat0 + (lat1 - lat0) * i / (nlat - 1);       /* 1024ths of a turn */
             int ph = j * SINLEN / nlon;
-            int r = 4096, x, y, z, c;
-            if (cortex) {
-                /* Smooth: slow, shallow swells the mesh can follow, and the
-                 * middle line as a soft crease that fades out at the crown. */
-                r += (SIN(ph * 3) * (s32)SIN(th * 4)) >> 17;
-                c = COS(ph); if (c < 0) c = -c;
-                if (th > 0 && c < 900) r -= ((900 - c) * (900 - c) / 900) * SIN(th * 2) / 9000;
+            int r = 4096, x, y, z;
+            if (side) {
+                if (i > 0 && i < nlat - 1) {                       /* the lines wander */
+                    ph += (i & 1) ? 26 : -26;
+                    th += (j & 1) ? 16 : -16;
+                }
+                r += (SIN(ph * 2 + 200) * (s32)SIN(th * 5 + j * 90)) >> 15;   /* slow swells */
             }
             x = (int)(((s32)COS(th) * COS(ph) >> 12) * rx >> 12) * r >> 12;
             y = (int)((s32)SIN(th) * ry >> 12) * r >> 12;
             z = (int)(((s32)COS(th) * SIN(ph) >> 12) * rz >> 12) * r >> 12;
-            if (cortex) x = x * (600 - z) / 600;                    /* a little wider at the back */
-            if (y < 0) y = y * 7 / 10;                              /* flat below */
+            if (side) {
+                x = x * (700 - z) / 700;                           /* a little wider at the back */
+                x += cx;
+                /* The inner wall: neither half crosses the middle, so the
+                 * cleft between them stays open from front to back. */
+                if (side * x < 2) x = side * 2;
+                x -= cx;
+            }
+            if (y < 0) y = y * 6 / 10;                             /* flat below */
             s_vx[s_nv] = (s16)(cx + x); s_vy[s_nv] = (s16)(cy - y); s_vz[s_nv] = (s16)(cz + z);
             s_nv++;
         }
@@ -191,8 +205,9 @@ static void ellipsoid(int cx, int cy, int cz, int rx, int ry, int rz, int nlat, 
 
 static void build(void)
 {
-    ellipsoid(0, 0, 0, 44, 40, 60, LAT, LON, -150, 256, 1);        /* the cerebrum   */
-    ellipsoid(0, 30, -40, 28, 12, 15, CLAT, CLON, -200, 200, 0);   /* the cerebellum */
+    ellipsoid(-21, 0, 0, 27, 40, 60, LAT, LON, -150, 256, -1);     /* the left half  */
+    ellipsoid( 21, 0, 0, 27, 40, 60, LAT, LON, -150, 256,  1);     /* the right half */
+    ellipsoid(0, 28, -40, 28, 12, 15, CLAT, CLON, -200, 200, 0);   /* the cerebellum */
     s_vx[s_nv] = 0; s_vy[s_nv] = 22; s_vz[s_nv] = -14; s_nv++;     /* the stem      */
     s_vx[s_nv] = 0; s_vy[s_nv] = 50; s_vz[s_nv] = -22; s_nv++;
     s_e0[s_ne] = (u16)(s_nv - 2); s_e1[s_ne] = (u16)(s_nv - 1); s_ne++;

@@ -165,7 +165,7 @@ static void feed(void)
             if (A->audio_queued() == 0 && !s_in.done) {
                 s_buffering = 1;
                 s_ran_dry++;
-                if (s_cushion_x < 4) s_cushion_x *= 2;
+                if (s_cushion_x < 8) s_cushion_x *= 2;
             }
             return;
         }
@@ -1577,18 +1577,28 @@ void browzer_run(const char *start)
 int app_main(const Api *api, int argc, char **argv)
 {
     static char start[PAGE_HREF_MAX];
-    int a, i, n = 0;
+    int a, i, n = 0, fetch = 0, first = 1;
 
     A = api;
     __asm__ __volatile__("fninit");      /* the songs use the FPU; nothing else here does */
-    for (a = 1; a < argc; a++) {
-        if (a > 1 && n < PAGE_HREF_MAX - 1) start[n++] = ' ';
+    /* `fetch address` and `browzer fetch address` are the same thing: the
+     * page read out into the terminal, not shown in a window. */
+    if (argc >= 2 && argv[0][0] != 'f' && argv[1][0] == 'f' && argv[1][1] == 'e' && argv[1][2] == 't' &&
+        argv[1][3] == 'c' && argv[1][4] == 'h' && !argv[1][5]) {
+        fetch = 1;
+        first = 2;
+    } else if (argc >= 1 && argv[0][0] == 'f') {
+        fetch = 1;
+    }
+    for (a = first; a < argc; a++) {
+        if (a > first && n < PAGE_HREF_MAX - 1) start[n++] = ' ';
         for (i = 0; argv[a][i] && n < PAGE_HREF_MAX - 1; i++) start[n++] = argv[a][i];
     }
     start[n] = 0;
 
-    if (argc >= 1 && argv[0][0] == 'f') {         /* fetch: into the terminal */
+    if (fetch) {
         if (n) http_fetch(start);
+        else { A->colour(A_TEXT); A->print("Fetch what?  browzer fetch example.com"); A->newline(); }
         return 0;
     }
     browzer_run(start);

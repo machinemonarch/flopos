@@ -84,6 +84,12 @@ Put the floppy in the laptop and switch it on. You will see:
 **Hold Shift while it boots** to stay at the old chunky 320×200 picture
 instead. `screen big` and `screen small` switch later.
 
+**If the screen stays black** after starting, with FLOPOS running behind
+it (keys answer, sound plays): type `screen big` and Enter, blind. That
+asks the panel again. It is rare, and its cause isn't certain yet; FLOPOS
+writes what the panel's registers hold to the serial line at each start
+(`[panel]` and `[vga] after the switch`), to find it.
+
 ## The serial line
 
 FLOPOS talks on the laptop's serial port (COM1) at 115200 baud, 8 data

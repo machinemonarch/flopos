@@ -198,6 +198,16 @@ int vga_go_big(void)
     bios_int(0x10, 0x0013, 0, 0, 0, 0, 0);
     if (panel_present()) panel_set_wide(0);
 
+    /* Sometimes the glass still came up dark at the start, with everything
+     * running behind it.  The best guess: each mode set switches the
+     * panel's power off and on again in timed steps, and the second set
+     * arrived while the first was still stepping.  So the panel is given
+     * time to finish before it is asked again, and what its registers hold
+     * before and after goes down the wire, so a dark start can be told
+     * from a lit one. */
+    delay_ms(400);
+    panel_tell("before 800x600");
+
     /* 0x4000 on the mode number is what asks for the flat stretch. */
     r = bios_int(0x10, 0x4F02, (u16)(m.mode | 0x4000), 0, 0, 0, 0);
     if ((r & 0xFFFF) != 0x004F) {
@@ -233,6 +243,27 @@ int vga_go_big(void)
     /* The retrace bit still works in VESA modes on this family; if it ever
      * does not, the first wait times out and stops asking. */
     s_retrace_ok = 1;
+
+    /* The three switches every VGA has that can each leave a running
+     * screen black: the sequencer's "screen off", the mask on the colour
+     * table, and the attribute controller's "video on".  What they were is
+     * written down, and then they are put right. */
+    {
+        u8 sr1, mask, attr;
+        outb(0x3C4, 0x01); sr1 = inb(0x3C5);
+        mask = inb(0x3C6);
+        (void)inb(INPUT_STATUS_1);       /* 3C0 takes an index next        */
+        attr = inb(0x3C0);
+        serial_printf("[vga] after the switch: screen-off %x, colour mask %x, video-on %x\n",
+                      (u32)(sr1 & 0x20), (u32)mask, (u32)(attr & 0x20));
+        if (sr1 & 0x20) { outb(0x3C4, 0x01); outb(0x3C5, (u8)(sr1 & ~0x20)); }
+        if (mask != 0xFF) outb(0x3C6, 0xFF);
+        (void)inb(INPUT_STATUS_1);
+        outb(0x3C0, 0x20);
+    }
+    delay_ms(400);
+    panel_tell("after 800x600");
+
     vga_set_palette(s_current);          /* the mode change cleared it     */
     serial_printf("[vga] 800x600, mode %x, frame buffer at %x\n",
                   (u32)m.mode, (u32)m.lfb);
