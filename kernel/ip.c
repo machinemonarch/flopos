@@ -127,13 +127,22 @@ static const u8 *arp_lookup(u32 ip)
     return 0;
 }
 
+/* What is known is never replaced: once the router (or anyone) has a
+ * card to its name, a later claim to be it is ignored.  The table starts
+ * again when the address is set.  A newcomer takes the oldest slot, but
+ * never the router's. */
+static u32 s_ask_ip, s_ask_until;        /* the question we are waiting on  */
+
 static void arp_learn(u32 ip, const u8 *mac)
 {
     int i;
 
+    if (!ip) return;
     for (i = 0; i < ARP_N; i++)
-        if (s_arp[i].ip == ip) break;
-    if (i == ARP_N) { i = s_arp_next; s_arp_next = (s_arp_next + 1) % ARP_N; }
+        if (s_arp[i].ip == ip) return;
+    i = s_arp_next;
+    if (s_gw && s_arp[i].ip == s_gw) i = (i + 1) % ARP_N;
+    s_arp_next = (i + 1) % ARP_N;
 
     s_arp[i].ip = ip;
     for (int j = 0; j < 6; j++) s_arp[i].mac[j] = mac[j];
@@ -156,6 +165,8 @@ static void arp_ask(u32 ip)
     for (i = 0; i < 6; i++) f[n + 18 + i] = 0;
     put32(f + n + 24, ip);
 
+    s_ask_ip = ip;
+    s_ask_until = ms_now() + 1000;
     net_send(f, n + 28);
 }
 
@@ -200,7 +211,8 @@ static void take_icmp(const u8 *ip_hdr, const u8 *p, int len)
     if (p[0] == ICMP_ECHO_REQUEST) {
         u8 f[NET_MTU];
         int n, hl = (ip_hdr[0] & 0x0F) * 4;
-        const u8 *mac = arp_lookup(get32(ip_hdr + 12));
+        u32 src = get32(ip_hdr + 12);
+        const u8 *mac = arp_lookup(((src ^ s_ip) & s_mask) ? s_gw : src);
         int i;
 
         if (!mac || len > NET_MTU - 34) return;
@@ -583,8 +595,17 @@ static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
  * away every Nth frame that arrives, the way a full 3C589 would (`net
  * drop N`; 0, the default, keeps them all). */
 u32 g_net_drop;
+static int s_taking;                     /* inside ip_poll: sends must not wait */
 
+static void poll_frames(void);
 void ip_poll(void)
+{
+    s_taking++;
+    poll_frames();
+    s_taking--;
+}
+
+static void poll_frames(void)
 {
     static u32 seen;
     u8 f[NET_MTU];
@@ -601,7 +622,12 @@ void ip_poll(void)
             const u8 *a = f + 14;
             if (len < 42) break;
             if (get16(a + 2) != ET_IPV4) break;
-            arp_learn(get32(a + 14), a + 8);
+            /* Believed only as the answer to a question just asked. */
+            if (get16(a + 6) == ARP_REPLY && s_ask_ip &&
+                get32(a + 14) == s_ask_ip && ms_now() < s_ask_until) {
+                arp_learn(s_ask_ip, a + 8);
+                s_ask_ip = 0;
+            }
             if (s_ip && get16(a + 6) == ARP_REQUEST && get32(a + 24) == s_ip)
                 arp_answer(f);
             break;
@@ -625,7 +651,12 @@ void ip_poll(void)
                 int tot = get16(h + 2);
                 if (!mine && !dhcp) break;
                 if (tot < hl || 14 + tot > len) break;
-                if (s_ip && dst == s_ip) arp_learn(get32(h + 12), f + 6);
+                /* A neighbour who writes to us is remembered, so a ping
+                 * can be answered; the router and strangers beyond it
+                 * are not learned this way. */
+                if (s_ip && dst == s_ip && get32(h + 12) != s_gw &&
+                    !((get32(h + 12) ^ s_ip) & s_mask))
+                    arp_learn(get32(h + 12), f + 6);
                 if (h[9] == PROTO_ICMP && mine)
                     take_icmp(h, h + hl, tot - hl);
                 else if (h[9] == PROTO_UDP)
@@ -653,6 +684,14 @@ const u8 *ip_route(u32 to, int wait_ms)
 
     mac = arp_lookup(target);
     if (mac) return mac;
+
+    /* A send set off by something arriving never waits here: waiting takes
+     * in more arrivals, which send, which wait, each a level deeper on the
+     * stack.  Ask once and give up; TCP sends again later. */
+    if (s_taking) {
+        if (!s_ask_ip || ms_now() >= s_ask_until) arp_ask(target);
+        return 0;
+    }
 
     for (tries = 0; tries < 3; tries++) {
         arp_ask(target);

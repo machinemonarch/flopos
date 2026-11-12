@@ -181,6 +181,7 @@ static void panic(Regs *r)
     pal[3 * 15 + 0] = 63; pal[3 * 15 + 1] = 63; pal[3 * 15 + 2] = 63;
     pal[3 * 14 + 0] = 63; pal[3 * 14 + 1] = 48; pal[3 * 14 + 2] = 0;
     pal[3 * 12 + 0] = 63; pal[3 * 12 + 1] = 12; pal[3 * 12 + 2] = 32;
+    pal[3 * PAL_KEY + 0] = 63; pal[3 * PAL_KEY + 1] = 26; pal[3 * PAL_KEY + 2] = 46;   /* keys: pink */
     vga_set_palette(pal);
 
     memset8(g_back, 0, SCR_PIX);
@@ -206,7 +207,9 @@ static void panic(Regs *r)
     draw_text(g_back, 20, 82, line, 15);
 
     draw_text(g_back, 20, 104, "The trip ended early. Sorry about that.", 14);
-    draw_text(g_back, 20, 120, "Press CTRL+ALT+DEL to reboot, or power", 15);
+    draw_text(g_back, 20, 120, "Press", 15);
+    draw_text(g_back, 20 + 6 * 6, 120, "CTRL+ALT+DEL", PAL_KEY);      /* keys are pink everywhere */
+    draw_text(g_back, 20 + 6 * 19, 120, "to reboot, or power", 15);
     draw_text(g_back, 20, 130, "cycle the machine.", 15);
     draw_text(g_back, 20, 160, "Please note the numbers above if you", 1 + 7);
     draw_text(g_back, 20, 170, "intend to report this.", 8);

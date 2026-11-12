@@ -13,37 +13,6 @@ several files or needs new tools. **Large** changes how the system works.
 
 ## Waiting for a decision
 
-### 1. TCP accepts a "hang up" too easily (small)
-
-`kernel/tcp.c`, `tcp_input`. A reset is believed if its sequence number is
-anywhere ahead of the one expected. So someone who guesses the connection's
-port (a 1 in 16,384 chance) can cut a download or a radio stream.
-
-**Fix:** believe a reset only at the exact expected number. For other
-numbers in range, reply with a check instead, as RFC 5961 describes.
-**Stops:** cut connections.
-
-### 2. The stack can run out when the router is forgotten (small)
-
-`kernel/ip.c`. The address table has 8 slots and learns from every ARP
-message on the wire, so a busy network can push the router's entry out.
-Sending then waits for the network while still inside the send. While it
-waits, incoming data can trigger another send, which waits again, nesting
-deeper until the stack runs out.
-
-**Fix:** a send caused by incoming data never waits. It drops the packet
-instead, and TCP sends it again later. Also keep the router's slot from
-being pushed out. **Stops:** a crash that a hostile local network could
-probably force.
-
-### 3. Anyone on the network can claim to be the router (small)
-
-`kernel/ip.c`, `arp_learn`. Every ARP message overwrites what is known.
-
-**Fix:** learn only from answers to questions we asked, and never let a
-known router entry be replaced. **Stops:** some local-network spoofing.
-HTTPS already catches the harm from it; plain HTTP does not.
-
 ### 4. Name lookups are easy to fake (small)
 
 `kernel/ip.c`, `ip_lookup` and `take_dns`. The query's ID number and port
@@ -52,14 +21,6 @@ who the answer came from.
 
 **Fix:** take both from the random pool (`rand_bytes`), and accept answers
 only from the DNS server. **Stops:** fake addresses for plain-HTTP sites.
-
-### 5. TCP's starting numbers are guessable (small)
-
-`kernel/tcp.c`, `tcp_connect`. The starting sequence number and the port
-come from the cycle counter.
-
-**Fix:** take them from `rand_bytes`. **Stops:** blind injection into
-plain-HTTP connections. It also makes number 1 harder to pull off.
 
 ### 6. A tripwire at the bottom of the stack (small)
 
@@ -100,15 +61,26 @@ handshake first. **Stops:** a faked time making a recently expired
 certificate look valid. The clock already refuses to go back past the last
 `bye`, which limits how far back that can reach.
 
-## In progress
-
-- **Four ways a crafted Ogg file can write past its buffers**, in
-  `apps/lib/audio/vorbis.c`. These are bugs in unreleased code, being fixed
-  as part of 1.19.0.
-
 ## Done
 
-Nothing yet.
+- **TCP's "hang up" (1.31.4).** A reset is believed only at the exact
+  number expected. One that is merely close gets an answer saying where we
+  are, and the real other end then hangs up properly (RFC 5961).
+- **The stack and the forgotten router (1.31.4).** A send set off by
+  arriving data never waits for the network; it is dropped and TCP sends
+  it again. The router's place in the address table cannot be pushed out.
+- **Claims to be the router (1.31.4).** An address is learned only as the
+  answer to a question FLOPOS just asked, and what is known is never
+  replaced. What remains, as on every network: someone on the same wire
+  who answers the first question faster than the router is believed.
+  HTTPS still catches the harm from that.
+- **TCP's starting numbers (1.31.4).** The starting number and the port
+  come from the random pool.
+- **Four ways a crafted Ogg file could write past its buffers**
+  (`apps/lib/audio/vorbis.c`), fixed before 1.19.0 shipped.
+
+These were checked by reading and by the ordinary network tests. None was
+tried as a real attack.
 
 ## Checked and fine
 

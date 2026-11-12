@@ -6,6 +6,15 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.31.4 — 2026-11-12
+
+- **Four network weak spots closed** (see the security roadmap): a
+  connection can no longer be cut by a guessed "hang up"; nobody can take
+  the router's place once it is known; a busy or hostile network can no
+  longer run the stack out; and TCP's starting numbers and port come from
+  the random pool. No cost in speed.
+- **The crash screen names its keys in pink**, like everything else.
+
 ## 1.31.3 — 2026-11-12
 
 - **`version` says where FLOPOS comes from:** "Cyberdelic Neurodivergent dream by

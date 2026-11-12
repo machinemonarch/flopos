@@ -260,12 +260,22 @@ void tcp_input(u32 from, const u8 *seg, int len)
     data = seg + hl;
     dlen = len - hl;
 
+    /* A hang-up is believed only at the exact number expected.  One that
+     * is merely near (inside what we would accept) gets an answer saying
+     * where we are; the real other end then hangs up again at the right
+     * number, and a stranger guessing cannot (RFC 5961). */
     if (flags & F_RST) {
-        if (s_state == SYN_SENT ? (flags & F_ACK) && ack == s_iss + 1
-                                : !before(seq, s_rcv_nxt)) {
-            s_state = CLOSED;
-            s_why = "the other end hung up";
+        if (s_state == SYN_SENT) {
+            if (!((flags & F_ACK) && ack == s_iss + 1)) return;
+        } else if (seq != s_rcv_nxt) {
+            if (!before(seq, s_rcv_nxt) && before(seq, s_rcv_nxt + window() + 1)) {
+                static u32 last;
+                if (ms_now() - last >= 100) { last = ms_now(); ack_now(); }
+            }
+            return;
         }
+        s_state = CLOSED;
+        s_why = "the other end hung up";
         return;
     }
 
@@ -370,11 +380,17 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
     if (s_state != CLOSED) tcp_close();
     if (!s_rx) s_rx = (u8 *)halloc(RX_SIZE);
 
-    r = g_cpu_mhz ? tsc32() : g_ticks * 2654435761u;
+    /* Where the numbering starts and which port is ours come from the
+     * random pool, so nobody out of sight can work them out. */
+    {
+        u8 b[6];
+        rand_bytes(b, 6);
+        r = (u32)b[0] | (u32)b[1] << 8 | (u32)b[2] << 16 | (u32)b[3] << 24;
+        s_lport = (u16)(49152 + (((u32)b[4] | (u32)b[5] << 8) & 0x3FFF));
+    }
     s_peer = to;
     s_rport = port;
-    s_lport = (u16)(49152 + ((r >> 7) & 0x3FFF));
-    s_iss = r * 69069u + 1;
+    s_iss = r;
     s_snd_una = s_iss;
     s_snd_nxt = s_iss + 1;
     s_rcv_nxt = 0;
