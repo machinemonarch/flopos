@@ -6,6 +6,11 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.28.1 — 2026-11-12
+
+- The boot line for the wizard is kinder: "Pouring the wizard his morning
+  tea...", and he is humming.
+
 ## 1.28.0 — 2026-11-12
 
 - **The wizard answers.** A word the shell doesn't know now gets a line

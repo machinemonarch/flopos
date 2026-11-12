@@ -259,8 +259,8 @@ void kmain(void)
 
     /* His way with words is a quarter of a megabyte on the floppy, read
      * once, here, so that no answer ever waits for the drive. */
-    boot_step("Reminding the wizard how to talk...");
-    boot_result(wizsay_init() ? "he mumbles" : "he is lost for words");
+    boot_step("Pouring the wizard his morning tea...");
+    boot_result(wizsay_init() ? "he is humming" : "he is sleeping in");
 
     /* --- the environment ------------------------------------------------ */
     /* panel_init reads and keeps the old register values first, so `wide`
