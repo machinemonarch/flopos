@@ -200,11 +200,21 @@ How the model is made is in [Building](building.md#teaching-the-wizard).
 
 ## The floppy
 
-FLOPOS can't grow or shrink files. It doesn't need to: every file it
-writes is made at full size when the disk is built, and FLOPOS only ever
-overwrites a file's data in place. It never touches the FAT or the
-directory, so it can't corrupt the disk, and the disk stays a normal DOS
-floppy.
+The floppy is an ordinary DOS (FAT12) disk in two parts, treated
+differently.
+
+The system's own files are in the top folder. Those FLOPOS only reads, or
+overwrites in place at the size the build made them (the journal, the
+taught words, the bookmarks). The top folder itself is never written.
+
+Everything of the user's is in the folder `INVENTORY`. There FLOPOS does
+the whole of FAT12: makes, grows, shrinks, renames, moves and removes
+files and folders. Every path is followed down from that folder and
+cannot leave it. A save goes in an order a power cut cannot turn into a
+damaged disk: data into unused clusters, then the allocation table (the
+spare copy first), then the folder entry, then the old clusters are let
+go. See [The inventory](inventory.md) and
+[techniques.md](techniques.md).
 
 - `kernel/disk.c`: sectors on and off the floppy through the BIOS, in
   runs where possible, via the buffer at 0x70000.
@@ -212,8 +222,10 @@ floppy.
   end-of-file character so every computer stops reading in the right
   place) and `STATE.BIN` (taught words, settings, network settings, with a
   checksum).
-- `kernel/fs.c`: reads the FAT12 filesystem: finds any file by name,
-  reads it, and writes into it in place. Used for apps and documents.
+- `kernel/fs.c`: the FAT12 filesystem: finds and reads any file by name,
+  writes system files in place, and everything in the inventory (the
+  `inv_` calls). The same file is built for the PC and tested there
+  (`tools/fstest/run.py`).
 - `kernel/apps.c`: loads `NAME.APP` files (see
   [Making apps](making-apps.md)).
 

@@ -83,6 +83,22 @@ static int  api_write(const AppFile *f, const u8 *b)
     return ok;
 }
 
+_Static_assert(sizeof(InvItem) == sizeof(FsItem), "app.h inventory items");
+static int api_inv_list(const char *dir, void (*fn)(const InvItem *it, void *ctx), void *ctx)
+{
+    return inv_list(dir, (void (*)(const FsItem *, void *))fn, ctx);
+}
+static int inv_stat_app(const char *path, InvItem *it) { return inv_stat(path, (FsItem *)it); }
+
+/* What an app asked to have run after it. */
+static char s_then[INV_PATH + 16];
+static void api_then(const char *command)
+{
+    u32 i;
+    for (i = 0; command[i] && i < sizeof s_then - 1; i++) s_then[i] = command[i];
+    s_then[i] = 0;
+}
+
 static const Api s_api = {
     APP_API_VERSION,
     api_win_open, term_win_close, term_win_width, term_win_height,
@@ -102,6 +118,9 @@ static const Api s_api = {
     audio_feeder,
     /* version 5 */
     audio_listen, audio_heard,
+    /* version 6 */
+    api_inv_list, inv_stat_app, inv_read, inv_write, inv_mkdir, inv_remove, inv_move, inv_room, inv_why,
+    api_then,
 };
 
 static int memory_for_apps(void)
@@ -116,30 +135,15 @@ static u32 s_app_bytes;                  /* the open app's memory, or 0     */
 int app_active(void) { return s_app_bytes != 0; }
 u32 app_bytes(void)  { return s_app_bytes; }
 
-/* Is there an app by this name on the floppy? */
-int app_exists(const char *word)
+/* The file an app's word names: the word and .APP.  A file's name holds
+ * eight letters, and "inventory" has nine, so that one word is kept in
+ * INVENTOR.APP. */
+static int app_file(const char *word, char file[13])
 {
-    char file[16];
-    FsFile f;
+    static const char inv[] = "inventory";
     int i, n = 0;
-    for (i = 0; word[i] && n < 8; i++) {
-        char c = word[i];
-        if (c >= 'a' && c <= 'z') c = (char)(c - 32);
-        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return 0;
-        file[n++] = c;
-    }
-    if (!n || word[i]) return 0;
-    file[n] = '.'; file[n + 1] = 'A'; file[n + 2] = 'P'; file[n + 3] = 'P'; file[n + 4] = 0;
-    return fs_find(file, &f);
-}
-
-int app_run(const char *word, int argc, char **argv)
-{
-    char file[13];
-    FsFile f;
-    AppHeader *h = (AppHeader *)APP_BASE;
-    int i, n = 0, r;
-
+    for (i = 0; inv[i] && (word[i] | 32) == inv[i]; i++) { }
+    if (!inv[i] && !word[i]) word = "inventor";
     for (i = 0; word[i]; i++) {
         char c = word[i];
         if (n >= 8) return 0;
@@ -149,7 +153,25 @@ int app_run(const char *word, int argc, char **argv)
     }
     if (!n) return 0;
     file[n++] = '.'; file[n++] = 'A'; file[n++] = 'P'; file[n++] = 'P'; file[n] = 0;
-    if (!fs_find(file, &f)) return 0;
+    return 1;
+}
+
+/* Is there an app by this name on the floppy? */
+int app_exists(const char *word)
+{
+    char file[13];
+    FsFile f;
+    return app_file(word, file) && fs_find(file, &f);
+}
+
+static int run_one(const char *word, int argc, char **argv)
+{
+    char file[13];
+    FsFile f;
+    AppHeader *h = (AppHeader *)APP_BASE;
+    int r;
+
+    if (!app_file(word, file) || !fs_find(file, &f)) return 0;
 
     term_colour(C_ACCENT);
     if (!memory_for_apps()) {
@@ -197,6 +219,33 @@ int app_run(const char *word, int argc, char **argv)
     return 1;
 }
 
+/* Run the app, and then whatever it asked to have run after it: an app
+ * hands over to another that way (the inventory to write, and back). */
+int app_run(const char *word, int argc, char **argv)
+{
+    static char line[sizeof s_then];
+    static char *av[6];
+    int hops = 0;
+
+    s_then[0] = 0;
+    if (!run_one(word, argc, argv)) return 0;
+    while (s_then[0] && hops++ < 64) {
+        u32 i;
+        int n = 0;
+        for (i = 0; i < sizeof line; i++) line[i] = s_then[i];
+        s_then[0] = 0;
+        for (i = 0; line[i] && n < 6; ) {
+            while (line[i] == ' ') i++;
+            if (!line[i]) break;
+            av[n++] = line + i;
+            while (line[i] && line[i] != ' ') i++;
+            if (line[i]) line[i++] = 0;
+        }
+        if (!n || !run_one(av[0], n, av)) break;
+    }
+    return 1;
+}
+
 /* ---- `apps`: what is on the floppy to run ------------------------------- */
 static void list_one(const char *name, u32 size, void *ctx)
 {
@@ -208,6 +257,7 @@ static void list_one(const char *name, u32 size, void *ctx)
     term_colour(C_BRIGHT);
     term_print("  ");
     for (i = 0; i < n - 3; i++) term_putc(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
+    if (n == 11 && name[0] == 'I' && name[7] == 'R') term_putc('y');   /* INVENTOR.APP is the inventory */
     term_colour(C_DIM);
     term_printf("   %u kb", (size + 1023) / 1024);
     term_newline();

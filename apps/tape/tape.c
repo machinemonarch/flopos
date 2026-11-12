@@ -6,59 +6,69 @@
  * listens to the recorder playing them back, compares what it hears with
  * the floppy, and puts it back if asked.  The sound itself is apps/lib/tape.
  *
- * Only the files that are yours go to tape or come back from it: the eight
- * documents, the bookmarks, the journal and what FLOPOS has been taught.
- * Nothing a tape says can touch any other file.
+ * Only what is yours goes to tape or comes back from it: everything in
+ * the inventory, and three of the system's own records (the bookmarks,
+ * the journal and what FLOPOS has been taught).  What comes back goes
+ * into the inventory, or over one of those three; nothing a tape says
+ * can touch any other file.
  *
  * On the tape, a save is a long leader and then each file in turn:
  *
- *      HEAD (twice)   its name, full size, how much of it is in use, the
- *                     byte the rest is filled with, which file of how many
- *                     this is, a check of the whole, and this save's number
- *      DATA ...       the part in use, 256 bytes a block; the block's
- *                     number carries which file it belongs to
+ *      HEAD (twice)   its name with its folders, full size, how much of it
+ *                     is sent, the byte the rest is filled with, which
+ *                     file of how many this is, a check of the whole, this
+ *                     save's number, and whether it is one of the system's
+ *      DATA ...       256 bytes a block; the block's number carries which
+ *                     file it belongs to
  *      END  (twice)
  *
- * Files keep their size on the floppy and are mostly empty filling, so
- * only the part in use is sent.  A block that is spoiled is simply missing:
- * the tape can be played again and only the gaps are filled.
+ * A file that ends in a long run of one byte (the system's three are
+ * mostly empty filling) is sent without the run.  A block that is spoiled
+ * is simply missing: the tape can be played again and only the gaps are
+ * filled.
  * ===========================================================================
  */
 #include "app.h"
 #include "tape.h"
 
-#define FILE_MAX 16384                   /* the largest file kept          */
-#define PIECES   (FILE_MAX / TAPE_PIECE)
-#define MAXF     11
-#define HEAD_LEN 28
+#define PIECES   255                     /* a file's most blocks: 65280 bytes */
+#define FILE_MAX (PIECES * TAPE_PIECE)
+#define MAXF     200
+#define HEAD_LEN (INV_PATH + 16)
+#define ARENA    (800 * 1024)            /* more than a floppy has free    */
 #define WW       53                      /* the window, in characters      */
 #define HH       23
 #define ROW0     9                       /* where the list of files starts */
+#define LIST     11                      /* and how many rows it has       */
 
 enum { ST_NONE, ST_PART, ST_SAME, ST_DIFF, ST_BACK, ST_BAD };
 
 typedef struct {
-    char name[TAPE_NAME];
-    AppFile f;
+    char name[INV_PATH];                 /* in the inventory: its path     */
+    int  sys;                            /* one of the system's three      */
+    AppFile f;                           /* where that one is              */
+    int  here;                           /* it is on the floppy            */
     int  on;                             /* asked for                      */
-    u32  used;                           /* bytes before the filling       */
+    u32  size, used;                     /* its length on the floppy; bytes sent, before the filling */
+    u32  tsize;                          /* its length as the tape has it   */
     u8   pad;                            /* the filling                    */
     u16  crc;                            /* of the part in use             */
     int  pieces, got;
     int  state;
     u8   have[PIECES];
-    u8   disk[FILE_MAX];                 /* as it is on the floppy         */
-    u8   tape[FILE_MAX];                 /* as the tape gave it            */
+    u8  *disk;                           /* as it is on the floppy         */
+    u8  *tape;                           /* as the tape gave it            */
 } File;
 
 static const Api *A;
 static File s_f[MAXF];
 static int  s_nf;
-
-static const char *const s_names[MAXF] = {
-    "WRITE1.MD", "WRITE2.MD", "WRITE3.MD", "WRITE4.MD", "WRITE5.MD", "WRITE6.MD",
-    "WRITE7.MD", "WRITE8.MD", "BOOKMARK.TXT", "JOURNAL.TXT", "STATE.BIN"
-};
+static int  s_big;                       /* files too long for a tape, left out */
+static u8   s_disk[ARENA], s_tape[ARENA];
+static u32  s_disk_n, s_tape_n;
+static char s_want[4][INV_PATH];         /* names given after save or load */
+static int  s_nwant;
+static int  s_focus;                     /* the file the list is scrolled to */
 
 /* ---- small things ----------------------------------------------------------- */
 static int up(int c) { return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c; }
@@ -92,79 +102,141 @@ static int wait_key(void)
     return key;
 }
 
+static int wanted(const char *name)
+{
+    int i, k, cut = -1;
+    if (!s_nwant) return 1;
+    for (k = 0; name[k]; k++) if (name[k] == '/') cut = k;
+    for (i = 0; i < s_nwant; i++)
+        if (same_word(s_want[i], name) || same_word(s_want[i], name + cut + 1)) return 1;
+    return 0;
+}
+
+static File *add_file(const char *name, int sys)
+{
+    File *f;
+    int k;
+    if (s_nf >= MAXF) return 0;
+    f = &s_f[s_nf++];
+    for (k = 0; name[k] && k < INV_PATH - 1; k++) f->name[k] = (char)up(name[k]);
+    f->name[k] = 0;
+    f->sys = sys;
+    f->on = wanted(f->name);
+    f->here = 0; f->state = ST_NONE; f->got = 0; f->disk = f->tape = 0;
+    return f;
+}
+
+/* Everything in the inventory, folder by folder. */
+static char s_dirs[64][INV_PATH];
+static int  s_ndirs, s_dir_at;
+
+static void each(const InvItem *it, void *ctx)
+{
+    char path[INV_PATH];
+    const char *dir = s_dirs[s_dir_at];
+    File *f;
+    int n = 0, k;
+    (void)ctx;
+    for (k = 0; dir[k]; k++) n++;
+    for (k = 0; it->name[k]; k++) n++;
+    if (n + 2 > INV_PATH) return;
+    A->format(path, INV_PATH, "%s%s%s", dir, dir[0] ? "/" : "", it->name);
+    if (it->folder) {
+        if (s_ndirs < 64) A->format(s_dirs[s_ndirs++], INV_PATH, "%s", path);
+        return;
+    }
+    if (it->size > FILE_MAX) { s_big++; return; }
+    f = add_file(path, 0);
+    if (f) { f->here = 1; f->size = it->size; }
+}
+
 /* The files that are yours and on this floppy. */
 static void find_files(void)
 {
-    int i, k;
-    s_nf = 0;
-    for (i = 0; i < MAXF; i++) {
-        File *f = &s_f[s_nf];
-        if (!A->file_find(s_names[i], &f->f) || f->f.size == 0 || f->f.size > FILE_MAX) continue;
-        for (k = 0; s_names[i][k]; k++) f->name[k] = s_names[i][k];
-        f->name[k] = 0;
-        s_nf++;
+    static const char *const sys[3] = { "BOOKMARK.TXT", "JOURNAL.TXT", "STATE.BIN" };
+    int i;
+    s_nf = 0; s_big = 0; s_disk_n = s_tape_n = 0;
+    s_ndirs = 1; s_dirs[0][0] = 0;
+    for (s_dir_at = 0; s_dir_at < s_ndirs; s_dir_at++) A->inv_list(s_dirs[s_dir_at], each, 0);
+    for (i = 0; i < 3; i++) {
+        AppFile af;
+        File *f;
+        if (!A->file_find(sys[i], &af) || af.size == 0 || af.size > FILE_MAX) continue;
+        f = add_file(sys[i], 1);
+        if (f) { f->f = af; f->here = 1; f->size = af.size; }
     }
 }
 
 /* The names after `tape save` or `tape load`: only those, or all with none. */
-static int choose(int argc, char **argv)
+static void choose(int argc, char **argv)
 {
-    int a, i, n = 0;
-    char m[80];
-    for (i = 0; i < s_nf; i++) s_f[i].on = argc <= 2;
-    for (a = 2; a < argc; a++) {
-        for (i = 0; i < s_nf && !same_word(argv[a], s_f[i].name); i++) { }
-        if (i == s_nf) {
-            A->format(m, sizeof m, "tape does not keep %s. It keeps:", argv[a]);
-            A->colour(A_TEXT); A->print(m); A->newline();
-            A->colour(A_DIM);
-            for (i = 0; i < s_nf; i++) { A->print(i ? " " : "  "); A->print(s_f[i].name); }
-            A->newline();
-            return 0;
-        }
-        s_f[i].on = 1;
+    int a, k;
+    s_nwant = 0;
+    for (a = 2; a < argc && s_nwant < 4; a++) {
+        for (k = 0; argv[a][k] && k < INV_PATH - 1; k++) s_want[s_nwant][k] = argv[a][k];
+        s_want[s_nwant++][k] = 0;
     }
-    for (i = 0; i < s_nf; i++) n += s_f[i].on;
-    return n;
 }
 
-/* A file from the floppy, and how much of it is in use: everything before
- * the run of one repeated byte it ends with. */
+/* A file from the floppy, and how much of it need be sent: everything
+ * before the run of one repeated byte it ends with. */
 static int from_floppy(File *f)
 {
-    u32 n = f->f.size;
-    if (A->file_read(&f->f, f->disk, FILE_MAX) != (int)n) return 0;
-    f->pad = f->disk[n - 1];
+    u32 n = f->size;
+    int got;
+    if (s_disk_n + n > ARENA) return 0;
+    f->disk = s_disk + s_disk_n;
+    got = f->sys ? A->file_read(&f->f, f->disk, n) : A->inv_read(f->name, f->disk, n);
+    if (got != (int)n) return 0;
+    s_disk_n += n;
+    f->pad = n ? f->disk[n - 1] : 0;
     while (n > 0 && f->disk[n - 1] == f->pad) n--;
+    if (!f->sys && f->size - n < 64) n = f->size;        /* a short run is the file's own */
     f->used = n;
     f->crc = tape_crc(f->disk, (int)n);
     f->pieces = (int)((n + TAPE_PIECE - 1) / TAPE_PIECE);
     return 1;
 }
 
+/* Eleven rows of the files, scrolled to the one in hand. */
 static void list(int load, int now)
 {
-    int i;
+    int i, row = 0, shown = 0, first, n = 0;
     char m[48];
-    for (i = 0; i < s_nf; i++) {
+    for (i = 0; i < s_nf; i++) n += load ? s_f[i].state != ST_NONE : s_f[i].on;
+    first = 0;
+    for (i = 0; i < s_focus && i < s_nf; i++) first += load ? s_f[i].state != ST_NONE : s_f[i].on;
+    first = first < LIST / 2 ? 0 : first - LIST / 2;
+    if (first > n - LIST) first = n > LIST ? n - LIST : 0;
+    for (i = 0; i < s_nf && row < LIST; i++) {
         File *f = &s_f[i];
+        const char *name = f->name;
         u8 c = A_DIM;
+        int k;
+        if (load ? f->state == ST_NONE : !f->on) continue;
+        if (shown++ < first) continue;
+        for (k = 0; name[k]; k++) { }
+        if (k > 19) name += k - 19;              /* the end of a long path */
         m[0] = 0;
         if (!load) {
-            if (!f->on) { }
-            else if (now > i) { A->format(m, sizeof m, "%s", "on the tape"); c = A_TEXT; }
+            if (now > i) { A->format(m, sizeof m, "%s", "on the tape"); c = A_TEXT; }
             else if (now == i) { A->format(m, sizeof m, "%u of %u pieces", (u32)f->got, (u32)f->pieces); c = A_BRIGHT; }
             else A->format(m, sizeof m, "%u bytes", f->used);
         } else switch (f->state) {
             case ST_PART: A->format(m, sizeof m, "%u of %u pieces", (u32)f->got, (u32)f->pieces); c = A_BRIGHT; break;
-            case ST_SAME: A->format(m, sizeof m, "%s", "whole: the same as on the floppy"); c = A_TEXT; break;
-            case ST_DIFF: A->format(m, sizeof m, "%s", "whole: different from the floppy"); c = A_ACCENT; break;
+            case ST_SAME: A->format(m, sizeof m, "%s", "whole: same as the floppy's"); c = A_TEXT; break;
+            case ST_DIFF: A->format(m, sizeof m, "%s", f->here ? "whole: different" : "whole: not on the floppy"); c = A_ACCENT; break;
             case ST_BACK: A->format(m, sizeof m, "%s", "put back on the floppy"); c = A_BRIGHT; break;
             case ST_BAD:  A->format(m, sizeof m, "%s", "not a journal: left alone"); c = A_ACCENT; break;
             default: break;
         }
-        A->win_text(2, ROW0 + i, f->name, f->on && (!load || f->state) ? A_TEXT : A_DIM, A_PAPER);
-        A->win_text(16, ROW0 + i, m, c, A_PAPER);
+        A->win_text(2, ROW0 + row, name, A_TEXT, A_PAPER);
+        A->win_text(23, ROW0 + row, m, c, A_PAPER);
+        row++;
+    }
+    if (n > LIST) {
+        A->format(m, sizeof m, "%u files", (u32)n);
+        A->win_text(WW - 12, ROW0 - 1, m, A_DIM, A_PAPER);
     }
 }
 
@@ -198,12 +270,15 @@ static int next_block(TapeTx *t)
     if (s_at >= s_nf) return 0;
     f = &s_f[s_at];
     if (s_stage < 2) {                           /* its name and size, twice */
-        for (k = 0; k < TAPE_NAME; k++) h[k] = (u8)f->name[k];
-        h[13] = (u8)f->f.size; h[14] = (u8)(f->f.size >> 8); h[15] = (u8)(f->f.size >> 16); h[16] = (u8)(f->f.size >> 24);
-        h[17] = (u8)f->used;   h[18] = (u8)(f->used >> 8);   h[19] = (u8)(f->used >> 16);   h[20] = (u8)(f->used >> 24);
-        h[21] = f->pad; h[22] = (u8)s_ord; h[23] = (u8)s_count;
-        h[24] = (u8)f->crc; h[25] = (u8)(f->crc >> 8);
-        h[26] = (u8)s_save_id; h[27] = (u8)(s_save_id >> 8);
+        for (k = 0; k < INV_PATH; k++) h[k] = 0;
+        for (k = 0; f->name[k] && k < INV_PATH - 1; k++) h[k] = (u8)f->name[k];
+        k = INV_PATH;
+        h[k] = (u8)f->size; h[k + 1] = (u8)(f->size >> 8); h[k + 2] = (u8)(f->size >> 16); h[k + 3] = (u8)(f->size >> 24);
+        h[k + 4] = (u8)f->used; h[k + 5] = (u8)(f->used >> 8); h[k + 6] = (u8)(f->used >> 16); h[k + 7] = (u8)(f->used >> 24);
+        h[k + 8] = f->pad; h[k + 9] = (u8)s_ord; h[k + 10] = (u8)s_count;
+        h[k + 11] = (u8)f->crc; h[k + 12] = (u8)(f->crc >> 8);
+        h[k + 13] = (u8)s_save_id; h[k + 14] = (u8)(s_save_id >> 8);
+        h[k + 15] = (u8)f->sys;
         tape_tx_block(t, TAPE_HEAD, s_ord << 8, h, HEAD_LEN, s_stage ? 100 : (s_ord ? 1000 : 8000));
         s_stage++;
         f->got = 0;
@@ -234,7 +309,7 @@ static void save(void)
     for (i = 0; i < s_nf; i++) {
         File *f = &s_f[i];
         if (!f->on) continue;
-        if (!from_floppy(f)) { f->on = 0; continue; }
+        if (!f->here || !from_floppy(f)) { f->on = 0; continue; }
         samples += block_samples(HEAD_LEN, s_count ? 1000 : 8000) + block_samples(HEAD_LEN, 100) + 2 * block_samples(0, 100);
         for (n = 0; n < f->pieces; n++) {
             u32 left = f->used - (u32)n * TAPE_PIECE;
@@ -245,7 +320,7 @@ static void save(void)
     }
     if (!s_count) {
         frame("Saving to a cassette");
-        put(3, "The floppy would not give up the files.", A_ACCENT);
+        put(3, s_nwant ? "Nothing of yours has that name." : "The floppy would not give up the files.", A_ACCENT);
         put(HH - 2, "\1Esc\1 leaves", A_DIM);
         wait_key();
         return;
@@ -266,6 +341,10 @@ static void save(void)
                 put(5, "A cable from the headphone socket (the front)", A_TEXT);
                 put(6, "to the recorder's MIC socket. Set the recorder", A_TEXT);
                 put(7, "recording, then press \1Enter\1.", A_TEXT);
+                if (s_big) {
+                    A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big);
+                    A->win_text(2, ROW0 - 1, m, A_DIM, A_PAPER);
+                }
                 put(HH - 2, "\1Enter\1 start   \1Esc\1 leave", A_DIM);
             } else if (playing) {
                 u32 heard = sent - (u32)A->audio_queued();
@@ -283,6 +362,7 @@ static void save(void)
                 }
                 put(HH - 2, "\1Esc\1 leave", A_DIM);
             }
+            s_focus = playing ? s_at : 0;
             list(0, playing ? s_at : done == 1 ? s_nf : -1);
         }
 
@@ -339,9 +419,12 @@ static void settle(File *f)
         f->state = ST_PART;
         return;
     }
-    for (i = f->used; i < f->f.size; i++) f->tape[i] = f->pad;
-    for (i = 0; i < f->f.size && f->tape[i] == f->disk[i]; i++) { }
-    f->state = i == f->f.size ? ST_SAME : ST_DIFF;
+    for (i = f->used; i < f->tsize; i++) f->tape[i] = f->pad;
+    f->state = ST_DIFF;
+    if (f->here && f->disk && f->tsize == f->size) {
+        for (i = 0; i < f->size && f->tape[i] == f->disk[i]; i++) { }
+        if (i == f->size) f->state = ST_SAME;
+    }
     wire(f->state == ST_SAME ? "same" : "different", f->name, f->used, 0);
 }
 
@@ -354,30 +437,39 @@ static void heard(void *ctx, int type, int seq, const u8 *d, int len)
         int i, k, ord, count, set;
         u16 crc;
         s_cur = -1;
-        if (len != HEAD_LEN || d[TAPE_NAME - 1]) return;
-        size = (u32)d[13] | (u32)d[14] << 8 | (u32)d[15] << 16 | (u32)d[16] << 24;
-        used = (u32)d[17] | (u32)d[18] << 8 | (u32)d[19] << 16 | (u32)d[20] << 24;
-        ord = d[22]; count = d[23];
-        crc = (u16)(d[24] | d[25] << 8);
-        set = d[26] | d[27] << 8;
+        if (len != HEAD_LEN || !d[0] || d[INV_PATH - 1]) return;
+        k = INV_PATH;
+        size = (u32)d[k] | (u32)d[k + 1] << 8 | (u32)d[k + 2] << 16 | (u32)d[k + 3] << 24;
+        used = (u32)d[k + 4] | (u32)d[k + 5] << 8 | (u32)d[k + 6] << 16 | (u32)d[k + 7] << 24;
+        ord = d[k + 9]; count = d[k + 10];
+        crc = (u16)(d[k + 11] | d[k + 12] << 8);
+        set = d[k + 13] | d[k + 14] << 8;
         if (!count || ord >= count || (seq >> 8) != ord) return;
         if (s_set < 0) { s_set = set; s_set_n = count; }
         if (set != s_set || count != s_set_n) { s_others = 1; return; }
-        for (i = 0; i < s_nf; i++) {
-            for (k = 0; k < TAPE_NAME && s_f[i].name[k] == (char)d[k] && d[k]; k++) { }
-            if (k < TAPE_NAME && !s_f[i].name[k] && !d[k]) break;
+        for (i = 0; i < s_nf; i++)
+            if (s_f[i].sys == (d[k + 15] != 0) && same_word(s_f[i].name, (const char *)d)) break;
+        if (size > FILE_MAX || used > size) { s_seen[ord] = -1; return; }
+        if (i == s_nf) {
+            /* Not on this floppy.  One of the system's three would have
+             * been; anything else is a file for the inventory, new here. */
+            if (d[k + 15] || !add_file((const char *)d, 0)) { s_seen[ord] = -1; return; }
         }
-        /* Not one of yours, not wanted, or not the size this floppy keeps it at. */
-        if (i == s_nf || !s_f[i].on || size != s_f[i].f.size || used > size) { s_seen[ord] = -1; return; }
         f = &s_f[i];
-        if (f->state == ST_NONE || f->used != used || f->crc != crc || f->pad != d[21]) {
-            f->used = used; f->crc = crc; f->pad = d[21];
+        /* Not wanted, or one of the system's at a size this floppy does not keep it at. */
+        if (!f->on || (f->sys && size != f->size)) { s_seen[ord] = -1; return; }
+        if (f->state == ST_NONE || f->used != used || f->crc != crc || f->pad != d[k + 8] || f->tsize != size) {
+            if (s_tape_n + size > ARENA) { s_seen[ord] = -1; return; }
+            f->tape = s_tape + s_tape_n;
+            s_tape_n += size;
+            f->tsize = size; f->used = used; f->crc = crc; f->pad = d[k + 8];
             f->pieces = (int)((used + TAPE_PIECE - 1) / TAPE_PIECE);
             f->got = 0;
             for (k = 0; k < PIECES; k++) f->have[k] = 0;
             f->state = ST_PART;
             if (!f->pieces) settle(f);
         }
+        s_focus = i;
         s_seen[ord] = 1 + i;
         s_cur = i; s_cur_ord = ord;
     } else if (type == TAPE_DATA) {
@@ -461,6 +553,7 @@ static int listen(void)
 static void load(void)
 {
     int i, key, k, same, diff, part, back = 0, failed = 0;
+    const char *why = "The floppy would not take it.";
     char m[64];
 
     frame("Reading a cassette");
@@ -469,7 +562,7 @@ static void load(void)
     for (i = 0; i < s_nf; i++) {
         File *f = &s_f[i];
         f->state = ST_NONE;
-        if (f->on && !from_floppy(f)) f->on = 0;
+        if (f->on && f->here && !from_floppy(f)) f->on = 0;
     }
     s_set = -1; s_others = 0;
     for (i = 0; i < 256; i++) s_seen[i] = 0;
@@ -490,7 +583,7 @@ static void load(void)
                 part += s_f[i].state == ST_PART;
             }
             frame("What the tape holds");
-            if (failed) put(3, "The floppy would not take it.", A_ACCENT);
+            if (failed) put(3, why, A_ACCENT);
             else if (back) {
                 A->format(m, sizeof m, "%u put back on the floppy.", (u32)back);
                 put(3, m, A_BRIGHT);
@@ -521,12 +614,26 @@ static void load(void)
                     static const char sig[] = "FLOPOS journal";
                     if (f->state != ST_DIFF) continue;
                     /* The journal has to be a journal: FLOPOS writes to wherever it is. */
-                    if (same_word(f->name, "JOURNAL.TXT")) {
+                    if (f->sys && same_word(f->name, "JOURNAL.TXT")) {
                         for (k = 0; sig[k] && f->tape[k] == (u8)sig[k]; k++) { }
                         if (sig[k]) { f->state = ST_BAD; continue; }
                     }
-                    if (!A->file_write(&f->f, f->tape)) { failed = 1; break; }
-                    for (k = 0; k < (int)f->f.size; k++) f->disk[k] = f->tape[k];
+                    if (f->sys) {
+                        if (!A->file_write(&f->f, f->tape)) { failed = 1; break; }
+                    } else {
+                        /* Its folders first, from the top down, then the file. */
+                        char dir[INV_PATH];
+                        InvItem it;
+                        int bad = 0;
+                        for (k = 0; f->name[k] && !bad; k++) {
+                            dir[k] = f->name[k];
+                            if (f->name[k + 1] != '/') continue;
+                            dir[k + 1] = 0;
+                            if (!A->inv_stat(dir, &it) && !A->inv_mkdir(dir)) bad = 1;
+                        }
+                        if (bad || !A->inv_write(f->name, f->tape, f->tsize)) { failed = 1; why = A->inv_why(); break; }
+                        f->here = 1;
+                    }
                     f->state = ST_BACK;
                     back++;
                     wire("put back", f->name, f->used, 0);
@@ -542,6 +649,7 @@ int app_main(const Api *api, int argc, char **argv)
     int what = 0, key;
 
     A = api;
+    choose(argc, argv);
     find_files();
     if (!s_nf) {
         A->colour(A_TEXT); A->print("None of your files are on this floppy."); A->newline();
@@ -555,11 +663,10 @@ int app_main(const Api *api, int argc, char **argv)
             return 0;
         }
     }
-    if (!choose(argc, argv)) return 0;
     while (!what) {
         frame("Your files, kept on an audio cassette");
-        put(3, "The documents, the bookmarks, the journal and", A_TEXT);
-        put(4, "the words you have taught.", A_TEXT);
+        put(3, "Everything in your inventory, the bookmarks,", A_TEXT);
+        put(4, "the journal and the words you have taught.", A_TEXT);
         put(7, "\1S\1    save them to a tape", A_TEXT);
         put(9, "\1L\1    load a tape, and compare it with the floppy", A_TEXT);
         put(11, "\1Esc\1  leave", A_TEXT);

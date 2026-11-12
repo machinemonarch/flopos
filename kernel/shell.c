@@ -155,6 +155,12 @@ static void cmd_browzer(void)
     if (!app_run("browzer", s_argc, s_argv)) say("browzer is not on this floppy.");
 }
 
+/* Your files, INVENTOR.APP on the floppy.  Listed here so `help` shows it. */
+static void cmd_inventory(void)
+{
+    if (!app_run("inventory", s_argc, s_argv)) say("The inventory is not on this floppy.");
+}
+
 static void cmd_apps(void) { apps_list(); }
 
 static void cmd_network(void)
@@ -1413,6 +1419,7 @@ static const Cmd s_cmds[] = {
     { "apps",    "programs on the floppy",       cmd_apps    },
     { "ping",    "is anybody out there",         cmd_ping    },
     { "browzer", "a small web browser",          cmd_browzer },
+    { "inventory","what you carry: your files",  cmd_inventory },
     { "report",  "tell Claude how you are",      cmd_report  },
     { "wizard",  "lock the screen behind a riddle", cmd_wizard },
     { "bye",     "write everything down and stop", cmd_bye   },

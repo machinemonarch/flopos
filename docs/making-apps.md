@@ -17,7 +17,7 @@ Why apps live outside the system:
 
 Type its name. When FLOPOS doesn't know a word as a command, it looks on
 the floppy for a file of that name ending in `.APP`. `apps` lists them.
-Anything after the name is passed to the app: `write 3`.
+Anything after the name is passed to the app: `write letter`.
 
 Apps need at least 18MB of memory, which the 430CDT (32MB) has.
 
@@ -172,6 +172,26 @@ Reading or writing `JOURNAL.TXT` and `STATE.BIN` from an app is safe: the
 system writes its own copy down before an app reads them, and reads them
 back in after an app writes them.
 
+### Added in version 6: the inventory, and handing over
+
+A path is names with `/` between them, down from the inventory: `""` is
+the inventory itself, `NOTES/A.MD` a file in a folder. Names are DOS
+names (eight, a dot, three); no path can leave the inventory. A call that
+fails returns 0 (or -1 where it returns a count) and `inv_why()` is a
+sentence to show.
+
+| Function | What it does |
+|---|---|
+| `inv_list(dir, fn, ctx)` | Calls `fn(item, ctx)` for each thing in a folder; returns how many. `fn` must not call the inventory. |
+| `inv_stat(path, &item)` | Is it there, and what is it: name, folder or not, size, date |
+| `inv_read(path, buf, max)` | A file's bytes; how many, or -1 |
+| `inv_write(path, buf, n)` | Make the file, or replace it, at exactly `n` bytes |
+| `inv_mkdir(path)` | A new folder |
+| `inv_remove(path)` | A file, or an empty folder |
+| `inv_move(from, to)` | Rename, move to another folder, or both |
+| `inv_room()` | Bytes free on the floppy |
+| `then(command)` | Run another app when this one leaves, as if typed: `then("write NOTES/A.MD")`. How the inventory opens a document and `write` returns to it. |
+
 ## Libraries apps share
 
 Code more than one app could use lives in `apps/lib/<name>/` and is built
@@ -197,8 +217,12 @@ Colours (`A_TEXT`, `A_DIM`, `A_BRIGHT`, `A_ACCENT`, `A_GREY`, `A_PAPER`,
 
 ## Files an app wants to keep
 
-Because apps can only write into files that already exist, an app's files
-are made when the floppy is built, at full size. `tools/mkimage.py` does
-this for `write`'s eight documents. A new app that keeps data adds its own
-files there the same way, and adds them to the list `writefloppy.sh`
-carries across upgrades.
+What the user makes goes in the inventory, through the `inv_` calls below:
+real files of any size, under names the user chooses, carried across
+upgrades by `writefloppy.sh` without anything more to do. That is where
+`write` keeps its documents.
+
+An app's own records (settings, a list like browzer's bookmarks) can
+instead be a file made at full size when the floppy is built
+(`tools/mkimage.py`), written in place with `file_write`, and added to the
+list in `tools/keepfiles.sh`.

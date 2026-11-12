@@ -777,7 +777,21 @@ int    fs_mount(void);
 int    fs_find(const char *name, FsFile *f);
 int    fs_read(const FsFile *f, u8 *buf, u32 max);
 int    fs_write_inplace(const FsFile *f, const u8 *buf);
-void   fs_each(void (*fn)(const char *name, u32 size, void *ctx), void *ctx);    /* -> 1 on success               */
+void   fs_each(void (*fn)(const char *name, u32 size, void *ctx), void *ctx);
+
+/* The inventory: your own folder on the floppy, where files and folders
+ * are made, changed, moved and removed.  Paths are names with / between
+ * them, down from that folder; "" is the folder itself. */
+typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } FsItem;
+int    inv_list(const char *dir, void (*fn)(const FsItem *it, void *ctx), void *ctx);
+int    inv_stat(const char *path, FsItem *it);
+int    inv_read(const char *path, u8 *buf, u32 max);      /* bytes, or -1   */
+int    inv_write(const char *path, const u8 *buf, u32 n); /* make or replace */
+int    inv_mkdir(const char *path);
+int    inv_remove(const char *path);
+int    inv_move(const char *from, const char *to);
+u32    inv_room(void);                    /* bytes free on the floppy       */
+const char *inv_why(void);                /* why the last one failed        */    /* -> 1 on success               */
 int    disk_write(u32 lba, int count);
 u8     disk_last_status(void);
 

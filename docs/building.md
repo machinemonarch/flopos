@@ -65,7 +65,8 @@ can be read by DOS, Windows, Linux or a Mac. On it:
 | `BOOKMARK.TXT` | browzer's bookmarks, 8 KB |
 | `ROOTS.DAT` | The authorities secure sites are checked against (55 KB) |
 | `JOURNAL.TXT`, `STATE.BIN` | What FLOPOS remembers. Made at full size so they can be written in place. |
-| `WRITE1.MD` … `WRITE8.MD` | Documents, 16KB each |
+| `INVENTORY` (folder) | Everything the user makes. Empty in a new image. |
+| `INVENTOR.APP`, `TAPE.APP` | The inventory and the cassette backup |
 | `README.TXT` | The project's README |
 
 Alongside the image it writes `flopos.img.used`, a list of which parts of
@@ -133,6 +134,17 @@ Kept here, so they are never written again:
 - `tools/bench/tlstest.py` makes a test authority, an image that trusts it,
   and six local OpenSSL servers (TLS 1.2 in each form FLOPOS takes, TLS
   1.3, and a TLS 1.1 one that must be refused), and checks them all.
+
+- `tools/fstest/run.py` builds FLOPOS's own file code (`kernel/fs.c`) for
+  this PC and runs it on a copy of the image: thousands of random makes,
+  changes, moves and removals in the inventory, then `fsck.fat` and
+  mtools must agree with every one; then the same with the power cut
+  after a random number of sectors. Run it after any change to `fs.c`.
+
+- `tools/keeptest.sh` tries what `writefloppy.sh` does to carry the
+  user's files to a new release (`tools/keepfiles.sh`), on images: an old
+  floppy with `WRITE2.MD`, an inventory with folders, a blank disk, and
+  one too full to carry.
 
 - `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
   own code (`apps/lib/tape`), runs it through a pretend tape (wrong

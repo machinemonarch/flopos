@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 5
+#define APP_API_VERSION 6
 #define APP_BASE        0x00A00000u      /* 10MB, clear of the kernel heap */
 #define APP_MAX         0x00800000u      /* 8MB: code, data and buffers    */
 
@@ -41,6 +41,13 @@ typedef struct {
 } AppHeader;
 
 typedef struct { u32 first, size; } AppFile;
+
+/* A thing in the inventory, as inv_list and inv_stat give it.  The date
+ * and time are as FAT12 keeps them: year-1980 in the top 7 bits of date,
+ * then month (4 bits) and day (5); hours in the top 5 of time, then
+ * minutes (6) and seconds/2 (5). */
+typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
+#define INV_PATH 80                      /* a path's longest, with its zero */
 
 /* Colours: palette indices, the same ones the shell uses. */
 #define A_TEXT    94                     /* PAL_TEXT + 22                  */
@@ -194,6 +201,37 @@ typedef struct {
      * it. */
     int  (*audio_listen)(int rate, int source);
     int  (*audio_heard)(u8 *out, int max);
+
+    /* ---- version 6 ------------------------------------------------------ */
+    /* The inventory: the one folder on the floppy that is the user's, and
+     * everything below it.  Here files and folders are really made,
+     * changed, moved and removed; any other computer sees them as plain
+     * files in a folder called INVENTORY.  A path is names with / between
+     * them, down from that folder ("" is the folder itself, "NOTES/A.MD"
+     * a file in a folder); a name is up to eight letters or digits, a dot
+     * and up to three more; folders go seven deep.  No path can leave the
+     * inventory.  Each call that can fail returns 0 (or -1 where it
+     * returns a count), and inv_why() is then a sentence to show.
+     *
+     * inv_list calls fn for each thing in a folder and returns how many;
+     * fn must not call the inventory itself.  inv_write makes the file or
+     * replaces it, at exactly n bytes.  inv_remove takes a file, or a
+     * folder with nothing in it.  inv_move renames, moves, or both: `to`
+     * is the whole new path.  inv_room is the bytes free on the floppy. */
+    int  (*inv_list)(const char *dir, void (*fn)(const InvItem *it, void *ctx), void *ctx);
+    int  (*inv_stat)(const char *path, InvItem *it);
+    int  (*inv_read)(const char *path, u8 *buf, u32 max);
+    int  (*inv_write)(const char *path, const u8 *buf, u32 n);
+    int  (*inv_mkdir)(const char *path);
+    int  (*inv_remove)(const char *path);
+    int  (*inv_move)(const char *from, const char *to);
+    u32  (*inv_room)(void);
+    const char *(*inv_why)(void);
+
+    /* What to run when this app has left: an app's name and its words,
+     * as they would be typed ("write NOTES/A.MD").  That is how one app
+     * hands over to another; only apps can be named. */
+    void (*then)(const char *command);
 } Api;
 
 typedef int (*AppMain)(const Api *api, int argc, char **argv);

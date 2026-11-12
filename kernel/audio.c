@@ -384,7 +384,8 @@ void audio_close(void)
  * half a second of two notes and measures how far the card got. */
 void audio_report(void)
 {
-    static u8 tone[11025];
+    enum { TONE = 11025 };
+    static u8 *tone;                     /* from the heap: low memory is short */
     u32 i, t0, el, start, moved = 0, last;
     int rate;
 
@@ -395,13 +396,14 @@ void audio_report(void)
     }
     term_printf("sound blaster dsp at %x, version %u.%02u", (u32)s_base, (u32)s_ver_hi, (u32)s_ver_lo);
     term_newline();
-    rate = audio_open(11025);
+    if (!tone) tone = (u8 *)halloc(TONE);
+    rate = tone ? audio_open(11025) : 0;
     if (!rate) { term_print("but it would not start"); term_newline(); return; }
-    for (i = 0; i < sizeof tone; i++) {                 /* a fifth, softly    */
-        int p = (int)((i < sizeof tone / 2 ? 440u : 660u) * i * SINLEN / (u32)rate);
+    for (i = 0; i < TONE; i++) {                        /* a fifth, softly    */
+        int p = (int)((i < TONE / 2 ? 440u : 660u) * i * SINLEN / (u32)rate);
         tone[i] = (u8)(128 + (SIN(p) >> 7));
     }
-    audio_write(tone, (int)sizeof tone);
+    audio_write(tone, TONE);
     start = last = dma_pos();
     t0 = ms_now();
     while ((el = ms_now() - t0) < 1100) {

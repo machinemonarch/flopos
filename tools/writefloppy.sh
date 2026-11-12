@@ -250,44 +250,41 @@ if findmnt -n "$DEVICE" >/dev/null 2>&1; then
 fi
 
 # --- keep what was written on the old disk ----------------------------------
-# A new image carries empty documents, an empty journal and no taught
-# words, so writing it as it is would wipe everything written on the
-# floppy since the last upgrade.  Anything of those that is on the floppy
-# now, at the size the new image expects, is copied into the snapshot
-# first.  A floppy that is not a FLOPOS disk simply has none of them.
+# A new image carries an empty inventory, an empty journal and no taught
+# words, so writing it as it is would wipe everything made on the floppy
+# since the last upgrade.  Whatever of that is on the floppy now is copied
+# into the snapshot first (tools/keepfiles.sh).  A floppy that is not a FLOPOS disk simply has none of them.
 # --fresh skips this and writes the image exactly as built.
 #
-# The temporary folder is only ever used if mktemp really made it, and its
-# contents are removed one named file at a time -- never with a wildcard
-# on a variable, which with an empty variable is "rm -f /*".
-KEEP_FILES="JOURNAL.TXT STATE.BIN WRITE1.MD WRITE2.MD WRITE3.MD WRITE4.MD
-            WRITE5.MD WRITE6.MD WRITE7.MD WRITE8.MD BOOKMARK.TXT"
+# The temporary folder is only ever used if mktemp really made it.  It is
+# kept until the floppy has been verified, so a write that fails halfway
+# does not take the only copy with it; and it is removed only if its name
+# is the one mktemp gave it here, never through a bare variable.
 KEEPDIR=""
 if [ "$FRESH" -ne 1 ] && command -v mcopy >/dev/null 2>&1; then
     KEEPDIR="$(mktemp -d "${TMPDIR:-/tmp}/flopos-keep.XXXXXX" 2>/dev/null)" || KEEPDIR=""
 fi
 if [ -n "$KEEPDIR" ] && [ -d "$KEEPDIR" ] && [ "$KEEPDIR" != "/" ]; then
-    kept=""
-    for f in $KEEP_FILES; do
-        if mcopy -n -i "$DEVICE" "::$f" "$KEEPDIR/$f" 2>/dev/null; then
-            want=$( { mcopy -n -i "$SNAP" "::$f" - 2>/dev/null || true; } | wc -c)
-            have=$(stat -c%s "$KEEPDIR/$f")
-            if [ "$want" -gt 0 ] && [ "$want" = "$have" ]; then
-                mcopy -o -n -i "$SNAP" "$KEEPDIR/$f" "::$f" && kept="$kept $f"
-            fi
-        fi
-    done
-    for f in $KEEP_FILES; do
-        rm -f -- "$KEEPDIR/$f"
-    done
-    rmdir -- "$KEEPDIR" 2>/dev/null || true
+    # What is the user's on the old floppy goes into the snapshot first:
+    # the journal, the taught words, the bookmarks and the whole inventory
+    # (tools/keepfiles.sh).  If any of it cannot be carried, stop here,
+    # before anything is written.
+    kept="$("$ROOT/tools/keepfiles.sh" "$DEVICE" "$SNAP" "$KEEPDIR")" \
+        || die "Could not carry your files over. The floppy has not been touched.
+  (--fresh writes the release without them.)"
     if [ -n "$kept" ]; then
         step "Keeping what is already on the floppy:"
-        note "  $kept"
+        printf '%s\n' "$kept" | sed 's/^/    /'
+        note ""
+        note "  (A copy of it stays in $KEEPDIR until the floppy is verified.)"
+    fi
+    # The inventory's files lie beyond the part of the image that a release
+    # fills, so with anything in it the whole floppy is written.
+    if printf '%s\n' "$kept" | grep -q '^INVENTORY/'; then
+        WRITE_BYTES=$FLOPPY_BYTES
     fi
 fi
 
-# --- optional low-level format --------------------------------------------
 if [ "$LOWLEVEL" -eq 1 ]; then
     if command -v ufiformat >/dev/null 2>&1; then
         step "Low-level formatting (this takes a couple of minutes)"
@@ -311,11 +308,17 @@ step "Reading it back to check every sector written"
 if cmp -n "$WRITE_BYTES" "$SNAP" "$DEVICE"; then
     note ""
     note "  VERIFIED. All $WRITE_BYTES bytes match."
+    # The copy of the old floppy's files is no longer needed.  Only ever
+    # a folder this script made itself, by its own name.
+    case "$KEEPDIR" in
+        */flopos-keep.??????) rm -rf -- "$KEEPDIR" ;;
+    esac
 else
     die "MISMATCH. The disk does not read back the same as what was written.
   The image was snapshotted before the write, so this is the media or the
   drive, not a changing file. Try again; if it fails at the same byte
-  twice, use a different diskette."
+  twice, use a different diskette.
+  What was on the old floppy is kept in: ${KEEPDIR:-nowhere (--fresh)}"
 fi
 
 # --- done -----------------------------------------------------------------

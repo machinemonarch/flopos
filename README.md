@@ -54,6 +54,12 @@ proxies, no JavaScript.
 Needs `gcc` with 32-bit support, binutils, `mtools` and `python3`; QEMU to
 run it without the laptop.
 
+## On the floppy
+
+Put it in any computer: it is an ordinary DOS floppy. `INVENTORY` is the
+folder with everything you have made, as plain files. Everything beside
+it is FLOPOS itself and its own records; leave those where they are.
+
 ## Documentation
 
 Everything is in **[docs/](docs/README.md)**:
@@ -61,6 +67,7 @@ Everything is in **[docs/](docs/README.md)**:
 - [Philosophy](docs/philosophy.md): what it is and the rules it's built by
 - [Getting started](docs/getting-started.md): floppy, booting, the serial line
 - [Commands](docs/commands.md): every word it knows
+- [The inventory](docs/inventory.md): your files and folders
 - [write](docs/write.md): the word processor
 - [tape](docs/tape.md): your files on an audio cassette
 - [The network](docs/network.md): the menu, browzer, and how private it is

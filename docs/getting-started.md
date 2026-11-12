@@ -28,12 +28,15 @@ The script:
    green letters. It will not write to anything that isn't exactly the size
    of a floppy, so a typo can't hit a hard disk.
 2. **Asks you to type `YES`.**
-3. **Keeps what you made.** Documents, bookmarks, the journal and taught
-   words already on the floppy are copied into the new version before it
-   is written. Add
-   `--fresh` to start clean instead.
-4. **Writes only the part of the disk that is in use**, which takes about
-   16 seconds instead of over a minute.
+3. **Keeps what you made.** Your whole inventory, the bookmarks, the
+   journal and the taught words already on the floppy are copied into the
+   new version before it is written, and a copy stays on this PC until
+   the floppy has been read back and found right. If your files would not
+   fit beside the new version, nothing is written. Add `--fresh` to start
+   clean instead.
+4. **Writes only the part of the disk that is in use** when the inventory
+   is empty, which takes about 16 seconds; with files in it, the whole
+   floppy, a little over a minute.
 
 Other options: name the device yourself (`tools/writefloppy.sh /dev/sde`),
 `-y` to skip the question, `--full` to write all 1.44MB, and `--lowlevel` to

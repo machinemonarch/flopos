@@ -280,11 +280,13 @@ static int open_record(int len, int *plen)
 
 static int send_record(u8 type, const u8 *data, int len)
 {
-    static u8 out[16384 + 64];
+    static u8 *out;                      /* from the heap: low memory is short */
     u8 nonce[12];
     int i;
 
     if (len > 16384) return 0;
+    if (!out) out = (u8 *)halloc(16384 + 64);
+    if (!out) return 0;
     if (s_v12) {
         u8 aad[13];
         int pre = aes() ? 8 : 0;

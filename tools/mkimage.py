@@ -28,10 +28,6 @@ TOTAL_SECTORS = 2880            # 1.44MB: 80 cylinders * 2 heads * 18 sectors
 JOURNAL_BYTES = 8192
 STATE_BYTES = 8192
 
-# The editor's documents: eight of them, sixteen kilobytes each -- several
-# pages of text apiece, and a size a floppy writes in a second or two.
-DOC_SLOTS = 8
-DOC_BYTES = 16384
 BOOKMARK_BYTES = 8192
 
 JOURNAL_HEADER = (
@@ -136,17 +132,15 @@ def main():
         name = os.path.splitext(os.path.basename(app))[0].upper()[:8] + ".APP"
         run("mcopy", "-i", out_path, app, "::" + name)
 
-    # Documents for the editor: made at their full size now, because the
-    # kernel only ever writes a file in place and never changes its size
-    # or where it lives.  Empty to begin with -- the DOS end-of-file mark
-    # and then nothing -- so TYPE shows nothing rather than noise.
-    for n in range(1, DOC_SLOTS + 1):
-        dpath = os.path.join(tmpdir, "WRITE%d.MD" % n)
-        open(dpath, "wb").write(b"\x1A" + b"\x00" * (DOC_BYTES - 1))
-        run("mcopy", "-i", out_path, dpath, "::WRITE%d.MD" % n)
+    # The inventory: the one folder that is the user's.  Everything they
+    # make lives in it, as ordinary files any computer can read, and the
+    # system's own files above it are never disturbed.  Empty to begin
+    # with.  (Its name is nine letters, so the floppy also carries the
+    # short name INVENT~1, which is the one FLOPOS looks for.)
+    run("mmd", "-i", out_path, "::INVENTORY")
 
     # browzer's bookmarks: plain text, one a line, made at full size for
-    # the same reason as the documents.
+    # the kernel only ever writes it in place.
     bpath = os.path.join(tmpdir, "BOOKMARK.TXT")
     open(bpath, "wb").write(b"\x1A" + b"\x00" * (BOOKMARK_BYTES - 1))
     run("mcopy", "-i", out_path, bpath, "::BOOKMARK.TXT")

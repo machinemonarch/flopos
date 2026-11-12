@@ -260,3 +260,31 @@ recorder; what follows holds against a simulated tape.
   record. A test build keeps what it plays and hands it back when asked
   to listen, so the whole app can be tried, saving and reading, without
   a recorder.
+
+## Writing a floppy's filesystem so a power cut cannot break it
+
+For the inventory (`kernel/fs.c`). FAT12 has no journal, so the order of
+the writes is the whole of the safety.
+
+- **New data never lands on old data.** A changed file goes into
+  clusters nothing uses. The folder entry is one sector, written last but
+  one; until it lands the old file is untouched, and after it the new one
+  is complete. Only then are the old clusters let go.
+- **The spare table first.** FAT12 keeps two copies of its allocation
+  table. The spare is written before the one in use, so if a sector of
+  the main one is cut mid-write and will not read, the spare has it
+  whole. At the first change of a session the two are compared and made
+  to agree.
+- **The user's folder is a fence.** The system's files are never moved
+  or resized and the top folder is never written. Every inventory path
+  is followed down from one folder, and a name beginning with a dot is
+  not a name, so nothing can climb out.
+- **Test it with someone else's reader.** The file code is built for the
+  PC and run through thousands of random changes; the judges are
+  `fsck.fat` and mtools, not FLOPOS. That found one thing no reading of
+  the format would have: mtools rejects a disk whose very last cluster is
+  in use, though the format allows it. FLOPOS never gives that cluster
+  out.
+- **Cut the power on purpose.** The test stops the write after a random
+  number of sectors, hundreds of times, and checks that every file is
+  whole, old or new.

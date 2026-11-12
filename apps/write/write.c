@@ -16,22 +16,26 @@
  *   ctrl-s  save        ctrl-o  open         ctrl-n  new
  *   esc     leave (twice, if there is something unsaved)
  *
- * Documents live in WRITE1.MD to WRITE8.MD on the floppy: plain text any
- * other computer can read, made at their full size when the disk is built
- * because FLOPOS only ever writes a file in place.  See doc.c.
+ * Documents live in the inventory, under names of your choosing: plain
+ * text any other computer can read, each as long as it is.  `write` alone
+ * is a new document; `write NOTES.MD` or `write LETTERS/ANNA.MD` opens
+ * that one, or starts it if it is not there; ctrl-o goes to the inventory
+ * to pick one.  See doc.c.
  * ===========================================================================
  */
 #include "app.h"
 #include "doc.h"
 
-#define SLOTS 8
 #define ATTRS (AT_BOLD | AT_ITALIC | AT_UNDERLINE)
 
 static const Api *A;
 static Doc  s_doc;
 static int  s_cur, s_anchor = -1, s_want = -1;
 static u8   s_pen;
-static int  s_slot, s_dirty, s_esc;
+static int  s_dirty, s_esc;
+static char s_path[INV_PATH];            /* where it is kept; "" until saved */
+static char s_dir[INV_PATH];             /* the folder a new one will go in */
+static int  s_back;                      /* came from the inventory: go back there */
 static int  s_top;
 static int  W, H, TW, TH;
 static char s_msg[80];
@@ -388,66 +392,84 @@ static void set_style(int st)
 }
 
 /* ---- files ------------------------------------------------------------------ */
-static int slot_file(int slot, AppFile *f)
-{
-    char name[16];
-    A->format(name, sizeof name, "WRITE%u.MD", (u32)slot);
-    return A->file_find(name, f);
-}
+static void draw(int blink);
 
-static int load(int slot)
+static int load(const char *path)
 {
-    AppFile f;
-    int n;
-    if (!slot_file(slot, &f)) { say("That document is not on this floppy.", A_ACCENT); return 0; }
-    n = A->file_read(&f, s_file, FILE_MAX);
-    if (n < 0) { say("The floppy would not give it up.", A_ACCENT); return 0; }
+    char m[INV_PATH + 16];
+    int n = A->inv_read(path, s_file, FILE_MAX);
+    if (n < 0) { say(A->inv_why(), A_ACCENT); return 0; }
     doc_from_text(&s_doc, s_file, n);
-    s_cur = 0; s_anchor = -1; s_top = 0; s_slot = slot; s_dirty = 0;
+    s_cur = 0; s_anchor = -1; s_top = 0; s_dirty = 0;
+    A->format(s_path, INV_PATH, "%s", path);
     if (s_md && !to_markdown()) s_md = 0;
     s_cur = 0;
     pen_from_cursor();
-    {
-        char m[40];
-        A->format(m, sizeof m, "Opened WRITE%u.MD.", (u32)slot);
-        say(m, A_DIM);
-    }
+    A->format(m, sizeof m, "Opened %s.", path);
+    say(m, A_DIM);
     return 1;
 }
 
-static int is_empty_slot(int slot)
+/* A name for a new document, typed on the bottom line.  It gets .MD if it
+ * has no ending of its own.  0 if esc. */
+static int ask_name(char *out)
 {
-    AppFile f;
-    u8 b[4];
-    if (!slot_file(slot, &f)) return 0;
-    if (A->file_read(&f, b, 1) < 1) return 0;
-    return b[0] == 0x1A || b[0] == 0;
+    char name[13];
+    int n = 0, key, mods, x, i, dot = 0;
+    name[0] = 0;
+    for (;;) {
+        draw(0);
+        A->win_band(H - 2, 1, W - 2, A_PAPER);
+        x = A->win_text(2, H - 2, "Save as:", A_BRIGHT, A_PAPER);
+        x = A->win_text(x + 1, H - 2, name, A_TEXT, A_HILITE);
+        A->win_put(x, H - 2, '_', A_BRIGHT, A_HILITE, 0);
+        A->win_text(x + 3, H - 2, "\1Enter\1 save  \1Esc\1 not now", A_DIM, A_PAPER);
+        do { key = A->key(&mods); if (key < 0) A->pump(0); } while (key < 0);
+        if (key == K_ESC) return 0;
+        if (key == K_BKSP) { if (n) name[--n] = 0; continue; }
+        if (key == K_ENTER) {
+            if (!n) continue;
+            for (i = 0, dot = 0; i < n; i++) dot |= name[i] == '.';
+            if (slen(s_dir) + n + 5 >= INV_PATH) { say("That is too many folders deep.", A_ACCENT); return 0; }
+            A->format(out, INV_PATH, "%s%s%s%s", s_dir, s_dir[0] ? "/" : "", name, dot ? "" : ".MD");
+            return 1;
+        }
+        if (key >= 'a' && key <= 'z') key -= 32;
+        if (n < 12 && ((key >= 'A' && key <= 'Z') || (key >= '0' && key <= '9') || key == '.' || key == '_' || key == '-')) {
+            name[n++] = (char)key;
+            name[n] = 0;
+        }
+    }
 }
 
-static int save(int slot)
+static int save(void)
 {
-    AppFile f;
-    int n, k;
-    char m[60];
+    char path[INV_PATH], m[INV_PATH + 32];
+    InvItem it;
+    int n;
 
-    if (!slot_file(slot, &f)) { say("That document is not on this floppy.", A_ACCENT); return 0; }
-    if (f.size > FILE_MAX) f.size = FILE_MAX;
-    n = s_md ? doc_to_plain(&s_doc, s_file, (int)f.size - 1, -1, 0)
-             : doc_to_text(&s_doc, s_file, (int)f.size - 1);
+    n = s_md ? doc_to_plain(&s_doc, s_file, FILE_MAX, -1, 0)
+             : doc_to_text(&s_doc, s_file, FILE_MAX);
     if (n < 0) {
-        A->format(m, sizeof m, "Too long to keep: a document holds %u bytes.", f.size);
+        A->format(m, sizeof m, "Too long to keep: a document holds %u bytes.", (u32)FILE_MAX);
         say(m, A_ACCENT);
         return 0;
     }
-    s_file[n] = 0x1A;                    /* where TYPE on DOS stops reading */
-    for (k = n + 1; k < (int)f.size; k++) s_file[k] = 0;
+    if (s_path[0]) A->format(path, INV_PATH, "%s", s_path);
+    else {
+        if (!ask_name(path)) { if (!s_msg[0]) say("Not saved.", A_DIM); return 0; }
+        if (A->inv_stat(path, &it)) { say("There is already something by that name. Pick another.", A_ACCENT); return 0; }
+    }
     say("Writing to the floppy...", A_DIM);
+    draw(0);
     A->pump(1);
-    if (!A->file_write(&f, s_file)) { say("The floppy would not take it.", A_ACCENT); return 0; }
-    s_slot = slot;
+    if (!A->inv_write(path, s_file, (u32)n)) { say(A->inv_why(), A_ACCENT); return 0; }
+    A->format(s_path, INV_PATH, "%s", path);
     s_dirty = 0;
-    A->format(m, sizeof m, "Saved to WRITE%u.MD, %u bytes.", (u32)slot, (u32)n);
+    A->format(m, sizeof m, "Saved as %s, %u bytes.", path, (u32)n);
     say(m, A_BRIGHT);
+    A->format(m, sizeof m, "[write] saved %s %u\n", path, (u32)n);
+    A->wire(m);
     return 1;
 }
 
@@ -541,8 +563,11 @@ static void draw(int blink)
 
     /* Status. */
     if (s_msg[0]) A->win_text(2, H - 2, s_msg, s_msg_col, pp);
-    if (s_slot) A->format(m, sizeof m, "WRITE%u.MD", (u32)s_slot);
-    else        A->format(m, sizeof m, "not saved yet");
+    {
+        int from = slen(s_path) > 30 ? slen(s_path) - 30 : 0;     /* the end of a long path */
+        if (s_path[0]) A->format(m, sizeof m, "%s", s_path + from);
+        else           A->format(m, sizeof m, "not saved yet");
+    }
     A->win_text(W - 2 - slen(m), H - 2, m, A_DIM, pp);
 
     if (s_md)
@@ -559,61 +584,6 @@ static void keep_cursor_visible(void)
     if (cl < s_top) s_top = cl;
     if (cl >= s_top + TH) s_top = cl - TH + 1;
     if (s_top < 0) s_top = 0;
-}
-
-/* ---- choosing a document --------------------------------------------------- */
-/* Eight slots, each shown by its first line.  Only the first sector of each
- * file is read, so this is quick even on a floppy. */
-static int choose_slot(const char *what)
-{
-    static Doc peek;
-    char title[8][40];
-    int sel = s_slot ? s_slot - 1 : 0, i, k, x0, y0, bw = 44, bh = SLOTS + 4;
-
-    for (i = 0; i < SLOTS; i++) {
-        AppFile f;
-        int n;
-        title[i][0] = 0;
-        if (!slot_file(i + 1, &f)) { A->format(title[i], 40, "%s", "(not on this floppy)"); continue; }
-        n = A->file_read(&f, s_file, 512);
-        if (n <= 0 || s_file[0] == 0x1A || s_file[0] == 0) { A->format(title[i], 40, "%s", "(empty)"); continue; }
-        doc_from_text(&peek, s_file, n);
-        for (k = 0; k < 38 && peek.c[k].ch != '\n'; k++) title[i][k] = (char)peek.c[k].ch;
-        title[i][k] = 0;
-        if (!k) A->format(title[i], 40, "%s", "(untitled)");
-    }
-
-    for (;;) {
-        int key, mods;
-        draw(0);
-        if (bw > W - 4) bw = W - 4;
-        x0 = (W - bw) / 2; y0 = (H - bh) / 2;
-        for (i = 0; i < bh; i++)
-            for (k = 0; k < bw; k++) {
-                u8 ch = ' ';
-                if (i == 0) ch = k == 0 ? A_FR_TL : k == bw - 1 ? A_FR_TR : A_FR_H;
-                else if (i == bh - 1) ch = k == 0 ? A_FR_BL : k == bw - 1 ? A_FR_BR : A_FR_H;
-                else if (k == 0 || k == bw - 1) ch = A_FR_V;
-                A->win_put(x0 + k, y0 + i, ch, A_GREY, A_PAPER, 0);
-            }
-        A->win_text(x0 + 2, y0, what, A_BRIGHT, A_PAPER);
-        for (i = 0; i < SLOTS; i++) {
-            u8 bg = i == sel ? A_HILITE : A_PAPER;
-            char num[4];
-            for (k = 1; k < bw - 1; k++) A->win_put(x0 + k, y0 + 2 + i, ' ', A_TEXT, bg, 0);
-            A->format(num, sizeof num, "%u", (u32)(i + 1));
-            A->win_text(x0 + 2, y0 + 2 + i, num, A_DIM, bg);
-            for (k = 0; title[i][k] && k < bw - 7; k++)
-                A->win_put(x0 + 5 + k, y0 + 2 + i, (u8)title[i][k],
-                           title[i][0] == '(' ? A_DIM : A_TEXT, bg, 0);
-        }
-        do { key = A->key(&mods); if (key < 0) A->pump(0); } while (key < 0);
-        if (key == K_ESC) return 0;
-        if (key == K_UP && sel > 0) sel--;
-        if (key == K_DOWN && sel < SLOTS - 1) sel++;
-        if (key >= '1' && key <= '8') return key - '0';
-        if (key == K_ENTER) return sel + 1;
-    }
 }
 
 /* ---- the loop ---------------------------------------------------------------- */
@@ -647,10 +617,48 @@ int app_main(const Api *api, int argc, char **argv)
     TW = W - 4; TH = H - 6;
 
     doc_empty(&s_doc);
-    s_cur = 0; s_anchor = -1; s_slot = 0; s_dirty = 0; s_pen = 0; s_top = 0;
+    s_cur = 0; s_anchor = -1; s_dirty = 0; s_pen = 0; s_top = 0;
+    s_path[0] = s_dir[0] = 0;
     say("A new document.", A_DIM);
-    if (argc >= 2 && argv[1][0] >= '1' && argv[1][0] <= '8' && !argv[1][1])
-        load(argv[1][0] - '0');
+
+    /* `write NAME`: that document, or a new one that will be saved there.
+     * `write FOLDER/` (the inventory's "write new"): a new one for that
+     * folder.  A third word, "back", is the inventory saying it wants to
+     * be returned to. */
+    s_back = argc >= 3 && argv[2][0] == 'b';
+    if (argc >= 2 && argv[1][0]) {
+        InvItem it;
+        int i, n = slen(argv[1]), cut = -1, found;
+        char arg[INV_PATH];
+        if (n >= INV_PATH) n = INV_PATH - 1;
+        for (i = 0; i < n; i++) arg[i] = (char)(argv[1][i] >= 'a' && argv[1][i] <= 'z' ? argv[1][i] - 32 : argv[1][i]);
+        arg[n] = 0;
+        while (n && arg[n - 1] == '/') arg[--n] = 0;
+        found = n ? A->inv_stat(arg, &it) : 0;
+        if (n && !found && n + 4 < INV_PATH) {       /* no ending given: a document's */
+            int dot = 0;
+            for (i = n; i > 0 && arg[i - 1] != '/'; i--) dot |= arg[i - 1] == '.';
+            if (!dot) {
+                arg[n] = '.'; arg[n + 1] = 'M'; arg[n + 2] = 'D'; arg[n + 3] = 0;
+                n += 3;
+                found = A->inv_stat(arg, &it);
+            }
+        }
+        if (!n || (found && it.folder) || argv[1][slen(argv[1]) - 1] == '/') {
+            A->format(s_dir, INV_PATH, "%s", arg);          /* a new document, for this folder */
+        } else {
+            for (i = 0; i < n; i++) if (arg[i] == '/') cut = i;
+            for (i = 0; i < cut; i++) s_dir[i] = arg[i];
+            s_dir[cut < 0 ? 0 : cut] = 0;
+            if (found) load(arg);
+            else {
+                char m[INV_PATH + 40];
+                A->format(s_path, INV_PATH, "%s", arg);
+                A->format(m, sizeof m, "A new document; ^S saves it as %s.", arg);
+                say(m, A_DIM);
+            }
+        }
+    }
 
     for (;;) {
         int b = (int)((A->ms() / 450) & 1) == 0;
@@ -676,24 +684,22 @@ int app_main(const Api *api, int argc, char **argv)
             case '2': set_style(ST_H2); break;
             case '3': set_style(ST_H3); break;
             case '4': set_style(ST_H4); break;
-            case 's': {
-                int slot = s_slot;
-                if (!slot) for (slot = 1; slot <= SLOTS && !is_empty_slot(slot); slot++) { }
-                if (slot > SLOTS) slot = choose_slot("Save in which?");
-                if (slot) save(slot);
-                break;
-            }
+            case 's': save(); break;
             case 'o': {
-                int slot;
+                char m[INV_PATH + 16];
                 if (s_dirty) { say("Save this first (^S), or ^N to throw it away.", A_ACCENT); break; }
-                slot = choose_slot("Open which?");
-                if (slot) load(slot);
-                break;
+                /* The inventory is where documents are picked from; it comes
+                 * back here with the one chosen. */
+                A->format(m, sizeof m, "inventory %s", s_path[0] ? s_path : s_dir);
+                A->then(m);
+                A->win_close();
+                return 0;
             }
             case 'n':
                 if (s_dirty && s_esc != 2) { say("Unsaved. ^N again throws it away.", A_ACCENT); s_esc = 2; break; }
                 doc_empty(&s_doc);
-                s_cur = 0; s_anchor = -1; s_slot = 0; s_dirty = 0; s_pen = 0; s_top = 0; s_esc = 0;
+                s_cur = 0; s_anchor = -1; s_dirty = 0; s_pen = 0; s_top = 0; s_esc = 0;
+                s_path[0] = 0;
                 say("A new document.", A_DIM);
                 break;
             default: break;
@@ -704,6 +710,11 @@ int app_main(const Api *api, int argc, char **argv)
         switch (key) {
         case K_ESC:
             if (s_dirty && !s_esc) { say("Unsaved. ^S saves; esc again leaves without saving.", A_ACCENT); s_esc = 1; break; }
+            if (s_back) {                        /* back to the inventory it was opened from */
+                char m[INV_PATH + 16];
+                A->format(m, sizeof m, "inventory %s", s_path[0] ? s_path : s_dir);
+                A->then(m);
+            }
             A->win_close();
             return 0;
         case K_LEFT:  move_to(s_cur - 1, mods & M_SHIFT); break;

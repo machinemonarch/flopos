@@ -11,19 +11,20 @@ card has never run on the laptop itself.
 
 ## What it keeps
 
-The eight documents from `write`, browzer's bookmarks, the journal, and
-the words you have taught (with the network settings beside them): eleven
-files. Nothing else can go to a tape or come back from one.
+Everything in your [inventory](inventory.md), folders and all, and three
+of the system's own records: browzer's bookmarks, the journal, and the
+words you have taught (with the network settings beside them). Nothing
+else can go to a tape, and what comes back can only go into the inventory
+or over one of those three.
 
-Only the part of each file that is in use is sent. About 110 bytes go by
-each second, so a full 16 KB document takes two and a half minutes and an
-empty one about two seconds. `tape` says how long the tape must be before
+About 110 bytes go by each second, so 16 KB takes two and a half minutes.
+A file over 64 KB (ten minutes) is left out, and `tape` says so. `tape` says how long the tape must be before
 it starts.
 
 ## Saving
 
     here> tape save
-    here> tape save write1.md
+    here> tape save letter.md
 
 1. A cable from the laptop's headphone socket (on the front) to the
    recorder's MIC socket.
@@ -38,7 +39,7 @@ file should come back "the same as on the floppy".
 ## Loading
 
     here> tape load
-    here> tape load write1.md
+    here> tape load letter.md
 
 1. A cable from the recorder's EAR socket to the laptop's line-in socket
    (left side, marked with a note and an arrow). <kbd>Tab</kbd> listens to
@@ -50,7 +51,8 @@ file should come back "the same as on the floppy".
    `tape` stops listening by itself; <kbd>Esc</kbd> stops it sooner.
 
 Then it says, for each file, whether the tape's copy is the same as the
-floppy's or different. Nothing has been written yet. <kbd>Enter</kbd> puts
+floppy's, different, or not on the floppy at all (it is then made, with
+its folders). Nothing has been written yet. <kbd>Enter</kbd> puts
 the tape's copy of every different file on the floppy, over what is there.
 <kbd>Esc</kbd> leaves the floppy as it is.
 

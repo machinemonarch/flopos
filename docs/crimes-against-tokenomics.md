@@ -109,5 +109,12 @@ headphone socket of a 1996 laptop into a PYE data recorder. A full
 document takes two and a half minutes. The sound card had only ever
 played; it had to be taught to listen first.
 
+**"Do we even have a true filesystem yet? Anyways, I need some kind of
+abstraction for storing my files in. Let's call it 'inventory'."** It
+turned out the floppy had been a proper DOS disk all along, and FLOPOS
+had been getting by on eight blank documents made in advance. So: the
+rest of FAT12, folders, a move that is picking things up and putting
+them down, and several hundred power cuts on purpose.
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

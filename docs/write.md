@@ -1,7 +1,8 @@
 # write
 
-A small word processor. Type `write` at the prompt, or `write 3` to open
-document 3 straight away.
+A small word processor. Type `write` at the prompt for a new document, or
+`write letter` to open `LETTER.MD` from your [inventory](inventory.md)
+(or start it, if it isn't there).
 
     here> write
 
@@ -92,8 +93,8 @@ view and italic need the laptop's own keyboard.
 
 | Key | What it does |
 |---|---|
-| Ctrl-S | Save. A new document goes into the first empty slot; if all eight are used, it asks which to replace. |
-| Ctrl-O | Open: a list of the eight documents, each shown by its first line. Arrows and Enter, or the number. |
+| Ctrl-S | Save. A new document asks for a name first: up to eight letters, and it gets `.MD` if you give no ending. |
+| Ctrl-O | Open: goes to the inventory, where Enter on a document brings it back here. |
 | Ctrl-N | A new, empty document. |
 | Esc | Leave. If there are unsaved changes, it says so first; Esc again leaves without saving. |
 
@@ -101,11 +102,11 @@ A `*` after the name at the top means there are unsaved changes.
 
 ## Where documents live
 
-There are eight documents, `WRITE1.MD` to `WRITE8.MD`, on the floppy. Each
-holds up to 16KB of text. They are made at full size when the floppy is
-built, because FLOPOS only ever writes inside a file that already exists
-(see [How it works](internals.md#the-floppy)). An empty slot is filled with
-the DOS end-of-file character.
+In the [inventory](inventory.md), under the names you give them, as many
+as fit on the floppy. Each holds up to 16KB of text and takes only the
+room it needs. A document goes into the folder `write` was opened for:
+`write notes/plan` keeps `PLAN.MD` in the folder `NOTES`, and
+<kbd>W</kbd> in the inventory starts one in the folder you are looking at.
 
 They are ordinary text files. Put the floppy in any computer and open them
 in a text editor or any Markdown viewer. Swedish letters are saved as

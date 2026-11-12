@@ -6,6 +6,30 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.31.0 — 2026-11-12
+
+- **The inventory: your files, in real folders.** `inventory` lists what
+  you have made and lets you open, rename, move (pick up with M, put down
+  with P) and drop it, and make folders. On the floppy it is the folder
+  `INVENTORY`, plain files any computer reads; the system's files beside
+  it are never touched. See `docs/inventory.md`.
+- **FLOPOS now writes the floppy's filesystem properly** (FAT12): files
+  are made, grown, renamed, moved and removed, in an order that leaves
+  every file whole, old or new, if the power goes mid-save. Tested on the
+  PC with 9,000 random changes checked by the PC's own disk tools and 450
+  simulated power cuts. **Not yet run on the laptop's real drive.**
+- **`write` saves under a name you choose**, as many documents as fit,
+  each taking only the room it needs. `write letter` opens or starts
+  `LETTER.MD`; Ctrl-O goes to the inventory. The eight fixed documents
+  are gone, which frees 130 KB.
+- **`tape` backs up the whole inventory**, folders and all, and makes
+  again what the floppy no longer has.
+- **Writing a new release keeps the inventory**, and moves documents from
+  older floppies (`WRITE1.MD` to `WRITE8.MD`) into it. A copy of your
+  files stays on the PC until the floppy is verified.
+- The kernel's low memory was down to its last 752 bytes; two buffers
+  moved to the heap give 28 KB back.
+
 ## 1.30.0 — 2026-11-12
 
 - **`tape`: your files on an audio cassette.** `tape save` plays the
