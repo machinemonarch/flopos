@@ -69,7 +69,7 @@ Everything is in **[docs/](docs/README.md)**:
 - [Commands](docs/commands.md): every word it knows
 - [The inventory](docs/inventory.md): your files and folders
 - [scribe](docs/scribe.md): the word processor
-- [tape](docs/tape.md): backup to an audio cassette
+- [maelcum](docs/maelcum.md): backup to an audio cassette
 - [The network](docs/network.md): the menu, browzer, and how private it is
 - [The hardware](docs/hardware.md): the laptop, and what it taught us
 - [How it works](docs/internals.md): a tour of the inside

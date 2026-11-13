@@ -1,8 +1,9 @@
-# tape: backup to an audio cassette
+# maelcum: backup to an audio cassette
 
-`tape` keeps a copy of your files on an ordinary audio cassette, as sound,
+`maelcum` keeps a copy of your files on an ordinary audio cassette, as sound,
 the way the home computers of the 1980s did. It is for a cassette recorder
-with EAR and MIC sockets.
+with EAR and MIC sockets. It is named for the pilot in William Gibson's
+*Neuromancer* (1984), who got people home.
 
 Reading a tape from a real recorder worked on the laptop with 1.33.0. The
 backup screen described here (1.34.0), fast speed and packing have run
@@ -17,11 +18,11 @@ what comes back can only go into the inventory or over one of those three.
 
 At normal speed about 110 bytes go by each second, so 16 KB takes two and
 a half minutes; packing usually halves that for text, and fast speed
-halves it again. A file over 64 KB is left out, and `tape` says so.
+halves it again. A file over 64 KB is left out, and `maelcum` says so.
 
 ## The screen
 
-    here> tape
+    here> maelcum
 
 At the top are the settings, each with its key. The value in force is
 green.
@@ -48,8 +49,9 @@ When a tape has been read it sums up with one of ten sayings, five for a
 tape that came whole and five for one that did not. The plain facts stay
 on the screen beside the cassette and in the list.
 
-The screen keeps to grey, white, teal and cyan, with the keys in pink,
-the progress bar in red and what is switched on in green.
+The screen keeps to grey, white, red and orange, with the keys in
+yellow (everywhere else in FLOPOS they are pink), the progress bar in red
+and what is switched on in a dark neon green.
 
 ## Writing
 
@@ -95,11 +97,11 @@ The journal grows as FLOPOS is used, so after a while it will always be
 
 ## From the prompt
 
-    here> tape save
-    here> tape load
-    here> tape save letter.md
+    here> maelcum save
+    here> maelcum load
+    here> maelcum save letter.md
 
-`tape save` opens the screen ready to write, `tape load` opens it
+`maelcum save` opens the screen ready to write, `maelcum load` opens it
 listening. A name after either keeps to that file.
 
 ## Tape types
@@ -118,4 +120,4 @@ check of the whole. Packing is LZSS (Storer and Szymanski, 1982): a
 4096-byte window and copies of 3 to 18 bytes. Reading times whole waves,
 so loudness, a tape running fast or slow, a lopsided wave and a wave
 turned upside down do not matter. A tape written by an earlier FLOPOS
-still reads. The details are in `apps/lib/tape/` and `apps/tape/tape.c`.
+still reads. The details are in `apps/lib/tape/` and `apps/maelcum/maelcum.c`.

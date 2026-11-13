@@ -173,7 +173,7 @@ given. Apps reach it through the app interface's `audio_*` calls.
 The card listens the same way, the other way round (`audio_listen`): it
 writes what it hears into the same buffer, and the timer takes it out into
 the queue for an app to collect. The mixer picks the line-in or microphone
-socket and switches the card's input filter off. This is how `tape` reads
+socket and switches the card's input filter off. This is how `maelcum` reads
 a cassette; it has not yet run on the laptop.
 
 The sequencer steps aside for effects. `whaaat` slides one voice across four octaves;

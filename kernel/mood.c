@@ -122,13 +122,13 @@ static void fixed_colours(u8 *p)
 {
     static const u8 c[][4] = {
         { PAL_KEY, 63, 26, 46 },         /* keys: pink */
-        { PAL_ON, 18, 60, 28 },          /* a setting that is on: green */
+        { PAL_ON, 4, 50, 10 },           /* a setting that is on: a dark neon green */
         { PAL_RED, 63, 12, 14 },
         { PAL_SILVER, 44, 46, 47 },
         { PAL_WHITE, 62, 63, 63 },
-        { PAL_CYAN, 16, 58, 60 },
-        { PAL_TEAL, 6, 34, 36 },
-        { PAL_TEAL_D, 2, 14, 16 },
+        { PAL_ORANGE, 63, 34, 6 },
+        { PAL_EMBER, 44, 9, 5 },
+        { PAL_EMBER_D, 18, 3, 2 },
     };
     u32 i;
     for (i = 0; i < sizeof c / sizeof c[0]; i++) {
@@ -136,10 +136,14 @@ static void fixed_colours(u8 *p)
     }
 }
 
-/* Frames' loop of colours: neon, or (for a program that asks) cool: grey
- * to teal to cyan to white and back. */
+/* Frames' loop of colours: neon, or (for a program that asks) embers:
+ * grey to red to orange to white and back.  Keys are yellow with it. */
 static int s_cool;
-void mood_cool(int on) { s_cool = on != 0; }
+void mood_ember(int on)
+{
+    s_cool = on != 0;
+    g_key_colour = on ? PAL_BANANA + 6 : PAL_KEY;
+}
 
 static void neon_fill(u8 *rgb, u32 t)
 {
@@ -150,10 +154,10 @@ static void neon_fill(u8 *rgb, u32 t)
             int w = COS(a) + 4096;                   /* 0..8192: how light */
             int k = COS(a * 2 + 256) + 4096;         /* 0..8192: how much colour */
             int grey = 14 + (w * 46 >> 13);
-            r = grey - ((grey - 4) * k >> 14);       /* colour takes the red out */
-            g = grey + ((63 - grey) * k >> 15);
-            b = grey + ((63 - grey) * k >> 14);
-            rgb[i * 3] = (u8)(r < 0 ? 0 : r); rgb[i * 3 + 1] = (u8)(g > 63 ? 63 : g); rgb[i * 3 + 2] = (u8)(b > 63 ? 63 : b);
+            r = grey + ((63 - grey) * k >> 13);      /* colour is red, */
+            g = grey - (grey * k >> 14) + (w * k >> 21);   /* with more green in it the lighter it is: orange */
+            b = grey - ((grey - 2) * k >> 13);
+            rgb[i * 3] = (u8)(r > 63 ? 63 : r); rgb[i * 3 + 1] = (u8)(g < 0 ? 0 : g > 63 ? 63 : g); rgb[i * 3 + 2] = (u8)(b < 0 ? 0 : b);
             continue;
         }
         /* Full strength, unlike the moods' soft hues: twice the swing, cut off at the ends. */

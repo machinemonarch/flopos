@@ -816,13 +816,15 @@ void term_win_put(int x, int y, int ch, u8 fg, u8 bg)
     term_win_put_at(x, y, ch, fg, bg, 0);
 }
 
+
+u8 g_key_colour = PAL_KEY;              /* pink, unless a program has asked for its own look */
 /* \1 in the text turns pink on, for a key to press, and off again. */
 int term_win_text(int x, int y, const char *t, u8 fg, u8 bg)
 {
     int key = 0;
     for (; *t && x < s_win_w; t++) {
         if (*t == 1) { key = !key; continue; }
-        term_win_put(x++, y, (u8)*t, key ? C_KEY : fg, bg);
+        term_win_put(x++, y, (u8)*t, key ? g_key_colour : fg, bg);
     }
     return x;
 }

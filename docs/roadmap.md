@@ -21,8 +21,8 @@ fast or slow, wavering, quiet, clipped, noisy, dull, upside down, and a
 dropout. A full 16 KB document takes about two and a half minutes.
 
 Also done, in 1.30.0: the sound card listens as well as plays
-(`audio_listen`), and the `tape` app saves, reads back, compares with the
-floppy and puts back ([tape](tape.md)). Tried only in the emulator, where
+(`audio_listen`), and the `maelcum` app saves, reads back, compares with the
+floppy and puts back ([maelcum](maelcum.md)). Tried only in the emulator, where
 a test build plays back what it played, as a pretend tape.
 
 Still to do: trying it on the laptop with the recorder. The emulator's

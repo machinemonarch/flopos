@@ -133,7 +133,7 @@ static const Api s_api = {
     api_inv_list, inv_stat_app, inv_read, inv_write, inv_mkdir, inv_remove, inv_move, inv_room, inv_why,
     api_then,
     /* version 7 */
-    mood_cool,
+    mood_ember,
 };
 
 /* ---- behind the wall (wall.c): one request from an app, checked -----------
@@ -280,7 +280,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     case 48: r = k->inv_room(); break;
     case 49: r = wall_string(2, k->inv_why()); break;
     case 50: STR(0); k->then((const char *)a[0]); break;
-    case 51: k->win_cool((int)a[0]); break;
+    case 51: k->win_ember((int)a[0]); break;
     default: return 0;
     }
 #undef STR
@@ -395,7 +395,7 @@ static int run_one(const char *word, int argc, char **argv)
     if (wall_on()) r = wall_run(h->entry, argc, argv);
     else           r = ((AppMain)h->entry)(&s_api, argc, argv);
     s_app_bytes = 0;
-    mood_cool(0);                        /* frames go back to neon         */
+    mood_ember(0);                       /* frames back to neon, keys to pink */
     audio_feeder(0);                     /* its memory is no longer its own */
     audio_close();
     term_win_close();

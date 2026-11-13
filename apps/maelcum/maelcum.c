@@ -1,7 +1,10 @@
 /* ===========================================================================
- * tape.c -- backup: your files, kept on an audio cassette.
+ * maelcum.c -- backup: your files, kept on an audio cassette.
  *
- * TAPE.APP on the floppy.  One full screen: the settings at the top, a
+ * Named for the pilot in William Gibson's Neuromancer (1984), who got
+ * people home.
+ *
+ * MAELCUM.APP on the floppy.  One full screen: the settings at the top, a
  * cassette and the progress under them, then your files with a tick by
  * each.  Writing plays the ticked files out of the headphone socket as
  * two tones, for a cassette recorder to record; reading listens to the
@@ -302,7 +305,7 @@ static void cassette(int x, int y, int turning)
 {
     static const char spoke[4] = { '|', '/', '-', '\\' };
     int i, s = turning ? (int)(A->ms() / 140) & 3 : 0;
-    u8 c = turning ? A_CYAN : A_TEAL;
+    u8 c = turning ? A_ORANGE : A_EMBER;
     box(x, y, CW, CH, c);
     box(x + 3, y + 2, CW - 6, 5, c);             /* the window with the two wheels */
     for (i = 0; i < 2; i++) {
@@ -629,7 +632,7 @@ static void read_end(int stopped)
     {   /* the summing-up: one of five, by how the tape came */
         int whole = (same || diff) && !part, pick = (int)((A->ms() >> 3) % 5);
         s_outcome = whole ? s_good[pick] : s_poor[pick];
-        s_outcome_c = whole ? A_CYAN : A_RED;
+        s_outcome_c = whole ? A_ON : A_RED;
         s_shout = "";
     }
     if (!same && !diff && !part) say(stopped ? "Stopped. Nothing of yours was heard." : "Nothing of yours was heard.", A_RED);
@@ -730,7 +733,7 @@ static const char *mood_line(u8 *c)
 {
     u32 now = A->ms();
     int i, recent = 0, calm = (now / 8000) & 1;
-    *c = A_CYAN;
+    *c = A_ORANGE;
     if (s_mode == M_ARMED) return "Buckle up!";
     if (s_mode == M_WRITE) {
         u32 heard_n = s_sent - (u32)A->audio_queued();
@@ -784,16 +787,16 @@ static void file_state(const File *f, int i, char *m, u32 cap, u8 *c)
     if (s_mode == M_WRITE || s_mode == M_WROTE) {
         if (!f->send) return;
         if (s_mode == M_WROTE || s_at > i) { A->format(m, cap, "%s", "on the tape"); *c = A_SILVER; }
-        else if (s_at == i) { A->format(m, cap, "writing  %u%%", (u32)(f->pieces ? f->got * 100 / f->pieces : 100)); *c = A_CYAN; }
+        else if (s_at == i) { A->format(m, cap, "writing  %u%%", (u32)(f->pieces ? f->got * 100 / f->pieces : 100)); *c = A_ORANGE; }
         else A->format(m, cap, "%s", "waiting");
         return;
     }
     if (s_mode == M_READ || s_mode == M_RESULT) {
         u32 acc = f->got + f->bad ? (u32)f->got * 100 / (u32)(f->got + f->bad) : 100;
         switch (f->state) {
-            case ST_PART: A->format(m, cap, "%u%% read, accuracy %u%%", (u32)(f->pieces ? f->got * 100 / f->pieces : 0), acc); *c = A_CYAN; break;
+            case ST_PART: A->format(m, cap, "%u%% read, accuracy %u%%", (u32)(f->pieces ? f->got * 100 / f->pieces : 0), acc); *c = A_ORANGE; break;
             case ST_SAME: A->format(m, cap, "same as the floppy's, accuracy %u%%", acc); *c = A_SILVER; break;
-            case ST_DIFF: A->format(m, cap, "%s, accuracy %u%%", f->here ? "different" : "not on the floppy", acc); *c = A_CYAN; break;
+            case ST_DIFF: A->format(m, cap, "%s, accuracy %u%%", f->here ? "different" : "not on the floppy", acc); *c = A_ORANGE; break;
             case ST_BACK: A->format(m, cap, "%s", "put back on the floppy"); *c = A_ON; break;
             case ST_BAD:  A->format(m, cap, "%s", "left alone"); *c = A_RED; break;
             default: break;
@@ -810,8 +813,8 @@ static void draw(void)
     int px = 2 + CW + 1, pw = W - px - 8;
 
     A->win_open(W, H);
-    A->win_frame("tape", A_GREY);
-    text(2, 1, "Backup to cassette", A_CYAN);
+    A->win_frame("maelcum", A_GREY);
+    text(2, 1, "Backup to cassette", A_ORANGE);
 
     /* the settings */
     y = ROW_SET;
@@ -870,7 +873,7 @@ static void draw(void)
         if (s_rx.loud < 4) A->format(m, sizeof m, "%s", "silence");
         else if (s_rx.tone) A->format(m, sizeof m, "%s", "a tape's tones");
         else A->format(m, sizeof m, "sound, not a tape's (%u waves a second)", s_rx.pitch);
-        text(px, y + 9, m, s_rx.tone ? A_CYAN : A_GREY);
+        text(px, y + 9, m, s_rx.tone ? A_ORANGE : A_GREY);
     } else {
         text(px, y, "\1W\1  write the ticked files to a tape", A_SILVER);
         text(px, y + 1, "\1R\1  read a tape, compare with the floppy", A_SILVER);
@@ -895,7 +898,7 @@ static void draw(void)
     } else if (s_mode == M_READ && s_cur >= 0) {
         for (i = 0; i < s_nrows; i++) if (s_rows[i] == 1000 + s_cur) { s_top = i < rows / 2 ? 0 : i - rows / 2; break; }
     }
-    for (i = 1; i < W - 1; i++) A->win_put(i, ROW_LIST - 1, A_FR_H, A_TEAL, A_PAPER, 0);
+    for (i = 1; i < W - 1; i++) A->win_put(i, ROW_LIST - 1, A_FR_H, A_EMBER, A_PAPER, 0);
     for (i = 0; i < rows && s_top + i < s_nrows; i++) {
         int r = s_rows[s_top + i], here = s_top + i == s_cursor && !busy;
         u8 bg = here ? A_HILITE : A_PAPER, c;
@@ -907,7 +910,7 @@ static void draw(void)
             if (r == -1) A->format(m, sizeof m, "%s", "FLOPOS's own records: bookmarks, journal, settings");
             else if (r == -2) A->format(m, sizeof m, "%s", "On the tape, not on this floppy");
             else A->format(m, sizeof m, "%s/", s_dirs[r]);
-            A->win_text(6, y, m, A_CYAN, bg);
+            A->win_text(6, y, m, A_ORANGE, bg);
         } else {
             const File *f = &s_f[r - 1000];
             const char *name = f->name;
@@ -925,7 +928,7 @@ static void draw(void)
     /* the job list, open over the settings */
     if (s_menu) {
         for (i = 0; i < 2; i++) {
-            u8 bg = s_menu - 1 == i ? A_TEAL_D : A_HILITE;
+            u8 bg = s_menu - 1 == i ? A_EMBER_D : A_HILITE;
             A->win_band(ROW_SET + 1 + i, 8, W - 3, bg);
             A->win_text(9, ROW_SET + 1 + i, s_job_name[i], s_job == i ? A_ON : A_SILVER, bg);
             A->win_text(27, ROW_SET + 1 + i, s_job_what[i], A_SILVER, bg);
@@ -969,11 +972,11 @@ int app_main(const Api *api, int argc, char **argv)
         else if (same_word(argv[1], "load")) start = 2;
         else {
             static const char *const help[] = {
-                "tape            the backup screen",
-                "tape save       ready to write your files to a tape",
-                "tape load       listen to a tape and compare it",
-                "tape save NAME  only the file called NAME",
-                "tape load NAME  only the file called NAME",
+                "maelcum            the backup screen",
+                "maelcum save       ready to write your files to a tape",
+                "maelcum load       listen to a tape and compare it",
+                "maelcum save NAME  only the file called NAME",
+                "maelcum load NAME  only the file called NAME",
             };
             A->colour(A_SILVER);
             for (i = 0; i < 5; i++) { A->print(help[i]); A->newline(); }
@@ -997,7 +1000,7 @@ int app_main(const Api *api, int argc, char **argv)
         }
     }
     W = A->screen_cols(); H = A->screen_rows();
-    A->win_cool(1);                              /* this screen keeps to grey, white, teal and cyan */
+    A->win_ember(1);                             /* this screen keeps to grey, white, red and orange; keys yellow */
     build_rows();
     if (start == 1) write_arm();
     if (start == 2) read_go(0);

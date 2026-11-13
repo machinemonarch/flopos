@@ -6,6 +6,16 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.36.0 — 2026-11-13
+
+- **`tape` is now `maelcum`**, after the pilot in William Gibson's
+  *Neuromancer*: at the prompt (`maelcum`, `maelcum save`, `maelcum
+  load`) and on the floppy (`MAELCUM.APP`). `tape` is no longer a command.
+- maelcum's colours: red and orange where teal and cyan were, keys in
+  yellow instead of pink (in this program only), and a darker neon green
+  for what is on.
+- For programs: `win_cool` became `win_ember`.
+
 ## 1.35.0 — 2026-11-13
 
 - **`write` is now `scribe`.** The word processor has a new name, at the

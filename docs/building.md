@@ -66,7 +66,7 @@ can be read by DOS, Windows, Linux or a Mac. On it:
 | `ROOTS.DAT` | The authorities secure sites are checked against (55 KB) |
 | `JOURNAL.TXT`, `STATE.BIN` | What FLOPOS remembers. Made at full size so they can be written in place. |
 | `INVENTORY` (folder) | Everything the user makes. Empty in a new image. |
-| `INVENTORY.APP`, `TAPE.APP` | The inventory and the cassette backup |
+| `INVENTORY.APP`, `MAELCUM.APP` | The inventory and the cassette backup |
 | `README.TXT` | The project's README |
 
 Alongside the image it writes `flopos.img.used`, a list of which parts of
@@ -170,11 +170,11 @@ Kept here, so they are never written again:
 - `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
   own code (`apps/lib/tape`), runs it through a pretend tape (wrong
   speed, wavering, quiet, noisy, dull, upside down, a dropout) and reads
-  it back. The `tape` app itself is tried in a test build
+  it back. The `maelcum` app itself is tried in a test build
   (`make EXTRA_CFLAGS=-DFLOPOS_TEST`), where the sound driver keeps what
   it plays and plays it back when asked to listen: with `tools/bench/run.py`,
-  `type:tape save\n`, `key:ret=>\[tape\] saved files 3`, `key:esc`,
-  `type:tape load\n=>\[tape\] same STATE.BIN`. Delete the bench's
+  `type:maelcum save\n`, `key:ret=>\[tape\] saved files 3`, `key:esc`,
+  `type:maelcum load\n=>\[tape\] same STATE.BIN`. Delete the bench's
   `sound.wav` afterwards; it is large.
 
 `run.py` waits for FLOPOS's own messages rather than pausing, and lets the

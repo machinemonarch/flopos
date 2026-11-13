@@ -242,7 +242,7 @@ nothing, and the screen no frames.
 
 ## Files as sound, read by the gaps between crossings
 
-For the cassette (`apps/lib/tape`, `apps/tape`). Not yet proven on a real
+For the cassette (`apps/lib/tape`, `apps/maelcum`). Not yet proven on a real
 recorder; what follows holds against a simulated tape.
 
 - **Only the timing is trusted.** A cassette changes loudness, drifts the
