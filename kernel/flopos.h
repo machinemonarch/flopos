@@ -59,11 +59,11 @@ int    glyph_index(int c);
  */
 #define PAL_MOOD    1                    /*   1..63   the background field  */
 #define PAL_MOOD_N  47                   /*   1..47; 48..54 fixed colours, 55 keys, 56..63 the HUD */
-#define PAL_SILVER  48                   /*  48       a light grey          */
-#define PAL_WHITE   49                   /*  49       white                 */
-#define PAL_ORANGE  50                   /*  50       orange                */
+#define PAL_CREAM   48                   /*  48       cream, for text       */
+#define PAL_OLIVE   49                   /*  49       a dim gold, for quiet text */
+#define PAL_GOLD    50                   /*  50       gold                  */
 #define PAL_EMBER   51                   /*  51       a deep red            */
-#define PAL_EMBER_D 52                   /*  52       a darker red, to lie behind text */
+#define PAL_GREEN_D 52                   /*  52       a dark green, to lie behind text */
 #define PAL_ON      53                   /*  53       a setting that is on, in green */
 #define PAL_RED     54                   /*  54       a red, for a bar       */
 #define PAL_KEY     55                   /*  55       keys, in pink          */
@@ -139,7 +139,7 @@ void   irq_unmask(int irq);
 /* --- time.c ------------------------------------------------------------ */
 #define TICK_HZ 250
 extern volatile u32 g_ticks;
-void   mood_ember(int on);             /* frames in grey, red and orange, keys in yellow */
+void   mood_ember(int on);             /* frames in red, gold and green, keys in yellow */
 extern u8 g_key_colour;                /* what a named key is drawn in (term.c) */
 void   mood_neon(u32 t);               /* turns the frames' colours (mood.c) */
 extern u32 g_irq_cycles;              /* cycles spent in interrupts (idt.c) */

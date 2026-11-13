@@ -8,28 +8,25 @@ in [security-roadmap.md](security-roadmap.md).
 
 ### Data backup to cassette
 
-**Begun.** Saving files to an ordinary audio cassette and reading them
-back, on a PYE Audio Automatic Data Recorder D6600/35P: the documents from
-`scribe`, the bookmarks, the journal and the settings.
+**Done, as `maelcum`** ([maelcum](maelcum.md)). What was reached:
 
-Done so far: the sound itself (`apps/lib/tape`). Two tones, 1200 and
-2400 Hz, as the home computers of the 1980s used; 120 bytes a second;
-the file in blocks of 256 bytes, each with its own check, so a damaged
-block is dropped and the tape can be played again to fill it in. It is
-tested against a pretend tape on this PC (`tools/tapetest/run.sh`): 6%
-fast or slow, wavering, quiet, clipped, noisy, dull, upside down, and a
-dropout. A full 16 KB document takes about two and a half minutes.
+- The sound (`apps/lib/tape`): two tones, 1200 and 2400 Hz, or an octave
+  up for fast; blocks of 256 bytes, each with its own check.
+- 1.30.0: the sound card listens as well as plays; an app saves, reads
+  back, compares and puts back.
+- 1.33.0: the first real recorder read nothing, because its waves are
+  lopsided. The reader now times whole waves, and **reading a tape back
+  worked on the laptop**.
+- 1.34.0: a full-screen backup program: a job list, ticks for files and
+  folders, LZSS packing, fast speed, verify, accuracy for each file, a
+  folder to restore into, a cassette whose wheels turn, and a tune.
+- 1.35.0 to 1.36.1: its own look (red, gold and green, yellow keys), a
+  line that says how it is going, ten summing-up sayings, and the name.
 
-Also done, in 1.30.0: the sound card listens as well as plays
-(`audio_listen`), and the `maelcum` app saves, reads back, compares with the
-floppy and puts back ([maelcum](maelcum.md)). Tried only in the emulator, where
-a test build plays back what it played, as a pretend tape.
+Not yet tried on the laptop: packing, fast speed, restoring a file that
+is missing from the floppy, and the sayings for a bad or off-speed tape.
 
-Still to do: trying it on the laptop with the recorder. The emulator's
-sound card cannot record, so listening has never run on real hardware,
-and this is where the surprises will be: whether the laptop's sound chip
-records through its Sound Blaster side at all, which socket it listens
-to, and how loud the recorder must be.
+Asked for and not started: encryption of what goes to tape.
 
 ### A chat app
 

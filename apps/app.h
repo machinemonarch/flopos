@@ -57,11 +57,11 @@ typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
 #define A_ACCENT  158                    /* PAL_ACCENT + 22                */
 #define A_GREY    242                    /* PAL_GREY + 10                  */
 #define A_KEY     55                     /* PAL_KEY: a key to press, pink  */
-#define A_SILVER  48                     /* fixed colours, whatever the mood: a light grey */
-#define A_WHITE   49
-#define A_ORANGE  50
+#define A_CREAM   48                     /* fixed colours, whatever the mood: cream, for text */
+#define A_OLIVE   49                     /* a dim gold, for quiet text      */
+#define A_GOLD    50
 #define A_EMBER   51                     /* a deep red                      */
-#define A_EMBER_D 52                     /* a darker red, to lie behind text */
+#define A_GREEN_D 52                     /* a dark green, to lie behind text */
 #define A_ON      53                     /* PAL_ON: a setting that is on, green */
 #define A_RED     54                     /* PAL_RED                         */
 #define A_KEYMARK "\1"                    /* in text: pink on, or off again  */
@@ -242,8 +242,8 @@ typedef struct {
     void (*then)(const char *command);
 
     /* ---- version 7 ---- */
-    /* Frames in grey, red, orange and white instead of neon, and keys in
-     * yellow instead of pink, until the app leaves or turns it off. */
+    /* Frames in red, gold and green instead of neon, and keys in yellow
+     * instead of pink, until the app leaves or turns it off. */
     void (*win_ember)(int on);
 } Api;
 

@@ -42,8 +42,16 @@ proxies, no JavaScript.
 - **`scribe`**, a word processor with bold, italic, underline, a title and
   four headings, saving Markdown documents to the floppy, with a view for
   editing the Markdown directly.
+- **`maelcum`**, a backup program that keeps your files on an ordinary
+  audio cassette as sound and reads them back: packing (LZSS), two
+  speeds, verifying, a check on every piece, and a running commentary.
+  Read back from a real recorder on the laptop.
+- **An inventory** of your own files and folders, as plain FAT12 files
+  any computer can read.
 - **Apps load from the floppy** beside the system, so programs don't make
-  the system bigger: `scribe` and `browzer` are apps.
+  the system bigger: `scribe`, `browzer`, `inventory` and `maelcum` are
+  apps. Each runs behind a wall: it can touch only its own memory and
+  must ask the system for everything else.
 
 ## Quick start
 

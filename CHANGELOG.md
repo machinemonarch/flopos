@@ -6,6 +6,19 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.36.1 — 2026-11-13
+
+- **maelcum in red, gold and green.** No grey: text is cream and gold,
+  quiet text and the legend a dim gold, the frame runs red to gold to
+  green. Keys stay yellow.
+- **Verify no longer sounds finished too early.** With Verify on, the
+  tune waits until the check has passed, and the screen says the buttons
+  to press are the recorder's: "press STOP, rewind, then press PLAY."
+- **No false alarm when stopped by hand.** Stopping a read with S no
+  longer brings a poor verdict unless pieces were spoiled.
+- The tune's last notes were cut off; it now plays to the end.
+- Playback starts with "Now hear 'dis!"; "Buckle up!" is for recording.
+
 ## 1.36.0 — 2026-11-13
 
 - **`tape` is now `maelcum`**, after the pilot in William Gibson's

@@ -132,5 +132,11 @@ arpeggio, a slide whistle, two boops and a low wobble, synthesised from
 square waves by the same program that had just finished checksumming.
 The cassette's wheels also had to spin.
 
+**"Bomboclat! Das rough!"** The backup program was renamed after a
+Rastafarian tug pilot from a 1984 novel, repainted three times in one
+afternoon (teal, then embers, then red, gold and green), and taught to
+comment on tape quality in patois. It checks every piece with a CRC and
+then says "Irie!".
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

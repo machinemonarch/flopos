@@ -43,15 +43,18 @@ file, or a folder and everything in it. Ticking by hand makes the job
 Pick & Mix.
 
 Above the keys, one line says how it is going, in plain words: "Buckle
-up!" at the start, "Smooth sailing." when all is well, and less calm
-things when pieces are being spoiled or the tape runs off its speed.
+up!" when recording starts, "Now hear 'dis!" when playback starts,
+"Smooth sailing." when all is well, and less calm things when pieces are
+being spoiled or the tape runs off its speed. While recording it cannot
+hear the tape, so there the line goes only by how far along it is; the
+real judging happens when the tape is played back.
 When a tape has been read it sums up with one of ten sayings, five for a
 tape that came whole and five for one that did not. The plain facts stay
 on the screen beside the cassette and in the list.
 
-The screen keeps to grey, white, red and orange, with the keys in
-yellow (everywhere else in FLOPOS they are pink), the progress bar in red
-and what is switched on in a dark neon green.
+The screen keeps to red, gold and green on black, frame included, with
+the keys in yellow (everywhere else in FLOPOS they are pink) and what is
+switched on in a dark neon green.
 
 ## Writing
 
@@ -63,7 +66,9 @@ and what is switched on in a dark neon green.
    eight seconds are a plain tone, to get past the clear leader at the
    start of a cassette.
 4. The red bar and the percentage show how far it has come. When all of
-   it is on the tape there is a little tune. Stop the recorder.
+   it is on the tape there is a little tune. Stop the recorder. With
+   Verify on there is no tune yet: stop the recorder, rewind and press
+   PLAY on it, and the tune comes when the check has passed.
 
 <kbd>S</kbd> stops early. The laptop cannot hear the tape while it is being
 recorded, so the only way to be sure of a save is to read it back: that is
@@ -81,7 +86,8 @@ what Verify does.
 
 Reading ends by itself when every file has come whole, or after ten
 seconds of silence; <kbd>S</kbd> ends it sooner. If everything came
-whole, the tune plays.
+whole, the tune plays. Stopping by hand is not held against the tape:
+it gets a poor verdict only if pieces were actually spoiled.
 
 Then it says, for each file, whether the tape's copy is the same as the
 floppy's, different, or not on the floppy at all. Nothing has been

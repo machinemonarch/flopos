@@ -124,11 +124,11 @@ static void fixed_colours(u8 *p)
         { PAL_KEY, 63, 26, 46 },         /* keys: pink */
         { PAL_ON, 4, 50, 10 },           /* a setting that is on: a dark neon green */
         { PAL_RED, 63, 12, 14 },
-        { PAL_SILVER, 44, 46, 47 },
-        { PAL_WHITE, 62, 63, 63 },
-        { PAL_ORANGE, 63, 34, 6 },
-        { PAL_EMBER, 44, 9, 5 },
-        { PAL_EMBER_D, 18, 3, 2 },
+        { PAL_CREAM, 63, 61, 52 },
+        { PAL_OLIVE, 36, 30, 8 },
+        { PAL_GOLD, 63, 46, 2 },
+        { PAL_EMBER, 46, 6, 4 },
+        { PAL_GREEN_D, 1, 16, 4 },
     };
     u32 i;
     for (i = 0; i < sizeof c / sizeof c[0]; i++) {
@@ -136,8 +136,8 @@ static void fixed_colours(u8 *p)
     }
 }
 
-/* Frames' loop of colours: neon, or (for a program that asks) embers:
- * grey to red to orange to white and back.  Keys are yellow with it. */
+/* Frames' loop of colours: neon, or (for a program that asks) red to
+ * gold to green and round again.  Keys are yellow with it. */
 static int s_cool;
 void mood_ember(int on)
 {
@@ -151,13 +151,9 @@ static void neon_fill(u8 *rgb, u32 t)
     for (i = 0; i < PAL_NEON_N; i++) {
         int a = (int)((t >> 4) + (u32)i * (1024 / PAL_NEON_N)) & 1023;
         if (s_cool) {
-            int w = COS(a) + 4096;                   /* 0..8192: how light */
-            int k = COS(a * 2 + 256) + 4096;         /* 0..8192: how much colour */
-            int grey = 14 + (w * 46 >> 13);
-            r = grey + ((63 - grey) * k >> 13);      /* colour is red, */
-            g = grey - (grey * k >> 14) + (w * k >> 21);   /* with more green in it the lighter it is: orange */
-            b = grey - ((grey - 2) * k >> 13);
-            rgb[i * 3] = (u8)(r > 63 ? 63 : r); rgb[i * 3 + 1] = (u8)(g < 0 ? 0 : g > 63 ? 63 : g); rgb[i * 3 + 2] = (u8)(b < 0 ? 0 : b);
+            static const u8 at[4][3] = { { 63, 6, 4 }, { 63, 50, 2 }, { 4, 50, 10 }, { 63, 6, 4 } };
+            int seg = a * 3 >> 10, f = (a * 3 & 1023) >> 2, k;      /* which stretch, and 0..255 along it */
+            for (k = 0; k < 3; k++) rgb[i * 3 + k] = (u8)(at[seg][k] + (at[seg + 1][k] - at[seg][k]) * f / 256);
             continue;
         }
         /* Full strength, unlike the moods' soft hues: twice the swing, cut off at the ends. */

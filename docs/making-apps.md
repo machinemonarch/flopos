@@ -210,7 +210,7 @@ sentence to show.
 | `inv_remove(path)` | A file, or an empty folder |
 | `inv_move(from, to)` | Rename, move to another folder, or both |
 | `inv_room()` | Bytes free on the floppy |
-| `win_ember(on)` | Frames in grey, red, orange and white instead of neon, and keys in yellow instead of pink, until the app leaves. Fixed colours to go with it: `A_SILVER`, `A_WHITE`, `A_ORANGE`, `A_EMBER`, `A_EMBER_D`, and `A_ON` (green), `A_RED`. |
+| `win_ember(on)` | Frames in red, gold and green instead of neon, and keys in yellow instead of pink, until the app leaves. Fixed colours to go with it: `A_CREAM`, `A_OLIVE`, `A_GOLD`, `A_EMBER`, `A_GREEN_D`, and `A_ON` (green), `A_RED`. |
 | `then(command)` | Run another app when this one leaves, as if typed: `then("scribe NOTES/A.MD")`. How the inventory opens a document and `scribe` returns to it. |
 
 ## Libraries apps share
