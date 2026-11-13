@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 7
+#define APP_API_VERSION 8
 #define APP_BASE        0x00C00000u      /* 12MB: two whole 4MB pages, the app's own */
 #define APP_MAX         0x00800000u      /* 8MB: code, data, buffers and the stack */
 #define APP_STACK       0x00040000u      /* the top 256KB: its stack, and a page the system fills in */
@@ -245,7 +245,24 @@ typedef struct {
     /* Frames in red, gold and green instead of neon, and keys in yellow
      * instead of pink, until the app leaves or turns it off. */
     void (*win_ember)(int on);
+
+    /* ---- version 8: sealing and opening ---- */
+    /* A passphrase made into a 32-byte key: PBKDF2-HMAC-SHA256 over the
+     * salt, iters times (the more, the dearer each guess).  Then sealing:
+     * out gets n bytes and tag 16; anything altered afterwards, or the
+     * wrong key, makes crypt_open return 0 and give nothing.  A nonce
+     * must never be used twice with one key.  alg is CRYPT_*. */
+    void (*crypt_key)(const char *pass, const u8 *salt, u32 slen, u32 iters, u8 key[32]);
+    void (*crypt_seal)(int alg, const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
+                       const u8 *in, u32 n, u8 *out, u8 tag[16]);
+    int  (*crypt_open)(int alg, const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
+                       const u8 *in, u32 n, const u8 tag[16], u8 *out);
+    void (*random)(u8 *out, u32 n);          /* bytes nobody can guess */
 } Api;
+
+#define CRYPT_CHACHA20_POLY1305 0        /* 256-bit key                     */
+#define CRYPT_AES256_GCM        1        /* 256-bit key                     */
+#define CRYPT_AES128_GCM        2        /* the first 16 bytes of the key   */
 
 typedef int (*AppMain)(const Api *api, int argc, char **argv);
 

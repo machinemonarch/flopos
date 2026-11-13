@@ -134,6 +134,8 @@ static const Api s_api = {
     api_then,
     /* version 7 */
     mood_ember,
+    /* version 8 */
+    crypt_key, crypt_seal, crypt_open, crypt_random,
 };
 
 /* ---- behind the wall (wall.c): one request from an app, checked -----------
@@ -281,6 +283,15 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     case 49: r = wall_string(2, k->inv_why()); break;
     case 50: STR(0); k->then((const char *)a[0]); break;
     case 51: k->win_ember((int)a[0]); break;
+    case 52: STR(0); BUF(1, a[2]); BUF(4, 32);
+             k->crypt_key((const char *)a[0], (const u8 *)a[1], a[2], a[3] > 200000 ? 200000 : a[3], (u8 *)a[4]); break;
+    case 53: BUF(1, 32); BUF(2, 12); BUF(3, a[4]); BUF(5, a[6]); BUF(7, a[6]); BUF(8, 16);
+             k->crypt_seal((int)a[0], (const u8 *)a[1], (const u8 *)a[2], (const u8 *)a[3], a[4],
+                           (const u8 *)a[5], a[6], (u8 *)a[7], (u8 *)a[8]); break;
+    case 54: BUF(1, 32); BUF(2, 12); BUF(3, a[4]); BUF(5, a[6]); BUF(7, 16); BUF(8, a[6]);
+             r = (u32)k->crypt_open((int)a[0], (const u8 *)a[1], (const u8 *)a[2], (const u8 *)a[3], a[4],
+                                    (const u8 *)a[5], a[6], (const u8 *)a[7], (u8 *)a[8]); break;
+    case 55: BUF(0, a[1]); k->random((u8 *)a[0], a[1]); break;
     default: return 0;
     }
 #undef STR
@@ -289,7 +300,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     *result = r;
     return 1;
 }
-_Static_assert((sizeof(Api) - 4) / 4 == 52, "a function was added to the table: give it a case in app_ask");
+_Static_assert((sizeof(Api) - 4) / 4 == 56, "a function was added to the table: give it a case in app_ask");
 
 static int memory_for_apps(void)
 {

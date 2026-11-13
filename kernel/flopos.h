@@ -671,6 +671,19 @@ void   aead_seal(const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
 int    aead_open(const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
                  const u8 *ct, u32 len, const u8 tag[16], u8 *pt);
 
+/* --- crypt.c: sealing and opening, for apps -------------------------------- */
+void   pbkdf2_sha256(const u8 *pw, u32 plen, const u8 *salt, u32 slen, u32 iters, u8 out[32]);
+void   crypt_key(const char *pass, const u8 *salt, u32 slen, u32 iters, u8 key[32]);
+void   crypt_seal(int alg, const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
+                  const u8 *in, u32 n, u8 *out, u8 tag[16]);
+int    crypt_open(int alg, const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
+                  const u8 *in, u32 n, const u8 tag[16], u8 *out);
+void   crypt_random(u8 *out, u32 n);
+void   aes256gcm_seal(const u8 key[32], const u8 iv[12], const u8 *aad, u32 alen,
+                      const u8 *pt, u32 len, u8 *ct, u8 tag[16]);
+int    aes256gcm_open(const u8 key[32], const u8 iv[12], const u8 *aad, u32 alen,
+                      const u8 *ct, u32 len, const u8 tag[16], u8 *pt);
+
 /* --- aes.c ---------------------------------------------------------------- */
 void   aesgcm_seal(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
                    const u8 *pt, u32 len, u8 *ct, u8 tag[16]);

@@ -1,5 +1,6 @@
 /* ===========================================================================
- * aes.c -- AES-128 in GCM mode (FIPS 197, SP 800-38D).
+ * aes.c -- AES in GCM mode, with 128-bit and 256-bit keys (FIPS 197,
+ * SP 800-38D).
  *
  * Every TLS 1.3 server has to speak this one; ChaCha20 is only
  * recommended.  Some large sites do not offer ChaCha20 at all, and offered
@@ -44,37 +45,46 @@ static void build_sbox(void)
     s_ready = 1;
 }
 
-static void expand(const u8 key[16], u8 rk[176])
+/* A key, made ready: the round keys, and how many rounds (10 for a
+ * 128-bit key, 14 for a 256-bit one). */
+typedef struct { u8 rk[240]; int nr; } AesKey;
+
+static void expand(const u8 *key, int klen, AesKey *K)
 {
-    u8 rcon = 1;
-    int i;
+    u8 rcon = 1, *rk = K->rk;
+    int i, total;
 
     if (!s_ready) build_sbox();
-    for (i = 0; i < 16; i++) rk[i] = key[i];
-    for (i = 16; i < 176; i += 4) {
+    K->nr = klen == 32 ? 14 : 10;
+    total = (K->nr + 1) * 16;
+    for (i = 0; i < klen; i++) rk[i] = key[i];
+    for (i = klen; i < total; i += 4) {
         u8 t0 = rk[i - 4], t1 = rk[i - 3], t2 = rk[i - 2], t3 = rk[i - 1];
-        if (i % 16 == 0) {
+        if (i % klen == 0) {
             u8 tmp = t0;
             t0 = (u8)(s_sbox[t1] ^ rcon); t1 = s_sbox[t2]; t2 = s_sbox[t3]; t3 = s_sbox[tmp];
             rcon = xtime(rcon);
+        } else if (klen == 32 && i % 32 == 16) {     /* the longer key's extra step */
+            t0 = s_sbox[t0]; t1 = s_sbox[t1]; t2 = s_sbox[t2]; t3 = s_sbox[t3];
         }
-        rk[i] = rk[i - 16] ^ t0; rk[i + 1] = rk[i - 15] ^ t1;
-        rk[i + 2] = rk[i - 14] ^ t2; rk[i + 3] = rk[i - 13] ^ t3;
+        rk[i] = rk[i - klen] ^ t0; rk[i + 1] = rk[i - klen + 1] ^ t1;
+        rk[i + 2] = rk[i - klen + 2] ^ t2; rk[i + 3] = rk[i - klen + 3] ^ t3;
     }
 }
 
-static void encrypt_block(const u8 rk[176], const u8 in[16], u8 out[16])
+static void encrypt_block(const AesKey *K, const u8 in[16], u8 out[16])
 {
+    const u8 *rk = K->rk;
     u8 s[16], t[16];
-    int r, i, c;
+    int r, i, c, nr = K->nr;
 
     for (i = 0; i < 16; i++) s[i] = in[i] ^ rk[i];
-    for (r = 1; r <= 10; r++) {
+    for (r = 1; r <= nr; r++) {
         /* SubBytes and ShiftRows together: row i moves left by i. */
         for (c = 0; c < 4; c++)
             for (i = 0; i < 4; i++)
                 t[c * 4 + i] = s_sbox[s[((c + i) % 4) * 4 + i]];
-        if (r < 10) {
+        if (r < nr) {
             for (c = 0; c < 4; c++) {        /* MixColumns                  */
                 u8 *col = t + c * 4, a0 = col[0], a1 = col[1], a2 = col[2], a3 = col[3];
                 u8 all = (u8)(a0 ^ a1 ^ a2 ^ a3);
@@ -123,7 +133,7 @@ static void ghash_bytes(u32 y[4], const u32 h[4], const u8 *p, u32 len)
     }
 }
 
-static void gcm_tag(const u8 rk[176], const u8 iv[12], const u8 *aad, u32 alen,
+static void gcm_tag(const AesKey *rk, const u8 iv[12], const u8 *aad, u32 alen,
                     const u8 *ct, u32 clen, u8 tag[16])
 {
     u8 zero[16] = { 0 }, hb[16], j0[16], ej0[16];
@@ -144,7 +154,7 @@ static void gcm_tag(const u8 rk[176], const u8 iv[12], const u8 *aad, u32 alen,
     for (i = 0; i < 16; i++) tag[i] = (u8)((y[i / 4] >> (24 - 8 * (i % 4))) ^ ej0[i]);
 }
 
-static void gcm_ctr(const u8 rk[176], const u8 iv[12], const u8 *in, u8 *out, u32 len)
+static void gcm_ctr(const AesKey *rk, const u8 iv[12], const u8 *in, u8 *out, u32 len)
 {
     u8 ctr[16], ks[16];
     u32 i, j, n = 2;
@@ -158,24 +168,41 @@ static void gcm_ctr(const u8 rk[176], const u8 iv[12], const u8 *in, u8 *out, u3
     }
 }
 
-void aesgcm_seal(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
+static void seal(const u8 *key, int klen, const u8 iv[12], const u8 *aad, u32 alen,
                  const u8 *pt, u32 len, u8 *ct, u8 tag[16])
 {
-    u8 rk[176];
-    expand(key, rk);
-    gcm_ctr(rk, iv, pt, ct, len);
-    gcm_tag(rk, iv, aad, alen, ct, len, tag);
+    AesKey K;
+    expand(key, klen, &K);
+    gcm_ctr(&K, iv, pt, ct, len);
+    gcm_tag(&K, iv, aad, alen, ct, len, tag);
 }
+
+static int open(const u8 *key, int klen, const u8 iv[12], const u8 *aad, u32 alen,
+                const u8 *ct, u32 len, const u8 tag[16], u8 *pt)
+{
+    AesKey K;
+    u8 want[16], diff = 0;
+    int i;
+    expand(key, klen, &K);
+    gcm_tag(&K, iv, aad, alen, ct, len, want);
+    for (i = 0; i < 16; i++) diff |= (u8)(want[i] ^ tag[i]);
+    if (diff) return 0;
+    gcm_ctr(&K, iv, ct, pt, len);
+    return 1;
+}
+
+void aesgcm_seal(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
+                 const u8 *pt, u32 len, u8 *ct, u8 tag[16])
+{ seal(key, 16, iv, aad, alen, pt, len, ct, tag); }
 
 int aesgcm_open(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
                 const u8 *ct, u32 len, const u8 tag[16], u8 *pt)
-{
-    u8 rk[176], want[16], diff = 0;
-    int i;
-    expand(key, rk);
-    gcm_tag(rk, iv, aad, alen, ct, len, want);
-    for (i = 0; i < 16; i++) diff |= (u8)(want[i] ^ tag[i]);
-    if (diff) return 0;
-    gcm_ctr(rk, iv, ct, pt, len);
-    return 1;
-}
+{ return open(key, 16, iv, aad, alen, ct, len, tag, pt); }
+
+void aes256gcm_seal(const u8 key[32], const u8 iv[12], const u8 *aad, u32 alen,
+                    const u8 *pt, u32 len, u8 *ct, u8 tag[16])
+{ seal(key, 32, iv, aad, alen, pt, len, ct, tag); }
+
+int aes256gcm_open(const u8 key[32], const u8 iv[12], const u8 *aad, u32 alen,
+                   const u8 *ct, u32 len, const u8 tag[16], u8 *pt)
+{ return open(key, 32, iv, aad, alen, ct, len, tag, pt); }

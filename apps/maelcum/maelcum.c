@@ -44,6 +44,10 @@
 #define MAXD     64
 #define HEAD_OLD (INV_PATH + 16)         /* a header before packing came    */
 #define HEAD_LEN (INV_PATH + 20)
+#define SEAL_PRE 26                      /* a sealed header's open part: mark, cipher, place, save, rounds, salt */
+#define HEAD_SEAL (SEAL_PRE + HEAD_LEN + 16)
+#define SEAL_MARK 0xEC                   /* no name starts with this       */
+#define KEY_ROUNDS 10000u                /* about two seconds on the laptop */
 #define ARENA    (800 * 1024)            /* more than a floppy has free    */
 
 enum { ST_NONE, ST_PART, ST_SAME, ST_DIFF, ST_BACK, ST_BAD };
@@ -58,6 +62,9 @@ typedef struct {
     int  on;                             /* ticked                         */
     u32  size, used;                     /* its length on the floppy; bytes in use, before the filling */
     u32  plen;                           /* packed length, or 0            */
+    u32  slen;                           /* sealed length (what is sent, tag and all), or 0 */
+    int  ord;                            /* its place in the save           */
+    int  seal_alg;                       /* the cipher the tape names       */
     u32  tsize;                          /* its length as the tape has it   */
     u8   pad;                            /* the filling                    */
     u16  crc;                            /* of the part in use             */
@@ -84,7 +91,13 @@ static int  W, H;                        /* the screen, in characters      */
 static int s_job;                        /* 0 Standard Backup, 1 Pick & Mix */
 static int s_packing = 1, s_fast, s_verify, s_line = 1;
 static int s_dest = -1;                  /* restore into: -1 where each came from, or a folder */
-static int s_mode, s_verifying, s_menu;  /* s_menu: the job list is open, on which line + 1 */
+static int s_mode, s_verifying;
+static int s_menu, s_pick;               /* a list is open (1 the jobs, 2 the ciphers), and the line it is on */
+static int s_crypt, s_alg;               /* encrypt what goes to tape, and with which cipher */
+static char s_pass[64];                  /* the passphrase, for as long as one write or read lasts */
+static u8  s_key[32], s_salt[16];
+static int s_have_key;
+static int s_locked, s_wrong;            /* a sealed tape and no passphrase; or the wrong one */
 static int s_cursor, s_top;
 static const char *s_note = "";          /* a line about what happened last */
 static u8  s_note_c;
@@ -113,6 +126,12 @@ static const char *const s_poor[5] = {
 static const char *s_outcome = "";
 static u8 s_outcome_c;
 
+static const char *const s_alg_name[3] = { "ChaCha20-Poly1305", "AES-256-GCM", "AES-128-GCM" };
+static const char *const s_alg_what[3] = {
+    "(256-bit key, quantum-safe; quick here)",
+    "(256-bit key, quantum-safe; slow here)",
+    "(128-bit key, not quantum-safe; slow)",
+};
 static const char *const s_job_name[2] = { "Standard Backup", "Pick & Mix" };
 static const char *const s_job_what[2] = { "(everything of yours on this floppy)", "(only what you tick below)" };
 
@@ -155,7 +174,7 @@ static File *add_file(const char *name, int sys, int dir)
     f->name[k] = 0;
     f->sys = sys; f->dir = dir;
     f->on = 1;
-    f->here = 0; f->state = ST_NONE; f->got = f->bad = 0; f->plen = 0;
+    f->here = 0; f->state = ST_NONE; f->got = f->bad = 0; f->plen = 0; f->slen = 0; f->ord = 0;
     f->disk = f->send = f->tape = f->pk = 0;
     return f;
 }
@@ -216,12 +235,50 @@ static int from_floppy(File *f, int pack)
         u32 p = lz_pack(f->disk, n, s_pack + s_pack_n, n - 1);
         if (p) { f->send = s_pack + s_pack_n; f->plen = p; s_pack_n += p; }
     }
+    f->slen = 0;
     n = f->plen ? f->plen : f->used;
     f->pieces = (int)((n + TAPE_PIECE - 1) / TAPE_PIECE);
     return 1;
 }
 
-static u32 sent_len(const File *f) { return f->plen ? f->plen : f->used; }
+static void nonce_for(u8 n[12], int kind, int ord);
+
+/* Seal what is to be sent of a file, in place of it.  0: no room. */
+static int seal_file(File *f, int ord, u16 set)
+{
+    u32 n = f->plen ? f->plen : f->used;
+    u8 nonce[12], aad[3], *out;
+    if (s_pack_n + n + 16 > ARENA) return 0;
+    out = s_pack + s_pack_n;
+    nonce_for(nonce, 'D', ord);
+    aad[0] = (u8)set; aad[1] = (u8)(set >> 8); aad[2] = (u8)ord;
+    A->crypt_seal(s_alg, s_key, nonce, aad, 3, f->send, n, out, out + n);
+    s_pack_n += n + 16;
+    f->send = out; f->slen = n + 16;
+    f->pieces = (int)((f->slen + TAPE_PIECE - 1) / TAPE_PIECE);
+    return 1;
+}
+
+static u32 sent_len(const File *f) { return f->slen ? f->slen : f->plen ? f->plen : f->used; }
+
+/* ---- sealing ---------------------------------------------------------------------
+ * One key for one save: the passphrase and a salt drawn fresh each time,
+ * through PBKDF2.  So within a save a nonce need only say what is being
+ * sealed: a header or a file's bytes, and which file. */
+static void nonce_for(u8 n[12], int kind, int ord)
+{
+    int i;
+    for (i = 0; i < 12; i++) n[i] = 0;
+    n[0] = (u8)kind; n[1] = (u8)ord;
+}
+
+static void forget_key(void)
+{
+    u32 i;
+    for (i = 0; i < sizeof s_pass; i++) s_pass[i] = 0;
+    for (i = 0; i < 32; i++) s_key[i] = 0;
+    s_have_key = 0;
+}
 
 /* ---- the list on the screen: folders and files, with ticks ---------------------
  * A row is a folder (>= 0: its number; -1 the system's records; -2 what
@@ -397,6 +454,17 @@ static int next_block(TapeTx *t)
         h[k + 13] = (u8)s_save_id; h[k + 14] = (u8)(s_save_id >> 8);
         h[k + 15] = (u8)f->sys;
         h[k + 16] = (u8)f->plen; h[k + 17] = (u8)(f->plen >> 8); h[k + 18] = (u8)(f->plen >> 16); h[k + 19] = (u8)(f->plen >> 24);
+        if (s_crypt) {                           /* the name and the rest, sealed */
+            u8 o[HEAD_SEAL], nonce[12];
+            int j;
+            o[0] = SEAL_MARK; o[1] = (u8)s_alg; o[2] = (u8)s_ord; o[3] = (u8)s_count;
+            o[4] = (u8)s_save_id; o[5] = (u8)(s_save_id >> 8);
+            o[6] = (u8)KEY_ROUNDS; o[7] = (u8)(KEY_ROUNDS >> 8); o[8] = (u8)(KEY_ROUNDS >> 16); o[9] = (u8)(KEY_ROUNDS >> 24);
+            for (j = 0; j < 16; j++) o[10 + j] = s_salt[j];
+            nonce_for(nonce, 'H', s_ord);
+            A->crypt_seal(s_alg, s_key, nonce, o, SEAL_PRE, h, HEAD_LEN, o + SEAL_PRE, o + SEAL_PRE + HEAD_LEN);
+            tape_tx_block(t, TAPE_HEAD, s_ord << 8, o, HEAD_SEAL, s_stage ? 100 : (s_ord ? 1000 : 8000));
+        } else
         tape_tx_block(t, TAPE_HEAD, s_ord << 8, h, HEAD_LEN, s_stage ? 100 : (s_ord ? 1000 : 8000));
         s_stage++;
         f->got = 0;
@@ -424,7 +492,8 @@ static int write_ready(void)
         File *f = &s_f[i];
         f->disk = f->send = 0; f->state = ST_NONE; f->got = 0;
         if (!f->on || !f->here || !from_floppy(f, s_packing)) continue;
-        s_samples += block_samples(HEAD_LEN, s_count ? 1000 : 8000) + block_samples(HEAD_LEN, 100) + 2 * block_samples(0, 100);
+        if (s_crypt && !seal_file(f, s_count, s_save_id)) { f->send = 0; continue; }
+        s_samples += block_samples(s_crypt ? HEAD_SEAL : HEAD_LEN, s_count ? 1000 : 8000) + block_samples(s_crypt ? HEAD_SEAL : HEAD_LEN, 100) + 2 * block_samples(0, 100);
         for (n = 0; n < f->pieces; n++) {
             u32 left = sent_len(f) - (u32)n * TAPE_PIECE;
             s_samples += block_samples(left > TAPE_PIECE ? TAPE_PIECE : (int)left, 100);
@@ -435,9 +504,27 @@ static int write_ready(void)
     return s_count;
 }
 
+static int ask_line(const char *prompt, char *buf, int cap, int hidden);
+static void busy_note(const char *t);
+
 static void write_arm(void)
 {
-    if (!write_ready()) { say("Nothing ticked that the floppy can give.", A_RED); return; }
+    s_save_id = (u16)(A->ms() * 2654435761u >> 16);
+    if (s_crypt) {
+        char again[64];
+        int i, same;
+        forget_key();
+        if (!ask_line("Passphrase for this tape:", s_pass, (int)sizeof s_pass, 1) || !s_pass[0]) { forget_key(); return; }
+        if (!ask_line("The same again, to be sure:", again, (int)sizeof again, 1)) { forget_key(); return; }
+        for (i = 0, same = 1; i < (int)sizeof again; i++) { same &= again[i] == s_pass[i]; if (!again[i]) break; }
+        for (i = 0; i < (int)sizeof again; i++) again[i] = 0;
+        if (!same) { forget_key(); say("The two were not the same. Nothing done.", A_RED); return; }
+        busy_note("Making the key and sealing the files...");
+        A->random(s_salt, 16);
+        A->crypt_key(s_pass, s_salt, 16, KEY_ROUNDS, s_key);
+        s_have_key = 1;
+    }
+    if (!write_ready()) { forget_key(); say("Nothing ticked that the floppy can give.", A_RED); return; }
     s_mode = M_ARMED;
     say("", 0);
 }
@@ -446,7 +533,6 @@ static void write_go(void)
 {
     if (!A->audio_open(TAPE_RATE)) { s_mode = M_IDLE; say("No sound card that plays answers.", A_RED); return; }
     s_at = s_stage = s_ord = 0;
-    s_save_id = (u16)(A->ms() * 2654435761u >> 16);
     tape_tx_begin(&s_tx, s_fast);
     s_sent = 0; s_last = 0;
     s_began = A->ms(); s_shout = "";
@@ -473,7 +559,7 @@ static void write_step(void)
         wire("saved", "files", (u32)s_count, s_bytes);
         s_mode = M_WROTE;
         if (s_verify) read_go(1);                /* not done yet: the tune waits for the check */
-        else { tune(); say("All on the tape. Stop the recorder.", A_ON); }
+        else { forget_key(); tune(); say("All on the tape. Stop the recorder.", A_ON); }
     }
 }
 
@@ -492,7 +578,16 @@ static void settle(File *f)
 {
     u32 i;
     int sound = 1;
-    if (f->plen) sound = lz_unpack(f->pk, f->plen, f->tape, f->used) == f->used;
+    u32 n = f->plen ? f->plen : f->used;
+    u8 *got = f->pk;                             /* what the pieces made    */
+    if (f->slen) {                               /* sealed: open it first   */
+        u8 nonce[12], aad[3], *out = f->plen ? f->pk + f->slen : f->tape;
+        nonce_for(nonce, 'D', f->ord);
+        aad[0] = (u8)s_set; aad[1] = (u8)(s_set >> 8); aad[2] = (u8)f->ord;
+        sound = A->crypt_open(f->seal_alg, s_key, nonce, aad, 3, f->pk, n, f->pk + n, out);
+        got = out;
+    }
+    if (sound && f->plen) sound = lz_unpack(got, f->plen, f->tape, f->used) == f->used;
     if (!sound || tape_crc(f->tape, (int)f->used) != f->crc) {     /* pieces of two saves, mixed */
         f->got = 0;
         for (i = 0; i < PIECES; i++) f->have[i] = 0;
@@ -514,8 +609,26 @@ static void heard(void *ctx, int type, int seq, const u8 *d, int len)
     (void)ctx;
     if (type == TAPE_HEAD) {
         u32 size, used, plen = 0, n;
-        int i, k, ord, count, set;
+        int i, k, ord, count, set, sealed = 0, alg = 0;
         u16 crc;
+        static u8 plain[HEAD_LEN];
+        if (len == HEAD_SEAL && d[0] == SEAL_MARK) {     /* a sealed header: open it, or stop */
+            u8 nonce[12];
+            u32 rounds = (u32)d[6] | (u32)d[7] << 8 | (u32)d[8] << 16 | (u32)d[9] << 24;
+            if (s_wrong || s_locked) return;
+            if (!s_pass[0]) { s_locked = 1; return; }
+            if (d[1] > 2 || rounds < 1 || rounds > 200000) return;
+            for (i = 0; i < 16 && s_have_key && s_salt[i] == d[10 + i]; i++) { }
+            if (i < 16) {                        /* this save's key: about two seconds */
+                for (i = 0; i < 16; i++) s_salt[i] = d[10 + i];
+                A->crypt_key(s_pass, s_salt, 16, rounds, s_key);
+                s_have_key = 1;
+            }
+            nonce_for(nonce, 'H', d[2]);
+            if (!A->crypt_open(d[1], s_key, nonce, d, SEAL_PRE, d + SEAL_PRE, HEAD_LEN, d + SEAL_PRE + HEAD_LEN, plain)) { s_wrong = 1; return; }
+            sealed = 1; alg = d[1];
+            d = plain; len = HEAD_LEN;
+        }
         if ((len != HEAD_LEN && len != HEAD_OLD) || !d[0] || d[INV_PATH - 1]) return;
         k = INV_PATH;
         size = (u32)d[k] | (u32)d[k + 1] << 8 | (u32)d[k + 2] << 16 | (u32)d[k + 3] << 24;
@@ -540,13 +653,17 @@ static void heard(void *ctx, int type, int seq, const u8 *d, int len)
         f = &s_f[i];
         /* Not ticked, or one of the system's at a size this floppy does not keep it at. */
         if (!f->on || (f->sys && size != f->size)) { s_seen[ord] = -1; return; }
-        if (f->state == ST_NONE || f->used != used || f->crc != crc || f->pad != d[k + 8] || f->tsize != size || f->plen != plen) {
-            if (s_tape_n + size + plen > sizeof s_tape) { s_seen[ord] = -1; return; }
+        n = plen ? plen : used;
+        if (f->state == ST_NONE || f->used != used || f->crc != crc || f->pad != d[k + 8] || f->tsize != size || f->plen != plen ||
+            (f->slen != 0) != sealed) {
+            /* room for the file, the sealed pieces, and what opening them gives */
+            if (s_tape_n + size + 2 * n + 16 > sizeof s_tape) { s_seen[ord] = -1; return; }
             f->tape = s_tape + s_tape_n;
             f->pk = f->tape + size;
-            s_tape_n += size + plen;
+            s_tape_n += size + 2 * n + 16;
             f->tsize = size; f->used = used; f->crc = crc; f->pad = d[k + 8]; f->plen = plen;
-            n = plen ? plen : used;
+            f->slen = sealed ? n + 16 : 0; f->ord = ord; f->seal_alg = alg;
+            n = sent_len(f);
             f->pieces = (int)((n + TAPE_PIECE - 1) / TAPE_PIECE);
             f->got = f->bad = 0;
             for (k = 0; k < PIECES; k++) f->have[k] = 0;
@@ -565,7 +682,7 @@ static void heard(void *ctx, int type, int seq, const u8 *d, int len)
         n = sent_len(f);
         want = p == f->pieces - 1 ? (int)(n - (u32)p * TAPE_PIECE) : TAPE_PIECE;
         if (len != want) return;
-        to = f->plen ? f->pk : f->tape;
+        to = f->plen || f->slen ? f->pk : f->tape;
         for (k = 0; k < len; k++) to[p * TAPE_PIECE + k] = d[k];
         f->have[p] = 1;
         if (++f->got == f->pieces) settle(f);
@@ -602,6 +719,11 @@ static int read_percent(void)
 static void read_go(int verifying)
 {
     int i;
+    s_locked = s_wrong = 0;
+    if (!verifying) {
+        forget_key();
+        if (s_crypt && (!ask_line("Passphrase for this tape:", s_pass, (int)sizeof s_pass, 1) || !s_pass[0])) { forget_key(); return; }
+    }
     s_disk_n = s_pack_n = s_tape_n = 0;
     for (i = 0; i < s_nf; i++) {
         File *f = &s_f[i];
@@ -624,6 +746,14 @@ static void read_end(int stopped)
 {
     int i, same = 0, diff = 0, part = 0;
     A->audio_close();
+    forget_key();
+    if (s_locked || s_wrong) {                   /* nothing about the tape's quality */
+        s_mode = M_RESULT;
+        s_outcome = ""; s_shout = "";
+        say(s_locked ? "This tape is encrypted. Press E, then R." : "Wrong passphrase, or the tape was altered.", A_RED);
+        wire("read", s_locked ? "locked" : "refused", 0, 0);
+        return;
+    }
     for (i = 0; i < s_nf; i++) {
         same += s_f[i].state == ST_SAME;
         diff += s_f[i].state == ST_DIFF;
@@ -664,7 +794,8 @@ static void read_step(void)
         wire("pieces", "good/spoiled", s_rx.good, s_rx.bad);
     }
     if (s_rx.loud >= 4) s_quiet_since = now;
-    if (all_in()) read_end(0);
+    if (s_locked || s_wrong) read_end(0);
+    else if (all_in()) read_end(0);
     else if (s_set >= 0 && now - s_quiet_since > 10000) read_end(0);   /* ten seconds of nothing: the tape is over */
 }
 
@@ -771,8 +902,8 @@ static const char *mood_line(u8 *c)
 
 /* ---- the screen ----------------------------------------------------------------- */
 #define ROW_SET  3                       /* the settings start here         */
-#define ROW_CAS  8                       /* the cassette                    */
-#define ROW_LIST 20                      /* the files                       */
+#define ROW_CAS  9                       /* the cassette                    */
+#define ROW_LIST 21                      /* the files                       */
 
 /* A setting with two values: the one in force in green. */
 static int two(int x, int y, const char *key, const char *label, const char *a, const char *b, int second)
@@ -831,6 +962,12 @@ static void draw(void)
     x = text(x + 4, y + 2, "\1Tab\1 ", A_CREAM);
     text(x, y + 2, s_line ? "line-in socket active" : "microphone active", A_ON);
     x = text(2, y + 3, "\1D\1 Restore into  ", A_CREAM);
+    {
+        int xe = two(2, y + 4, "E", "Encrypt", "on", "off", !s_crypt);
+        xe = text(xe + 4, y + 4, "\1K\1 Cipher  ", A_CREAM);
+        text(xe, y + 4, s_alg_name[s_alg], s_crypt ? A_ON : A_OLIVE);
+    }
+    text(W - 16, y + 3, "\1N\1 new folder", A_CREAM);
     if (s_dest < 0) text(x, y + 3, "where each file came from", A_ON);
     else { A->format(m, sizeof m, "%s/", s_dirs[s_dest]); text(x, y + 3, s_dest ? m : "the top of the inventory", A_ON); }
 
@@ -930,13 +1067,15 @@ static void draw(void)
         }
     }
 
-    /* the job list, open over the settings */
+    /* a list, open over the settings: the jobs, or the ciphers */
     if (s_menu) {
-        for (i = 0; i < 2; i++) {
-            u8 bg = s_menu - 1 == i ? A_EMBER : A_GREEN_D;
-            A->win_band(ROW_SET + 1 + i, 8, W - 3, bg);
-            A->win_text(9, ROW_SET + 1 + i, s_job_name[i], s_menu - 1 == i ? A_CREAM : s_job == i ? A_ON : A_GOLD, bg);
-            A->win_text(27, ROW_SET + 1 + i, s_job_what[i], A_CREAM, bg);
+        int n = s_menu == 1 ? 2 : 3, row0 = s_menu == 1 ? ROW_SET + 1 : ROW_SET + 5;
+        for (i = 0; i < n; i++) {
+            u8 bg = s_pick == i ? A_EMBER : A_GREEN_D;
+            int cur = s_menu == 1 ? s_job == i : s_alg == i;
+            A->win_band(row0 + i, 8, W - 3, bg);
+            A->win_text(9, row0 + i, s_menu == 1 ? s_job_name[i] : s_alg_name[i], s_pick == i ? A_CREAM : cur ? A_ON : A_GOLD, bg);
+            A->win_text(28, row0 + i, s_menu == 1 ? s_job_what[i] : s_alg_what[i], A_CREAM, bg);
         }
     }
 
@@ -963,6 +1102,70 @@ static void draw(void)
     else if (busy) text(2, H - 2, s_mode == M_READ ? "\1S\1 stop   \1Tab\1 the other socket" : "\1S\1 stop", A_OLIVE);
     else if (s_mode == M_ARMED) text(2, H - 2, "\1Enter\1 start   \1Esc\1 not now", A_OLIVE);
     else text(2, H - 2, "\1W\1 write  \1R\1 read  \1Space\1 tick  \1Up\1 \1Down\1 move  \1Esc\1 leave", A_OLIVE);
+}
+
+/* ---- asking for a line: a passphrase (shown as stars), or a folder's name -------- */
+static void draw(void);
+
+static void busy_note(const char *t)
+{
+    draw();
+    A->win_band(H - 6, 1, W - 2, A_GREEN_D);
+    A->win_text(2, H - 6, t, A_CREAM, A_GREEN_D);
+    A->pump(1);
+}
+
+static int ask_line(const char *prompt, char *buf, int cap, int hidden)
+{
+    int n = 0, key, mods, i, x;
+    u32 drawn = 0;
+    buf[0] = 0;
+    for (;;) {
+        u32 now = A->ms();
+        if (now - drawn >= 100 || !drawn) {
+            drawn = now ? now : 1;
+            draw();
+            for (i = H - 6; i <= H - 4; i++) A->win_band(i, 1, W - 2, A_GREEN_D);
+            x = A->win_text(2, H - 6, prompt, A_CREAM, A_GREEN_D) + 1;
+            for (i = 0; i < n && x < W - 3; i++) A->win_put(x++, H - 6, hidden ? '*' : buf[i], A_GOLD, A_GREEN_D, 0);
+            A->win_put(x, H - 6, '_', A_GOLD, A_GREEN_D, 0);
+            if (hidden) {
+                A->win_text(2, H - 5, n < 12 ? "Short: easy to guess. Four random words is good."
+                                              : "A long one is what keeps it shut. It is kept nowhere: forget it",
+                            n < 12 ? A_RED : A_ON, A_GREEN_D);
+                if (n >= 12) A->win_text(2, H - 4, "and the tape cannot be opened by anyone.", A_ON, A_GREEN_D);
+            }
+            A->win_band(H - 2, 1, W - 2, A_PAPER);
+            text(2, H - 2, "\1Enter\1 done   \1Esc\1 not now", A_OLIVE);
+        }
+        key = A->key(&mods);
+        if (key < 0) { A->pump(0); continue; }
+        drawn = 0;
+        if (key == K_ESC) { for (i = 0; i < cap; i++) buf[i] = 0; return 0; }
+        if (key == K_ENTER) return 1;
+        if (key == K_BKSP) { if (n) buf[--n] = 0; }
+        else if (key >= 32 && key < 127 && n < cap - 1) { buf[n++] = (char)key; buf[n] = 0; }
+    }
+}
+
+/* A new folder to restore into: made when something is put back. */
+static void new_folder(void)
+{
+    char name[INV_PATH];
+    int i, part = 0;
+    if (!ask_line("New folder to restore into:", name, 40, 0) || !name[0]) return;
+    for (i = 0; name[i]; i++) {
+        int c = up(name[i]);
+        name[i] = (char)c;
+        if (c == '/') { if (!part) break; part = 0; continue; }
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') || ++part > 8) break;
+    }
+    if (name[i] || !part) { say("A folder's name: letters and digits, 8 at most.", A_RED); return; }
+    for (i = 0; i < s_ndirs; i++) if (same_word(s_dirs[i], name)) { s_dest = i; return; }
+    if (s_ndirs >= MAXD) { say("Too many folders.", A_RED); return; }
+    A->format(s_dirs[s_ndirs], INV_PATH, "%s", name);
+    s_dest = s_ndirs++;
+    say("It will be made when files are put back.", A_CREAM);
 }
 
 /* ---- the app ---------------------------------------------------------------- */
@@ -1020,15 +1223,22 @@ int app_main(const Api *api, int argc, char **argv)
         drawn = 0;
         if (key >= 'a' && key <= 'z') key = key - 'a' + 'A';
 
-        if (s_menu) {                            /* the job list is open */
-            if (key == K_UP || key == K_DOWN) s_menu = 3 - s_menu;
-            else if (key == K_ENTER) { s_job = s_menu - 1; if (!s_job) tick_all(); s_menu = 0; }
-            else if (key == K_ESC || key == 'J') s_menu = 0;
+        if (s_menu) {                            /* a list is open */
+            int n = s_menu == 1 ? 2 : 3;
+            if (key == K_UP) s_pick = (s_pick + n - 1) % n;
+            else if (key == K_DOWN) s_pick = (s_pick + 1) % n;
+            else if (key == K_ENTER) {
+                if (s_menu == 1) { s_job = s_pick; if (!s_job) tick_all(); }
+                else s_alg = s_pick;
+                s_menu = 0;
+            }
+            else if (key == K_ESC || key == 'J' || key == 'K') s_menu = 0;
             continue;
         }
         if (s_mode == M_WRITE) {
             if (key == 'S' || key == K_ESC) {
                 A->audio_close();
+                forget_key();
                 s_mode = M_IDLE;
                 say("Stopped. The tape holds only part of it.", A_RED);
                 wire("stopped", "saving", 0, 0);
@@ -1047,7 +1257,7 @@ int app_main(const Api *api, int argc, char **argv)
         }
         if (s_mode == M_ARMED) {
             if (key == K_ENTER) write_go();
-            else if (key == K_ESC) s_mode = M_IDLE;
+            else if (key == K_ESC) { s_mode = M_IDLE; forget_key(); }
             continue;
         }
         /* idle, or looking at what a tape held */
@@ -1055,7 +1265,10 @@ int app_main(const Api *api, int argc, char **argv)
         else if (key == 'W') write_arm();
         else if (key == 'R') read_go(0);
         else if (key == K_ENTER && s_mode == M_RESULT) put_back();
-        else if (key == 'J') s_menu = 1 + s_job;
+        else if (key == 'J') { s_menu = 1; s_pick = s_job; }
+        else if (key == 'K') { s_menu = 2; s_pick = s_alg; }
+        else if (key == 'E') s_crypt = !s_crypt;
+        else if (key == 'N') new_folder();
         else if (key == 'C') s_packing = !s_packing;
         else if (key == 'F') s_fast = !s_fast;
         else if (key == 'V') { s_verify = !s_verify; s_shout = s_verify ? "If it's NICE - Spin it TWICE, SELECTA! :-D" : ""; }

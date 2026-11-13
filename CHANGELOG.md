@@ -6,6 +6,21 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.37.0 — 2026-11-13
+
+- **Encrypted backups in maelcum**, off by default (`E`). A passphrase,
+  typed twice when writing and once when reading, seals each file's name
+  and contents. A wrong passphrase or an altered tape is refused whole.
+  The passphrase is kept nowhere.
+- A list of three ciphers (`K`): ChaCha20-Poly1305, AES-256-GCM (new) and
+  AES-128-GCM, each labelled with its key size and whether it holds
+  against quantum computers.
+- A new folder to restore into (`N`).
+- `crypto` checks AES-256-GCM and PBKDF2 against results from the PC.
+- For programs: `crypt_key`, `crypt_seal`, `crypt_open`, `random`.
+- The build now rebuilds every part of the system when a header changes;
+  a stale part had made a program crash in testing (the wall closed it).
+
 ## 1.36.1 — 2026-11-13
 
 - **maelcum in red, gold and green.** No grey: text is cream and gold,

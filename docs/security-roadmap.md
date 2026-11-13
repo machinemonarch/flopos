@@ -33,6 +33,14 @@ certificate look valid. The clock already refuses to go back past the last
 
 ## Done
 
+- **Sealing for apps (1.37.0).** Apps can ask the kernel to make a key
+  from a passphrase (PBKDF2-HMAC-SHA256) and to seal or open data
+  (ChaCha20-Poly1305, AES-256-GCM, AES-128-GCM); every buffer in such a
+  request is checked against the app's own memory, and the rounds are
+  capped. `maelcum` uses it to encrypt backups. Known limit, stated in
+  its page: 10,000 rounds is light, so the passphrase must be long. A
+  memory-hard step (scrypt, Argon2) would be stronger and is not built.
+
 - **Walls between apps and the kernel (1.33.0).** Apps run in ring 3
   behind paging. An app can touch its own 8 MB only and asks the kernel
   for everything else; every pointer it hands over is checked. An app

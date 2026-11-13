@@ -148,6 +148,34 @@ int crypto_selftest(void)
         aesgcm_seal(k, iv, (const u8 *)"flopos", 6, (const u8 *)msg, (u32)ml, out, out + ml);
         ok &= report("aes-128-gcm", same(out, V_GCM, ml + 16));
     }
+    {   /* Checked against OpenSSL (the Python `cryptography` package) and hashlib on the PC. */
+        static const u8 want[80] = {
+            0xdf, 0x30, 0x46, 0x89, 0xae, 0x16, 0x18, 0xb5, 0x17, 0x90, 0xaa, 0x92, 0xfd, 0xe6, 0xcb, 0x57, 0xb9, 0xc8, 0x9a, 0xb2,
+            0x15, 0x5e, 0xc1, 0x3b, 0x3c, 0x38, 0xf9, 0xb6, 0xbb, 0x7f, 0xed, 0xd4, 0x66, 0x7b, 0xdb, 0xc6, 0xeb, 0xe3, 0x45, 0x36,
+            0x6c, 0xd6, 0x67, 0x10, 0xd2, 0x00, 0x2d, 0x55, 0x5e, 0x54, 0xe5, 0x82, 0xfc, 0x71, 0x70, 0x07, 0x74, 0xb7, 0xbd, 0xf9,
+            0x56, 0xce, 0xd6, 0xbd, 0x7e, 0xd4, 0x1a, 0x98, 0x97, 0x0f, 0xb3, 0xb7, 0x82, 0x21, 0x03, 0xb2, 0xcb, 0x8c, 0x3c, 0x08 };
+        static const u8 wantk[32] = {
+            0xa6, 0x9b, 0x17, 0x9e, 0x3a, 0xdd, 0x3c, 0x1e, 0x0a, 0xaf, 0x22, 0x7a, 0x0e, 0xb3, 0xaa, 0x2a,
+            0xa8, 0x64, 0x5a, 0xb8, 0x6f, 0xec, 0xf6, 0xca, 0x00, 0xc1, 0x75, 0x12, 0x69, 0x7c, 0x71, 0x9e };
+        static const char msg[] = "Now hear 'dis: a tape, a passphrase, and nobody else's business.";
+        u8 k[32], iv[12], sl[16];
+        for (i = 0; i < 32; i++) k[i] = (u8)i;
+        iv[0] = 7; iv[1] = iv[2] = iv[3] = 0;
+        for (i = 4; i < 12; i++) iv[i] = (u8)(0x40 + i - 4);
+        aes256gcm_seal(k, iv, (const u8 *)"flopos", 6, (const u8 *)msg, 64, out, out + 64);
+        ok &= report("aes-256-gcm", same(out, want, 80));
+        out[5] ^= 1;
+        ok &= report("  refusing a forgery", !aes256gcm_open(k, iv, (const u8 *)"flopos", 6, out, 64, out + 64, buf));
+        for (i = 0; i < 16; i++) sl[i] = (u8)i;
+        t0 = ms_now();
+        pbkdf2_sha256((const u8 *)"correct horse battery staple", 28, sl, 16, 1000, k);
+        ms = ms_now() - t0;
+        ok &= report("pbkdf2-sha256", same(k, wantk, 32));
+        term_colour(C_DIM);
+        term_printf("a thousand rounds of it take %u ms on this machine", ms);
+        term_newline();
+        serial_printf("[crypto] pbkdf2 1000 rounds %u ms\n", ms);
+    }
     {
         /* What checking a certificate costs here: one RSA-2048 signature,
          * one on each curve.  A site's chain is usually two or three of

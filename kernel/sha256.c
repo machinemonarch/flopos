@@ -121,6 +121,39 @@ void hmac_sha256(const u8 *key, u32 klen, const u8 *msg, u32 mlen, u8 out[32])
     sha256_final(&c, out);
 }
 
+/* ---- PBKDF2 (RFC 8018), one block of it: a passphrase made into a key ----
+ * The passphrase is run through HMAC `iters` times so that each guess
+ * costs a guesser that much work.  The two halves of the HMAC key are
+ * hashed once and kept, so a round is two hashes of 32 bytes. */
+void pbkdf2_sha256(const u8 *pw, u32 plen, const u8 *salt, u32 slen, u32 iters, u8 out[32])
+{
+    u8 k[64], pad[64], u[32], t[32];
+    Sha256 in, outer, c;
+    u32 i, n;
+
+    for (i = 0; i < 64; i++) k[i] = 0;
+    if (plen > 64) sha256(pw, plen, k);
+    else for (i = 0; i < plen; i++) k[i] = pw[i];
+    for (i = 0; i < 64; i++) pad[i] = k[i] ^ 0x36;
+    sha256_init(&in); sha256_update(&in, pad, 64);
+    for (i = 0; i < 64; i++) pad[i] = k[i] ^ 0x5c;
+    sha256_init(&outer); sha256_update(&outer, pad, 64);
+
+    c = in;
+    sha256_update(&c, salt, slen);
+    t[0] = 0; t[1] = 0; t[2] = 0; t[3] = 1;          /* block number one */
+    sha256_update(&c, t, 4);
+    sha256_final(&c, t);
+    c = outer; sha256_update(&c, t, 32); sha256_final(&c, u);
+    for (i = 0; i < 32; i++) out[i] = u[i];
+    for (n = 1; n < iters; n++) {
+        c = in;    sha256_update(&c, u, 32); sha256_final(&c, t);
+        c = outer; sha256_update(&c, t, 32); sha256_final(&c, u);
+        for (i = 0; i < 32; i++) out[i] ^= u[i];
+    }
+    for (i = 0; i < 64; i++) k[i] = pad[i] = 0;
+}
+
 /* ---- HKDF (RFC 5869) ----------------------------------------------------
  * Extract squeezes whatever randomness there is into one key; expand
  * stretches a key into as many bytes as are wanted, labelled with what

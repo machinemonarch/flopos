@@ -61,7 +61,9 @@ all: $(IMG)
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
-$(OBJDIR)/%.o: kernel/%.c | $(OBJDIR)
+# Every object is rebuilt when a header changes: a table such as the apps'
+# (apps/app.h) is laid out in more than one file, and a stale one misleads.
+$(OBJDIR)/%.o: kernel/%.c $(wildcard kernel/*.h) apps/app.h | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # The wizard's talk is sums in floating point: the one kernel file that

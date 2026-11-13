@@ -35,6 +35,9 @@ green.
 | <kbd>V</kbd> | Verify after writing: on or off. On, the tape is read back straight after it is written. |
 | <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
 | <kbd>D</kbd> | Restore into: where each file came from, or one folder for everything |
+| <kbd>N</kbd> | A new folder to restore into. It is made when files are put back. |
+| <kbd>E</kbd> | Encrypt: on or off (off to begin with). See below. |
+| <kbd>K</kbd> | The cipher, from a list of three |
 
 Under them is a cassette, whose wheels turn while a tape is written or
 read, and beside it the progress. Below is the list of your files and
@@ -100,6 +103,43 @@ If pieces are missing (a dropout, a crease in the tape), rewind, press
 
 The journal grows as FLOPOS is used, so after a while it will always be
 "different" from the tape's. That is as it should be.
+
+## Encryption
+
+With Encrypt on, writing asks for a passphrase, twice. Each file's name
+and contents are then sealed before they become sound; only how many
+files there are, and roughly how long each is, can be told from the tape.
+
+Reading a sealed tape needs Encrypt on and the same passphrase. A wrong
+passphrase, or a tape whose data was changed, is refused outright:
+nothing is restored. With Encrypt off, a sealed tape is recognised and
+`maelcum` says so.
+
+| Cipher | Key | |
+|---|---|---|
+| ChaCha20-Poly1305 | 256-bit | Quick on this laptop. The one to use. |
+| AES-256-GCM | 256-bit | As strong; several times slower here, since the Pentium has no AES instructions. |
+| AES-128-GCM | 128-bit | Sound today, but not against a future quantum computer. |
+
+A 256-bit cipher is what "quantum-safe" means for a backup locked with a
+passphrase. The post-quantum key exchange FLOPOS uses online (ML-KEM) is
+for two parties agreeing on a key, which a tape does not need.
+
+**The passphrase is the weak point, not the cipher.** It is turned into
+the key by PBKDF2-HMAC-SHA256 with a fresh random salt and 10,000 rounds,
+about two seconds on this laptop. A fast modern computer can try many
+thousands of guesses a second against that, so a short or common
+passphrase can be found. Four or more random words cannot, in practice.
+
+**The passphrase is kept nowhere.** It is wiped from memory when the
+write or read ends. Forget it and the tape cannot be opened by anyone.
+
+How it is put together: a save has one key. Each header is sealed with
+its open part (cipher, place in the save, save number, rounds, salt) as
+associated data; each file's bytes are sealed whole after packing, and
+the 16-byte tag travels with them. Nonces name what is sealed (header or
+file) and which file; they never repeat within a save, and every save
+has a new salt and so a new key.
 
 ## From the prompt
 
