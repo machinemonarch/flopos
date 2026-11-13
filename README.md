@@ -39,11 +39,11 @@ proxies, no JavaScript.
   checked with RSA and ECDSA up to Mozilla's trusted authorities. All of it
   is written from the standards and checked against official test vectors
   on the machine itself.
-- **`write`**, a word processor with bold, italic, underline, a title and
+- **`scribe`**, a word processor with bold, italic, underline, a title and
   four headings, saving Markdown documents to the floppy, with a view for
   editing the Markdown directly.
 - **Apps load from the floppy** beside the system, so programs don't make
-  the system bigger: `write` and `browzer` are apps.
+  the system bigger: `scribe` and `browzer` are apps.
 
 ## Quick start
 
@@ -68,7 +68,7 @@ Everything is in **[docs/](docs/README.md)**:
 - [Getting started](docs/getting-started.md): floppy, booting, the serial line
 - [Commands](docs/commands.md): every word it knows
 - [The inventory](docs/inventory.md): your files and folders
-- [write](docs/write.md): the word processor
+- [scribe](docs/scribe.md): the word processor
 - [tape](docs/tape.md): backup to an audio cassette
 - [The network](docs/network.md): the menu, browzer, and how private it is
 - [The hardware](docs/hardware.md): the laptop, and what it taught us

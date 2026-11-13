@@ -256,14 +256,14 @@ int app_main(const Api *api, int argc, char **argv)
             if (!join(path, s_dir, it->name)) { say("That is too many folders deep.", A_ACCENT); break; }
             if (it->folder) { copy(s_dir, path, INV_PATH); s_sel = s_top = 0; look(0); }
             else if (is_doc(it) && key == K_ENTER) {
-                A->format(m, sizeof m, "write %s back", path);
+                A->format(m, sizeof m, "scribe %s back", path);
                 A->then(m);
                 A->win_close();
                 return 0;
             } else if (key == K_ENTER) say("Nothing here opens that kind of thing yet.", A_TEXT);
             break;
         case 'w': case 'W':                      /* a new document, to be kept in this folder */
-            A->format(m, sizeof m, "write %s/ back", s_dir);
+            A->format(m, sizeof m, "scribe %s/ back", s_dir);
             A->then(m);
             A->win_close();
             return 0;

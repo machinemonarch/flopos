@@ -15,7 +15,7 @@ of it, and how it works inside.
 | [Getting started](getting-started.md) | Putting it on a floppy, booting it, talking to it over a serial cable |
 | [Commands](commands.md) | Every word it knows, what it says back, and the keys at the prompt |
 | [The inventory](inventory.md) | Your files and folders, where they live on the floppy, and how safe they are |
-| [write](write.md) | The word processor: styles, the Markdown view, saving and opening |
+| [scribe](scribe.md) | The word processor: styles, the Markdown view, saving and opening |
 | [tape](tape.md) | Your files kept on an audio cassette, and read back |
 | [The network](network.md) | The network menu, `ping`, the browzer web browser, and how private it is |
 

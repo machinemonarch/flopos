@@ -95,7 +95,7 @@ void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), 
         e->shrt = e->base; e->shorts = 0; e->state = 0; e->nbit = 0; e->byte = 0;
         e->n = 0; e->want = 0; e->sync = 0; e->tone = 0;
     }
-    r->good = r->bad = 0; r->loud = 0; r->tone = 0; r->pitch = 0; r->fast = 0;
+    r->good = r->bad = 0; r->loud = 0; r->tone = 0; r->pitch = 0; r->fast = 0; r->skew = 0;
 }
 
 static void lost(TapeRx *r, TapeEar *e)
@@ -124,6 +124,7 @@ static void got_byte(TapeRx *r, TapeEar *e, u8 b)
         if (c == tape_crc(e->buf, 5 + len)) {
             r->good++;
             r->fast = e->base != WAVE0;
+            r->skew = (int)(e->shrt * 100 / e->base) - 100;
             if (r->block) r->block(r->ctx, e->buf[0], e->buf[1] | (e->buf[2] << 8), e->buf + 5, len);
         } else r->bad++;
         e->sync = 0;

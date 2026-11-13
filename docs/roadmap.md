@@ -10,7 +10,7 @@ in [security-roadmap.md](security-roadmap.md).
 
 **Begun.** Saving files to an ordinary audio cassette and reading them
 back, on a PYE Audio Automatic Data Recorder D6600/35P: the documents from
-`write`, the bookmarks, the journal and the settings.
+`scribe`, the bookmarks, the journal and the settings.
 
 Done so far: the sound itself (`apps/lib/tape`). Two tones, 1200 and
 2400 Hz, as the home computers of the 1980s used; 120 bytes a second;

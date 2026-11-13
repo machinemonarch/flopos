@@ -1,5 +1,5 @@
 /* ===========================================================================
- * write.c -- a small word processor, and the first program FLOPOS loads
+ * scribe.c -- a small word processor, and the first program FLOPOS loads
  * from the floppy rather than carrying in its kernel.
  *
  * Paragraphs, each one Body, Title, or Heading 1 to 4.  Characters, each
@@ -17,8 +17,8 @@
  *   esc     leave (twice, if there is something unsaved)
  *
  * Documents live in the inventory, under names of your choosing: plain
- * text any other computer can read, each as long as it is.  `write` alone
- * is a new document; `write NOTES.MD` or `write LETTERS/ANNA.MD` opens
+ * text any other computer can read, each as long as it is.  `scribe` alone
+ * is a new document; `scribe NOTES.MD` or `scribe LETTERS/ANNA.MD` opens
  * that one, or starts it if it is not there; ctrl-o goes to the inventory
  * to pick one.  See doc.c.
  * ===========================================================================
@@ -468,7 +468,7 @@ static int save(void)
     s_dirty = 0;
     A->format(m, sizeof m, "Saved as %s, %u bytes.", path, (u32)n);
     say(m, A_BRIGHT);
-    A->format(m, sizeof m, "[write] saved %s %u\n", path, (u32)n);
+    A->format(m, sizeof m, "[scribe] saved %s %u\n", path, (u32)n);
     A->wire(m);
     return 1;
 }
@@ -503,7 +503,7 @@ static void draw(int blink)
     A->win_frame(0, A_GREY);
 
     doc_name(name, (int)sizeof name);
-    A->win_text(2, 0, " write ", A_BRIGHT, pp);
+    A->win_text(2, 0, " scribe ", A_BRIGHT, pp);
     A->win_put(9, 0, A_FR_H, A_GREY, pp, 0);
     x = A->win_text(10, 0, " ", A_GREY, pp);
     for (i = 0; name[i] && x < W - 6; i++) A->win_put(x++, 0, (u8)name[i], A_TEXT, pp, 0);
@@ -621,8 +621,8 @@ int app_main(const Api *api, int argc, char **argv)
     s_path[0] = s_dir[0] = 0;
     say("A new document.", A_DIM);
 
-    /* `write NAME`: that document, or a new one that will be saved there.
-     * `write FOLDER/` (the inventory's "write new"): a new one for that
+    /* `scribe NAME`: that document, or a new one that will be saved there.
+     * `scribe FOLDER/` (the inventory's "write new"): a new one for that
      * folder.  A third word, "back", is the inventory saying it wants to
      * be returned to. */
     s_back = argc >= 3 && argv[2][0] == 'b';

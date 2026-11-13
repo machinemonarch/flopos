@@ -41,10 +41,20 @@ folders. <kbd>Up</kbd> and <kbd>Down</kbd> move, <kbd>Space</kbd> ticks a
 file, or a folder and everything in it. Ticking by hand makes the job
 Pick & Mix.
 
+Above the keys, one line says how it is going, in plain words: "Buckle
+up!" at the start, "Smooth sailing." when all is well, and less calm
+things when pieces are being spoiled or the tape runs off its speed.
+When a tape has been read it sums up with one of ten sayings, five for a
+tape that came whole and five for one that did not. The plain facts stay
+on the screen beside the cassette and in the list.
+
+The screen keeps to grey, white, teal and cyan, with the keys in pink,
+the progress bar in red and what is switched on in green.
+
 ## Writing
 
-1. Press <kbd>W</kbd>. It says how much tape the ticked files need. One
-   side of a C30 holds 15 minutes, of a C60 30, of a C90 45.
+1. Press <kbd>W</kbd>. It says how much tape the ticked files need, with
+   a legend of what one side of a C30, C60 and C90 holds.
 2. Plug a cable from the laptop's headphone socket (on the front) into
    the recorder's MIC socket.
 3. Set the recorder recording, then press <kbd>Enter</kbd>. The first

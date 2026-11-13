@@ -84,7 +84,7 @@ browzer's window. Now:
 
 The picture is the same to the pixel.
 
-**Also good for:** any full-screen app, such as `write`.
+**Also good for:** any full-screen app, such as `scribe`.
 
 ## Decoding: the same arithmetic, less of it
 

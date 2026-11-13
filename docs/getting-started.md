@@ -119,7 +119,7 @@ Both work on the laptop's own keyboard.
     here> mood          change the light
     here> listen        a different rhythm
     here> whaaat        try it
-    here> write         the word processor
+    here> scribe        the word processor
     here> network       how this machine is connected
     here> apps          the programs on the floppy
     here> browzer       the web

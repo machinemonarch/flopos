@@ -6,6 +6,23 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.35.0 — 2026-11-13
+
+- **`write` is now `scribe`.** The word processor has a new name, at the
+  prompt and on the floppy (`SCRIBE.APP`). `write` is no longer a command.
+- **The backup screen keeps to grey, white, teal and cyan**, frame
+  included; keys stay pink, the progress bar red, and what is on green.
+- A line at the bottom of the backup screen says how it is going, in a
+  person's words, from the spoiled pieces of the last ten seconds and
+  the tape's speed.
+- When a tape has been read, the summing-up is one of ten sayings: five
+  for a tape that came whole, five for one that did not.
+- The cassette picture is taller and stands level with the text beside
+  it. The legend is four lines: "Cassette Storage Legend (per tape
+  side)", then C30, C60 and C90.
+- Programs can ask for cool-coloured frames (`win_cool`); five fixed
+  colours (a light grey, white, cyan, teal, dark teal) joined the palette.
+
 ## 1.34.0 — 2026-11-13
 
 - **`tape` is a full-screen backup program.** The settings at the top,

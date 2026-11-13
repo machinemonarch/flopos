@@ -130,7 +130,7 @@ static u32 next_cluster(u32 c)
     return (c & 1) ? v >> 4 : v & 0xFFF;
 }
 
-/* "write.app" -> "WRITE   APP" */
+/* "scribe.app" -> "SCRIBE  APP" */
 static int to83(const char *name, char out[11])
 {
     int i = 0, n;

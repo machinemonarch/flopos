@@ -117,11 +117,45 @@ void mood_set(int which)
 
 /* The frames' neon: sixteen full colours round the wheel, turned a
  * little further each time it is asked for. */
+/* The colours no mood changes. */
+static void fixed_colours(u8 *p)
+{
+    static const u8 c[][4] = {
+        { PAL_KEY, 63, 26, 46 },         /* keys: pink */
+        { PAL_ON, 18, 60, 28 },          /* a setting that is on: green */
+        { PAL_RED, 63, 12, 14 },
+        { PAL_SILVER, 44, 46, 47 },
+        { PAL_WHITE, 62, 63, 63 },
+        { PAL_CYAN, 16, 58, 60 },
+        { PAL_TEAL, 6, 34, 36 },
+        { PAL_TEAL_D, 2, 14, 16 },
+    };
+    u32 i;
+    for (i = 0; i < sizeof c / sizeof c[0]; i++) {
+        p[c[i][0] * 3] = c[i][1]; p[c[i][0] * 3 + 1] = c[i][2]; p[c[i][0] * 3 + 2] = c[i][3];
+    }
+}
+
+/* Frames' loop of colours: neon, or (for a program that asks) cool: grey
+ * to teal to cyan to white and back. */
+static int s_cool;
+void mood_cool(int on) { s_cool = on != 0; }
+
 static void neon_fill(u8 *rgb, u32 t)
 {
     int i, r, g, b;
     for (i = 0; i < PAL_NEON_N; i++) {
         int a = (int)((t >> 4) + (u32)i * (1024 / PAL_NEON_N)) & 1023;
+        if (s_cool) {
+            int w = COS(a) + 4096;                   /* 0..8192: how light */
+            int k = COS(a * 2 + 256) + 4096;         /* 0..8192: how much colour */
+            int grey = 14 + (w * 46 >> 13);
+            r = grey - ((grey - 4) * k >> 14);       /* colour takes the red out */
+            g = grey + ((63 - grey) * k >> 15);
+            b = grey + ((63 - grey) * k >> 14);
+            rgb[i * 3] = (u8)(r < 0 ? 0 : r); rgb[i * 3 + 1] = (u8)(g > 63 ? 63 : g); rgb[i * 3 + 2] = (u8)(b > 63 ? 63 : b);
+            continue;
+        }
         /* Full strength, unlike the moods' soft hues: twice the swing, cut off at the ends. */
         r = (COS(a) * 2 + 4096) * 63 >> 13;
         g = (COS(a - 341) * 2 + 4096) * 63 >> 13;
@@ -179,6 +213,7 @@ static void build_deep(u8 *p, const Mood *m)
     /* Still yellow down here, just colder and further off. */
     ramp(p, PAL_BANANA, PAL_BANANA_N,  8,  8,  4,  44, 46, 20);
     neon_fill(p + PAL_NEON * 3, ms_now());
+    fixed_colours(p);
 }
 
 static void build_palette(u8 *p)
@@ -225,9 +260,7 @@ static void build_palette(u8 *p)
     ramp(p, PAL_BANANA, PAL_BANANA_N, 16, 12, 2, 63, 60, 20);
     ramp(p, PAL_HUD, PAL_HUD_N, 2, 4, 16, 10, 20, 63);
     neon_fill(p + PAL_NEON * 3, ms_now());
-    p[PAL_KEY * 3 + 0] = 63; p[PAL_KEY * 3 + 1] = 26; p[PAL_KEY * 3 + 2] = 46;   /* keys: pink */
-    p[PAL_ON * 3 + 0] = 18;  p[PAL_ON * 3 + 1] = 60;  p[PAL_ON * 3 + 2] = 28;    /* on: green */
-    p[PAL_RED * 3 + 0] = 63; p[PAL_RED * 3 + 1] = 12; p[PAL_RED * 3 + 2] = 14;   /* red */
+    fixed_colours(p);
 
 }
 

@@ -125,7 +125,7 @@ def main():
     # The wizard's way with words (tools/wizard), read once at boot.
     run("mcopy", "-i", out_path, "boot/wizard.wiz", "::WIZARD.WIZ")
 
-    # Apps, each its own file: WRITE.APP for `write`.  The kernel finds
+    # Apps, each its own file: SCRIBE.APP for `scribe`.  The kernel finds
     # them by name when they are asked for, so where they land is theirs.
     # A name over eight letters (INVENTORY.APP) goes on whole, as a long
     # name, and FAT12 gives it a short one beside it (INVENT~1.APP).

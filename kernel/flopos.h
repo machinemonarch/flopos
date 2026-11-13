@@ -58,7 +58,12 @@ int    glyph_index(int c);
  * adding an offset and can animate by walking one.  mood.c builds it.
  */
 #define PAL_MOOD    1                    /*   1..63   the background field  */
-#define PAL_MOOD_N  52                   /*   1..52; 53 on, 54 red, 55 keys, 56..63 the HUD */
+#define PAL_MOOD_N  47                   /*   1..47; 48..54 fixed colours, 55 keys, 56..63 the HUD */
+#define PAL_SILVER  48                   /*  48       a light grey          */
+#define PAL_WHITE   49                   /*  49       white                 */
+#define PAL_CYAN    50                   /*  50       cyan                  */
+#define PAL_TEAL    51                   /*  51       teal                  */
+#define PAL_TEAL_D  52                   /*  52       a dark teal, to lie behind text */
 #define PAL_ON      53                   /*  53       a setting that is on, in green */
 #define PAL_RED     54                   /*  54       a red, for a bar       */
 #define PAL_KEY     55                   /*  55       keys, in pink          */
@@ -134,6 +139,7 @@ void   irq_unmask(int irq);
 /* --- time.c ------------------------------------------------------------ */
 #define TICK_HZ 250
 extern volatile u32 g_ticks;
+void   mood_cool(int on);              /* frames in grey, teal and cyan instead */
 void   mood_neon(u32 t);               /* turns the frames' colours (mood.c) */
 extern u32 g_irq_cycles;              /* cycles spent in interrupts (idt.c) */
 void   time_init(void);

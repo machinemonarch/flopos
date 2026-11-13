@@ -71,7 +71,7 @@ The journal is plain text, so you can read it on any computer: open
 | Word | What it does |
 |---|---|
 | `inventory` | Your files and folders: open, rename, move, drop. See [The inventory](inventory.md). |
-| `write` | The word processor. `write letter` opens or starts `LETTER.MD`. See [write](write.md). |
+| `scribe` | The word processor. `scribe letter` opens or starts `LETTER.MD`. See [scribe](scribe.md). |
 | `tape` | Backup to an audio cassette, on one screen; also `tape save`, `tape load`. See [tape](tape.md). |
 | `apps` | Lists the programs on the floppy. Typing a program's name runs it. |
 | `browzer` | A small web browser, with forms. An app on the floppy. See [The network](network.md). |

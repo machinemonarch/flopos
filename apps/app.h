@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 6
+#define APP_API_VERSION 7
 #define APP_BASE        0x00C00000u      /* 12MB: two whole 4MB pages, the app's own */
 #define APP_MAX         0x00800000u      /* 8MB: code, data, buffers and the stack */
 #define APP_STACK       0x00040000u      /* the top 256KB: its stack, and a page the system fills in */
@@ -57,6 +57,11 @@ typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
 #define A_ACCENT  158                    /* PAL_ACCENT + 22                */
 #define A_GREY    242                    /* PAL_GREY + 10                  */
 #define A_KEY     55                     /* PAL_KEY: a key to press, pink  */
+#define A_SILVER  48                     /* fixed colours, whatever the mood: a light grey */
+#define A_WHITE   49
+#define A_CYAN    50
+#define A_TEAL    51
+#define A_TEAL_D  52                     /* a dark teal, to lie behind text */
 #define A_ON      53                     /* PAL_ON: a setting that is on, green */
 #define A_RED     54                     /* PAL_RED                         */
 #define A_KEYMARK "\1"                    /* in text: pink on, or off again  */
@@ -232,9 +237,14 @@ typedef struct {
     const char *(*inv_why)(void);
 
     /* What to run when this app has left: an app's name and its words,
-     * as they would be typed ("write NOTES/A.MD").  That is how one app
+     * as they would be typed ("scribe NOTES/A.MD").  That is how one app
      * hands over to another; only apps can be named. */
     void (*then)(const char *command);
+
+    /* ---- version 7 ---- */
+    /* Frames in cool colours (grey, teal, cyan, white) instead of neon,
+     * until the app leaves or turns it off. */
+    void (*win_cool)(int on);
 } Api;
 
 typedef int (*AppMain)(const Api *api, int argc, char **argv);

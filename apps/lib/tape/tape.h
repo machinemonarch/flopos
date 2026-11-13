@@ -99,6 +99,7 @@ typedef struct {
     int  tone;                           /* hearing leader or data now      */
     u32  pitch;                          /* waves a second, as last heard   */
     int  fast;                           /* the last good block came fast   */
+    int  skew;                           /* and this many percent off its proper speed (+ slow tape) */
 } TapeRx;
 
 void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), void *ctx);

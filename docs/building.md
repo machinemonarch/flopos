@@ -60,7 +60,7 @@ can be read by DOS, Windows, Linux or a Mac. On it:
 |---|---|
 | `SAFFRAN.PIX` | The boot picture, read first. In one unbroken run of sectors. |
 | `KERNEL.BIN` | The system, read second. Also in one unbroken run, and both positions are written into the boot sector. |
-| `WRITE.APP` | The word processor |
+| `SCRIBE.APP` | The word processor |
 | `BROWZER.APP` | The web browser |
 | `BOOKMARK.TXT` | browzer's bookmarks, 8 KB |
 | `ROOTS.DAT` | The authorities secure sites are checked against (55 KB) |

@@ -3,7 +3,7 @@
  *
  * The kernel sits in the first 640KB, under a ceiling set in 1981, and
  * every feature built into it eats into what is left.  An app lives in
- * its own file instead -- WRITE.APP for `write` -- and is read into a
+ * its own file instead -- SCRIBE.APP for `scribe` -- and is read into a
  * 4MB space of its own at 10MB only when it is asked for, which also
  * means it costs nothing at boot.
  *
@@ -132,6 +132,8 @@ static const Api s_api = {
     /* version 6 */
     api_inv_list, inv_stat_app, inv_read, inv_write, inv_mkdir, inv_remove, inv_move, inv_room, inv_why,
     api_then,
+    /* version 7 */
+    mood_cool,
 };
 
 /* ---- behind the wall (wall.c): one request from an app, checked -----------
@@ -278,6 +280,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     case 48: r = k->inv_room(); break;
     case 49: r = wall_string(2, k->inv_why()); break;
     case 50: STR(0); k->then((const char *)a[0]); break;
+    case 51: k->win_cool((int)a[0]); break;
     default: return 0;
     }
 #undef STR
@@ -286,7 +289,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     *result = r;
     return 1;
 }
-_Static_assert((sizeof(Api) - 4) / 4 == 51, "a function was added to the table: give it a case in app_ask");
+_Static_assert((sizeof(Api) - 4) / 4 == 52, "a function was added to the table: give it a case in app_ask");
 
 static int memory_for_apps(void)
 {
@@ -392,6 +395,7 @@ static int run_one(const char *word, int argc, char **argv)
     if (wall_on()) r = wall_run(h->entry, argc, argv);
     else           r = ((AppMain)h->entry)(&s_api, argc, argv);
     s_app_bytes = 0;
+    mood_cool(0);                        /* frames go back to neon         */
     audio_feeder(0);                     /* its memory is no longer its own */
     audio_close();
     term_win_close();

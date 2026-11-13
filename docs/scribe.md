@@ -1,7 +1,7 @@
-# write
+# scribe
 
-A small word processor. Type `write` at the prompt for a new document, or
-`write letter` to open `LETTER.MD` from your [inventory](inventory.md)
+A small word processor. Type `scribe` at the prompt for a new document, or
+`scribe letter` to open `LETTER.MD` from your [inventory](inventory.md)
 (or start it, if it isn't there).
 
     here> write
@@ -104,8 +104,8 @@ A `*` after the name at the top means there are unsaved changes.
 
 In the [inventory](inventory.md), under the names you give them, as many
 as fit on the floppy. Each holds up to 16KB of text and takes only the
-room it needs. A document goes into the folder `write` was opened for:
-`write notes/plan` keeps `PLAN.MD` in the folder `NOTES`, and
+room it needs. A document goes into the folder `scribe` was opened for:
+`scribe notes/plan` keeps `PLAN.MD` in the folder `NOTES`, and
 <kbd>W</kbd> in the inventory starts one in the folder you are looking at.
 
 They are ordinary text files. Put the floppy in any computer and open them

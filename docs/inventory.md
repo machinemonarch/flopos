@@ -29,7 +29,7 @@ folders first. The bottom edge shows how much room is left on the floppy.
 | Key | What it does |
 |---|---|
 | Up, Down, PgUp, PgDn | Move along the list |
-| <kbd>Enter</kbd> | Step into a folder, or open a document in `write` (leaving `write` comes back here) |
+| <kbd>Enter</kbd> | Step into a folder, or open a document in `scribe` (leaving `scribe` comes back here) |
 | <kbd>Backspace</kbd> | Up a folder |
 | <kbd>W</kbd> | Write a new document, to be kept in this folder |
 | <kbd>N</kbd> | A new folder here |

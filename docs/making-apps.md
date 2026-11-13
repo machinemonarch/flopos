@@ -2,7 +2,7 @@
 
 Programs don't have to be built into the system. An **app** is a file on
 the floppy, `NAME.APP`, loaded into memory and run when you type its name.
-There are two so far: `write`, the word processor, and `browzer`, the web
+There are two so far: `scribe`, the word processor, and `browzer`, the web
 browser.
 
 Why apps live outside the system:
@@ -17,7 +17,7 @@ Why apps live outside the system:
 
 Type its name. When FLOPOS doesn't know a word as a command, it looks on
 the floppy for a file of that name ending in `.APP`. `apps` lists them.
-Anything after the name is passed to the app: `write letter`.
+Anything after the name is passed to the app: `scribe letter`.
 
 Apps need at least 20MB of memory, which the 430CDT (32MB) has.
 
@@ -30,8 +30,8 @@ file in it, and puts the result on the floppy:
       app.h          what an app can ask of FLOPOS (the only header it shares)
       app.ld         where an app sits in memory
       crt.c          the app's header, and memset / memcpy / memmove
-      write/
-        write.c
+      scribe/
+        scribe.c
         doc.c
         doc.h
 
@@ -210,7 +210,8 @@ sentence to show.
 | `inv_remove(path)` | A file, or an empty folder |
 | `inv_move(from, to)` | Rename, move to another folder, or both |
 | `inv_room()` | Bytes free on the floppy |
-| `then(command)` | Run another app when this one leaves, as if typed: `then("write NOTES/A.MD")`. How the inventory opens a document and `write` returns to it. |
+| `win_cool(on)` | Frames in grey, teal, cyan and white instead of neon, until the app leaves. Fixed colours to go with it: `A_SILVER`, `A_WHITE`, `A_CYAN`, `A_TEAL`, `A_TEAL_D`, and `A_ON` (green), `A_RED`. |
+| `then(command)` | Run another app when this one leaves, as if typed: `then("scribe NOTES/A.MD")`. How the inventory opens a document and `scribe` returns to it. |
 
 ## Libraries apps share
 
@@ -240,7 +241,7 @@ Colours (`A_TEXT`, `A_DIM`, `A_BRIGHT`, `A_ACCENT`, `A_GREY`, `A_PAPER`,
 What the user makes goes in the inventory, through the `inv_` calls below:
 real files of any size, under names the user chooses, carried across
 upgrades by `writefloppy.sh` without anything more to do. That is where
-`write` keeps its documents.
+`scribe` keeps its documents.
 
 An app's own records (settings, a list like browzer's bookmarks) can
 instead be a file made at full size when the floppy is built
