@@ -563,11 +563,12 @@ static void draw(void)
     term_win_text(3, 0, "brow", C_BRIGHT, pp);
     term_win_put(7, 0, 'z', PAL_BANANA + 6, pp);
     term_win_text(8, 0, "er", C_BRIGHT, pp);
+    x = term_win_text(11, 0, A->os_version(), C_TEXT, pp);   /* which FLOPOS it came with */
     term_win_put(10, 0, ' ', C_GREY, pp);
+    term_win_put(x++, 0, ' ', C_GREY, pp);
     if (s_pg.title[0]) {
-        term_win_put(11, 0, FR_H, C_GREY, pp);
-        term_win_put(12, 0, ' ', C_GREY, pp);
-        x = 13;
+        term_win_put(x++, 0, FR_H, C_GREY, pp);
+        term_win_put(x++, 0, ' ', C_GREY, pp);
         for (i = 0; s_pg.title[i] && x < play_x - 2; i++) term_win_put(x++, 0, (u8)s_pg.title[i], C_TEXT, pp);
         term_win_put(x, 0, ' ', C_GREY, pp);         /* the title stops short of it */
     }

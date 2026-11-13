@@ -88,8 +88,12 @@ void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), 
 {
     int k;
     r->block = block; r->ctx = ctx;
-    r->mid = 128 * 256; r->last = 0; r->sign = 1; r->since = 0; r->prev = 0; r->n = 0;
-    for (k = 0; k < 4; k++) {
+    for (k = 0; k < 2; k++) {
+        TapeLine *l = &r->line[k];
+        l->mid = k ? 0 : 128 * 256; l->last = 0; l->sign = 1; l->since = 0; l->prev = 0; l->n = 0; l->loud = 0;
+    }
+    r->was = 128 * 256; r->t = 0; r->good_at = 0; r->fail_at = 0; r->fails = 0;
+    for (k = 0; k < 6; k++) {
         TapeEar *e = &r->ear[k];
         e->base = k < 2 ? WAVE0 : WAVE0 / 2;
         e->shrt = e->base; e->shorts = 0; e->state = 0; e->nbit = 0; e->byte = 0;
@@ -98,9 +102,20 @@ void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), 
     r->good = r->bad = 0; r->loud = 0; r->tone = 0; r->pitch = 0; r->fast = 0; r->skew = 0;
 }
 
+/* Several ears listen to the one tape, and a block that one of them loses
+ * another often has.  So a failure waits a moment: it counts only if no
+ * ear passes a block close by. */
+#define NEAR (TAPE_RATE / 20)
+static void failed(TapeRx *r)
+{
+    if (r->good && r->t - r->good_at <= NEAR) return;
+    if (!r->fails) r->fail_at = r->t;
+    r->fails = 1;                        /* the ears' failures of one block are one failure */
+}
+
 static void lost(TapeRx *r, TapeEar *e)
 {
-    if (e->sync == 2) r->bad++;
+    if (e->sync == 2) failed(r);
     e->sync = 0; e->state = 0; e->shorts = 0; e->tone = 0;
 }
 
@@ -115,18 +130,19 @@ static void got_byte(TapeRx *r, TapeEar *e, u8 b)
     e->buf[e->n++] = b;
     if (e->n == 5) {
         int len = e->buf[3] | (e->buf[4] << 8);
-        if (len > TAPE_PIECE || e->buf[0] < TAPE_HEAD || e->buf[0] > TAPE_END) { r->bad++; e->sync = 0; return; }
+        if (len > TAPE_PIECE || e->buf[0] < TAPE_HEAD || e->buf[0] > TAPE_END) { failed(r); e->sync = 0; return; }
         e->want = 5 + len + 2;
     }
     if (e->want && e->n == e->want) {
         int len = e->want - 7;
         u16 c = (u16)(e->buf[5 + len] | (e->buf[6 + len] << 8));
         if (c == tape_crc(e->buf, 5 + len)) {
-            r->good++;
+            if (r->t - r->good_at > NEAR || !r->good) r->good++;   /* each ear that has it says so: once is enough */
+            r->good_at = r->t; r->fails = 0;
             r->fast = e->base != WAVE0;
             r->skew = (int)(e->shrt * 100 / e->base) - 100;
             if (r->block) r->block(r->ctx, e->buf[0], e->buf[1] | (e->buf[2] << 8), e->buf + 5, len);
-        } else r->bad++;
+        } else failed(r);
         e->sync = 0;
     }
 }
@@ -144,7 +160,7 @@ static void got_bit(TapeRx *r, TapeEar *e, int one)
     }
     e->state = 0;
     if (one) got_byte(r, e, e->byte);    /* the 1 that ends it             */
-    else { if (e->sync == 2) r->bad++; e->sync = 0; }
+    else { if (e->sync == 2) failed(r); e->sync = 0; }
 }
 
 /* One whole wave, d sixteenths of a sample long. */
@@ -166,41 +182,60 @@ static void wave(TapeRx *r, TapeEar *e, u32 d)
     if (e->shrt > e->base * 4 / 3) e->shrt = e->base * 4 / 3;
 }
 
+/* One sample down one line: find the crossings, and give each whole wave
+ * to the line's ears (from ear `at`, `pairs` pairs of them). */
+static void line_in(TapeRx *r, TapeLine *l, int s, int at, int pairs)
+{
+    int v = s - l->mid, x, a, h, k;
+    l->mid += v >> 7;                    /* the middle drifts; follow it   */
+    x = v >> 8;
+    a = x < 0 ? -x : x;
+    if (a > 127) a = 127;
+    if (a > l->loud) l->loud = a;
+    else if ((++l->n & 63) == 0 && l->loud > 0) l->loud--;   /* falls away in a third of a second */
+    h = l->loud / 4 + 2;                 /* this far past the middle counts */
+    l->since += 16;
+    if ((l->sign > 0 && x < -h) || (l->sign < 0 && x > h)) {
+        /* Where between the last sample and this one it crossed. */
+        int edge = l->sign > 0 ? -h : h, den = x - l->last, f = 0;
+        u32 half;
+        int up = l->sign > 0;
+        if (den) f = (edge - l->last) * 16 / den;
+        if (f < 0) f = 0;
+        if (f > 16) f = 16;
+        half = l->since - 16 + (u32)f;
+        if (l->prev) {
+            for (k = 0; k < pairs; k++) wave(r, &r->ear[at + 2 * k + up], half + l->prev);
+            if (!at && half + l->prev) r->pitch = (u32)TAPE_RATE * 16u / (half + l->prev);
+        }
+        l->prev = half;
+        l->since = 16 - (u32)f;
+        l->sign = -l->sign;
+    } else if (l->since > WAVE0 * 4) {
+        for (k = at; k < at + 2 * pairs; k++) if (r->ear[k].tone || r->ear[k].sync) lost(r, &r->ear[k]);
+        l->prev = 0;
+        if (!at) r->pitch = 0;
+        if (l->since > 0x40000000u) l->since = WAVE0 * 4 + 16;
+    }
+    l->last = x;
+}
+
+/* A recorder that is dull gives the fast tape's high note far weaker than
+ * its low one, and the low one then decides where the wave crosses.  So
+ * the fast tape is also listened to with the treble lifted (each sample
+ * less three quarters of the one before), by a pair of ears of its own. */
 void tape_rx_samples(TapeRx *r, const u8 *in, int n)
 {
+    int k;
     while (n--) {
-        int v = (int)*in++ * 256 - r->mid, x, a, h;
-        r->mid += v >> 7;                /* the middle drifts; follow it   */
-        x = v >> 8;
-        a = x < 0 ? -x : x;
-        if (a > r->loud) r->loud = a;
-        else if ((++r->n & 63) == 0 && r->loud > 0) r->loud--;   /* falls away in a third of a second */
-        h = r->loud / 4 + 2;             /* this far past the middle counts */
-        r->since += 16;
-        if ((r->sign > 0 && x < -h) || (r->sign < 0 && x > h)) {
-            /* Where between the last sample and this one it crossed. */
-            int edge = r->sign > 0 ? -h : h, den = x - r->last, f = 0;
-            u32 half;
-            int up = r->sign > 0;
-            if (den) f = (edge - r->last) * 16 / den;
-            if (f < 0) f = 0;
-            if (f > 16) f = 16;
-            half = r->since - 16 + (u32)f;
-            if (r->prev) {
-                wave(r, &r->ear[up], half + r->prev);
-                wave(r, &r->ear[2 + up], half + r->prev);
-                if (half + r->prev) r->pitch = (u32)TAPE_RATE * 16u / (half + r->prev);
-            }
-            r->prev = half;
-            r->since = 16 - (u32)f;
-            r->sign = -r->sign;
-            r->tone = r->ear[0].tone | r->ear[1].tone | r->ear[2].tone | r->ear[3].tone;
-        } else if (r->since > WAVE0 * 4) {
-            int k;
-            for (k = 0; k < 4; k++) if (r->ear[k].tone || r->ear[k].sync) lost(r, &r->ear[k]);
-            r->prev = 0; r->tone = 0; r->pitch = 0;
-            if (r->since > 0x40000000u) r->since = WAVE0 * 4 + 16;
-        }
-        r->last = x;
+        int s = (int)*in++ * 256;
+        line_in(r, &r->line[0], s, 0, 2);
+        line_in(r, &r->line[1], s - (r->was - (r->was >> 2)), 4, 1);
+        r->was = s;
+        r->t++;
+        if (r->fails && r->t - r->fail_at > NEAR) { r->bad++; r->fails = 0; }
     }
+    r->loud = r->line[0].loud;
+    r->tone = 0;
+    for (k = 0; k < 6; k++) r->tone |= r->ear[k].tone;
 }

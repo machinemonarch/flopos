@@ -156,7 +156,7 @@ int main(int argc, char **argv)
         u8 *f = record(&nf, 1);
         printf("fast (%d s):", nf / TAPE_RATE);
         for (i = 0; i < (int)(sizeof cases / sizeof cases[0]); i++) {
-            s_quiet = 1;
+            s_quiet = getenv("LOUD") ? 0 : 1;
             if (!run(&cases[i], f, nf)) { printf(" [%s]", cases[i].name); bad++; if (i < 4) ok = 0; }
             s_quiet = 0;
         }

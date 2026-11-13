@@ -85,15 +85,24 @@ typedef struct {
 } TapeEar;
 
 typedef struct {
-    void (*block)(void *ctx, int type, int seq, const u8 *data, int len);
-    void *ctx;
     int  mid;                            /* the wave's middle, x256        */
     int  last;                           /* the last sample, about its middle */
     int  sign;                           /* which side of the middle       */
     u32  since;                          /* 1/16 samples since the last crossing */
     u32  prev;                           /* the half-wave before this one  */
     u32  n;                              /* samples so far                 */
-    TapeEar ear[4];                      /* upward crossings and downward; normal and fast */
+    int  loud;                           /* how strong it is, 0..127       */
+} TapeLine;
+
+typedef struct {
+    void (*block)(void *ctx, int type, int seq, const u8 *data, int len);
+    void *ctx;
+    TapeLine line[2];                    /* the sound as it comes; and with its treble lifted, for a dull tape played fast */
+    int  was;                            /* the sample before this one     */
+    u32  t;                              /* samples so far                 */
+    u32  good_at;                        /* when the last block passed     */
+    u32  fail_at; int fails;             /* blocks that failed in an ear, not yet counted: another ear may have them */
+    TapeEar ear[6];                      /* upward crossings and downward: normal, fast, and fast with the lift */
     u32  good, bad;                      /* blocks that passed, and failed  */
     int  loud;                           /* how strong the signal is, 0..127 */
     int  tone;                           /* hearing leader or data now      */

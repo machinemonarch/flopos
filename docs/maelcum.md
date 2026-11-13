@@ -24,8 +24,10 @@ halves it again. A file over 64 KB is left out, and `maelcum` says so.
 
     here> maelcum
 
-At the top are the settings, each with its key. The value in force is
-green.
+At the top are the settings, each with its key, in two groups. The value
+in force is green; the one that is not is grey.
+
+**Write Options**
 
 | Key | Setting |
 |---|---|
@@ -33,17 +35,22 @@ green.
 | <kbd>C</kbd> | Compress (LZSS): on or off. A file is sent packed when that is shorter. |
 | <kbd>F</kbd> | Speed: normal or fast. Fast takes half the tape and is easier to spoil: it wants a good recorder and tape. Reading needs no telling; it hears which. |
 | <kbd>V</kbd> | Verify after writing: on or off. On, the tape is read back straight after it is written. |
-| <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
-| <kbd>D</kbd> | Restore into: where each file came from, or one folder for everything |
-| <kbd>N</kbd> | A new folder to restore into. It is made when files are put back. |
 | <kbd>E</kbd> | Encrypt: on or off (off to begin with). See below. |
 | <kbd>K</kbd> | The cipher, from a list of three |
 
+**Read Options**
+
+| Key | Setting |
+|---|---|
+| <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
+| <kbd>D</kbd> | Restore into, from a list: where each file came from, the top of the inventory, any folder, or **a new folder**. A new folder is asked a name and made at once, inside the folder the list below is showing. |
+
 Under them is a cassette, whose wheels turn while a tape is written or
-read, and beside it the progress. Below is the list of your files and
-folders. <kbd>Up</kbd> and <kbd>Down</kbd> move, <kbd>Space</kbd> ticks a
-file, or a folder and everything in it. Ticking by hand makes the job
-Pick & Mix.
+read, and beside it the progress. Below are your files, one folder at a
+time, as `inventory` shows them: <kbd>Up</kbd> and <kbd>Down</kbd> move,
+<kbd>Enter</kbd> goes into a folder, <kbd>Backspace</kbd> comes back out,
+and <kbd>Space</kbd> ticks a file, or a folder and everything in it.
+Ticking by hand makes the job Pick & Mix.
 
 Above the keys, one line says how it is going, in plain words: "Buckle
 up!" when recording starts, "Now hear 'dis!" when playback starts,
@@ -89,14 +96,16 @@ what Verify does.
 
 Reading ends by itself when every file has come whole, or after ten
 seconds of silence; <kbd>S</kbd> ends it sooner. If everything came
-whole, the tune plays. Stopping by hand is not held against the tape:
-it gets a poor verdict only if pieces were actually spoiled.
+whole, the tune plays; if it did not, a shorter, sadder one does.
+Stopping by hand is not held against the tape: it gets a poor verdict
+only if pieces were actually spoiled.
 
-Then it says, for each file, whether the tape's copy is the same as the
-floppy's, different, or not on the floppy at all. Nothing has been
-written yet. <kbd>Enter</kbd> puts the tape's copy of every different
-file on the floppy, with its folders. Only ticked files are taken from a
-tape.
+Then it says what the tape holds: how many files are new (not on this
+floppy), how many are different from the floppy's, and how many are the
+same. Nothing has been written yet. <kbd>P</kbd> puts the new and the
+different ones on the floppy, with their folders, or into the folder
+chosen with <kbd>D</kbd>. Only ticked files are taken from a tape. A tape
+from another floppy restores just as well: its files are all new.
 
 If pieces are missing (a dropout, a crease in the tape), rewind, press
 <kbd>R</kbd> and play it again.
@@ -165,5 +174,8 @@ an end mark (twice); every block carries its own check, and the file a
 check of the whole. Packing is LZSS (Storer and Szymanski, 1982): a
 4096-byte window and copies of 3 to 18 bytes. Reading times whole waves,
 so loudness, a tape running fast or slow, a lopsided wave and a wave
-turned upside down do not matter. A tape written by an earlier FLOPOS
+turned upside down do not matter. A fast tape is also listened to with
+its treble lifted, since a dull recorder gives the high tone much weaker
+than the low one. Several listeners hear the one tape; a block counts as
+spoiled only when none of them has it. A tape written by an earlier FLOPOS
 still reads. The details are in `apps/lib/tape/` and `apps/maelcum/maelcum.c`.

@@ -6,6 +6,33 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.38.0 — 2026-11-13
+
+- **Text never runs over a window's frame**, in any program: what does
+  not fit is left out, and maelcum's long lines were shortened or broken.
+  A program's name still sits in the top edge.
+- **Every program shows the FLOPOS version after its name**, top left.
+- maelcum:
+  - Titled "Data Tape Backup & Restoration Software".
+  - Settings in two groups, **Write Options** and **Read Options**. The
+    value not in force is grey; dim gold is kept for the tape legend.
+  - The file list works like `inventory`: one folder at a time, `Enter`
+    goes in, `Backspace` comes out.
+  - `D` (Restore into) opens a list: where each file came from, the top,
+    any folder, or a new folder. A new folder is **made at once**, so
+    `inventory` shows it. (Before, it was made only when files were put
+    back, and never if the tape read badly.) `N` is gone.
+  - Reading is about restoring: it says how many files are new, different
+    or the same, and `P` puts the new and the different ones on the
+    floppy. A tape from another floppy restores just as well.
+  - **Fast speed reads better from a dull recorder**: a fast tape is also
+    listened to with its treble lifted.
+  - A block counts as spoiled only when none of the listeners has it. One
+    losing a block another had was counted, which could say "Sorry!
+    Sorry!" over a tape that was reading.
+  - A tape that reads badly now ends with a short sad tune; before, it
+    ended in silence.
+
 ## 1.37.0 — 2026-11-13
 
 - **Encrypted backups in maelcum**, off by default (`E`). A passphrase,

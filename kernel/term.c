@@ -18,6 +18,7 @@
  * optional on a laptop panel.
  * ===========================================================================
  */
+#include "version.h"
 #include "flopos.h"
 #include "io.h"
 
@@ -818,13 +819,16 @@ void term_win_put(int x, int y, int ch, u8 fg, u8 bg)
 
 
 u8 g_key_colour = PAL_KEY;              /* pink, unless a program has asked for its own look */
-/* \1 in the text turns pink on, for a key to press, and off again. */
+/* \1 in the text turns pink on, for a key to press, and off again.
+ * Text never runs onto the frame at the sides: what does not fit is left
+ * out.  (A program's name sits in the top edge, where it belongs.) */
 int term_win_text(int x, int y, const char *t, u8 fg, u8 bg)
 {
     int key = 0;
-    for (; *t && x < s_win_w; t++) {
+    for (; *t && x < s_win_w - 1; t++) {
         if (*t == 1) { key = !key; continue; }
-        term_win_put(x++, y, (u8)*t, key ? g_key_colour : fg, bg);
+        if (x >= 1) term_win_put(x, y, (u8)*t, key ? g_key_colour : fg, bg);
+        x++;
     }
     return x;
 }
@@ -856,6 +860,8 @@ void term_win_frame(const char *title, u8 fg)
     if (title && *title) {
         term_win_put(2, 0, ' ', fg, WIN_PAPER);
         x = term_win_text(3, 0, title, C_BRIGHT, WIN_PAPER);
+        term_win_put(x, 0, ' ', fg, WIN_PAPER);
+        x = term_win_text(x + 1, 0, FLOPOS_VERSION, C_TEXT, WIN_PAPER);   /* every program says which FLOPOS it came with */
         term_win_put(x, 0, ' ', fg, WIN_PAPER);
     }
 }

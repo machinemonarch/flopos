@@ -104,9 +104,9 @@ for an older version keeps working.
 | `win_close()` | Close it |
 | `win_width()`, `win_height()` | Its size |
 | `win_put(x, y, ch, fg, bg, attr)` | One character, with colours and `AT_BOLD`, `AT_ITALIC`, `AT_UNDERLINE` |
-| `win_text(x, y, text, fg, bg)` | A string; returns where it ended |
+| `win_text(x, y, text, fg, bg)` | A string; returns where it ended. It never draws on the frame's side columns: what does not fit is left out. |
 | `win_band(y, x0, x1, bg)` | Colour part of a row |
-| `win_frame(title, fg)` | A frame around the window, with a title |
+| `win_frame(title, fg)` | A frame around the window, with a title and the FLOPOS version after it. A program that draws its own title puts `os_version()` after its name. |
 | `screen_cols()`, `screen_rows()` | How big the whole screen is in characters |
 
 **The terminal**, for apps that only print: `print(text)`, `newline()`,

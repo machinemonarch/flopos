@@ -503,9 +503,11 @@ static void draw(int blink)
     A->win_frame(0, A_GREY);
 
     doc_name(name, (int)sizeof name);
-    A->win_text(2, 0, " scribe ", A_BRIGHT, pp);
-    A->win_put(9, 0, A_FR_H, A_GREY, pp, 0);
-    x = A->win_text(10, 0, " ", A_GREY, pp);
+    x = A->win_text(2, 0, " scribe ", A_BRIGHT, pp);
+    x = A->win_text(x, 0, A->os_version(), A_TEXT, pp);   /* which FLOPOS it came with */
+    x = A->win_text(x, 0, " ", A_GREY, pp);
+    A->win_put(x++, 0, A_FR_H, A_GREY, pp, 0);
+    x = A->win_text(x, 0, " ", A_GREY, pp);
     for (i = 0; name[i] && x < W - 6; i++) A->win_put(x++, 0, (u8)name[i], A_TEXT, pp, 0);
     if (s_dirty) A->win_put(x++, 0, '*', A_ACCENT, pp, 0);
     A->win_put(x, 0, ' ', A_GREY, pp, 0);

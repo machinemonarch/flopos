@@ -4,12 +4,12 @@
  * Named for the pilot in William Gibson's Neuromancer (1984), who got
  * people home.
  *
- * MAELCUM.APP on the floppy.  One full screen: the settings at the top, a
- * cassette and the progress under them, then your files with a tick by
- * each.  Writing plays the ticked files out of the headphone socket as
+ * MAELCUM.APP on the floppy.  One full screen: the settings at the top
+ * (for writing, and for reading), a cassette and the progress under them,
+ * then your files a folder at a time, with a tick by each.  Writing plays the ticked files out of the headphone socket as
  * two tones, for a cassette recorder to record; reading listens to the
- * recorder playing them back, compares what it hears with the floppy, and
- * puts it back if asked.  The sound itself is apps/lib/tape.
+ * recorder playing them back, says which files are new, different or
+ * already here, and puts them on the floppy if asked.  The sound itself is apps/lib/tape.
  *
  * Only what is yours goes to tape or comes back from it: everything in
  * the inventory, and three of the system's own records (the bookmarks,
@@ -280,27 +280,48 @@ static void forget_key(void)
     s_have_key = 0;
 }
 
-/* ---- the list on the screen: folders and files, with ticks ---------------------
+/* ---- the list on the screen: one folder at a time, as the inventory shows it ----
  * A row is a folder (>= 0: its number; -1 the system's records; -2 what
- * only the tape has) or a file (its number + 1000). */
+ * only the tape has) or a file (its number + 1000).  Enter goes into a
+ * folder and Backspace comes back out. */
 static int s_rows[MAXF + MAXD + 4], s_nrows;
+static int s_view;                       /* the folder shown: its number, or -1 or -2 */
+
+static int parent_of(int d)
+{
+    char up_[INV_PATH];
+    int k, cut = -1, i;
+    if (d <= 0) return 0;
+    for (k = 0; s_dirs[d][k]; k++) { up_[k] = s_dirs[d][k]; if (up_[k] == '/') cut = k; }
+    if (cut < 0) return 0;
+    up_[cut] = 0;
+    for (i = 1; i < s_ndirs; i++) if (same_word(s_dirs[i], up_)) return i;
+    return 0;
+}
 
 static void build_rows(void)
 {
     int d, i, any;
     s_nrows = 0;
-    for (d = 0; d < s_ndirs; d++) {
-        if (d) s_rows[s_nrows++] = d;
-        for (i = 0; i < s_nf; i++) if (s_f[i].dir == d) s_rows[s_nrows++] = 1000 + i;
-    }
-    for (d = -1; d >= -2; d--) {
-        any = 0;
-        for (i = 0; i < s_nf; i++) any |= s_f[i].dir == d;
-        if (!any) continue;
-        s_rows[s_nrows++] = d;
-        for (i = 0; i < s_nf; i++) if (s_f[i].dir == d) s_rows[s_nrows++] = 1000 + i;
-    }
+    if (s_view >= 0)
+        for (d = 1; d < s_ndirs; d++) if (parent_of(d) == s_view) s_rows[s_nrows++] = d;
+    for (i = 0; i < s_nf; i++) if (s_f[i].dir == s_view) s_rows[s_nrows++] = 1000 + i;
+    if (s_view == 0)
+        for (d = -1; d >= -2; d--) {
+            any = 0;
+            for (i = 0; i < s_nf; i++) any |= s_f[i].dir == d;
+            if (any) s_rows[s_nrows++] = d;
+        }
     if (s_cursor >= s_nrows) s_cursor = s_nrows ? s_nrows - 1 : 0;
+}
+
+/* Show another folder, with the cursor on a row of it (or the first). */
+static void view(int d, int on_row)
+{
+    int i;
+    s_view = d; s_cursor = 0; s_top = 0;
+    build_rows();
+    for (i = 0; i < s_nrows; i++) if (s_rows[i] == on_row) s_cursor = i;
 }
 
 /* Is this file inside that folder row? */
@@ -380,20 +401,27 @@ static void cassette(int x, int y, int turning)
 }
 
 /* ---- the trudelutt ------------------------------------------------------------- */
-static void tune(void)
+static void tune(int sad)
 {
     /* pitch in Hz and length in ms; a pitch of 0 rests; a negative one slides up to the next */
-    static const short notes[][2] = {
+    static const short merry[][2] = {
         { 523, 70 }, { 659, 70 }, { 784, 70 }, { 1047, 70 }, { 784, 70 }, { 1047, 140 }, { 0, 60 },
         { -300, 260 }, { 1800, 40 }, { 0, 70 },
         { 988, 60 }, { 0, 40 }, { 988, 60 }, { 0, 40 }, { 1319, 110 }, { 0, 50 },
         { 196, 90 }, { 185, 90 }, { 131, 260 }, { 0, 80 }, { 2093, 50 }, { 0, 30 }, { 2637, 120 },
     };
+    /* and for a tape that came badly: down the stairs, and a sigh */
+    static const short low[][2] = {
+        { 392, 150 }, { 0, 30 }, { 370, 150 }, { 0, 30 }, { 349, 150 }, { 0, 30 }, { 330, 320 }, { 0, 80 },
+        { -220, 420 }, { 98, 60 }, { 0, 60 },
+    };
     static u8 buf[512];
+    const short (*notes)[2] = sad ? low : merry;
     u32 phase = 0;
-    int i, n, k, rate = A->audio_open(TAPE_RATE);
+    int i, n, k, count = sad ? (int)(sizeof low / sizeof low[0]) : (int)(sizeof merry / sizeof merry[0]);
+    int rate = A->audio_open(TAPE_RATE);
     if (!rate) return;
-    for (i = 0; i < (int)(sizeof notes / sizeof notes[0]); i++) {
+    for (i = 0; i < count; i++) {
         int hz = notes[i][0], total = rate / 1000 * notes[i][1] + rate % 1000 * notes[i][1] / 1000, at = 0;
         int to = hz < 0 ? notes[i + 1][0] : 0;
         if (hz < 0) hz = -hz;
@@ -559,7 +587,7 @@ static void write_step(void)
         wire("saved", "files", (u32)s_count, s_bytes);
         s_mode = M_WROTE;
         if (s_verify) read_go(1);                /* not done yet: the tune waits for the check */
-        else { forget_key(); tune(); say("All on the tape. Stop the recorder.", A_ON); }
+        else { forget_key(); tune(0); say("All on the tape. Stop the recorder.", A_ON); }
     }
 }
 
@@ -760,6 +788,7 @@ static void read_end(int stopped)
         part += s_f[i].state == ST_PART;
     }
     s_mode = M_RESULT;
+    view(0, 0);                                  /* back to the top: the whole of what was read */
     wire("read", "same/different", (u32)same, (u32)diff);
     {   /* the summing-up: one of five, by how the tape came.  Stopping it by
          * hand says nothing about the tape, unless pieces were spoiled. */
@@ -769,11 +798,18 @@ static void read_end(int stopped)
         s_shout = "";
     }
     if (stopped && !same && !diff) say(part ? "Stopped part way. Nothing was judged." : "Stopped before anything was read.", A_CREAM);
-    else if (!same && !diff && !part) say("Nothing of yours was heard.", A_RED);
-    else if (part) say("Pieces missing: rewind, play, press R.", A_RED);
-    else {
-        say(diff ? "All read. Some differs from the floppy." : "All read: the same as the floppy.", A_ON);
-        tune();
+    else if (!same && !diff && !part) { say("Nothing of yours was heard.", A_RED); if (!stopped) tune(1); }
+    else if (part) { say("Pieces missing: rewind, play, press R.", A_RED); if (!stopped || s_rx.bad) tune(1); }
+    else if (s_verifying) {
+        say(diff ? "The tape differs from the floppy." : "Checked: the tape matches the floppy.", diff ? A_RED : A_ON);
+        tune(diff != 0);
+    } else {
+        static char sum[48];
+        int fresh = 0;
+        for (i = 0; i < s_nf; i++) fresh += s_f[i].state == ST_DIFF && !s_f[i].here;
+        A->format(sum, sizeof sum, "Read %u: %u new, %u different, %u same.", (u32)(same + diff), (u32)fresh, (u32)(diff - fresh), (u32)same);
+        say(sum, A_ON);
+        tune(0);
     }
 }
 
@@ -846,7 +882,7 @@ static void put_back(void)
         wire("put back", f->name, f->used, 0);
     }
     if (failed) say(s_why, A_RED);
-    else say(back ? "Put back on the floppy." : "Nothing needed putting back.", A_ON);
+    else say(back ? "Restored to the floppy." : "Nothing needed restoring.", A_ON);
 }
 
 /* ---- how it is going, in a person's words ------------------------------------------
@@ -901,9 +937,9 @@ static const char *mood_line(u8 *c)
 }
 
 /* ---- the screen ----------------------------------------------------------------- */
-#define ROW_SET  3                       /* the settings start here         */
-#define ROW_CAS  9                       /* the cassette                    */
-#define ROW_LIST 21                      /* the files                       */
+#define ROW_SET  2                       /* the settings start here         */
+#define ROW_CAS  11                      /* the cassette                    */
+#define ROW_LIST 22                      /* the files                       */
 
 /* A setting with two values: the one in force in green. */
 static int two(int x, int y, const char *key, const char *label, const char *a, const char *b, int second)
@@ -911,8 +947,26 @@ static int two(int x, int y, const char *key, const char *label, const char *a, 
     char m[40];
     A->format(m, sizeof m, "\1%s\1 %s  ", key, label);
     x = text(x, y, m, A_CREAM);
-    x = text(x, y, a, second ? A_OLIVE : A_ON) + 2;
-    return text(x, y, b, second ? A_ON : A_OLIVE);
+    x = text(x, y, a, second ? A_GREY : A_ON) + 2;
+    return text(x, y, b, second ? A_ON : A_GREY);
+}
+
+/* A section's name, and a rule to the right of it. */
+static void head(int y, const char *t)
+{
+    int x = text(2, y, t, A_GOLD) + 1;
+    for (; x < W - 2; x++) A->win_put(x, y, A_FR_H, A_EMBER, A_PAPER, 0);
+}
+
+/* The places to restore into, as the list D opens: where each came from,
+ * the top, every folder, and a new one. */
+static int dest_count(void) { return s_ndirs + 2; }
+static void dest_name(int i, char *m, u32 cap)
+{
+    if (i == 0) A->format(m, cap, "%s", "where each file came from");
+    else if (i == 1) A->format(m, cap, "%s", "the top of the inventory");
+    else if (i <= s_ndirs) A->format(m, cap, "%s/", s_dirs[i - 1]);
+    else A->format(m, cap, "%s", "a new folder...");
 }
 
 static void file_state(const File *f, int i, char *m, u32 cap, u8 *c)
@@ -930,9 +984,9 @@ static void file_state(const File *f, int i, char *m, u32 cap, u8 *c)
         u32 acc = f->got + f->bad ? (u32)f->got * 100 / (u32)(f->got + f->bad) : 100;
         switch (f->state) {
             case ST_PART: A->format(m, cap, "%u%% read, accuracy %u%%", (u32)(f->pieces ? f->got * 100 / f->pieces : 0), acc); *c = A_GOLD; break;
-            case ST_SAME: A->format(m, cap, "same as the floppy's, accuracy %u%%", acc); *c = A_CREAM; break;
-            case ST_DIFF: A->format(m, cap, "%s, accuracy %u%%", f->here ? "different" : "not on the floppy", acc); *c = A_GOLD; break;
-            case ST_BACK: A->format(m, cap, "%s", "put back on the floppy"); *c = A_ON; break;
+            case ST_SAME: A->format(m, cap, "already here, accuracy %u%%", acc); *c = A_CREAM; break;
+            case ST_DIFF: A->format(m, cap, "%s, accuracy %u%%", f->here ? "different" : "new", acc); *c = A_GOLD; break;
+            case ST_BACK: A->format(m, cap, "%s", "restored"); *c = A_ON; break;
             case ST_BAD:  A->format(m, cap, "%s", "left alone"); *c = A_RED; break;
             default: break;
         }
@@ -949,27 +1003,25 @@ static void draw(void)
 
     A->win_open(W, H);
     A->win_frame("maelcum", A_OLIVE);
-    text(2, 1, "Backup to cassette", A_RED);
+    text(2, 1, "Data Tape Backup & Restoration Software", A_RED);
 
-    /* the settings */
+    /* the settings: what is in force in green, what is not in grey */
     y = ROW_SET;
-    x = text(2, y, "\1J\1 Job  ", A_CREAM);
-    x = text(x, y, s_job_name[s_job], A_ON) + 1;
-    text(x, y, s_job_what[s_job], A_OLIVE);
-    x = two(2, y + 1, "C", "Compress (LZSS)", "on", "off", !s_packing);
-    two(x + 4, y + 1, "F", "Speed", "normal", "fast", s_fast);
-    x = two(2, y + 2, "V", "Verify after writing", "on", "off", !s_verify);
-    x = text(x + 4, y + 2, "\1Tab\1 ", A_CREAM);
-    text(x, y + 2, s_line ? "line-in socket active" : "microphone active", A_ON);
-    x = text(2, y + 3, "\1D\1 Restore into  ", A_CREAM);
-    {
-        int xe = two(2, y + 4, "E", "Encrypt", "on", "off", !s_crypt);
-        xe = text(xe + 4, y + 4, "\1K\1 Cipher  ", A_CREAM);
-        text(xe, y + 4, s_alg_name[s_alg], s_crypt ? A_ON : A_OLIVE);
-    }
-    text(W - 16, y + 3, "\1N\1 new folder", A_CREAM);
-    if (s_dest < 0) text(x, y + 3, "where each file came from", A_ON);
-    else { A->format(m, sizeof m, "%s/", s_dirs[s_dest]); text(x, y + 3, s_dest ? m : "the top of the inventory", A_ON); }
+    head(y, "Write Options");
+    x = text(2, y + 1, "\1J\1 Job  ", A_CREAM);
+    x = text(x, y + 1, s_job_name[s_job], A_ON) + 1;
+    text(x, y + 1, s_job_what[s_job], A_GREY);
+    x = two(2, y + 2, "C", "Compress (LZSS)", "on", "off", !s_packing);
+    two(x + 4, y + 2, "F", "Speed", "normal", "fast", s_fast);
+    two(2, y + 3, "V", "Verify after writing", "on", "off", !s_verify);
+    x = two(2, y + 4, "E", "Encrypt", "on", "off", !s_crypt);
+    x = text(x + 4, y + 4, "\1K\1 Cipher  ", A_CREAM);
+    text(x, y + 4, s_alg_name[s_alg], s_crypt ? A_ON : A_GREY);
+    head(y + 5, "Read Options");
+    two(2, y + 6, "Tab", "Listen on", s_line ? "line-in socket active" : "line-in socket", s_line ? "microphone" : "microphone active", !s_line);
+    x = text(2, y + 7, "\1D\1 Restore into  ", A_CREAM);
+    dest_name(s_dest + 1, m, sizeof m);
+    text(x, y + 7, m, A_ON);
 
     /* the cassette, and how it is going */
     cassette(2, ROW_CAS, busy);
@@ -1018,64 +1070,79 @@ static void draw(void)
         text(px, y + 9, m, s_rx.tone ? A_GOLD : A_OLIVE);
     } else {
         text(px, y, "\1W\1  write the ticked files to a tape", A_CREAM);
-        text(px, y + 1, "\1R\1  read a tape, compare with the floppy", A_CREAM);
+        text(px, y + 1, "\1R\1  read a tape and restore from it", A_CREAM);
         if (s_mode == M_RESULT) {
             int diff = 0;
             for (i = 0; i < s_nf; i++) diff += s_f[i].state == ST_DIFF;
             if (diff) {
-                text(px, y + 8, "\1Enter\1 puts the tape's copy of each", A_CREAM);
-                text(px, y + 9, "different file on the floppy.", A_CREAM);
+                text(px, y + 8, "\1P\1 puts the new and the different", A_CREAM);
+                text(px, y + 9, "files on the floppy.", A_CREAM);
             } else if (s_others) text(px, y + 9, "(The tape holds another save as well.)", A_OLIVE);
         }
         if (s_big) { A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big); text(px, y + 6, m, A_OLIVE); }
     }
     if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 3, s_note, s_note_c);
 
-    /* the files */
-    rows = H - 7 - ROW_LIST;
+    /* the files: one folder, as the inventory shows it */
+    rows = H - 8 - ROW_LIST;
+    if (s_mode == M_WRITE && s_at < s_nf) {       /* follow the file in hand */
+        if (s_f[s_at].dir != s_view || s_rows[s_cursor] != 1000 + s_at) view(s_f[s_at].dir, 1000 + s_at);
+    } else if (s_mode == M_READ && s_cur >= 0) {
+        if (s_f[s_cur].dir != s_view || s_rows[s_cursor] != 1000 + s_cur) view(s_f[s_cur].dir, 1000 + s_cur);
+    }
     if (s_cursor < s_top) s_top = s_cursor;
     if (s_cursor >= s_top + rows) s_top = s_cursor - rows + 1;
-    if (s_mode == M_WRITE && s_at < s_nf) {       /* follow the file in hand */
-        for (i = 0; i < s_nrows; i++) if (s_rows[i] == 1000 + s_at) { s_top = i < rows / 2 ? 0 : i - rows / 2; break; }
-    } else if (s_mode == M_READ && s_cur >= 0) {
-        for (i = 0; i < s_nrows; i++) if (s_rows[i] == 1000 + s_cur) { s_top = i < rows / 2 ? 0 : i - rows / 2; break; }
-    }
     for (i = 1; i < W - 1; i++) A->win_put(i, ROW_LIST - 1, A_FR_H, A_EMBER, A_PAPER, 0);
+    if (s_view == -1) A->format(m, sizeof m, "%s", " FLOPOS's own records ");
+    else if (s_view == -2) A->format(m, sizeof m, "%s", " On the tape, not on this floppy ");
+    else A->format(m, sizeof m, " /%s%s ", s_dirs[s_view], s_view ? "/" : "");
+    text(2, ROW_LIST - 1, m, A_GOLD);
+    if (!s_nrows) text(2, ROW_LIST, "Nothing here yet.", A_GREY);
     for (i = 0; i < rows && s_top + i < s_nrows; i++) {
         int r = s_rows[s_top + i], here = s_top + i == s_cursor && !busy;
         u8 bg = here ? A_GREEN_D : A_PAPER, c;
         y = ROW_LIST + i;
         if (here) A->win_band(y, 1, W - 2, A_GREEN_D);
         if (r < 1000) {
-            int t = folder_tick(r);
-            A->win_text(2, y, t == 1 ? "[x]" : t == 2 ? "[-]" : "[ ]", t ? A_ON : A_OLIVE, bg);
-            if (r == -1) A->format(m, sizeof m, "%s", "FLOPOS's own records: bookmarks, journal, settings");
+            int t = folder_tick(r), k, cut = -1;
+            A->win_text(2, y, t == 1 ? "[x]" : t == 2 ? "[-]" : "[ ]", t ? A_ON : A_GREY, bg);
+            if (r == -1) A->format(m, sizeof m, "%s", "FLOPOS's own records");
             else if (r == -2) A->format(m, sizeof m, "%s", "On the tape, not on this floppy");
-            else A->format(m, sizeof m, "%s/", s_dirs[r]);
+            else {
+                for (k = 0; s_dirs[r][k]; k++) if (s_dirs[r][k] == '/') cut = k;
+                A->format(m, sizeof m, "%s/", s_dirs[r] + cut + 1);
+            }
             A->win_text(6, y, m, A_GOLD, bg);
+            A->win_text(W - 8, y, "folder", A_OLIVE, bg);
         } else {
             const File *f = &s_f[r - 1000];
             const char *name = f->name;
-            int k, cut = -1, indent = f->dir != 0 ? 2 : 0;
+            int k, cut = -1;
             for (k = 0; name[k]; k++) if (name[k] == '/') cut = k;
             if (f->dir != -2) name += cut + 1;
             else if (k > 24) name += k - 24;
-            A->win_text(2 + indent, y, f->on ? "[x]" : "[ ]", f->on ? A_ON : A_OLIVE, bg);
-            A->win_text(6 + indent, y, name, f->on ? A_CREAM : A_OLIVE, bg);
+            A->win_text(2, y, f->on ? "[x]" : "[ ]", f->on ? A_ON : A_GREY, bg);
+            A->win_text(6, y, name, f->on ? A_CREAM : A_GREY, bg);
             file_state(f, r - 1000, m, sizeof m, &c);
             A->win_text(W - 2 - len_of(m), y, m, c, bg);
         }
     }
 
-    /* a list, open over the settings: the jobs, or the ciphers */
+    /* a list, open over the settings: the jobs, the ciphers, or where to restore */
     if (s_menu) {
-        int n = s_menu == 1 ? 2 : 3, row0 = s_menu == 1 ? ROW_SET + 1 : ROW_SET + 5;
-        for (i = 0; i < n; i++) {
-            u8 bg = s_pick == i ? A_EMBER : A_GREEN_D;
-            int cur = s_menu == 1 ? s_job == i : s_alg == i;
+        int n = s_menu == 1 ? 2 : s_menu == 2 ? 3 : dest_count();
+        int row0 = ROW_SET + (s_menu == 1 ? 2 : s_menu == 2 ? 5 : 8), shown = n > 9 ? 9 : n;
+        int top = s_pick < shown ? 0 : s_pick - shown + 1;
+        for (i = 0; i < shown; i++) {
+            int e = top + i;
+            u8 bg = s_pick == e ? A_EMBER : A_GREEN_D;
+            int cur = s_menu == 1 ? s_job == e : s_menu == 2 ? s_alg == e : s_dest + 1 == e;
             A->win_band(row0 + i, 8, W - 3, bg);
-            A->win_text(9, row0 + i, s_menu == 1 ? s_job_name[i] : s_alg_name[i], s_pick == i ? A_CREAM : cur ? A_ON : A_GOLD, bg);
-            A->win_text(28, row0 + i, s_menu == 1 ? s_job_what[i] : s_alg_what[i], A_CREAM, bg);
+            if (s_menu == 3) dest_name(e, m, sizeof m);
+            else A->format(m, sizeof m, "%s", s_menu == 1 ? s_job_name[e] : s_alg_name[e]);
+            A->win_text(9, row0 + i, m, s_pick == e ? A_CREAM : cur ? A_ON : A_GOLD, bg);
+            if (s_menu != 3) A->win_text(28, row0 + i, s_menu == 1 ? s_job_what[e] : s_alg_what[e], A_CREAM, bg);
+            else if (e == n - 1) A->win_text(28, row0 + i, "(made in the folder shown below)", A_CREAM, bg);
         }
     }
 
@@ -1084,8 +1151,8 @@ static void draw(void)
         u8 c;
         const char *t = mood_line(&c);
         char line[80];
-        int row = H - 6, wide = W - 4 < 78 ? W - 4 : 78, n, k, cut;
-        while (*t && row <= H - 4 && !s_menu) {  /* up to three lines, broken between words */
+        int row = H - 7, wide = W - 4 < 78 ? W - 4 : 78, n, k, cut;
+        while (*t && row <= H - 5) {  /* up to three lines, broken between words */
             for (n = 0; t[n] && n < wide; n++) { }
             cut = n;
             if (t[n]) { for (cut = n; cut > 0 && t[cut] != ' '; cut--) { } if (!cut) cut = n; }
@@ -1101,7 +1168,10 @@ static void draw(void)
     if (s_menu) text(2, H - 2, "\1Up\1 \1Down\1 choose   \1Enter\1 take it   \1Esc\1 close", A_OLIVE);
     else if (busy) text(2, H - 2, s_mode == M_READ ? "\1S\1 stop   \1Tab\1 the other socket" : "\1S\1 stop", A_OLIVE);
     else if (s_mode == M_ARMED) text(2, H - 2, "\1Enter\1 start   \1Esc\1 not now", A_OLIVE);
-    else text(2, H - 2, "\1W\1 write  \1R\1 read  \1Space\1 tick  \1Up\1 \1Down\1 move  \1Esc\1 leave", A_OLIVE);
+    else {
+        text(2, H - 3, "\1W\1 write  \1R\1 read  \1P\1 put on the floppy  \1Space\1 tick", A_OLIVE);
+        text(2, H - 2, "\1Up\1 \1Down\1 move  \1Enter\1 open  \1Backspace\1 up a folder  \1Esc\1 leave", A_OLIVE);
+    }
 }
 
 /* ---- asking for a line: a passphrase (shown as stars), or a folder's name -------- */
@@ -1110,8 +1180,8 @@ static void draw(void);
 static void busy_note(const char *t)
 {
     draw();
-    A->win_band(H - 6, 1, W - 2, A_GREEN_D);
-    A->win_text(2, H - 6, t, A_CREAM, A_GREEN_D);
+    A->win_band(H - 7, 1, W - 2, A_GREEN_D);
+    A->win_text(2, H - 7, t, A_CREAM, A_GREEN_D);
     A->pump(1);
 }
 
@@ -1125,16 +1195,17 @@ static int ask_line(const char *prompt, char *buf, int cap, int hidden)
         if (now - drawn >= 100 || !drawn) {
             drawn = now ? now : 1;
             draw();
-            for (i = H - 6; i <= H - 4; i++) A->win_band(i, 1, W - 2, A_GREEN_D);
-            x = A->win_text(2, H - 6, prompt, A_CREAM, A_GREEN_D) + 1;
-            for (i = 0; i < n && x < W - 3; i++) A->win_put(x++, H - 6, hidden ? '*' : buf[i], A_GOLD, A_GREEN_D, 0);
-            A->win_put(x, H - 6, '_', A_GOLD, A_GREEN_D, 0);
+            for (i = H - 7; i <= H - 5; i++) A->win_band(i, 1, W - 2, A_GREEN_D);
+            x = A->win_text(2, H - 7, prompt, A_CREAM, A_GREEN_D) + 1;
+            for (i = n > W - 5 - x ? n - (W - 5 - x) : 0; i < n; i++) A->win_put(x++, H - 7, hidden ? '*' : buf[i], A_GOLD, A_GREEN_D, 0);
+            A->win_put(x, H - 7, '_', A_GOLD, A_GREEN_D, 0);
             if (hidden) {
-                A->win_text(2, H - 5, n < 12 ? "Short: easy to guess. Four random words is good."
-                                              : "A long one is what keeps it shut. It is kept nowhere: forget it",
+                A->win_text(2, H - 6, n < 12 ? "Short: easy to guess. Four random words is good."
+                                              : "A long one is what keeps it shut. It is kept nowhere:",
                             n < 12 ? A_RED : A_ON, A_GREEN_D);
-                if (n >= 12) A->win_text(2, H - 4, "and the tape cannot be opened by anyone.", A_ON, A_GREEN_D);
+                if (n >= 12) A->win_text(2, H - 5, "forget it and the tape cannot be opened by anyone.", A_ON, A_GREEN_D);
             }
+            A->win_band(H - 3, 1, W - 2, A_PAPER);
             A->win_band(H - 2, 1, W - 2, A_PAPER);
             text(2, H - 2, "\1Enter\1 done   \1Esc\1 not now", A_OLIVE);
         }
@@ -1148,24 +1219,34 @@ static int ask_line(const char *prompt, char *buf, int cap, int hidden)
     }
 }
 
-/* A new folder to restore into: made when something is put back. */
+/* A new folder to restore into: made at once, in the folder the list shows. */
 static void new_folder(void)
 {
-    char name[INV_PATH];
-    int i, part = 0;
-    if (!ask_line("New folder to restore into:", name, 40, 0) || !name[0]) return;
+    char name[16], path[INV_PATH];
+    const char *in = s_view > 0 ? s_dirs[s_view] : "";
+    int i;
+    if (!ask_line("New folder's name:", name, 9, 0) || !name[0]) return;
     for (i = 0; name[i]; i++) {
         int c = up(name[i]);
         name[i] = (char)c;
-        if (c == '/') { if (!part) break; part = 0; continue; }
-        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') || ++part > 8) break;
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) break;
     }
-    if (name[i] || !part) { say("A folder's name: letters and digits, 8 at most.", A_RED); return; }
-    for (i = 0; i < s_ndirs; i++) if (same_word(s_dirs[i], name)) { s_dest = i; return; }
+    if (name[i]) { say("A folder's name: letters and digits, 8 at most.", A_RED); return; }
+    if (len_of(in) + len_of(name) + 2 > INV_PATH) { say("That is too many folders deep.", A_RED); return; }
+    A->format(path, INV_PATH, "%s%s%s", in, in[0] ? "/" : "", name);
+    for (i = 1; i < s_ndirs; i++) if (same_word(s_dirs[i], path)) { s_dest = i; say("It is there already: chosen.", A_CREAM); return; }
     if (s_ndirs >= MAXD) { say("Too many folders.", A_RED); return; }
-    A->format(s_dirs[s_ndirs], INV_PATH, "%s", name);
+    if (!A->inv_mkdir(path)) {
+        static char why[80];
+        A->format(why, sizeof why, "%s", A->inv_why());
+        say(why, A_RED);
+        return;
+    }
+    A->format(s_dirs[s_ndirs], INV_PATH, "%s", path);
     s_dest = s_ndirs++;
-    say("It will be made when files are put back.", A_CREAM);
+    wire("made", path, 0, 0);
+    view(s_view < 0 ? 0 : s_view, s_dest);
+    say("Made. What is restored goes into it.", A_ON);
 }
 
 /* ---- the app ---------------------------------------------------------------- */
@@ -1182,7 +1263,7 @@ int app_main(const Api *api, int argc, char **argv)
             static const char *const help[] = {
                 "maelcum            the backup screen",
                 "maelcum save       ready to write your files to a tape",
-                "maelcum load       listen to a tape and compare it",
+                "maelcum load       listen to a tape, to restore from it",
                 "maelcum save NAME  only the file called NAME",
                 "maelcum load NAME  only the file called NAME",
             };
@@ -1224,15 +1305,18 @@ int app_main(const Api *api, int argc, char **argv)
         if (key >= 'a' && key <= 'z') key = key - 'a' + 'A';
 
         if (s_menu) {                            /* a list is open */
-            int n = s_menu == 1 ? 2 : 3;
+            int n = s_menu == 1 ? 2 : s_menu == 2 ? 3 : dest_count();
             if (key == K_UP) s_pick = (s_pick + n - 1) % n;
             else if (key == K_DOWN) s_pick = (s_pick + 1) % n;
             else if (key == K_ENTER) {
-                if (s_menu == 1) { s_job = s_pick; if (!s_job) tick_all(); }
-                else s_alg = s_pick;
+                int m = s_menu;
                 s_menu = 0;
+                if (m == 1) { s_job = s_pick; if (!s_job) tick_all(); }
+                else if (m == 2) s_alg = s_pick;
+                else if (s_pick == n - 1) new_folder();
+                else s_dest = s_pick - 1;
             }
-            else if (key == K_ESC || key == 'J' || key == 'K') s_menu = 0;
+            else if (key == K_ESC || key == 'J' || key == 'K' || key == 'D') s_menu = 0;
             continue;
         }
         if (s_mode == M_WRITE) {
@@ -1264,16 +1348,18 @@ int app_main(const Api *api, int argc, char **argv)
         if (key == K_ESC) break;
         else if (key == 'W') write_arm();
         else if (key == 'R') read_go(0);
-        else if (key == K_ENTER && s_mode == M_RESULT) put_back();
+        else if (key == 'P' && s_mode == M_RESULT) put_back();
+        else if (key == 'P') say("Read a tape first: R.", A_CREAM);
+        else if ((key == K_ENTER || key == K_RIGHT) && s_nrows && s_rows[s_cursor] < 1000) view(s_rows[s_cursor], 0);
+        else if ((key == K_BKSP || key == K_LEFT) && s_view != 0) { int was = s_view; view(parent_of(was), was); }
         else if (key == 'J') { s_menu = 1; s_pick = s_job; }
         else if (key == 'K') { s_menu = 2; s_pick = s_alg; }
         else if (key == 'E') s_crypt = !s_crypt;
-        else if (key == 'N') new_folder();
         else if (key == 'C') s_packing = !s_packing;
         else if (key == 'F') s_fast = !s_fast;
         else if (key == 'V') { s_verify = !s_verify; s_shout = s_verify ? "If it's NICE - Spin it TWICE, SELECTA! :-D" : ""; }
         else if (key == K_TAB) s_line = !s_line;
-        else if (key == 'D') { if (++s_dest >= s_ndirs) s_dest = -1; }
+        else if (key == 'D') { s_menu = 3; s_pick = s_dest + 1; }
         else if (key == K_UP) { if (s_cursor > 0) s_cursor--; }
         else if (key == K_DOWN) { if (s_cursor + 1 < s_nrows) s_cursor++; }
         else if (key == K_PGUP) { s_cursor = s_cursor > 10 ? s_cursor - 10 : 0; }

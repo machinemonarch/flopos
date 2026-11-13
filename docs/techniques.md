@@ -243,7 +243,8 @@ nothing, and the screen no frames.
 ## Files as sound, read by the gaps between crossings
 
 For the cassette (`apps/lib/tape`, `apps/maelcum`). Not yet proven on a real
-recorder; what follows holds against a simulated tape.
+recorder at fast speed; normal speed has read on one. What follows
+holds against a simulated tape.
 
 - **Only the timing is trusted.** A cassette changes loudness, drifts the
   wave's middle, may turn it upside down and runs a few percent off speed.
@@ -260,6 +261,18 @@ recorder; what follows holds against a simulated tape.
 - **Two speeds, no setting to read them.** Fast is the same signal an
   octave up. Four readers run at once (two speeds, two ways up) and
   only the right one gets a block past its check.
+- **Treble lifted for a dull recorder.** Fast speed read badly on the
+  real recorder. A dull recorder gives the high tone much weaker than the
+  low one, and the low one then decides where the wave crosses. So a
+  fast tape is heard a second way too: each sample less three quarters
+  of the one before, which lifts the high tone back up. In the simulated
+  dull tape, fast went from unreadable to read. Not yet tried on the
+  recorder itself.
+- **Count a loss once, and only if it is one.** With several readers on
+  one tape, one losing a block that another has is not a loss. A failure
+  waits a twentieth of a second; if any reader passes a block in that
+  time it is forgotten. Before this the counts ran high and the screen
+  could despair over a tape that was reading.
 - **Packing that a spoiled piece cannot corrupt.** Files are packed with
   LZSS (Storer and Szymanski, 1982; laid out as in Haruhiko Okumura's
   LZSS.C of 1989, not his code). The pieces are still checked one by one
