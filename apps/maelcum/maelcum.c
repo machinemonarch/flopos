@@ -950,9 +950,9 @@ static const char *mood_line(u8 *c)
 }
 
 /* ---- the screen ----------------------------------------------------------------- */
-#define ROW_SET  3                       /* the settings start here         */
-#define ROW_CAS  16                      /* the cassette                    */
-#define ROW_LIST 25                      /* the files                       */
+#define ROW_SET  4                       /* the settings start here         */
+#define ROW_CAS  17                      /* the cassette                    */
+#define ROW_LIST 26                      /* the files                       */
 
 /* A setting with two values: the one in force in green. */
 static int two(int x, int y, const char *key, const char *label, const char *a, const char *b, int second)
@@ -1019,7 +1019,7 @@ static void draw(void)
     {   /* the name of the thing, in the frame's own turning colours: red,
          * gold and green run through the letters with nothing redrawn */
         static const char name[] = "Magnetic Rust: Riddim 'n' Vibrationz Engine";
-        for (i = 0; name[i]; i++) A->win_put(2 + i, 1, (u8)name[i], (u8)(A_NEON + (A_NEON_N - 1 - i % A_NEON_N)), A_PAPER, 0);
+        for (i = 0; name[i]; i++) A->win_put(2 + i, 2, (u8)name[i], (u8)(A_NEON + (A_NEON_N - 1 - i % A_NEON_N)), A_PAPER, 0);
     }
 
     /* the settings: what is in force in green, what is not in grey */
@@ -1083,16 +1083,16 @@ static void draw(void)
         else A->format(m, sizeof m, "sound, not a tape's (%u waves a second)", s_rx.pitch);
         text(px, y + 6, m, s_rx.tone ? A_GOLD : A_OLIVE);
     } else {
-        /* the two things to do, from the cassette's top */
-        text(px, y, "\1W\1  Write the ticked files to a tape", A_CREAM);
-        text(px, y + 1, "\1R\1  Read a tape and restore from it", A_CREAM);
+        /* the two things to do, from just inside the cassette's top edge */
+        text(px, y + 1, "\1W\1  Write the ticked files to a tape", A_CREAM);
+        text(px, y + 2, "\1R\1  Read a tape and restore from it", A_CREAM);
         if (tape_list() && s_nrows) {
             text(px, y + 5, "Tick below what to restore. \1Enter\1", A_CREAM);
             text(px, y + 6, "puts the ticked files on the floppy.", A_CREAM);
         } else if (s_mode == M_RESULT && s_others) text(px, y + 6, "(The tape holds another save as well.)", A_OLIVE);
         else if (s_big) { A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big); text(px, y + 6, m, A_OLIVE); }
     }
-    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 3, s_note, s_note_c);
+    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 4, s_note, s_note_c);
 
     /* the files: one folder, as the inventory shows it */
     rows = H - 6 - ROW_LIST;
