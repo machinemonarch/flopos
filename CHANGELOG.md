@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.40.0 — 2026-11-13
+
 - **maelcum: `G` generates a tape sleeve**, the paper that goes in the
   cassette's box. Two pictures are saved on the floppy, in the folder
   restored into (or the top of the inventory): `SLEEVE.BMP`, the outside,
