@@ -114,7 +114,11 @@ def main():
                 if i == 0: type_text(mon, "browzer ")
                 else: mon.cmd("sendkey g"); mon.cmd("sendkey ctrl-a")
                 address(mon, addr); mon.cmd("sendkey ret")
-            wire.quiet(2.5, 90)
+            if want:                                    # wait for what the step should say, however long it takes
+                end = time.time() + 900
+                while time.time() < end and not re.search(want, wire.text()[start:]): time.sleep(0.3)
+                wire.quiet(1.0, 5)
+            else: wire.quiet(2.5, 20)
             if a.listen: time.sleep(a.listen)
             if a.shots: mon.shot("page-%d" % i)
             said = [l for l in wire.text()[start:].splitlines() if l.startswith("[page]")]

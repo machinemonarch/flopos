@@ -24,8 +24,10 @@ halves it again. A file over 64 KB is left out, and `maelcum` says so.
 
     here> maelcum
 
-At the top are the settings, each with its key, in two groups. The value
-in force is green; the one that is not is grey.
+At the top are the settings, each with its key, in two groups, and under
+them a third, **Run 'Tingz**, with the cassette and the two things to do:
+<kbd>W</kbd> write and <kbd>R</kbd> read. The value in force is green;
+the one that is not is grey.
 
 **Write Options**
 
@@ -45,9 +47,9 @@ in force is green; the one that is not is grey.
 | <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
 | <kbd>D</kbd> | Restore into, from a list: where each file came from, the top of the inventory, any folder, or **a new folder**. A new folder is asked a name and made at once, inside the folder the list below is showing. |
 
-Under them is a cassette, whose wheels turn while a tape is written or
-read, and beside it the progress. Below are your files, one folder at a
-time, as `inventory` shows them: <kbd>Up</kbd> and <kbd>Down</kbd> move,
+The cassette's wheels turn while a tape is written or read, and beside it
+is the progress. Below are your files, one folder at a time, as
+`inventory` shows them: <kbd>Up</kbd> and <kbd>Down</kbd> move,
 <kbd>Enter</kbd> goes into a folder, <kbd>Backspace</kbd> comes back out,
 and <kbd>Space</kbd> ticks a file, or a folder and everything in it.
 Ticking by hand makes the job Pick & Mix.
@@ -100,11 +102,16 @@ whole, the tune plays; if it did not, a shorter, sadder one does.
 Stopping by hand is not held against the tape: it gets a poor verdict
 only if pieces were actually spoiled.
 
-Then it says what the tape holds: how many files are new (not on this
-floppy), how many are different from the floppy's, and how many are the
-same. Nothing has been written yet. <kbd>P</kbd> puts the new and the
-different ones on the floppy, with their folders, or into the folder
-chosen with <kbd>D</kbd>. Only ticked files are taken from a tape. A tape
+The whole save is kept in memory; nothing has touched the floppy. The
+list below then shows **what the tape holds**, each file marked new (not
+on this floppy), different (from the floppy's copy) or same. The new
+ones start ticked. A different one is left unticked, since restoring it
+replaces the floppy's copy, which may be the newer; tick it if the
+tape's is the one you want. The same ones are grey.
+
+<kbd>Space</kbd> ticks, <kbd>Enter</kbd> puts the ticked files on the
+floppy, with their folders, or into the folder chosen with <kbd>D</kbd>.
+<kbd>Esc</kbd> goes back to the floppy's files without restoring. A tape
 from another floppy restores just as well: its files are all new.
 
 If pieces are missing (a dropout, a crease in the tape), rewind, press

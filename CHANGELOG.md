@@ -6,6 +6,18 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- maelcum:
+  - The settings have room: a blank line between each. The cassette is
+    smaller and sits with `W` and `R` in a section of its own, "Run
+    'Tingz".
+  - **Reading is restoring.** `R` reads the whole save into memory and
+    then shows what the tape holds, marked new, different or same. Tick
+    what you want and `Enter` puts it on the floppy. The new files start
+    ticked; a different one must be ticked on purpose, since it replaces
+    the floppy's copy. `P` is gone.
+  - Reading takes everything on the tape, whatever is ticked on the
+    floppy's side.
+
 ## 1.38.0 — 2026-11-13
 
 - **Text never runs over a window's frame**, in any program: what does
