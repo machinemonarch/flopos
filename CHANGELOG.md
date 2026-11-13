@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.39.0 — 2026-11-13
+
 - The version after a program's name is drawn quietly: grey, or dim gold
   in maelcum.
 - maelcum:
