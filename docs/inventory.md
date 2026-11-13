@@ -68,7 +68,8 @@ Three things to know:
 
 This is tested on the PC (`tools/fstest/run.py`): thousands of random
 changes checked by the PC's own disk tools, and hundreds of simulated
-power cuts. It has not yet run on the laptop's real floppy drive.
+power cuts. On the laptop's real floppy drive, folders and documents
+have been made and kept; a power cut has not been tried there.
 
 ## New releases
 

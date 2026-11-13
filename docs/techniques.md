@@ -170,33 +170,7 @@ less error where the ear listens hardest.
 
 ## Lessons on the way
 
-The refill routine calls the clock. The clock's watchdog reads the cycle
-counter, then compares it with when the tick was last seen to move. If
-the refill came between those two steps, "last seen" was newer than "now",
-and the difference wrapped round to hours. A healthy timer was then
-restarted for nothing, two or three times a second, with the keyboard's
-buffer emptied each time. It showed up first on the laptop's serial cable.
-The watchdog now looks with interrupts held off.
-
-
-
-Drawing only what changed (1.22) never worked inside browzer. browzer
-opens its window again each time it draws, and opening a window marked it
-to be drawn whole. So every cell was drawn every time: about 8 ms of each
-frame. A window is now drawn whole only when it is new or has changed size.
-
-How busy the processor is, for the HUD's 'Thunking, is the time it
-spends halted. FLOPOS halts it whenever it waits for the next interrupt
-with nothing to do (`idle_wait`), and counts those cycles. A loop that only
-waits is now seen to: called again at once with nothing done in between,
-`main_pump` halts. That also kept browzer's window from being drawn on
-every pass of its loop, which a loop with nothing to do shouldn't.
-
-The kernel's own memory once grew past 0x70000, where the floppy
-and the video BIOS keep their buffers. Every disk read then wrote over the
-kernel's variables, and the first one to go was the keyboard's record of
-which keys are held. The machine believed Shift was down. `linker.ld` now
-refuses to build a kernel that reaches that line.
+Moved, whole, to [Lessons on the way](lessons.md).
 
 ## Frames that shine without being redrawn
 
@@ -246,9 +220,9 @@ nothing, and the screen no frames.
 
 ## Files as sound, read by the gaps between crossings
 
-For the cassette (`apps/lib/tape`, `apps/maelcum`). Not yet proven on a real
-recorder at fast speed; normal speed has read on one. What follows
-holds against a simulated tape.
+For the cassette (`apps/lib/tape`, `apps/maelcum`). Normal speed has read
+from a real recorder; fast speed has not yet. What follows holds against
+a simulated tape.
 
 - **Only the timing is trusted.** A cassette changes loudness, drifts the
   wave's middle, may turn it upside down and runs a few percent off speed.

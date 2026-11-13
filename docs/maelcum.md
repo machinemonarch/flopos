@@ -5,9 +5,10 @@ the way the home computers of the 1980s did. It is for a cassette recorder
 with EAR and MIC sockets. It is named for the pilot in William Gibson's
 *Neuromancer* (1984), who got people home.
 
-Reading a tape from a real recorder worked on the laptop with 1.33.0. The
-backup screen described here (1.34.0), fast speed and packing have run
-only in the emulator, against a pretend tape.
+On the laptop so far: reading a tape from a real recorder worked
+(1.33.0), and so did writing with Verify at normal speed (1.35.0). Fast
+speed with encryption read badly there (1.37.0); the reader was improved
+for that in 1.38.0, and that has only been tried against a pretend tape.
 
 ## What it keeps
 

@@ -174,7 +174,7 @@ The card listens the same way, the other way round (`audio_listen`): it
 writes what it hears into the same buffer, and the timer takes it out into
 the queue for an app to collect. The mixer picks the line-in or microphone
 socket and switches the card's input filter off. This is how `maelcum` reads
-a cassette; it has not yet run on the laptop.
+a cassette; it read a real tape on the laptop with 1.33.0.
 
 The sequencer steps aside for effects. `whaaat` slides one voice across four octaves;
 the way into cyberdelia plays square-wave notes and bells (`snd_fx_*`) on

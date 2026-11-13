@@ -23,10 +23,14 @@ in [security-roadmap.md](security-roadmap.md).
 - 1.35.0 to 1.36.1: its own look (red, gold and green, yellow keys), a
   line that says how it is going, ten summing-up sayings, and the name.
 
-Not yet tried on the laptop: packing, fast speed, restoring a file that
-is missing from the floppy, and the sayings for a bad or off-speed tape.
+- 1.37.0: encryption of what goes to tape, with a choice of cipher.
+- 1.38.0 to 1.40.0: reading became restoring (the tape's files are
+  listed, to tick and put on the floppy), the options in sections, a
+  reader that copes better with a dull recorder at fast speed, and a
+  tape sleeve to print.
 
-Asked for and not started: encryption of what goes to tape.
+How far it has been tried on the laptop is at the top of
+[maelcum](maelcum.md).
 
 ### A chat app
 

@@ -54,8 +54,9 @@ certificate look valid. The clock already refuses to go back past the last
   emulator with an app that breaks each rule on purpose
   (`tools/walltest`), and with every real app. Cost measured there: the
   browser playing a song uses 7.1% of the machine for sound instead of
-  6.8%, and the screen stays at 30 frames a second. **Not yet run on the
-  laptop.** What it does not do: the kernel itself is still one piece,
+  6.8%, and the screen stays at 30 frames a second. On the laptop the
+  apps have run behind it since 1.33.0; the cost has not been measured
+  there. What it does not do: the kernel itself is still one piece,
   so a fault in the kernel's own readers (network, files) is not
   contained; an app may still ask for anything the `Api` offers, such as
   the network or writing the three files it is allowed to write; and on

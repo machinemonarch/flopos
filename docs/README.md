@@ -23,12 +23,13 @@ of it, and how it works inside.
 
 | Page | What is in it |
 |---|---|
-| [The hardware](hardware.md) | The laptop it was made for, what FLOPOS knows about each part, and what the machine taught us |
+| [The hardware](hardware.md) | The laptop it was made for, and what FLOPOS knows about each part |
 | [How it works](internals.md) | Boot, memory, interrupts, the BIOS, the screen, the disk, the network stack, encryption |
 | [Making apps](making-apps.md) | Programs that live on the floppy beside the system, and the table of things they can ask for |
 | [Building and releasing](building.md) | Tools, the emulator, tests, version numbers, the changelog |
 | [Techniques](techniques.md) | How radio plays without a pause on a 120 MHz Pentium, and the shared pieces it took |
-| [Roadmap](roadmap.md) | Ideas waiting their turn: cassette backup, a chat app, the mystical protocol, a wizard who answers |
+| [Lessons on the way](lessons.md) | What the laptop and the software taught us the hard way |
+| [Roadmap](roadmap.md) | Ideas waiting their turn: a chat app, the mystical protocol; and what became of the cassette and the wizard |
 | [Security roadmap](security-roadmap.md) | Known weak spots, what fixing each would take, and what is done |
 | [References](references.md) | Standards, datasheets and tools consulted along the way |
 

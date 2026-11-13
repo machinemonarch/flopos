@@ -79,7 +79,8 @@ Everything is in **[docs/](docs/README.md)**:
 - [scribe](docs/scribe.md): the word processor
 - [maelcum](docs/maelcum.md): backup to an audio cassette
 - [The network](docs/network.md): the menu, browzer, and how private it is
-- [The hardware](docs/hardware.md): the laptop, and what it taught us
+- [The hardware](docs/hardware.md): the laptop and its parts
+- [Lessons on the way](docs/lessons.md): what the laptop and the software taught us
 - [How it works](docs/internals.md): a tour of the inside
 - [Making apps](docs/making-apps.md): programs that live on the floppy
 - [Building and releasing](docs/building.md)
