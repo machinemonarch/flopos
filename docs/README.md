@@ -30,7 +30,6 @@ of it, and how it works inside.
 | [Techniques](techniques.md) | How radio plays without a pause on a 120 MHz Pentium, and the shared pieces it took |
 | [Roadmap](roadmap.md) | Ideas waiting their turn: cassette backup, a chat app, the mystical protocol, a wizard who answers |
 | [Security roadmap](security-roadmap.md) | Known weak spots, what fixing each would take, and what is done |
-| [Crimes against tokenomics](crimes-against-tokenomics.md) | The most unreasonable requests, and what became of them |
 | [References](references.md) | Standards, datasheets and tools consulted along the way |
 
 The history of every release is in [CHANGELOG.md](../CHANGELOG.md).
