@@ -24,6 +24,9 @@ halves it again. A file over 64 KB is left out, and `maelcum` says so.
 
     here> maelcum
 
+The top line names it, "Magnetic Rust: Riddim 'n' Vibrationz Engine",
+in colours that run through the letters.
+
 At the top are the settings, each with its key, in two groups, and under
 them a third, **Run 'Tingz**, with the cassette and the two things to do:
 <kbd>W</kbd> write and <kbd>R</kbd> read. The value in force is green;

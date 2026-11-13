@@ -373,8 +373,8 @@ static void tick_all(void)
 }
 
 /* ---- a cassette, in wire ------------------------------------------------------- */
-#define CW 21
-#define CH 6
+#define CW 15                            /* 15 by 7 characters: a cassette's own proportions on this screen */
+#define CH 7
 static void box(int x, int y, int w, int h, u8 c)
 {
     int i;
@@ -398,17 +398,17 @@ static void cassette(int x, int y, int turning)
     box(x, y, CW, CH, c);
     box(x + 3, y + 1, CW - 6, 3, c);             /* the window with the two wheels */
     for (i = 0; i < 2; i++) {
-        int wx = x + 6 + i * 6;
+        int wx = x + 4 + i * 4;
         A->win_put(wx, y + 2, '(', c, A_PAPER, 0);
         A->win_put(wx + 1, y + 2, spoke[s], turning ? A_ON : A_OLIVE, A_PAPER, 0);
         A->win_put(wx + 2, y + 2, ')', c, A_PAPER, 0);
     }
     /* the opening at the bottom, where the heads go */
-    A->win_put(x + 4, y + 4, '/', c, A_PAPER, 0);
-    A->win_put(x + CW - 5, y + 4, '\\', c, A_PAPER, 0);
-    for (i = 5; i < CW - 5; i++) A->win_put(x + i, y + 4, A_FR_H, c, A_PAPER, 0);
-    A->win_put(x + 7, y + 4, 'o', c, A_PAPER, 0);
-    A->win_put(x + CW - 8, y + 4, 'o', c, A_PAPER, 0);
+    A->win_put(x + 3, y + 5, '/', c, A_PAPER, 0);
+    A->win_put(x + CW - 4, y + 5, '\\', c, A_PAPER, 0);
+    for (i = 4; i < CW - 4; i++) A->win_put(x + i, y + 5, A_FR_H, c, A_PAPER, 0);
+    A->win_put(x + 5, y + 5, 'o', c, A_PAPER, 0);
+    A->win_put(x + CW - 6, y + 5, 'o', c, A_PAPER, 0);
 }
 
 /* ---- the trudelutt ------------------------------------------------------------- */
@@ -950,8 +950,8 @@ static const char *mood_line(u8 *c)
 }
 
 /* ---- the screen ----------------------------------------------------------------- */
-#define ROW_SET  2                       /* the settings start here         */
-#define ROW_CAS  17                      /* the cassette                    */
+#define ROW_SET  3                       /* the settings start here         */
+#define ROW_CAS  16                      /* the cassette                    */
 #define ROW_LIST 24                      /* the files                       */
 
 /* A setting with two values: the one in force in green. */
@@ -1016,7 +1016,11 @@ static void draw(void)
 
     A->win_open(W, H);
     A->win_frame("maelcum", A_OLIVE);
-    text(2, 1, "Data Tape Backup & Restoration Software", A_RED);
+    {   /* the name of the thing, in the frame's own turning colours: red,
+         * gold and green run through the letters with nothing redrawn */
+        static const char name[] = "Magnetic Rust: Riddim 'n' Vibrationz Engine";
+        for (i = 0; name[i]; i++) A->win_put(2 + i, 1, (u8)name[i], (u8)(A_NEON + (A_NEON_N - 1 - i % A_NEON_N)), A_PAPER, 0);
+    }
 
     /* the settings: what is in force in green, what is not in grey */
     y = ROW_SET;
@@ -1024,20 +1028,20 @@ static void draw(void)
     x = text(2, y + 1, "\1J\1 Job  ", A_CREAM);
     x = text(x, y + 1, s_job_name[s_job], A_ON) + 1;
     text(x, y + 1, s_job_what[s_job], A_GREY);
-    x = two(2, y + 3, "C", "Compress (LZSS)", "on", "off", !s_packing);
-    two(x + 4, y + 3, "F", "Speed", "normal", "fast", s_fast);
-    two(2, y + 5, "V", "Verify after writing", "on", "off", !s_verify);
-    x = two(2, y + 7, "E", "Encrypt", "on", "off", !s_crypt);
-    x = text(x + 4, y + 7, "\1K\1 Cipher  ", A_CREAM);
-    text(x, y + 7, s_alg_name[s_alg], s_crypt ? A_ON : A_GREY);
-    head(y + 9, "Read Options");
-    two(2, y + 10, "Tab", "Listen on", s_line ? "line-in socket active" : "line-in socket", s_line ? "microphone" : "microphone active", !s_line);
-    x = text(2, y + 12, "\1D\1 Restore into  ", A_CREAM);
+    x = two(2, y + 2, "C", "Compress (LZSS)", "on", "off", !s_packing);
+    two(x + 4, y + 2, "F", "Speed", "normal", "fast", s_fast);
+    two(2, y + 4, "V", "Verify after writing", "on", "off", !s_verify);
+    x = two(2, y + 5, "E", "Encrypt", "on", "off", !s_crypt);
+    x = text(x + 4, y + 5, "\1K\1 Cipher  ", A_CREAM);
+    text(x, y + 5, s_alg_name[s_alg], s_crypt ? A_ON : A_GREY);
+    head(y + 7, "Read Options");
+    two(2, y + 8, "Tab", "Listen on", s_line ? "line-in socket active" : "line-in socket", s_line ? "microphone" : "microphone active", !s_line);
+    x = text(2, y + 9, "\1D\1 Restore into  ", A_CREAM);
     dest_name(s_dest + 1, m, sizeof m);
-    text(x, y + 12, m, A_ON);
-    head(y + 14, "Run 'Tingz");
+    text(x, y + 9, m, A_ON);
+    head(y + 11, "Run 'Tingz");
 
-    /* the cassette, and how it is going: six lines beside it */
+    /* the cassette, and how it is going: seven lines beside it */
     cassette(2, ROW_CAS, busy);
     y = ROW_CAS;
     if (s_mode == M_ARMED) {
@@ -1047,20 +1051,20 @@ static void draw(void)
         text(px, y + 1, "Plug a cable from the headphone socket", A_CREAM);
         text(px, y + 2, "(front) into the recorder's MIC socket.", A_CREAM);
         text(px, y + 3, "Set it recording, then press \1Enter\1.", A_CREAM);
-        text(px, y + 4, "Cassette Storage Legend (per tape side):", A_OLIVE);
-        text(px, y + 5, "C30 = 15 min  C60 = 30 min  C90 = 45 min", A_OLIVE);
+        text(px, y + 5, "Cassette Storage Legend (per tape side):", A_OLIVE);
+        text(px, y + 6, "C30 = 15 min  C60 = 30 min  C90 = 45 min", A_OLIVE);
     } else if (s_mode == M_WRITE) {
         u32 heard_n = s_sent - (u32)A->audio_queued();
         u32 left = s_samples > heard_n ? (s_samples - heard_n) / TAPE_RATE : 0;
         u32 pc = heard_n >= s_samples ? 100 : heard_n / (s_samples / 100 + 1);
         text(px, y, "Writing: these tones are your files.", A_CREAM);
-        bar(px, y + 1, pw, (int)(pc * (u32)pw / 100), A_RED);
+        bar(px, y + 2, pw, (int)(pc * (u32)pw / 100), A_RED);
         A->format(m, sizeof m, "%u%%", pc);
-        text(px + pw + 2, y + 1, m, A_GOLD);
+        text(px + pw + 2, y + 2, m, A_GOLD);
         A->format(m, sizeof m, "file %u of %u    %u:%02u left", (u32)(s_ord + 1 > s_count ? s_count : s_ord + 1), (u32)s_count, left / 60, left % 60);
-        text(px, y + 2, m, A_CREAM);
-        text(px, y + 4, "Cassette Storage Legend (per tape side):", A_OLIVE);
-        text(px, y + 5, "C30 = 15 min  C60 = 30 min  C90 = 45 min", A_OLIVE);
+        text(px, y + 3, m, A_CREAM);
+        text(px, y + 5, "Cassette Storage Legend (per tape side):", A_OLIVE);
+        text(px, y + 6, "C30 = 15 min  C60 = 30 min  C90 = 45 min", A_OLIVE);
     } else if (s_mode == M_READ) {
         int pc = read_percent();
         u32 all = s_rx.good + s_rx.bad;
@@ -1068,24 +1072,23 @@ static void draw(void)
         if (s_set >= 0) A->format(m, sizeof m, "accuracy %u%%   %u file%s   %s speed", all ? s_rx.good * 100 / all : 100, (u32)s_set_n, s_set_n == 1 ? "" : "s", s_rx.fast ? "fast" : "normal");
         else A->format(m, sizeof m, "%s", s_line ? "Cable: EAR to line-in (left: note, arrow)" : "Cable: EAR to the microphone socket");
         text(px, y + 1, m, s_set >= 0 ? A_CREAM : A_GOLD);
-        bar(px, y + 2, pw, pc * pw / 100, A_RED);
+        bar(px, y + 3, pw, pc * pw / 100, A_RED);
         A->format(m, sizeof m, "%u%%", (u32)pc);
-        text(px + pw + 2, y + 2, m, A_GOLD);
-        bar(px, y + 4, pw, (s_rx.loud * pw + 63) / 127, A_ON);
+        text(px + pw + 2, y + 3, m, A_GOLD);
+        bar(px, y + 5, pw, (s_rx.loud * pw + 63) / 127, A_ON);
         if (s_rx.loud < 4) A->format(m, sizeof m, "%s", "silence");
         else if (s_rx.tone) A->format(m, sizeof m, "%s", "a tape's tones");
         else A->format(m, sizeof m, "sound, not a tape's (%u waves a second)", s_rx.pitch);
-        text(px, y + 5, m, s_rx.tone ? A_GOLD : A_OLIVE);
+        text(px, y + 6, m, s_rx.tone ? A_GOLD : A_OLIVE);
     } else {
-        text(px, y, "\1W\1  write the ticked files to a tape", A_CREAM);
-        text(px, y + 1, "\1R\1  read a tape and restore from it", A_CREAM);
-        if (tape_list() && s_nrows) {
-            text(px, y + 4, "Tick below what to restore. \1Enter\1", A_CREAM);
-            text(px, y + 5, "puts the ticked files on the floppy.", A_CREAM);
-        } else if (s_mode == M_RESULT && s_others) text(px, y + 5, "(The tape holds another save as well.)", A_OLIVE);
-        else if (s_big) { A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big); text(px, y + 5, m, A_OLIVE); }
+        /* the two things to do, level with the cassette's middle */
+        text(px, y + 2, "\1W\1  write the ticked files to a tape", A_CREAM);
+        text(px, y + 3, "\1R\1  read a tape and restore from it", A_CREAM);
+        if (tape_list() && s_nrows) text(px, y + 6, "Tick below; \1Enter\1 puts them on the floppy.", A_CREAM);
+        else if (s_mode == M_RESULT && s_others) text(px, y + 6, "(The tape holds another save as well.)", A_OLIVE);
+        else if (s_big) { A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big); text(px, y + 6, m, A_OLIVE); }
     }
-    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 3, s_note, s_note_c);
+    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 5, s_note, s_note_c);
 
     /* the files: one folder, as the inventory shows it */
     rows = H - 7 - ROW_LIST;
@@ -1136,7 +1139,7 @@ static void draw(void)
     /* a list, open over the settings: the jobs, the ciphers, or where to restore */
     if (s_menu) {
         int n = s_menu == 1 ? 2 : s_menu == 2 ? 3 : dest_count();
-        int row0 = ROW_SET + (s_menu == 1 ? 2 : s_menu == 2 ? 8 : 13), shown = n > 9 ? 9 : n;
+        int row0 = ROW_SET + (s_menu == 1 ? 2 : s_menu == 2 ? 6 : 10), shown = n > 9 ? 9 : n;
         int top = s_pick < shown ? 0 : s_pick - shown + 1;
         for (i = 0; i < shown; i++) {
             int e = top + i;

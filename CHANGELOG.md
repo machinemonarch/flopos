@@ -7,8 +7,13 @@ without it. Each version's notes are also written next to its image, as
 ## Unreleased
 
 - maelcum:
-  - The settings have room: a blank line between each. The cassette is
-    smaller and sits with `W` and `R` in a section of its own, "Run
+  - Named "Magnetic Rust: Riddim 'n' Vibrationz Engine" at the top, in
+    red, gold and green that run through the letters. It shines by the
+    palette turning, as the frames do: nothing is drawn again, so it
+    costs no speed.
+  - The settings have room: in pairs, with a blank line between pairs
+    and between sections. The cassette is smaller, in a cassette's own
+    proportions, and sits with `W` and `R` in a section of its own, "Run
     'Tingz".
   - **Reading is restoring.** `R` reads the whole save into memory and
     then shows what the tape holds, marked new, different or same. Tick

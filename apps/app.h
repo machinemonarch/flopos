@@ -56,6 +56,8 @@ typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
 #define A_BRIGHT  130                    /* PAL_BRIGHT + 26                */
 #define A_ACCENT  158                    /* PAL_ACCENT + 22                */
 #define A_GREY    242                    /* PAL_GREY + 10                  */
+#define A_NEON    184                    /* 184..199: the frame's loop of colours, which turns by itself */
+#define A_NEON_N  16
 #define A_KEY     55                     /* PAL_KEY: a key to press, pink  */
 #define A_CREAM   48                     /* fixed colours, whatever the mood: cream, for text */
 #define A_OLIVE   49                     /* a dim gold, for quiet text      */

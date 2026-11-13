@@ -210,6 +210,10 @@ strength. `mood_neon` turns that wheel in the palette fifteen times a
 second: 48 bytes to the card, and not one pixel drawn again. The entries
 came out of the prompt's ramp, which had 32 and needed 16.
 
+Text can ride the same wheel. maelcum's name at the top is drawn once,
+each letter in the next of the sixteen entries (`A_NEON` for programs),
+and the colours then run through the letters at no cost at all.
+
 
 ## A language model beside a kernel that fits in 640K
 
