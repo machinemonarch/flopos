@@ -6,6 +6,10 @@
  * time, 1200 of them a second.  A byte is a 0 to start it, its eight bits
  * (lowest first) and a 1 to end it: 120 bytes a second.
  *
+ * Fast is the same an octave up: 2400 and 4800 Hz, 240 bytes a second,
+ * for a recorder and a tape good enough to carry it.  The reader listens
+ * for both and needs no telling.
+ *
  * On the tape, a file is a run of blocks.  Each block has a short stretch
  * of plain 2400 Hz in front (the leader, which is all 1s; a long one opens
  * the file), then:
@@ -51,9 +55,10 @@ typedef struct {
     u32 phase, step;                     /* where in the half-wave, 16.16  */
     int level;                           /* +1 or -1: which half           */
     int busy;
+    int fast;                            /* an octave up                   */
 } TapeTx;
 
-void tape_tx_begin(TapeTx *t);
+void tape_tx_begin(TapeTx *t, int fast);
 /* Queue one block behind lead_ms of leader.  Only when tape_tx_busy is 0. */
 void tape_tx_block(TapeTx *t, int type, int seq, const u8 *data, int len, int lead_ms);
 int  tape_tx_busy(const TapeTx *t);
@@ -68,7 +73,8 @@ int  tape_tx_samples(TapeTx *t, u8 *out, int max);
  * reader.  Only the one in step with the bits gets blocks past their
  * check. */
 typedef struct {
-    u32  shrt;                           /* a 2400 Hz wave's length, 1/16 samples */
+    u32  base;                           /* a short wave's proper length: normal, or fast */
+    u32  shrt;                           /* a short wave's length as it comes, 1/16 samples */
     int  shorts;                         /* short waves in a row           */
     int  state, nbit;                    /* in a byte: which bit           */
     u8   byte;
@@ -87,15 +93,22 @@ typedef struct {
     u32  since;                          /* 1/16 samples since the last crossing */
     u32  prev;                           /* the half-wave before this one  */
     u32  n;                              /* samples so far                 */
-    TapeEar ear[2];                      /* upward crossings, and downward */
+    TapeEar ear[4];                      /* upward crossings and downward; normal and fast */
     u32  good, bad;                      /* blocks that passed, and failed  */
     int  loud;                           /* how strong the signal is, 0..127 */
     int  tone;                           /* hearing leader or data now      */
     u32  pitch;                          /* waves a second, as last heard   */
+    int  fast;                           /* the last good block came fast   */
 } TapeRx;
 
 void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), void *ctx);
 void tape_rx_samples(TapeRx *r, const u8 *in, int n);
 
 u16 tape_crc(const u8 *p, int n);
+
+/* ---- packing (lz.c): LZSS, a 4096-byte window, matches of 3 to 18 -------- */
+/* Returns the packed length, or 0 if it would not fit in cap. */
+u32 lz_pack(const u8 *in, u32 n, u8 *out, u32 cap);
+/* Returns the unpacked length, or 0xFFFFFFFF if the input is not sound. */
+u32 lz_unpack(const u8 *in, u32 n, u8 *out, u32 cap);
 #endif

@@ -57,6 +57,8 @@ typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
 #define A_ACCENT  158                    /* PAL_ACCENT + 22                */
 #define A_GREY    242                    /* PAL_GREY + 10                  */
 #define A_KEY     55                     /* PAL_KEY: a key to press, pink  */
+#define A_ON      53                     /* PAL_ON: a setting that is on, green */
+#define A_RED     54                     /* PAL_RED                         */
 #define A_KEYMARK "\1"                    /* in text: pink on, or off again  */
 #define A_BANANA  254                    /* PAL_BANANA + 6                 */
 #define A_PAPER   65                     /* a window's own background      */

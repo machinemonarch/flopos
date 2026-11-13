@@ -5,5 +5,5 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 mkdir -p "$root/dist"
-gcc -O2 -Wall -o "$root/dist/tapetest" "$here/tapetest.c" "$root/apps/lib/tape/tape.c" -lm
+gcc -O2 -g -Wall -fsanitize=address,undefined -o "$root/dist/tapetest" "$here/tapetest.c" "$root/apps/lib/tape/tape.c" "$root/apps/lib/tape/lz.c" -lm
 exec "$root/dist/tapetest" "$@"

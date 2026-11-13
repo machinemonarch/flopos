@@ -58,7 +58,9 @@ int    glyph_index(int c);
  * adding an offset and can animate by walking one.  mood.c builds it.
  */
 #define PAL_MOOD    1                    /*   1..63   the background field  */
-#define PAL_MOOD_N  54                   /*   1..54; 55 keys, 56..63 the HUD */
+#define PAL_MOOD_N  52                   /*   1..52; 53 on, 54 red, 55 keys, 56..63 the HUD */
+#define PAL_ON      53                   /*  53       a setting that is on, in green */
+#define PAL_RED     54                   /*  54       a red, for a bar       */
 #define PAL_KEY     55                   /*  55       keys, in pink          */
 #define PAL_HUD     56                   /*  56..63   the HUD's brain        */
 #define PAL_HUD_N   8

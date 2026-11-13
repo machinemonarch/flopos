@@ -1,74 +1,111 @@
-# tape: your files on an audio cassette
+# tape: backup to an audio cassette
 
 `tape` keeps a copy of your files on an ordinary audio cassette, as sound,
 the way the home computers of the 1980s did. It is for a cassette recorder
-with EAR and MIC sockets; it was built with a PYE Audio Automatic Data
-Recorder D6600/35P in mind.
+with EAR and MIC sockets.
 
-**Not yet tried with a real recorder.** Saving and reading back work in
-the emulator, against a pretend tape. Listening through the laptop's sound
-card has never run on the laptop itself.
+Reading a tape from a real recorder worked on the laptop with 1.33.0. The
+backup screen described here (1.34.0), fast speed and packing have run
+only in the emulator, against a pretend tape.
 
 ## What it keeps
 
 Everything in your [inventory](inventory.md), folders and all, and three
 of the system's own records: browzer's bookmarks, the journal, and the
-settings (the network's among them). Nothing
-else can go to a tape, and what comes back can only go into the inventory
-or over one of those three.
+settings (the network's among them). Nothing else can go to a tape, and
+what comes back can only go into the inventory or over one of those three.
 
-About 110 bytes go by each second, so 16 KB takes two and a half minutes.
-A file over 64 KB (ten minutes) is left out, and `tape` says so. `tape` says how long the tape must be before
-it starts.
+At normal speed about 110 bytes go by each second, so 16 KB takes two and
+a half minutes; packing usually halves that for text, and fast speed
+halves it again. A file over 64 KB is left out, and `tape` says so.
 
-## Saving
+## The screen
 
-    here> tape save
-    here> tape save letter.md
+    here> tape
 
-1. Plug a cable from the laptop's headphone socket (on the front) to the
-   recorder's MIC socket.
-2. Set the recorder recording, then press <kbd>Enter</kbd>. The first
+At the top are the settings, each with its key. The value in force is
+green.
+
+| Key | Setting |
+|---|---|
+| <kbd>J</kbd> | The job, from a list: **Standard Backup** (everything of yours on this floppy) or **Pick & Mix** (only what you tick below) |
+| <kbd>C</kbd> | Compress (LZSS): on or off. A file is sent packed when that is shorter. |
+| <kbd>F</kbd> | Speed: normal or fast. Fast takes half the tape and is easier to spoil: it wants a good recorder and tape. Reading needs no telling; it hears which. |
+| <kbd>V</kbd> | Verify after writing: on or off. On, the tape is read back straight after it is written. |
+| <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
+| <kbd>D</kbd> | Restore into: where each file came from, or one folder for everything |
+
+Under them is a cassette, whose wheels turn while a tape is written or
+read, and beside it the progress. Below is the list of your files and
+folders. <kbd>Up</kbd> and <kbd>Down</kbd> move, <kbd>Space</kbd> ticks a
+file, or a folder and everything in it. Ticking by hand makes the job
+Pick & Mix.
+
+## Writing
+
+1. Press <kbd>W</kbd>. It says how much tape the ticked files need. One
+   side of a C30 holds 15 minutes, of a C60 30, of a C90 45.
+2. Plug a cable from the laptop's headphone socket (on the front) into
+   the recorder's MIC socket.
+3. Set the recorder recording, then press <kbd>Enter</kbd>. The first
    eight seconds are a plain tone, to get past the clear leader at the
    start of a cassette.
-3. When it says all of it is on the tape, stop the recorder.
+4. The red bar and the percentage show how far it has come. When all of
+   it is on the tape there is a little tune. Stop the recorder.
 
-<kbd>Esc</kbd> stops early. To be sure of a save, rewind and load it: every
-file should come back "the same as on the floppy".
+<kbd>S</kbd> stops early. The laptop cannot hear the tape while it is being
+recorded, so the only way to be sure of a save is to read it back: that is
+what Verify does.
 
-## Loading
+## Reading
 
-    here> tape load
-    here> tape load letter.md
+1. Plug a cable from the recorder's EAR socket into the laptop's line-in
+   socket (left side, marked with a note and an arrow).
+2. Press <kbd>R</kbd>, rewind the tape and set the recorder playing. The
+   green bar shows how loud the tape is, and under it whether what is
+   heard is a tape's tones.
+3. Each file shows how much of it has been read and its accuracy: the
+   share of its pieces that passed their check.
 
-1. Plug a cable from the recorder's EAR socket to the laptop's line-in socket
-   (left side, marked with a note and an arrow). <kbd>Tab</kbd> listens to
-   the microphone socket instead.
-2. Rewind the tape and set the recorder playing. The bar shows how loud
-   the tape is, and beside it whether what is heard is a tape's tones.
-   The tape is also heard through the laptop's loudspeaker.
-3. Each file is listed as its pieces arrive. When all have come whole,
-   `tape` stops listening by itself; <kbd>Esc</kbd> stops it sooner.
+Reading ends by itself when every file has come whole, or after ten
+seconds of silence; <kbd>S</kbd> ends it sooner. If everything came
+whole, the tune plays.
 
 Then it says, for each file, whether the tape's copy is the same as the
-floppy's, different, or not on the floppy at all (it is then made, with
-its folders). Nothing has been written yet. <kbd>Enter</kbd> puts
-the tape's copy of every different file on the floppy, over what is there.
-<kbd>Esc</kbd> leaves the floppy as it is.
+floppy's, different, or not on the floppy at all. Nothing has been
+written yet. <kbd>Enter</kbd> puts the tape's copy of every different
+file on the floppy, with its folders. Only ticked files are taken from a
+tape.
 
 If pieces are missing (a dropout, a crease in the tape), rewind, press
-<kbd>Space</kbd> and play it again: what was already read is kept and only
-the gaps are filled.
+<kbd>R</kbd> and play it again.
 
 The journal grows as FLOPOS is used, so after a while it will always be
 "different" from the tape's. That is as it should be.
 
+## From the prompt
+
+    here> tape save
+    here> tape load
+    here> tape save letter.md
+
+`tape save` opens the screen ready to write, `tape load` opens it
+listening. A name after either keeps to that file.
+
+## Tape types
+
+Type I, II and IV cassettes all work and need no setting: the tones are
+far below the treble where the types differ. A simple recorder may not
+fully erase a Type IV (metal) tape.
+
 ## On the tape
 
-Two tones: a 0 is one cycle of 1200 Hz, a 1 is two cycles of 2400 Hz. A
-byte is a 0, its eight bits and a 1. Each file is its name and size
-(twice), its bytes in blocks of 256, and an end mark (twice); every block
-carries its own check, and the file a check of the whole. Reading goes by
-the time between the wave's crossings of its middle, so loudness, a tape
-running a few percent fast or slow, and a wave turned upside down do not
-matter. The details are in `apps/lib/tape/tape.h` and `apps/tape/tape.c`.
+Two tones: a 0 is one cycle of 1200 Hz, a 1 is two cycles of 2400 Hz;
+fast is the same an octave up. A byte is a 0, its eight bits and a 1.
+Each file is its name and size (twice), its bytes in blocks of 256, and
+an end mark (twice); every block carries its own check, and the file a
+check of the whole. Packing is LZSS (Storer and Szymanski, 1982): a
+4096-byte window and copies of 3 to 18 bytes. Reading times whole waves,
+so loudness, a tape running fast or slow, a lopsided wave and a wave
+turned upside down do not matter. A tape written by an earlier FLOPOS
+still reads. The details are in `apps/lib/tape/` and `apps/tape/tape.c`.

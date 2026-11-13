@@ -6,6 +6,27 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.34.0 — 2026-11-13
+
+- **`tape` is a full-screen backup program.** The settings at the top,
+  a cassette whose wheels turn while it works, a red progress bar with a
+  percentage, and your files and folders below with a tick by each.
+- A job list: Standard Backup (everything of yours) or Pick & Mix (only
+  what you tick). Folders can be ticked whole.
+- Compress (LZSS), on by default: text takes about half the tape.
+- Speed: normal or fast. Fast takes half the tape and is easier to
+  spoil; on the pretend tape it fails the dull and worn cases that
+  normal passes. Reading hears which speed a tape is.
+- Verify after writing, optional: reads the tape back straight away.
+- Accuracy beside each file while reading, and for the whole tape.
+- Restore into where each file came from, or one chosen folder.
+- Reading ends when everything is in, or after ten seconds of silence.
+- A tune when a tape is written or read whole.
+- Settings that are on are green: a green and a red have their own
+  places in the palette.
+- Tapes written by 1.33.0 and earlier still read.
+- Emulator only so far: not yet run on the laptop.
+
 ## 1.33.0 — 2026-11-12
 
 - **A wall between apps and the system.** An app can now touch only its

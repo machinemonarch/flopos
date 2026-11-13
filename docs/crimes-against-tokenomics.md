@@ -126,5 +126,11 @@ the security list, the one filed as "large", an hour after ordering all
 of them in seven words. A fair question. The apps now live behind a wall
 and none of them has noticed.
 
+**"the silliest little 'trudelutt' you can possibly imagine"** A formal
+requirement for the backup program's completion signal. Delivered: an
+arpeggio, a slide whistle, two boops and a low wobble, synthesised from
+square waves by the same program that had just finished checksumming.
+The cassette's wheels also had to spin.
+
 **"And keep a log of my most silly, stupid and unimaginable requests."**
 This is it.

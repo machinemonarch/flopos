@@ -27,10 +27,11 @@ static const u8 s_half[32] = {
     100,  99,  98,  95,  91,  86,  81,  74,  67,  60,  51,  43,  34,  24,  15,   5
 };
 
-void tape_tx_begin(TapeTx *t)
+void tape_tx_begin(TapeTx *t, int fast)
 {
+    t->fast = fast != 0;
     t->len = t->pos = 0; t->bit = 0; t->lead = 0;
-    t->half = t->halves = 0; t->phase = 0; t->step = STEP_1; t->level = 1; t->busy = 0;
+    t->half = t->halves = 0; t->phase = 0; t->step = STEP_1 << t->fast; t->level = 1; t->busy = 0;
 }
 
 void tape_tx_block(TapeTx *t, int type, int seq, const u8 *data, int len, int lead_ms)
@@ -46,7 +47,7 @@ void tape_tx_block(TapeTx *t, int type, int seq, const u8 *data, int len, int le
     c = tape_crc(t->blk + 2, 5 + len);
     t->blk[7 + len] = (u8)c; t->blk[8 + len] = (u8)(c >> 8);
     t->len = 9 + len; t->pos = 0; t->bit = 0;
-    t->lead = lead_ms * 1200 / 1000 + 8;
+    t->lead = (lead_ms * 1200 / 1000 << t->fast) + 8;
     t->busy = 1;
 }
 
@@ -63,7 +64,7 @@ static int next_bit(TapeTx *t)
         if (++t->bit == 10) { t->bit = 0; t->pos++; }
     } else { t->busy = 0; return 0; }
     t->halves = one ? 4 : 2;
-    t->step = one ? STEP_1 : STEP_0;
+    t->step = (one ? STEP_1 : STEP_0) << t->fast;
     t->half = 0;
     return 1;
 }
@@ -88,12 +89,13 @@ void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), 
     int k;
     r->block = block; r->ctx = ctx;
     r->mid = 128 * 256; r->last = 0; r->sign = 1; r->since = 0; r->prev = 0; r->n = 0;
-    for (k = 0; k < 2; k++) {
+    for (k = 0; k < 4; k++) {
         TapeEar *e = &r->ear[k];
-        e->shrt = WAVE0; e->shorts = 0; e->state = 0; e->nbit = 0; e->byte = 0;
+        e->base = k < 2 ? WAVE0 : WAVE0 / 2;
+        e->shrt = e->base; e->shorts = 0; e->state = 0; e->nbit = 0; e->byte = 0;
         e->n = 0; e->want = 0; e->sync = 0; e->tone = 0;
     }
-    r->good = r->bad = 0; r->loud = 0; r->tone = 0; r->pitch = 0;
+    r->good = r->bad = 0; r->loud = 0; r->tone = 0; r->pitch = 0; r->fast = 0;
 }
 
 static void lost(TapeRx *r, TapeEar *e)
@@ -121,6 +123,7 @@ static void got_byte(TapeRx *r, TapeEar *e, u8 b)
         u16 c = (u16)(e->buf[5 + len] | (e->buf[6 + len] << 8));
         if (c == tape_crc(e->buf, 5 + len)) {
             r->good++;
+            r->fast = e->base != WAVE0;
             if (r->block) r->block(r->ctx, e->buf[0], e->buf[1] | (e->buf[2] << 8), e->buf + 5, len);
         } else r->bad++;
         e->sync = 0;
@@ -158,8 +161,8 @@ static void wave(TapeRx *r, TapeEar *e, u32 d)
         got_bit(r, e, 0);
     }
     /* The tape's speed is followed, but not out of all reason. */
-    if (e->shrt < WAVE0 * 3 / 4) e->shrt = WAVE0 * 3 / 4;
-    if (e->shrt > WAVE0 * 4 / 3) e->shrt = WAVE0 * 4 / 3;
+    if (e->shrt < e->base * 3 / 4) e->shrt = e->base * 3 / 4;
+    if (e->shrt > e->base * 4 / 3) e->shrt = e->base * 4 / 3;
 }
 
 void tape_rx_samples(TapeRx *r, const u8 *in, int n)
@@ -177,22 +180,23 @@ void tape_rx_samples(TapeRx *r, const u8 *in, int n)
             /* Where between the last sample and this one it crossed. */
             int edge = r->sign > 0 ? -h : h, den = x - r->last, f = 0;
             u32 half;
-            TapeEar *e = &r->ear[r->sign > 0];
+            int up = r->sign > 0;
             if (den) f = (edge - r->last) * 16 / den;
             if (f < 0) f = 0;
             if (f > 16) f = 16;
             half = r->since - 16 + (u32)f;
             if (r->prev) {
-                wave(r, e, half + r->prev);
+                wave(r, &r->ear[up], half + r->prev);
+                wave(r, &r->ear[2 + up], half + r->prev);
                 if (half + r->prev) r->pitch = (u32)TAPE_RATE * 16u / (half + r->prev);
             }
             r->prev = half;
             r->since = 16 - (u32)f;
             r->sign = -r->sign;
-            r->tone = r->ear[0].tone | r->ear[1].tone;
+            r->tone = r->ear[0].tone | r->ear[1].tone | r->ear[2].tone | r->ear[3].tone;
         } else if (r->since > WAVE0 * 4) {
-            if (r->ear[0].tone || r->ear[0].sync) lost(r, &r->ear[0]);
-            if (r->ear[1].tone || r->ear[1].sync) lost(r, &r->ear[1]);
+            int k;
+            for (k = 0; k < 4; k++) if (r->ear[k].tone || r->ear[k].sync) lost(r, &r->ear[k]);
             r->prev = 0; r->tone = 0; r->pitch = 0;
             if (r->since > 0x40000000u) r->since = WAVE0 * 4 + 16;
         }

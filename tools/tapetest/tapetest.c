@@ -31,14 +31,14 @@ static void block(void *ctx, int type, int seq, const u8 *d, int len)
     } else s_wrong++;
 }
 
-static u8 *record(int *n)
+static u8 *record(int *n, int fast)
 {
     static u8 buf[TAPE_RATE * 80];
     TapeTx t;
     int seq = 0, off = 0, stage = 0;
     u8 head[32] = "WRITE1.MD";
     *n = 0;
-    tape_tx_begin(&t);
+    tape_tx_begin(&t, fast);
     for (;;) {
         if (!tape_tx_busy(&t)) {
             if (stage == 0)      { tape_tx_block(&t, TAPE_HEAD, 0, head, 20, 2000); stage = 1; }
@@ -64,6 +64,7 @@ typedef struct {
     double lop, thin;                    /* halves made unequal; the low notes thinned */
 } Case;
 
+static int s_quiet;
 static double rnd(void) { return (rand() / (double)RAND_MAX) * 2 - 1; }
 
 static int run(const Case *c, const u8 *src, int n)
@@ -100,7 +101,7 @@ static int run(const Case *c, const u8 *src, int n)
     for (i = 0; i < blocks; i++) missing += !s_have[i];
     if (s_wrong || missing > c->missing_ok || (!c->missing_ok && (!s_heads || !s_ends)) ||
         (c->drop_ms && !missing)) {
-        printf("%s: %d of %d pieces missing, %d wrong, %d heads, %d ends, %u failed checks\n",
+        if (!s_quiet) printf("%s: %d of %d pieces missing, %d wrong, %d heads, %d ends, %u failed checks\n",
                c->name, missing, blocks, s_wrong, s_heads, s_ends, r.bad);
         return 0;
     }
@@ -147,8 +148,32 @@ int main(int argc, char **argv)
     if (argc > 2 && !strcmp(argv[1], "--wav")) return wav(argv[2]);
     srand(430);
     for (i = 0; i < FILE_N; i++) s_file[i] = (u8)rand();
-    snd = record(&n);
+    snd = record(&n, 0);
     for (i = 0; i < (int)(sizeof cases / sizeof cases[0]); i++) ok &= run(&cases[i], snd, n);
+    {   /* Fast: every case is tried and the ones that fail are named; the
+         * plain ones must pass. */
+        int nf, bad = 0;
+        u8 *f = record(&nf, 1);
+        printf("fast (%d s):", nf / TAPE_RATE);
+        for (i = 0; i < (int)(sizeof cases / sizeof cases[0]); i++) {
+            s_quiet = 1;
+            if (!run(&cases[i], f, nf)) { printf(" [%s]", cases[i].name); bad++; if (i < 4) ok = 0; }
+            s_quiet = 0;
+        }
+        printf(" %d of %d cases read\n", (int)(sizeof cases / sizeof cases[0]) - bad, (int)(sizeof cases / sizeof cases[0]));
+    }
+    {   /* Packing: text, noise and nothing come back as they went; damaged input is refused or harmless. */
+        static u8 in[70000], pk[80000], out[70000];
+        u32 kinds, n2, m, j;
+        for (kinds = 0; kinds < 4; kinds++) {
+            n2 = kinds == 3 ? 0 : 65280;
+            for (j = 0; j < n2; j++) in[j] = kinds == 0 ? (u8)"the quick brown fox. "[(j * 7 + j / 13) % 21] : kinds == 1 ? (u8)rand() : (u8)(j / 300);
+            m = lz_pack(in, n2, pk, sizeof pk);
+            if ((n2 && !m) || lz_unpack(pk, m, out, sizeof out) != n2 || memcmp(in, out, n2)) { printf("packing: kind %u did not come back\n", kinds); ok = 0; }
+            if (kinds == 0) printf("packing: text %u -> %u bytes\n", n2, m);
+            for (j = 0; j < 2000 && m; j++) { pk[rand() % m] ^= (u8)(1 << rand() % 8); lz_unpack(pk, m, out, 5000 + rand() % 60000); }
+        }
+    }
     {   /* Hiss alone must never pass for a block. */
         static u8 hiss[TAPE_RATE * 30];
         TapeRx r;

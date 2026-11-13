@@ -226,6 +226,8 @@ static void build_palette(u8 *p)
     ramp(p, PAL_HUD, PAL_HUD_N, 2, 4, 16, 10, 20, 63);
     neon_fill(p + PAL_NEON * 3, ms_now());
     p[PAL_KEY * 3 + 0] = 63; p[PAL_KEY * 3 + 1] = 26; p[PAL_KEY * 3 + 2] = 46;   /* keys: pink */
+    p[PAL_ON * 3 + 0] = 18;  p[PAL_ON * 3 + 1] = 60;  p[PAL_ON * 3 + 2] = 28;    /* on: green */
+    p[PAL_RED * 3 + 0] = 63; p[PAL_RED * 3 + 1] = 12; p[PAL_RED * 3 + 2] = 14;   /* red */
 
 }
 

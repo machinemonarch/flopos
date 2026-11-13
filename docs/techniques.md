@@ -257,6 +257,13 @@ recorder; what follows holds against a simulated tape.
   the same length however lopsided the wave. Since a tape may come back
   upside down, a second reader times the downward crossings, and only
   the one in step with the bits gets blocks past their check.
+- **Two speeds, no setting to read them.** Fast is the same signal an
+  octave up. Four readers run at once (two speeds, two ways up) and
+  only the right one gets a block past its check.
+- **Packing that a spoiled piece cannot corrupt.** Files are packed with
+  LZSS (Storer and Szymanski, 1982; laid out as in Haruhiko Okumura's
+  LZSS.C of 1989, not his code). The pieces are still checked one by one
+  and the file is unpacked only when all are in, then checked whole.
 - **Missing is better than wrong.** Every block has its own check and is
   dropped whole if it fails. The blocks say which file and which piece
   they are, so a second playing fills only the gaps.
