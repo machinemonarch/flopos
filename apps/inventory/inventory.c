@@ -118,7 +118,7 @@ static void draw(void)
     A->win_open(A->screen_cols(), A->screen_rows());
     A->win_frame(0, A_GREY);
     x = A->win_text(2, 0, " inventory ", A_BRIGHT, A_PAPER);
-    x = A->win_text(x, 0, A->os_version(), A_TEXT, A_PAPER);   /* which FLOPOS it came with */
+    x = A->win_text(x, 0, A->os_version(), A_DIM, A_PAPER);   /* which FLOPOS it came with */
     x = A->win_text(x, 0, " ", A_GREY, A_PAPER);
     A->win_put(x++, 0, A_FR_H, A_GREY, A_PAPER, 0);
     A->format(m, sizeof m, " /%s ", s_dir);

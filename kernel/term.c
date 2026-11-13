@@ -861,7 +861,7 @@ void term_win_frame(const char *title, u8 fg)
         term_win_put(2, 0, ' ', fg, WIN_PAPER);
         x = term_win_text(3, 0, title, C_BRIGHT, WIN_PAPER);
         term_win_put(x, 0, ' ', fg, WIN_PAPER);
-        x = term_win_text(x + 1, 0, FLOPOS_VERSION, C_TEXT, WIN_PAPER);   /* every program says which FLOPOS it came with */
+        x = term_win_text(x + 1, 0, FLOPOS_VERSION, g_key_colour == PAL_KEY ? C_DIM : PAL_OLIVE, WIN_PAPER);   /* quiet: grey, or dim gold in the red, gold and green look */   /* every program says which FLOPOS it came with */
         term_win_put(x, 0, ' ', fg, WIN_PAPER);
     }
 }

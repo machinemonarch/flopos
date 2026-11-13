@@ -504,7 +504,7 @@ static void draw(int blink)
 
     doc_name(name, (int)sizeof name);
     x = A->win_text(2, 0, " scribe ", A_BRIGHT, pp);
-    x = A->win_text(x, 0, A->os_version(), A_TEXT, pp);   /* which FLOPOS it came with */
+    x = A->win_text(x, 0, A->os_version(), A_DIM, pp);   /* which FLOPOS it came with */
     x = A->win_text(x, 0, " ", A_GREY, pp);
     A->win_put(x++, 0, A_FR_H, A_GREY, pp, 0);
     x = A->win_text(x, 0, " ", A_GREY, pp);
