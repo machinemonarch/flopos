@@ -110,6 +110,27 @@ static void api_then(const char *command)
     s_then[i] = 0;
 }
 
+/* The date and time, from the clock chip: year less 2000, month, day,
+ * hour, minute, second.  0: the clock cannot be read. */
+static int api_clock(u8 out[6])
+{
+    u8 h, m, sec, mo, d;
+    u16 y;
+    if (!rtc_read(&h, &m, &sec, &y, &mo, &d)) return 0;
+    out[0] = (u8)(y - 2000); out[1] = mo; out[2] = d; out[3] = h; out[4] = m; out[5] = sec;
+    return 1;
+}
+
+/* A letter's shape in the system's face: five columns, bit 0 at the top,
+ * eight rows.  0: the font has no such letter. */
+static int api_glyph(int ch, u8 cols[5])
+{
+    int g = glyph_index(ch), i;
+    if (g < 0 || g >= FONT_GLYPHS) return 0;
+    for (i = 0; i < 5; i++) cols[i] = g_font5x8[g][i];
+    return 1;
+}
+
 static const Api s_api = {
     APP_API_VERSION,
     api_win_open, term_win_close, term_win_width, term_win_height,
@@ -136,6 +157,8 @@ static const Api s_api = {
     mood_ember,
     /* version 8 */
     crypt_key, crypt_seal, crypt_open, crypt_random,
+    /* version 9 */
+    api_clock, api_glyph,
 };
 
 /* ---- behind the wall (wall.c): one request from an app, checked -----------
@@ -292,6 +315,8 @@ int app_ask(u32 n, const u32 *a, u32 *result)
              r = (u32)k->crypt_open((int)a[0], (const u8 *)a[1], (const u8 *)a[2], (const u8 *)a[3], a[4],
                                     (const u8 *)a[5], a[6], (const u8 *)a[7], (u8 *)a[8]); break;
     case 55: BUF(0, a[1]); k->random((u8 *)a[0], a[1]); break;
+    case 56: BUF(0, 6); r = (u32)k->clock((u8 *)a[0]); break;
+    case 57: BUF(1, 5); r = (u32)k->glyph((int)a[0], (u8 *)a[1]); break;
     default: return 0;
     }
 #undef STR
@@ -300,7 +325,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     *result = r;
     return 1;
 }
-_Static_assert((sizeof(Api) - 4) / 4 == 56, "a function was added to the table: give it a case in app_ask");
+_Static_assert((sizeof(Api) - 4) / 4 == 58, "a function was added to the table: give it a case in app_ask");
 
 static int memory_for_apps(void)
 {

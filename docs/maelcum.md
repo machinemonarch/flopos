@@ -28,8 +28,9 @@ The top line names it, "Magnetic Rust: Riddim 'n' Vibrationz Engine",
 in colours that run through the letters.
 
 At the top are the settings, each with its key, in two groups, and under
-them a third, **Run 'Tingz**, with the cassette and the two things to do:
-<kbd>W</kbd> write and <kbd>R</kbd> read. The value in force is green;
+them a third, **Run 'Tingz**, with the cassette and the three things to do:
+<kbd>W</kbd> write, <kbd>R</kbd> read and <kbd>G</kbd> generate a tape
+sleeve. The value in force is green;
 the one that is not is grey.
 
 **Write Options**
@@ -122,6 +123,33 @@ If pieces are missing (a dropout, a crease in the tape), rewind, press
 
 The journal grows as FLOPOS is used, so after a while it will always be
 "different" from the tape's. That is as it should be.
+
+## The tape sleeve
+
+<kbd>G</kbd> (Generate Tape Sleeve) makes the paper that goes in the
+cassette's box, for the tape last written or read. It saves two pictures
+on the floppy, in the folder restored into, or at the top of the
+inventory:
+
+| File | What |
+|---|---|
+| `SLEEVE.BMP` | The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it. |
+| `INSIDE.BMP` | The inside: the files and their sizes. Print it on the back of the same sheet. |
+
+Take the floppy to a computer with a printer and print each at 100%
+("actual size", not "fit to page") on A4. Each then comes out exactly a
+standard sleeve's size, 101.6 mm square: the front 65 mm, the spine
+12.7 mm, the flap 23.9 mm. Cut along the outer line and fold along the
+dashed ones.
+
+A tape written without Verify has had nothing said of it, so its sleeve
+carries no quote. For an encrypted save the inside says how many files
+there are and no more: the names are sealed on the tape and would be
+plain on the paper.
+
+The pictures are plain black-on-white BMPs of 45 KB each, which any
+computer opens. They are files of yours like any other, so the next
+Standard Backup takes them along (packed, they are small).
 
 ## Encryption
 

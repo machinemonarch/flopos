@@ -37,6 +37,7 @@
  */
 #include "app.h"
 #include "tape.h"
+#include "sleeve.h"
 
 #define PIECES   255                     /* a file's most blocks: 65280 bytes */
 #define FILE_MAX (PIECES * TAPE_PIECE)
@@ -61,6 +62,8 @@ typedef struct {
     int  here;                           /* it is on the floppy            */
     int  on;                             /* ticked                         */
     int  take;                           /* ticked to be restored from the tape */
+    int  card;                           /* on the last tape written or read: for its sleeve */
+    u32  card_size;
     u32  size, used;                     /* its length on the floppy; bytes in use, before the filling */
     u32  plen;                           /* packed length, or 0            */
     u32  slen;                           /* sealed length (what is sent, tag and all), or 0 */
@@ -173,7 +176,7 @@ static File *add_file(const char *name, int sys, int dir)
     for (k = 0; name[k] && k < INV_PATH - 1; k++) f->name[k] = (char)up(name[k]);
     f->name[k] = 0;
     f->sys = sys; f->dir = dir;
-    f->on = 1; f->take = 0;
+    f->on = 1; f->take = 0; f->card = 0;
     f->here = 0; f->state = ST_NONE; f->got = f->bad = 0; f->plen = 0; f->slen = 0; f->ord = 0;
     f->disk = f->send = f->tape = f->pk = 0;
     return f;
@@ -580,6 +583,7 @@ static void write_go(void)
 }
 
 static void read_go(int verifying);
+static void done_written(void);
 
 /* While writing: keep a second of sound in hand, and notice the end. */
 static void write_step(void)
@@ -598,8 +602,24 @@ static void write_step(void)
         wire("saved", "files", (u32)s_count, s_bytes);
         s_mode = M_WROTE;
         if (s_verify) read_go(1);                /* not done yet: the tune waits for the check */
-        else { forget_key(); tune(0); say("All on the tape. Stop the recorder.", A_ON); }
+        else { done_written(); forget_key(); tune(0); say("All on the tape. Stop the recorder.", A_ON); }
     }
+}
+
+/* ---- the last tape, for its sleeve ---------------------------------------------- */
+static int s_done;                       /* 0 none yet, 1 written, 2 read, 3 written and checked */
+static u8  s_done_when[6];
+static int s_done_clock, s_done_fast, s_done_packed, s_done_alg;   /* alg: -1 not sealed */
+static u32 s_done_files, s_done_bytes;
+static const char *s_done_verdict = "";
+
+static void done_written(void)
+{
+    int i;
+    s_done = 1; s_done_clock = A->clock(s_done_when);
+    s_done_fast = s_fast; s_done_packed = s_packing; s_done_alg = s_crypt ? s_alg : -1;
+    s_done_files = (u32)s_count; s_done_bytes = s_bytes; s_done_verdict = "";
+    for (i = 0; i < s_nf; i++) { s_f[i].card = s_f[i].send != 0; s_f[i].card_size = s_f[i].size; }
 }
 
 /* ---- reading ------------------------------------------------------------------ */
@@ -808,6 +828,19 @@ static void read_end(int stopped)
         s_outcome = whole ? s_good[pick] : (stopped && !s_rx.bad) ? "" : s_poor[pick];
         s_outcome_c = whole ? A_ON : A_RED;
         s_shout = "";
+    }
+    if (same || diff) {                          /* what this tape was, for its sleeve */
+        s_done = s_verifying ? 3 : 2; s_done_clock = A->clock(s_done_when);
+        s_done_fast = s_verifying ? s_fast : s_rx.fast; s_done_packed = 0; s_done_alg = -1;
+        s_done_files = (u32)(same + diff); s_done_bytes = 0; s_done_verdict = s_outcome;
+        for (i = 0; i < s_nf; i++) {
+            File *f = &s_f[i];
+            f->card = f->state >= ST_SAME; f->card_size = f->tsize;
+            if (!f->card) continue;
+            s_done_bytes += f->used;
+            if (f->plen) s_done_packed = 1;
+            if (f->slen) s_done_alg = f->seal_alg;
+        }
     }
     if (stopped && !same && !diff) say(part ? "Stopped part way. Nothing was judged." : "Stopped before anything was read.", A_CREAM);
     else if (!same && !diff && !part) { say("Nothing of yours was heard.", A_RED); if (!stopped) tune(1); }
@@ -1086,13 +1119,14 @@ static void draw(void)
         /* the two things to do, from just inside the cassette's top edge */
         text(px, y + 1, "\1W\1  Write the ticked files to a tape", A_CREAM);
         text(px, y + 2, "\1R\1  Read a tape and restore from it", A_CREAM);
+        text(px, y + 3, "\1G\1  Generate Tape Sleeve", A_CREAM);
         if (tape_list() && s_nrows) {
-            text(px, y + 5, "Tick below what to restore. \1Enter\1", A_CREAM);
-            text(px, y + 6, "puts the ticked files on the floppy.", A_CREAM);
-        } else if (s_mode == M_RESULT && s_others) text(px, y + 6, "(The tape holds another save as well.)", A_OLIVE);
-        else if (s_big) { A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big); text(px, y + 6, m, A_OLIVE); }
+            text(px, y + 6, "Tick below what to restore. \1Enter\1", A_CREAM);
+            text(px, y + 7, "puts the ticked files on the floppy.", A_CREAM);
+        } else if (s_mode == M_RESULT && s_others) text(px, y + 7, "(The tape holds another save as well.)", A_OLIVE);
+        else if (s_big) { A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big); text(px, y + 7, m, A_OLIVE); }
     }
-    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 4, s_note, s_note_c);
+    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 5, s_note, s_note_c);
 
     /* the files: one folder, as the inventory shows it */
     rows = H - 6 - ROW_LIST;
@@ -1184,7 +1218,7 @@ static void draw(void)
         text(2, H - 3, "\1Space\1 tick  \1Enter\1 restore the ticked  \1D\1 where to", A_OLIVE);
         text(2, H - 2, "\1Up\1 \1Down\1 move  \1R\1 read again  \1Esc\1 back to the floppy's files", A_OLIVE);
     } else {
-        text(2, H - 3, "\1W\1 write  \1R\1 read  \1Space\1 tick", A_OLIVE);
+        text(2, H - 3, "\1W\1 write  \1R\1 read  \1G\1 sleeve  \1Space\1 tick", A_OLIVE);
         text(2, H - 2, "\1Up\1 \1Down\1 move  \1Enter\1 open  \1Backspace\1 up a folder  \1Esc\1 leave", A_OLIVE);
     }
 }
@@ -1262,6 +1296,50 @@ static void new_folder(void)
     wire("made", path, 0, 0);
     view(s_view < 0 ? 0 : s_view, s_dest);
     say("Made. What is restored goes into it.", A_ON);
+}
+
+/* ---- the sleeve: G ---------------------------------------------------------------- */
+static int card_file(int i, const char **name, u32 *size)
+{
+    int k;
+    for (k = 0; k < s_nf; k++)
+        if (s_f[k].card && i-- == 0) { *name = s_f[k].name; *size = s_f[k].card_size; return 1; }
+    return 0;
+}
+
+static void make_sleeve(void)
+{
+    static const char *const names[2] = { "SLEEVE.BMP", "INSIDE.BMP" };
+    static char why[80];
+    Sleeve sl;
+    int side, i, d = s_done == 2 && s_dest > 0 ? s_dest : 0;
+    if (!s_done) { say("Write or read a tape first: it is for that.", A_CREAM); return; }
+    busy_note("Drawing the sleeve and saving it...");
+    for (i = 0; i < 6; i++) sl.when[i] = s_done_when[i];
+    sl.have_when = s_done_clock;
+    sl.did = s_done == 1 ? "Written" : s_done == 2 ? "Read" : "Written and checked";
+    sl.verdict = s_done_verdict; sl.version = A->os_version();
+    sl.cipher = s_done_alg >= 0 ? s_alg_name[s_done_alg] : 0;
+    sl.files = s_done_files; sl.bytes = s_done_bytes;
+    sl.fast = s_done_fast; sl.packed = s_done_packed;
+    sl.file = card_file;
+    for (side = 0; side < 2; side++) {
+        char path[INV_PATH];
+        const u8 *bmp;
+        u32 n = sleeve_draw(A, &sl, side, &bmp);
+        A->format(path, INV_PATH, "%s%s%s", s_dirs[d], d ? "/" : "", names[side]);
+        if (!A->inv_write(path, bmp, n)) {
+            A->format(why, sizeof why, "%s", A->inv_why());
+            say(why, A_RED);
+            return;
+        }
+        for (i = 0; i < s_nf; i++) if (!s_f[i].sys && same_word(s_f[i].name, path)) break;
+        if (i == s_nf && add_file(path, 0, d)) s_f[i].card = 0;
+        if (i < s_nf) { s_f[i].here = 1; s_f[i].size = n; }
+        wire("sleeve", path, n, 0);
+    }
+    build_rows();
+    say("Saved: SLEEVE.BMP and INSIDE.BMP.", A_ON);
 }
 
 /* ---- the app ---------------------------------------------------------------- */
@@ -1367,6 +1445,7 @@ int app_main(const Api *api, int argc, char **argv)
         else if (tape_list() && (key == K_LEFT || key == K_RIGHT || key == K_BKSP)) { }
         else if ((key == K_ENTER || key == K_RIGHT) && s_nrows && s_rows[s_cursor] < 1000) view(s_rows[s_cursor], 0);
         else if ((key == K_BKSP || key == K_LEFT) && s_view != 0) { int was = s_view; view(parent_of(was), was); }
+        else if (key == 'G') make_sleeve();
         else if (key == 'J') { s_menu = 1; s_pick = s_job; }
         else if (key == 'K') { s_menu = 2; s_pick = s_alg; }
         else if (key == 'E') s_crypt = !s_crypt;

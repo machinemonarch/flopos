@@ -6,6 +6,19 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- **maelcum: `G` generates a tape sleeve**, the paper that goes in the
+  cassette's box. Two pictures are saved on the floppy, in the folder
+  restored into (or the top of the inventory): `SLEEVE.BMP`, the outside,
+  with the date and time the write or read finished (DD-MM-YYYY HH:MM),
+  what was said of the tape in quotes, and how much is on it; and
+  `INSIDE.BMP`, the list of files, for the back of the same sheet. Each
+  is exactly a standard sleeve's size, 101.6 mm square laid flat, when
+  printed at 100% on A4: cut along the outer line and fold along the
+  dashed ones. Black on white, 45 KB each. An encrypted save's names are
+  not printed.
+- For programs: `clock` (the date and time) and `glyph` (a letter's
+  shape). Both only read.
+
 ## 1.39.0 — 2026-11-13
 
 - The version after a program's name is drawn quietly: grey, or dim gold

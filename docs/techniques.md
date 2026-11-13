@@ -356,3 +356,24 @@ These calls nest. The paging is the plainest possible: 4MB pages, every
 address mapped to itself, two of them open to apps. It goes off for each
 BIOS call, since the BIOS runs in 16-bit mode. Sources: Intel's
 architecture manuals (privilege levels, the task segment, 4MB pages).
+
+
+## A picture that knows how big it is
+
+For maelcum's tape sleeve (`apps/maelcum/sleeve.c`). The laptop has no
+printer, so the sleeve leaves on the floppy as a picture, and has to come
+out of somebody else's printer at exactly a cassette sleeve's size.
+
+- **The size is in the file.** A BMP's header has a place for dots to
+  the metre. 600 dots at 150 to the inch is 101.6 mm, a sleeve laid flat
+  to the dot, and a program that prints at "actual size" honours it.
+- **One bit a dot.** Black on white needs no more: 45 KB a picture, with
+  no packing, so there is nothing that cannot open it.
+- **The system's own letters.** The font is five dots by eight. Drawn
+  two, three and four times its size, and on its side for the spine, it
+  is the same face as the screen's.
+- **The inside is mirrored.** It is printed on the back of the sheet, so
+  its wide panel is on the left, to fall behind the front.
+
+Checked by opening the pictures on the PC: the size, the dots to the
+inch, and by eye. Not yet printed.

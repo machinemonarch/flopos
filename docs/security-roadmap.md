@@ -33,6 +33,12 @@ certificate look valid. The clock already refuses to go back past the last
 
 ## Done
 
+- **Two more requests for apps (after 1.39.0).** `clock` (the date and
+  time) and `glyph` (a letter's shape in the system's face), added for
+  maelcum's tape sleeve. Both only read; each writes a fixed few bytes
+  (six, five) into a buffer checked against the app's own memory.
+  Neither gives out anything secret.
+
 - **Sealing for apps (1.37.0).** Apps can ask the kernel to make a key
   from a passphrase (PBKDF2-HMAC-SHA256) and to seal or open data
   (ChaCha20-Poly1305, AES-256-GCM, AES-128-GCM); every buffer in such a

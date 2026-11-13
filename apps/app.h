@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 8
+#define APP_API_VERSION 9
 #define APP_BASE        0x00C00000u      /* 12MB: two whole 4MB pages, the app's own */
 #define APP_MAX         0x00800000u      /* 8MB: code, data, buffers and the stack */
 #define APP_STACK       0x00040000u      /* the top 256KB: its stack, and a page the system fills in */
@@ -260,6 +260,13 @@ typedef struct {
     int  (*crypt_open)(int alg, const u8 key[32], const u8 nonce[12], const u8 *aad, u32 alen,
                        const u8 *in, u32 n, const u8 tag[16], u8 *out);
     void (*random)(u8 *out, u32 n);          /* bytes nobody can guess */
+    /* ---- version 9: the clock, and the font's letters ---- */
+    /* The date and time: year less 2000, month, day, hour, minute, second.
+     * 0 if the clock cannot be read. */
+    int  (*clock)(u8 out[6]);
+    /* A letter's shape, for a program that makes a picture: five columns,
+     * bit 0 at the top, eight rows.  0 if the font has no such letter. */
+    int  (*glyph)(int ch, u8 cols[5]);
 } Api;
 
 #define CRYPT_CHACHA20_POLY1305 0        /* 256-bit key                     */

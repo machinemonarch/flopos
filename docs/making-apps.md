@@ -210,6 +210,8 @@ sentence to show.
 | `inv_remove(path)` | A file, or an empty folder |
 | `inv_move(from, to)` | Rename, move to another folder, or both |
 | `inv_room()` | Bytes free on the floppy |
+| `clock(out)` | The date and time into six bytes: year less 2000, month, day, hour, minute, second. 0 if the clock cannot be read. |
+| `glyph(ch, cols)` | A letter's shape in the system's face, for a program that makes a picture: five columns, bit 0 at the top, eight rows. |
 | `win_ember(on)` | Frames in red, gold and green instead of neon, and keys in yellow instead of pink, until the app leaves. Fixed colours to go with it: `A_CREAM`, `A_OLIVE`, `A_GOLD`, `A_EMBER`, `A_GREEN_D`, and `A_ON` (green), `A_RED`. `A_NEON` to `A_NEON + A_NEON_N - 1` are the frame's sixteen turning colours: text drawn in them shimmers with nothing redrawn. |
 | `crypt_key`, `crypt_seal`, `crypt_open`, `random` | A key from a passphrase (PBKDF2-HMAC-SHA256), sealing and opening with `CRYPT_CHACHA20_POLY1305`, `CRYPT_AES256_GCM` or `CRYPT_AES128_GCM`, and bytes nobody can guess. A nonce must never be used twice with one key. |
 | `then(command)` | Run another app when this one leaves, as if typed: `then("scribe NOTES/A.MD")`. How the inventory opens a document and `scribe` returns to it. |
