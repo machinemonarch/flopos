@@ -26,7 +26,8 @@ halves it again. A file over 64 KB is left out, and `maelcum` says so.
     here> maelcum
 
 The top line names it, "Magnetic Rust: Riddim 'n' Vibrationz Engine",
-in colours that run through the letters.
+in colours that run through the letters, with a glint that sweeps across
+it every few seconds.
 
 At the top are the settings, each with its key, in two groups, and under
 them a third, **Run 'Tingz**, with the cassette and the three things to do:
@@ -38,7 +39,7 @@ the one that is not is grey.
 
 | Key | Setting |
 |---|---|
-| <kbd>J</kbd> | The job, from a list: **Standard Backup** (everything of yours on this floppy) or **Pick & Mix** (only what you tick below) |
+| <kbd>J</kbd> | The job, from a list: **Standard Backup** (everything of yours on this floppy) or **Pick & Mix** (only what you tick, after <kbd>W</kbd>) |
 | <kbd>C</kbd> | Compress (LZSS): on or off. A file is sent packed when that is shorter. |
 | <kbd>F</kbd> | Speed: normal or fast. Fast takes half the tape and is easier to spoil: it wants a good recorder and tape. Reading needs no telling; it hears which. |
 | <kbd>V</kbd> | Verify after writing: on or off. On, the tape is read back straight after it is written. |
@@ -50,14 +51,22 @@ the one that is not is grey.
 | Key | Setting |
 |---|---|
 | <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
-| <kbd>D</kbd> | Restore into, from a list: where each file came from, the top of the inventory, any folder, or **a new folder**. A new folder is asked a name and made at once, inside the folder the list below is showing. |
+| <kbd>D</kbd> | Restore into, from a list: **a new folder, named by the date and time** (the first choice), where each file came from, the top of the inventory, any folder, or a folder you name, which is made at once at the top of the inventory. |
 
 The cassette's wheels turn while a tape is written or read, and beside it
-is the progress. Below are your files, one folder at a time, as
-`inventory` shows them: <kbd>Up</kbd> and <kbd>Down</kbd> move,
-<kbd>Enter</kbd> goes into a folder, <kbd>Backspace</kbd> comes back out,
-and <kbd>Space</kbd> ticks a file, or a folder and everything in it.
-Ticking by hand makes the job Pick & Mix.
+is the progress. Below is a list of files, and its title says whose:
+
+- At first it is empty, so it is never unclear what is shown.
+- <kbd>W</kbd> fills it with **the files on the floppy**, one folder at a
+  time, as `inventory` shows them: <kbd>Up</kbd> and <kbd>Down</kbd> move,
+  <kbd>Enter</kbd> goes into a folder, <kbd>Backspace</kbd> comes back out,
+  and <kbd>Space</kbd> ticks a file, or a folder and everything in it.
+  Ticking by hand makes the job Pick & Mix. <kbd>W</kbd> again writes the
+  ticked files.
+- <kbd>R</kbd> fills it with **the files on the cassette**, as they are
+  heard, to tick and restore.
+
+<kbd>Esc</kbd> empties it again.
 
 Above the keys, one line says how it is going, in plain words: "Buckle
 up!" when recording starts, "Now hear 'dis!" when playback starts,
@@ -75,8 +84,10 @@ switched on in a dark neon green.
 
 ## Writing
 
-1. Press <kbd>W</kbd>. It says how much tape the ticked files need, with
-   a legend of what one side of a C30, C60 and C90 holds.
+1. Press <kbd>W</kbd>: the floppy's files are shown, ticked by the job.
+   Change the ticks if you like, and press <kbd>W</kbd> again. It says
+   how much tape the ticked files need, with a legend of what one side of
+   a C30, C60 and C90 holds.
 2. Plug a cable from the laptop's headphone socket (on the front) into
    the recorder's MIC socket.
 3. Set the recorder recording, then press <kbd>Enter</kbd>. The first
@@ -98,26 +109,39 @@ what Verify does.
 2. Press <kbd>R</kbd>, rewind the tape and set the recorder playing. The
    green bar shows how loud the tape is, and under it whether what is
    heard is a tape's tones.
-3. Each file shows how much of it has been read and its accuracy: the
-   share of its pieces that passed their check.
+3. The list fills with the files on the tape as they are heard, each with
+   how much of it has been read and its accuracy: the share of its pieces
+   that passed their check.
 
 Reading ends by itself when every file has come whole, or after ten
 seconds of silence; <kbd>S</kbd> ends it sooner. If everything came
-whole, the tune plays; if it did not, a shorter, sadder one does.
+whole (every file the save has, not only the ones heard), the tune plays;
+if it did not, a shorter, sadder one does, and the line says how many
+came whole. The screen shows the result before the tune starts.
 Stopping by hand is not held against the tape: it gets a poor verdict
 only if pieces were actually spoiled.
 
 The whole save is kept in memory; nothing has touched the floppy. The
-list below then shows **what the tape holds**, each file marked new (not
-on this floppy), different (from the floppy's copy) or same. The new
-ones start ticked. A different one is left unticked, since restoring it
-replaces the floppy's copy, which may be the newer; tick it if the
-tape's is the one you want. The same ones are grey.
+list shows **what the tape holds**, each file marked new (not on this
+floppy), different (from the floppy's copy) or same.
+
+By default a read is restored into **a folder of its own**, named by when
+the reading ended. A FAT12 name has eight letters at most and a folder's
+no dot, so it is two folders, the day and then the time:
+`14-11-26/21-45` is the 14th of November 2026 at 21.45 (with no clock,
+`TAPE01`, `TAPE02`...). Everything that came whole starts ticked, so the
+folder is a whole copy of the tape, with the files' own folders inside
+it. Nothing already on the floppy is touched; the system's three records
+land there as ordinary files.
+
+With <kbd>D</kbd> set to **where each file came from**, only the new ones
+start ticked. A different one is left unticked, since restoring it
+replaces the floppy's copy, which may be the newer; tick it if the tape's
+is the one you want. The same ones are grey.
 
 <kbd>Space</kbd> ticks, <kbd>Enter</kbd> puts the ticked files on the
-floppy, with their folders, or into the folder chosen with <kbd>D</kbd>.
-<kbd>Esc</kbd> goes back to the floppy's files without restoring. A tape
-from another floppy restores just as well: its files are all new.
+floppy, and the line says where they went. <kbd>Esc</kbd> leaves without
+restoring. A tape from another floppy restores just as well.
 
 If pieces are missing (a dropout, a crease in the tape), rewind, press
 <kbd>R</kbd> and play it again.
@@ -128,29 +152,36 @@ The journal grows as FLOPOS is used, so after a while it will always be
 ## The tape sleeve
 
 <kbd>G</kbd> (Generate Tape Sleeve) makes the paper that goes in the
-cassette's box, for the tape last written or read. It saves two pictures
-on the floppy, in the folder restored into, or at the top of the
-inventory:
+cassette's box, for the tape last written or read. It saves one file,
+`SLEEVE.PDF`, and the screen shows where before you press it: for a tape
+read, in the folder it was restored into; for a tape written, at the top
+of the inventory.
 
-| File | What |
+It is a PDF of two A4 pages:
+
+| Page | What |
 |---|---|
-| `SLEEVE.BMP` | The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it. |
-| `INSIDE.BMP` | The inside: the files and their sizes. Print it on the back of the same sheet. |
+| 1 | The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it. |
+| 2 | The inside: the files and their sizes. Print it on the back of the same sheet. |
 
-Take the floppy to a computer with a printer and print each at 100%
-("actual size", not "fit to page") on A4. Each then comes out exactly a
-standard sleeve's size, 101.6 mm square: the front 65 mm, the spine
-12.7 mm, the flap 23.9 mm. Cut along the outer line and fold along the
-dashed ones.
+Take the floppy to a computer with a printer and print it at 100%
+("actual size"). A PDF page carries its own size, so the card comes out
+exactly a standard sleeve's size, 101.6 mm square: the front 65 mm, the
+spine 12.7 mm, the flap 23.9 mm. It sits in the middle of the page,
+25 mm from the top edge, on both pages, so printed two-sided they fall
+back to back. Cut along the outer line and fold along the dashed ones.
 
 A tape written without Verify has had nothing said of it, so its sleeve
 carries no quote. For an encrypted save the inside says how many files
 there are and no more: the names are sealed on the tape and would be
 plain on the paper.
 
-The pictures are plain black-on-white BMPs of 45 KB each, which any
-computer opens. They are files of yours like any other, so the next
-Standard Backup takes them along (packed, they are small).
+Why PDF: it is an ISO standard (ISO 32000) and every computer and phone
+of the last twenty-five years opens it; this one is the plainest kind
+(version 1.3, one picture a page, and a line of Helvetica, which every
+reader has built in), about 90 KB. A bare picture has no paper size of
+its own, so the print program stretches it to the page. At 90 KB the
+sleeve is too long for a tape, so a backup leaves it out.
 
 ## Encryption
 

@@ -251,6 +251,16 @@ a simulated tape.
   waits a twentieth of a second; if any reader passes a block in that
   time it is forgotten. Before this the counts ran high and the screen
   could despair over a tape that was reading.
+- **Wait for the readers still inside the block.** The twentieth of a
+  second was not enough. On a dull recorder at fast speed the plain
+  readers lose every block half way, while the treble-lifted pair read
+  it to its end, which is longer than a twentieth of a second later.
+  Each loss was counted, the screen said "Sorry! Sorry!" throughout, and
+  the tape then came whole. Now a failure notes which readers were inside
+  a block at that moment (or came into it just after) and is counted only
+  when all of them have given it up; one of them finishing the block
+  clears it. The simulated tape test now fails if a tape read whole
+  counted any loss: before, four of its cases did, after, none.
 - **Packing that a spoiled piece cannot corrupt.** Files are packed with
   LZSS (Storer and Szymanski, 1982; laid out as in Haruhiko Okumura's
   LZSS.C of 1989, not his code). The pieces are still checked one by one
@@ -332,22 +342,32 @@ BIOS call, since the BIOS runs in 16-bit mode. Sources: Intel's
 architecture manuals (privilege levels, the task segment, 4MB pages).
 
 
-## A picture that knows how big it is
+## A page that knows how big it is
 
 For maelcum's tape sleeve (`apps/maelcum/sleeve.c`). The laptop has no
-printer, so the sleeve leaves on the floppy as a picture, and has to come
+printer, so the sleeve leaves on the floppy as a file, and has to come
 out of somebody else's printer at exactly a cassette sleeve's size.
 
-- **The size is in the file.** A BMP's header has a place for dots to
-  the metre. 600 dots at 150 to the inch is 101.6 mm, a sleeve laid flat
-  to the dot, and a program that prints at "actual size" honours it.
-- **One bit a dot.** Black on white needs no more: 45 KB a picture, with
-  no packing, so there is nothing that cannot open it.
+- **First try: a picture that says its size.** A BMP's header has a
+  place for dots to the metre, and 600 dots at 150 to the inch is a
+  sleeve to the dot. On a real printer it was stretched over the whole
+  A4 all the same: print programs fit a picture to the page unless told
+  not to.
+- **So a PDF.** A PDF page has a size of its own (A4: 595.28 by 841.89
+  points), and the card is placed on it at 288 points, four inches. Print
+  programs print a PDF's page as the page. Written by hand, the plainest
+  kind there is: version 1.3, eight objects, a table of where each
+  starts, each page one picture of one bit a dot (not packed) and a line
+  of Helvetica, one of the fourteen faces every reader has built in. No
+  library: about sixty lines, 91 KB.
+- **One bit a dot.** Black on white needs no more.
 - **The system's own letters.** The font is five dots by eight. Drawn
   two, three and four times its size, and on its side for the spine, it
   is the same face as the screen's.
 - **The inside is mirrored.** It is printed on the back of the sheet, so
-  its wide panel is on the left, to fall behind the front.
+  its wide panel is on the left, to fall behind the front. Both pages
+  put the card at the same place, centred across, so two-sided printing
+  lines them up.
 
-Checked by opening the pictures on the PC: the size, the dots to the
-inch, and by eye. Not yet printed.
+Checked with `pdfinfo` (two A4 pages) and by rendering it on the PC. Not
+yet printed.

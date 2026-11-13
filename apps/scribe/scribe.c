@@ -196,6 +196,10 @@ static u8 style_at(u8 st)
     }
 }
 
+/* Every change to the text counts, for undo. */
+static u32 s_ver;
+static void touched(void) { s_dirty = 1; s_ver++; }
+
 static int sel_from(void) { return s_anchor < s_cur ? s_anchor : s_cur; }
 static int sel_to(void)   { return s_anchor < s_cur ? s_cur : s_anchor; }
 static int have_sel(void) { return s_anchor >= 0 && s_anchor != s_cur; }
@@ -218,7 +222,7 @@ static void remove_range(int a, int b)            /* [a, b), never the last end 
     s_doc.c[para_end(a)].at = (u8)first_style;
     s_cur = a;
     s_anchor = -1;
-    s_dirty = 1;
+    touched();
 }
 
 static void insert(u8 ch, u8 at)
@@ -232,7 +236,7 @@ static void insert(u8 ch, u8 at)
     s_doc.c[s_cur].at = at;
     s_doc.len++;
     s_cur++;
-    s_dirty = 1;
+    touched();
 }
 
 /* Enter: the paragraph is split, and both halves keep its style -- unless
@@ -267,7 +271,7 @@ static int cells_put(int pos, const char *t, int *a, int *b)
     s_cur = moved(s_cur, pos, n); s_anchor = moved(s_anchor, pos, n);
     if (a) *a = moved(*a, pos, n);
     if (b) *b = moved(*b, pos, n);
-    s_dirty = 1;
+    touched();
     return 1;
 }
 
@@ -279,7 +283,7 @@ static void cells_cut(int pos, int n, int *a, int *b)
     s_cur = moved(s_cur, pos, -n); s_anchor = moved(s_anchor, pos, -n);
     if (a) *a = moved(*a, pos, -n);
     if (b) *b = moved(*b, pos, -n);
-    s_dirty = 1;
+    touched();
 }
 
 static int stars_before(int p) { int n = 0; while (p - n > 0 && s_doc.c[p - n - 1].ch == '*') n++; return n; }
@@ -375,7 +379,7 @@ static void toggle(u8 attr)
             if (s_doc.c[k].ch == '\n') continue;
             if (all) s_doc.c[k].at &= (u8)~attr; else s_doc.c[k].at |= attr;
         }
-        s_dirty = 1;
+        touched();
     } else {
         s_pen ^= attr;
     }
@@ -387,12 +391,13 @@ static void set_style(int st)
     if (s_md) { md_style(st < 0 ? 0 : st, st < 0); return; }
     for (p = para_start(a); p <= b && p < s_doc.len; p = para_end(p) + 1)
         s_doc.c[para_end(p)].at = (u8)st;
-    s_dirty = 1;
+    touched();
     say(s_style_name[st], A_DIM);
 }
 
 /* ---- files ------------------------------------------------------------------ */
 static void draw(int blink);
+static void undo_forget(void);
 
 static int load(const char *path)
 {
@@ -405,6 +410,7 @@ static int load(const char *path)
     if (s_md && !to_markdown()) s_md = 0;
     s_cur = 0;
     pen_from_cursor();
+    undo_forget();
     A->format(m, sizeof m, "Opened %s.", path);
     say(m, A_DIM);
     return 1;
@@ -576,7 +582,8 @@ static void draw(int blink)
         put_hint(H - 1, W >= 76 ? " **bold**  *italic*  <u>underline</u>  # heading  % title  \1^M\1 the page "
                                 : " **bold** *italic* <u>under</u>  # head  % title  \1^M\1 page ");
     else
-        put_hint(H - 1, W >= 84 ? " \1^B\1 bold  \1^I\1 italic  \1^U\1 underline  \1^P\1 style  \1^M\1 markdown  \1^S\1 save  \1^O\1 open  \1esc\1 "
+        put_hint(H - 1, W >= 120 ? " \1^B\1 bold  \1^I\1 italic  \1^U\1 underline  \1^P\1 style  \1^M\1 markdown  \1^C\1 \1^X\1 \1^V\1 copy, cut, paste  \1^Z\1 undo  \1^S\1 save  \1^O\1 open  \1esc\1 "
+                      : W >= 84 ? " \1^B\1 bold  \1^I\1 italic  \1^U\1 underline  \1^P\1 style  \1^M\1 markdown  \1^S\1 save  \1^O\1 open  \1esc\1 "
                                 : " \1^B\1 \1^I\1 \1^U\1  \1^P\1 style  \1^M\1 markdown  \1^S\1 save  \1^O\1 open  \1esc\1 ");
 }
 
@@ -586,6 +593,124 @@ static void keep_cursor_visible(void)
     if (cl < s_top) s_top = cl;
     if (cl >= s_top + TH) s_top = cl - TH + 1;
     if (s_top < 0) s_top = 0;
+}
+
+/* ---- undo, and the clipboard ------------------------------------------------------
+ * Before each key the document is copied aside; if the key changed it,
+ * the copy goes on the undo list.  Typing one letter after another (or
+ * deleting one after another) is one step, as it is everywhere: a step
+ * ends when the cursor is moved, or something else is done. */
+#define UNDO_N 16
+typedef struct { Doc d; int cur, md; } Snap;
+static Snap s_pend, s_undo[UNDO_N], s_redo[UNDO_N];
+static int  s_nundo, s_undo0, s_nredo, s_redo0;      /* rings: how many, and the oldest */
+static int  s_last_kind, s_last_cur = -1;
+enum { G_NONE, G_TYPE, G_DEL, G_OTHER };
+
+static void snap_take(Snap *n)
+{
+    int k;
+    for (k = 0; k < s_doc.len; k++) n->d.c[k] = s_doc.c[k];
+    n->d.len = s_doc.len; n->cur = s_cur; n->md = s_md;
+}
+
+static void snap_give(const Snap *n)
+{
+    int k;
+    for (k = 0; k < n->d.len; k++) s_doc.c[k] = n->d.c[k];
+    s_doc.len = n->d.len; s_cur = n->cur; s_md = n->md;
+    s_anchor = -1;
+    if (s_cur > s_doc.len - 1) s_cur = s_doc.len - 1;
+    pen_from_cursor();
+    touched();
+}
+
+static Snap *ring_push(Snap *r, int *n, int *first)
+{
+    int at;
+    if (*n == UNDO_N) { *first = (*first + 1) % UNDO_N; (*n)--; }   /* the oldest goes */
+    at = (*first + *n) % UNDO_N;
+    (*n)++;
+    return &r[at];
+}
+
+static Snap *ring_pop(Snap *r, int *n, int *first)
+{
+    if (!*n) return 0;
+    (*n)--;
+    return &r[(*first + *n) % UNDO_N];
+}
+
+/* After a key: if the text changed, what it was before may be a new step. */
+static void undo_after(int kind, int cur_before, u32 ver_before)
+{
+    if (s_ver == ver_before) return;
+    if (kind == G_OTHER || kind != s_last_kind || cur_before != s_last_cur || !s_nundo)
+        *ring_push(s_undo, &s_nundo, &s_undo0) = s_pend;
+    s_nredo = 0;
+    s_last_kind = kind; s_last_cur = s_cur;
+}
+
+static void undo(int back)
+{
+    Snap *from = back ? ring_pop(s_undo, &s_nundo, &s_undo0) : ring_pop(s_redo, &s_nredo, &s_redo0);
+    if (!from) { say(back ? "Nothing to undo." : "Nothing to redo.", A_DIM); return; }
+    snap_take(back ? ring_push(s_redo, &s_nredo, &s_redo0) : ring_push(s_undo, &s_nundo, &s_undo0));
+    snap_give(from);
+    s_last_kind = G_NONE; s_last_cur = -1;
+}
+
+static void undo_forget(void) { s_nundo = s_nredo = 0; s_last_kind = G_NONE; s_last_cur = -1; }
+
+/* The clipboard: this program's own, kept while it runs, styling and all. */
+static DCell s_clip[DOC_MAX];
+static int   s_nclip;
+
+static void copy_sel(void)
+{
+    int a = sel_from(), b = sel_to(), k;
+    if (!have_sel()) return;
+    if (b > s_doc.len - 1) b = s_doc.len - 1;
+    for (k = a; k < b; k++) s_clip[k - a] = s_doc.c[k];
+    s_nclip = b - a;
+}
+
+static void paste(void)
+{
+    int k;
+    if (!s_nclip) { say("Nothing copied yet.", A_DIM); return; }
+    if (have_sel()) remove_range(sel_from(), sel_to());
+    s_anchor = -1;
+    if (s_doc.len + s_nclip > DOC_MAX - 1) { say("That would make the document too long.", A_ACCENT); return; }
+    for (k = s_doc.len - 1; k >= s_cur; k--) s_doc.c[k + s_nclip] = s_doc.c[k];
+    for (k = 0; k < s_nclip; k++) s_doc.c[s_cur + k] = s_clip[k];
+    s_doc.len += s_nclip;
+    s_cur += s_nclip;
+    pen_from_cursor();
+    touched();
+}
+
+/* Words, for Ctrl with the arrows and with Backspace and Delete: a word is
+ * letters and digits; the spaces and signs between are stepped over. */
+static int wordy(int p)
+{
+    int c = s_doc.c[p].ch;
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80;
+}
+
+static int word_left(int p)
+{
+    while (p > 0 && !wordy(p - 1)) p--;
+    while (p > 0 && wordy(p - 1)) p--;
+    return p;
+}
+
+static int word_right(int p)
+{
+    int end = s_doc.len - 1;
+    while (p < end && wordy(p)) p++;
+    while (p < end && !wordy(p)) p++;
+    return p;
 }
 
 /* ---- the loop ---------------------------------------------------------------- */
@@ -611,7 +736,8 @@ static void vertical(int by, int extend)
 
 int app_main(const Api *api, int argc, char **argv)
 {
-    int key, mods, changed = 1, blink = -1;
+    int key, mods, changed = 1, blink = -1, kind = G_NONE, cur_before = 0, pending = 0;
+    u32 ver_before = 0;
 
     A = api;
     A->win_open(A->screen_cols(), A->screen_rows());
@@ -667,14 +793,49 @@ int app_main(const Api *api, int argc, char **argv)
         if (changed) { layout(); keep_cursor_visible(); }
         if (changed || b != blink) { draw(b); blink = b; changed = 0; }
 
+        if (pending) { undo_after(kind, cur_before, ver_before); pending = 0; }
         key = A->key(&mods);
         if (key < 0) { A->pump(0); continue; }
         changed = 1;
+        /* what kind of change this key would be, and the text before it */
+        kind = G_OTHER;
+        if (!(mods & M_CTRL) && !have_sel()) {
+            if ((key >= 32 && key < 127) || (key >= 0x80 && key <= 0x88) || key == K_TAB) kind = G_TYPE;
+            else if (key == K_BKSP || key == K_DEL) kind = G_DEL;
+        }
+        if (!((mods & M_CTRL) && (key == 'z' || key == 'y'))) {
+            snap_take(&s_pend);
+            cur_before = s_cur; ver_before = s_ver; pending = 1;
+        }
         if (key != K_ESC) s_esc = 0;
         if (key != K_UP && key != K_DOWN && key != K_PGUP && key != K_PGDN) s_want = -1;
 
         if (mods & M_CTRL) {
+            int sh = mods & M_SHIFT;
             switch (key) {
+            /* moving and selecting by words, and to either end */
+            case K_LEFT:  move_to(word_left(s_cur), sh); break;
+            case K_RIGHT: move_to(word_right(s_cur), sh); break;
+            case K_HOME:  move_to(0, sh); break;
+            case K_END:   move_to(s_doc.len - 1, sh); break;
+            case K_UP:    move_to(para_start(s_cur > 0 && para_start(s_cur) == s_cur ? s_cur - 1 : s_cur), sh); break;
+            case K_DOWN:  move_to(para_end(s_cur) < s_doc.len - 1 ? para_end(s_cur) + 1 : s_doc.len - 1, sh); break;
+            case K_BKSP:
+                if (have_sel()) remove_range(sel_from(), sel_to());
+                else if (s_cur > 0) remove_range(word_left(s_cur), s_cur);
+                pen_from_cursor();
+                break;
+            case K_DEL:
+                if (have_sel()) remove_range(sel_from(), sel_to());
+                else remove_range(s_cur, word_right(s_cur));
+                break;
+            /* the clipboard, and undo */
+            case 'a': s_anchor = 0; s_cur = s_doc.len - 1; break;
+            case 'c': if (have_sel()) { copy_sel(); say("Copied.", A_DIM); } break;
+            case 'x': if (have_sel()) { copy_sel(); remove_range(sel_from(), sel_to()); pen_from_cursor(); } break;
+            case 'v': paste(); break;
+            case 'z': undo(!sh); break;
+            case 'y': undo(0); break;
             case 'b': toggle(AT_BOLD); break;
             case 'i': toggle(AT_ITALIC); break;
             case 'u': toggle(AT_UNDERLINE); break;
@@ -702,6 +863,7 @@ int app_main(const Api *api, int argc, char **argv)
                 doc_empty(&s_doc);
                 s_cur = 0; s_anchor = -1; s_dirty = 0; s_pen = 0; s_top = 0; s_esc = 0;
                 s_path[0] = 0;
+                undo_forget();
                 say("A new document.", A_DIM);
                 break;
             default: break;

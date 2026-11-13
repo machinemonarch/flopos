@@ -6,6 +6,28 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- maelcum: the file list is empty until there is something to do. **W**
+  shows the floppy's files to tick (W again writes them); **R** shows the
+  cassette's files as they are heard, to tick and restore. Its title says
+  which.
+- maelcum: a read is restored by default into a folder of its own, named
+  by when the reading ended (`14-11-26/21-45`: day, then time, as FAT12
+  allows), with everything that came whole ticked. **D** still offers
+  where each came from, the top, any folder, or a folder you name.
+- maelcum: the tape sleeve is one `SLEEVE.PDF` of two A4 pages, the card
+  at its true size on each, back to back when printed two-sided; the
+  screen says where it will go. Replaces `SLEEVE.BMP` and `INSIDE.BMP`.
+- maelcum: reading no longer cries "Sorry! Sorry!" over blocks one ear
+  lost and another read. A failure is now counted only when every ear
+  that was in the block has given it up (tools/tapetest checks that a
+  tape read whole counts no losses). The verdict judges every file of the
+  save, not only those heard, and the screen is drawn before the tune.
+- maelcum: a glint sweeps across the title.
+- maelcum: no smiley after "SELECTA!".
+- scribe: Ctrl-A, Ctrl-C, Ctrl-X, Ctrl-V, Ctrl-Z, Ctrl-Y, Ctrl with the
+  arrows, Home, End, Backspace and Delete, as on any computer.
+- `version` says "Cyberdelic Neurodivergent dream".
+
 ## 1.40.0 — 2026-11-13
 
 - **maelcum: `G` generates a tape sleeve**, the paper that goes in the

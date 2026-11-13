@@ -92,7 +92,7 @@ void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), 
         TapeLine *l = &r->line[k];
         l->mid = k ? 0 : 128 * 256; l->last = 0; l->sign = 1; l->since = 0; l->prev = 0; l->n = 0; l->loud = 0;
     }
-    r->was = 128 * 256; r->t = 0; r->good_at = 0; r->fail_at = 0; r->fails = 0;
+    r->was = 128 * 256; r->t = 0; r->good_at = 0; r->fail_at = 0; r->fails = 0; r->wait = 0;
     for (k = 0; k < 6; k++) {
         TapeEar *e = &r->ear[k];
         e->base = k < 2 ? WAVE0 : WAVE0 / 2;
@@ -103,14 +103,27 @@ void tape_rx_begin(TapeRx *r, void (*block)(void *, int, int, const u8 *, int), 
 }
 
 /* Several ears listen to the one tape, and a block that one of them loses
- * another often has.  So a failure waits a moment: it counts only if no
- * ear passes a block close by. */
+ * another often has: on a dull recorder the plain ears drop every fast
+ * block half way while the treble-lifted pair read it to its end.  So a
+ * failure waits.  It is counted only when every ear that was inside the
+ * block at that moment (or came into it just after: the ears hear a
+ * block's start a wave or two apart) has given it up as well. */
 #define NEAR (TAPE_RATE / 20)
 static void failed(TapeRx *r)
 {
     if (r->good && r->t - r->good_at <= NEAR) return;
-    if (!r->fails) r->fail_at = r->t;
-    r->fails = 1;                        /* the ears' failures of one block are one failure */
+    if (r->fails) return;                /* the ears' failures of one block are one failure */
+    r->fails = 1; r->fail_at = r->t; r->wait = 0;
+}
+
+/* Once a sample while a failure waits. */
+static void settle_failure(TapeRx *r)
+{
+    int k, in = 0;
+    for (k = 0; k < 6; k++) if (r->ear[k].sync == 2) in |= 1 << k;
+    if (r->t - r->fail_at <= NEAR) { r->wait |= in; return; }
+    r->wait &= in;
+    if (!r->wait || r->t - r->fail_at > TAPE_RATE * 4) { r->bad++; r->fails = 0; }
 }
 
 static void lost(TapeRx *r, TapeEar *e)
@@ -138,7 +151,9 @@ static void got_byte(TapeRx *r, TapeEar *e, u8 b)
         u16 c = (u16)(e->buf[5 + len] | (e->buf[6 + len] << 8));
         if (c == tape_crc(e->buf, 5 + len)) {
             if (r->t - r->good_at > NEAR || !r->good) r->good++;   /* each ear that has it says so: once is enough */
-            r->good_at = r->t; r->fails = 0;
+            /* a failure that waits is this block's if this ear was in it then */
+            if (r->fails && (r->t - r->fail_at <= NEAR || (r->wait >> (int)(e - r->ear) & 1))) r->fails = 0;
+            r->good_at = r->t;
             r->fast = e->base != WAVE0;
             r->skew = (int)(e->shrt * 100 / e->base) - 100;
             if (r->block) r->block(r->ctx, e->buf[0], e->buf[1] | (e->buf[2] << 8), e->buf + 5, len);
@@ -233,7 +248,7 @@ void tape_rx_samples(TapeRx *r, const u8 *in, int n)
         line_in(r, &r->line[1], s - (r->was - (r->was >> 2)), 4, 1);
         r->was = s;
         r->t++;
-        if (r->fails && r->t - r->fail_at > NEAR) { r->bad++; r->fails = 0; }
+        if (r->fails) settle_failure(r);
     }
     r->loud = r->line[0].loud;
     r->tone = 0;

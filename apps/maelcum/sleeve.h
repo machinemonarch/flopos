@@ -1,4 +1,4 @@
-/* sleeve.h -- the paper that goes in a cassette's box, as a picture.  See sleeve.c. */
+/* sleeve.h -- the paper that goes in a cassette's box, to print.  See sleeve.c. */
 #ifndef SLEEVE_H
 #define SLEEVE_H
 #include "app.h"
@@ -16,7 +16,7 @@ typedef struct {
     int (*file)(int i, const char **name, u32 *size);
 } Sleeve;
 
-/* Draw one side (0 the outside, 1 the inside); gives the picture as a
- * whole BMP file and returns its length. */
-u32 sleeve_draw(const Api *api, const Sleeve *s, int inside, const u8 **bmp);
+/* Draw both sides (the outside, then the inside) as a PDF of two A4
+ * pages; gives the whole file and returns its length. */
+u32 sleeve_pdf(const Api *api, const Sleeve *s, const u8 **pdf);
 #endif

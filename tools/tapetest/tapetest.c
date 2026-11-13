@@ -64,7 +64,7 @@ typedef struct {
     double lop, thin;                    /* halves made unequal; the low notes thinned */
 } Case;
 
-static int s_quiet;
+static int s_quiet, s_alarms;
 static double rnd(void) { return (rand() / (double)RAND_MAX) * 2 - 1; }
 
 static int run(const Case *c, const u8 *src, int n)
@@ -104,6 +104,13 @@ static int run(const Case *c, const u8 *src, int n)
         if (!s_quiet) printf("%s: %d of %d pieces missing, %d wrong, %d heads, %d ends, %u failed checks\n",
                c->name, missing, blocks, s_wrong, s_heads, s_ends, r.bad);
         return 0;
+    }
+    /* Everything came, so nothing may be counted as lost: a block one ear
+     * drops and another has is not a loss. */
+    if (missing && !r.bad) { printf("%s: %d pieces lost and none counted\n", c->name, missing); return 0; }
+    if (!missing && r.bad) {
+        s_alarms++;
+        if (getenv("LOUD")) printf("%s: all read, yet %u counted as failed\n", c->name, r.bad);
     }
     return 1;
 }
@@ -162,6 +169,7 @@ int main(int argc, char **argv)
         }
         printf(" %d of %d cases read\n", (int)(sizeof cases / sizeof cases[0]) - bad, (int)(sizeof cases / sizeof cases[0]));
     }
+    if (s_alarms) { printf("%d cases read whole and still counted failures\n", s_alarms); ok = 0; }
     {   /* Packing: text, noise and nothing come back as they went; damaged input is refused or harmless. */
         static u8 in[70000], pk[80000], out[70000];
         u32 kinds, n2, m, j;

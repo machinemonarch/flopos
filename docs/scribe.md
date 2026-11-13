@@ -40,11 +40,23 @@ paragraph, because that is nearly always what you want next.
 | Key | What it does |
 |---|---|
 | Arrows | Move |
+| Ctrl + Left / Right | A word at a time |
+| Ctrl + Up / Down | A paragraph at a time |
 | Home / End | Start or end of the line |
+| Ctrl + Home / End | Start or end of the document |
 | Page Up / Page Down | A screen at a time |
 | Shift + any of those | Select |
+| Ctrl-A | Select everything |
 | Backspace / Delete | Remove a character, or the selection |
+| Ctrl + Backspace / Delete | Remove a word |
+| Ctrl-C / Ctrl-X / Ctrl-V | Copy, cut, paste |
+| Ctrl-Z | Undo |
+| Ctrl-Y, or Ctrl-Shift-Z | Redo |
 | Tab | Four spaces |
+
+Typing over a selection replaces it. The clipboard is scribe's own and
+keeps the styling; it lasts until scribe closes. Undo goes back sixteen
+steps; a run of typing, or of deleting, is one step.
 
 ## Markdown
 

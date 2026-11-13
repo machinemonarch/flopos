@@ -101,7 +101,8 @@ typedef struct {
     int  was;                            /* the sample before this one     */
     u32  t;                              /* samples so far                 */
     u32  good_at;                        /* when the last block passed     */
-    u32  fail_at; int fails;             /* blocks that failed in an ear, not yet counted: another ear may have them */
+    u32  fail_at; int fails;             /* a block failed in an ear, not yet counted: another ear may have it */
+    int  wait;                           /* the ears still inside that block, one bit each */
     TapeEar ear[6];                      /* upward crossings and downward: normal, fast, and fast with the lift */
     u32  good, bad;                      /* blocks that passed, and failed  */
     int  loud;                           /* how strong the signal is, 0..127 */
