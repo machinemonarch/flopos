@@ -179,6 +179,22 @@ if [ ! -w "$DEVICE" ] && [ "$(id -u)" -ne 0 ]; then
     escalate ""
 fi
 
+# The low-level format does not go through $DEVICE but through its raw
+# command channel, /dev/sgN, which the udev rule above does not hand out.
+# Without root, ufiformat is refused there and the drive is never touched.
+if [ "$LOWLEVEL" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+    sg=""
+    for g in /sys/block/"${DEVICE#/dev/}"/device/scsi_generic/*; do
+        [ -e "$g" ] && sg="/dev/$(basename "$g")"
+    done
+    if [ -n "$sg" ] && [ ! -w "$sg" ]; then
+        note ""
+        note "The low-level format talks to the drive through $sg,"
+        note "which is not yours, so this needs root."
+        escalate ""
+    fi
+fi
+
 model=$(lsblk -d -n -o MODEL,TRAN "$DEVICE" 2>/dev/null | xargs || true)
 
 # --- say so, loudly -------------------------------------------------------
@@ -288,7 +304,8 @@ fi
 if [ "$LOWLEVEL" -eq 1 ]; then
     if command -v ufiformat >/dev/null 2>&1; then
         step "Low-level formatting (this takes a couple of minutes)"
-        ufiformat -f 1440 "$DEVICE" || die "Low-level format failed. The media may be dead."
+        ufiformat -f 1440 "$DEVICE" || die "Low-level format failed (ufiformat's reason is just above).
+  If it says Permission denied, the disk was never touched."
     else
         note "ufiformat is not installed; skipping the low-level format."
         note "Install it with: sudo apt install ufiformat"
