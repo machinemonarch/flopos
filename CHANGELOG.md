@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.41.0 — 2026-11-14
+
 - maelcum: the file list is empty until there is something to do. **W**
   shows the floppy's files to tick (W again writes them); **R** shows the
   cassette's files as they are heard, to tick and restore. Its title says
