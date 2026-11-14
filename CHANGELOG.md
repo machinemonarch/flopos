@@ -6,8 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
-- `version` no longer says "vibe-coded": it reads "Cyberdelic
-  Neurodivergent dream by Max, synthesized with Claude."
+- `version` says "Cyberdelic Neurofunkadelic Dreamscape", "Directed by
+  Max and Synthesized with Claude.", and the day it was built.
 
 ## 1.43.0 — 2026-11-14
 

@@ -1296,10 +1296,9 @@ static void cmd_version(void)
     term_colour(C_BRIGHT);
     term_printf("FLOPOS %s", FLOPOS_VERSION);
     term_newline();
-    say_dim("Cyberdelic Neurodivergent dream by Max,");
-    /* The year this release was built: the last four letters of __DATE__. */
-    term_print("synthesized with Claude. ");
-    say_dim(__DATE__ + 7);
+    say_dim("Cyberdelic Neurofunkadelic Dreamscape");
+    say_dim("Directed by Max and Synthesized with Claude.");
+    say_dim(__DATE__);                       /* the day this release was built */
 }
 
 /* `wizard`: the screen locked behind the gate again, until a riddle is
