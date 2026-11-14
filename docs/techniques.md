@@ -354,20 +354,22 @@ out of somebody else's printer at exactly a cassette sleeve's size.
   A4 all the same: print programs fit a picture to the page unless told
   not to.
 - **So a PDF.** A PDF page has a size of its own (A4: 595.28 by 841.89
-  points), and the card is placed on it at 288 points, four inches. Print
-  programs print a PDF's page as the page. Written by hand, the plainest
-  kind there is: version 1.3, eight objects, a table of where each
-  starts, each page one picture of one bit a dot (not packed) and a line
-  of Helvetica, one of the fourteen faces every reader has built in. No
-  library: about sixty lines, 91 KB.
+  points), and each card is placed on it at 288 points, four inches,
+  the outside above the inside. Print programs print a PDF's page as the
+  page. Written by hand, the plainest kind there is: version 1.3, seven
+  objects, a table of where each starts, two pictures of one bit a dot
+  and two lines of Helvetica, one of the fourteen faces every reader has
+  built in. No library: about seventy lines.
+- **Packed by run length.** PDF has read run-length packing
+  (RunLengthDecode) since its first version: a count byte, then bytes as
+  they are, or one byte repeated. A sleeve is mostly white paper, so the
+  two pictures shrink from 90 KB to about 22 KB, small enough for a tape.
 - **One bit a dot.** Black on white needs no more.
 - **The system's own letters.** The font is five dots by eight. Drawn
   two, three and four times its size, and on its side for the spine, it
   is the same face as the screen's.
-- **The inside is mirrored.** It is printed on the back of the sheet, so
-  its wide panel is on the left, to fall behind the front. Both pages
-  put the card at the same place, centred across, so two-sided printing
-  lines them up.
+- **The inside is mirrored.** It is laid behind the outside, printed side
+  out, so its wide panel is on the left, to fall behind the front.
 
-Checked with `pdfinfo` (two A4 pages) and by rendering it on the PC. Not
+Checked with `pdfinfo` (one A4 page) and by rendering it on the PC. Not
 yet printed.

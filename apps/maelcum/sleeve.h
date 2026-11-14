@@ -16,7 +16,7 @@ typedef struct {
     int (*file)(int i, const char **name, u32 *size);
 } Sleeve;
 
-/* Draw both sides (the outside, then the inside) as a PDF of two A4
- * pages; gives the whole file and returns its length. */
+/* Draw both sides (the outside above the inside) as a PDF of one A4
+ * page; gives the whole file and returns its length. */
 u32 sleeve_pdf(const Api *api, const Sleeve *s, const u8 **pdf);
 #endif

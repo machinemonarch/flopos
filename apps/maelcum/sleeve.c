@@ -7,18 +7,18 @@
  * behind the cassette, 23.9 mm.  It is drawn 600 dots square, 150 to the
  * inch.  Cut along the outer line, fold along the dashed ones.
  *
- * It is saved as a PDF of two A4 pages: the outside (when, what was said
- * of the tape, how much is on it) and the inside (the files).  A page of
- * a PDF has a size of its own, so the card comes out at its true size
- * with nothing to set in the print program, which a bare picture cannot
- * promise.  The card sits in the middle of the page's width, 25 mm from
- * the top, on both pages: printed on the two sides of one sheet they fall
- * back to back.  The inside is laid out mirrored, so that its wide panel
- * falls behind the front.
+ * It is saved as a PDF of one A4 page: the outside (when, what was said
+ * of the tape, how much is on it) at the top and the inside (the files)
+ * under it.  A page of a PDF has a size of its own, so the cards come out
+ * at their true size with nothing to set in the print program, which a
+ * bare picture cannot promise.  Printed on one side, both are cut out and
+ * the inside laid behind the outside.  The inside is laid out mirrored,
+ * so that its wide panel falls behind the front.
  *
- * The PDF is the plainest there is (version 1.3, 1999): each page is one
- * picture of one bit a dot, not packed, and two lines of Helvetica, a
- * face every reader has built in.  About 91 KB.  The letters on the card
+ * The PDF is the plainest there is (version 1.3, 1999): two pictures of
+ * one bit a dot, packed by run length (a filter every reader has had
+ * since PDF 1.0), and two lines of Helvetica, a face every reader has
+ * built in.  About 23 KB, so it fits on a tape like any other file.  The letters on the card
  * are the system's own (api->glyph), drawn two, three or four times
  * their size.
  * ===========================================================================
@@ -32,7 +32,9 @@
 #define SPINE_W 75                       /* 12.7 mm                        */
 #define FRONT_X (FLAP_W + SPINE_W)       /* the front begins here: 65 mm to the edge */
 
-static u8 s_pdf[2 * IMG + 2048];
+static u8 s_pdf[2 * (IMG + IMG / 128 + 2) + 2048];
+static u8 s_side[IMG];                   /* one side, drawn here, then packed */
+static u8 s_packed[IMG + IMG / 128 + 2]; /* run-length at its worst        */
 static u32 s_n;                          /* how much of the file is written */
 static u8 *s_img;                        /* the side being drawn           */
 static const Api *A;
@@ -221,6 +223,28 @@ static void inside(const Sleeve *s)
 }
 
 /* ---- the file -------------------------------------------------------------------- */
+/* PDF's RunLengthDecode (in PDF since 1.0): a length byte n, then n + 1
+ * bytes as they are (n < 128), or one byte said 257 - n times (n > 128);
+ * 128 ends it.  The sleeve is mostly white paper, so it shrinks about
+ * tenfold. */
+static u32 run_length(const u8 *in, u32 n, u8 *out)
+{
+    u32 i = 0, o = 0;
+    while (i < n) {
+        u32 r = 1, lit;
+        while (i + r < n && r < 128 && in[i + r] == in[i]) r++;
+        if (r >= 2) { out[o++] = (u8)(257 - r); out[o++] = in[i]; i += r; continue; }
+        /* bytes as they are, up to the next run of two or more */
+        for (lit = 1; i + lit < n && lit < 128; lit++)
+            if (i + lit + 1 < n && in[i + lit] == in[i + lit + 1]) break;
+        out[o++] = (u8)(lit - 1);
+        for (r = 0; r < lit; r++) out[o++] = in[i + r];
+        i += lit;
+    }
+    out[o++] = 128;
+    return o;
+}
+
 static void put(const char *t) { while (*t) s_pdf[s_n++] = (u8)*t++; }
 
 static void number(u32 v, int digits)
@@ -232,47 +256,55 @@ static void number(u32 v, int digits)
     put(m);
 }
 
+static void whole(u32 v)                 /* a number, as few digits as it needs */
+{
+    char m[12];
+    A->format(m, sizeof m, "%u", v);
+    put(m);
+}
+
 u32 sleeve_pdf(const Api *api, const Sleeve *s, const u8 **pdf)
 {
-    /* What each page shows: the picture, 288 points (4 inches) square, and
-     * under it how to print and cut. */
+    /* The one page: the outside at the top, 20 mm from the edge, the
+     * inside under it, each 288 points (4 inches) square and centred
+     * across, and under each how to print and cut. */
     static const char page[] =
-        "q 288 0 0 288 153.64 483.02 cm /Im Do Q\n"
-        "BT /F1 8 Tf 153.64 470 Td (Print at 100% \\(actual size\\). Cut along the outer line, fold along the dashed ones.) Tj ET\n";
-    u32 at[9], i, xref;
+        "q 288 0 0 288 153.64 497.2 cm /Im1 Do Q\n"
+        "q 288 0 0 288 153.64 177 cm /Im2 Do Q\n"
+        "BT /F1 8 Tf 153.64 486 Td (Outside. Print at 100% \\(actual size\\). Cut along the outer line; fold on the dashed ones.) Tj ET\n"
+        "BT /F1 8 Tf 153.64 166 Td (Inside. Cut and fold the same way; lay it behind the outside, printed side out.) Tj ET\n";
+    u32 at[8], i, xref, n;
     int side;
     A = api;
     s_n = 0;
     put("%PDF-1.3\n%\xE2\xE3\xCF\xD3\n");
     at[1] = s_n; put("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-    at[2] = s_n; put("2 0 obj\n<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>\nendobj\n");
+    at[2] = s_n; put("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+    at[3] = s_n;
+    put("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 6 0 R\n"
+        "   /Resources << /ProcSet [/PDF /Text /ImageB] /Font << /F1 7 0 R >> /XObject << /Im1 4 0 R /Im2 5 0 R >> >> >>\nendobj\n");
     for (side = 0; side < 2; side++) {
-        at[3 + side] = s_n;
-        put(side ? "4 0 obj\n" : "3 0 obj\n");
-        put("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R\n"
-            "   /Resources << /ProcSet [/PDF /Text /ImageB] /Font << /F1 8 0 R >> /XObject << /Im ");
-        put(side ? "6" : "5");
-        put(" 0 R >> >> >>\nendobj\n");
-    }
-    for (side = 0; side < 2; side++) {
-        at[5 + side] = s_n;
-        put(side ? "6 0 obj\n" : "5 0 obj\n");
-        put("<< /Type /XObject /Subtype /Image /Width 600 /Height 600 /ColorSpace /DeviceGray\n"
-            "   /BitsPerComponent 1 /Decode [1 0] /Length 45000 >>\nstream\n");
-        s_img = s_pdf + s_n;
+        at[4 + side] = s_n;
+        put(side ? "5 0 obj\n" : "4 0 obj\n");
+        s_img = s_side;
         for (i = 0; i < IMG; i++) s_img[i] = 0;
         if (side) inside(s); else outside(s);
-        s_n += IMG;
+        n = run_length(s_side, IMG, s_packed);
+        put("<< /Type /XObject /Subtype /Image /Width 600 /Height 600 /ColorSpace /DeviceGray\n"
+            "   /BitsPerComponent 1 /Decode [1 0] /Filter /RunLengthDecode /Length ");
+        whole(n); put(" >>\nstream\n");
+        for (i = 0; i < n; i++) s_pdf[s_n + i] = s_packed[i];
+        s_n += n;
         put("\nendstream\nendobj\n");
     }
+    at[6] = s_n;
+    put("6 0 obj\n<< /Length "); whole(sizeof page - 1); put(" >>\nstream\n"); put(page); put("endstream\nendobj\n");
     at[7] = s_n;
-    put("7 0 obj\n<< /Length "); number(sizeof page - 1, 3); put(" >>\nstream\n"); put(page); put("endstream\nendobj\n");
-    at[8] = s_n;
-    put("8 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+    put("7 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
     xref = s_n;
-    put("xref\n0 9\n0000000000 65535 f \n");
-    for (i = 1; i < 9; i++) { number(at[i], 10); put(" 00000 n \n"); }
-    put("trailer\n<< /Size 9 /Root 1 0 R >>\nstartxref\n"); number(xref, 6); put("\n%%EOF\n");
+    put("xref\n0 8\n0000000000 65535 f \n");
+    for (i = 1; i < 8; i++) { number(at[i], 10); put(" 00000 n \n"); }
+    put("trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n"); whole(xref); put("\n%%EOF\n");
     *pdf = s_pdf;
     return s_n;
 }

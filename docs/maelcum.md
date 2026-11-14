@@ -158,19 +158,19 @@ cassette's box, for the tape last written or read. It saves one file,
 read, in the folder it was restored into; for a tape written, at the top
 of the inventory.
 
-It is a PDF of two A4 pages:
+It is a PDF of one A4 page with both cards on it, one above the other:
 
-| Page | What |
+| Card | What |
 |---|---|
-| 1 | The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it. |
-| 2 | The inside: the files and their sizes. Print it on the back of the same sheet. |
+| Top | The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it. |
+| Bottom | The inside: the files and their sizes. |
 
 Take the floppy to a computer with a printer and print it at 100%
-("actual size"). A PDF page carries its own size, so the card comes out
-exactly a standard sleeve's size, 101.6 mm square: the front 65 mm, the
-spine 12.7 mm, the flap 23.9 mm. It sits in the middle of the page,
-25 mm from the top edge, on both pages, so printed two-sided they fall
-back to back. Cut along the outer line and fold along the dashed ones.
+("actual size"), on one side. A PDF page carries its own size, so each
+card comes out exactly a standard sleeve's size, 101.6 mm square: the
+front 65 mm, the spine 12.7 mm, the flap 23.9 mm. Cut both along the outer
+line, fold along the dashed ones, and lay the inside behind the outside,
+printed side out.
 
 A tape written without Verify has had nothing said of it, so its sleeve
 carries no quote. For an encrypted save the inside says how many files
@@ -179,11 +179,11 @@ plain on the paper.
 
 Why PDF: it is an ISO standard (ISO 32000) and every computer and phone
 of the last twenty-five years opens it; this one is the plainest kind
-(version 1.3, one picture a page, and a line of Helvetica, which every
-reader has built in), about 90 KB. A bare picture has no paper size of
-its own, so the print program stretches it to the page. At 90 KB the
-sleeve is too long for a tape, so a backup leaves it out: a sleeve goes
-on the tape, not inside it.
+(version 1.3, two pictures packed by run length, and two lines of
+Helvetica, which every reader has built in), about 23 KB. A bare picture
+has no paper size of its own, so the print program stretches it to the
+page. At 23 KB the sleeve is small enough for a tape, so the next backup
+takes it along like any other file.
 
 ## Encryption
 

@@ -14,9 +14,11 @@ without it. Each version's notes are also written next to its image, as
   by the day the reading ended (`14112026`, DDMMYYYY), with everything
   that came whole ticked. **D** still offers where each came from, the
   top, any folder, or a folder you name.
-- maelcum: the tape sleeve is one `SLEEVE.PDF` of two A4 pages, the card
-  at its true size on each, back to back when printed two-sided; the
-  screen says where it will go. Replaces `SLEEVE.BMP` and `INSIDE.BMP`.
+- maelcum: the tape sleeve is one `SLEEVE.PDF`: one A4 page with the
+  outside above the inside, each at its true size, printed on one side;
+  the screen says where it will go. Its pictures are packed by run
+  length, so it is about 23 KB and goes on the tape with the next backup.
+  Replaces `SLEEVE.BMP` and `INSIDE.BMP`.
 - maelcum: reading no longer cries "Sorry! Sorry!" over blocks one ear
   lost and another read. A failure is now counted only when every ear
   that was in the block has given it up (tools/tapetest checks that a
