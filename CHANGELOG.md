@@ -6,9 +6,6 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
-- The pictures of Saffran and Ozzy are under CC BY 4.0: free to share and
-  adapt, with credit. The code and the documentation stay under MIT.
-
 ## 1.43.0 — 2026-11-14
 
 - Ozzy, the other cat, sees the machine off: `bye` and `reboot` show his
