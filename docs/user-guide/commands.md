@@ -146,10 +146,13 @@ changes it, for the keys printed on yours:
 |---|---|
 | `se` | Swedish (the default) |
 | `fi` | Finnish, the same keys as Swedish |
+| `no` | Norwegian |
+| `dk` | Danish |
 | `us` | American |
 | `uk` | British (`gb` works too) |
 | `de` | German |
 | `fr` | French |
+| `be` | Belgian |
 | `es` | Spanish |
 | `it` | Italian |
 
@@ -163,7 +166,7 @@ the next letter, as they do on any PC: ´ then e is é, ¨ then u is ü,
 ^ then o is ô. An accent key and then space types the accent alone.
 
 The letters these keyboards need are in the font, in both text sizes:
-å ä ö, ü ß, é è ê ë, à â, ì í î ï, ò ó ô, ù ú û, ñ, ç, ÿ and their
+å ä ö, æ ø, ü ß, é è ê ë, à â, ì í î ï, ò ó ô, ù ú û, ñ, ç, ÿ and their
 capitals, and £ € § ° µ ¡ ¿. scribe saves them as UTF-8, so they read
 right on any other computer. Signs the font lacks (the French ², the
 Spanish º and ª, ¬, ½, ¤) type nothing.

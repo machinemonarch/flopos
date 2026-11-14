@@ -3,7 +3,7 @@
 #define KEYMAPS_H
 
 #define KEYMAP_SCANS 0x59
-#define KEYMAP_COUNT 8
+#define KEYMAP_COUNT 11
 
 typedef struct {
     const char *code;                    /* what you type: se, us, de ...  */

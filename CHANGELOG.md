@@ -6,9 +6,9 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
-- `keyboard`: FLOPOS now knows American, British, German, French,
-  Spanish and Italian keyboards as well as the Swedish one (and Finnish,
-  which has the same keys). `keyboard de` changes it; `keyboard` alone
+- `keyboard`: FLOPOS now knows Norwegian, Danish, American, British,
+  German, French, Belgian, Spanish and Italian keyboards as well as the Swedish
+  one (and Finnish, which has the same keys). `keyboard de` changes it; `keyboard` alone
   says which is in use. The choice is kept after a restart; a new release
   on the floppy starts on Swedish again.
 
@@ -16,7 +16,7 @@ without it. Each version's notes are also written next to its image, as
   every keyboard that has them, Swedish included.
 
 - The font has the letters those keyboards type, in both text sizes:
-  ü ß é è ê à ç ñ and the rest, their capitals, and £ € § ° µ ¡ ¿. scribe
+  æ ø ü ß é è ê à ç ñ and the rest, their capitals, and £ € § ° µ ¡ ¿. scribe
   saves and opens them as UTF-8, browzer shows them on pages and types
   them into boxes.
 

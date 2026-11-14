@@ -13,7 +13,7 @@ itself.
 | Video | Chips & Technologies 65550, 2MB, VESA 2.0 | 800×600 in 256 colours (VESA mode 103) through a flat frame buffer at address 0x7000000. Falls back to VGA 320×200. |
 | Screen | 11.3" 800×600 TFT panel | Runs at its native size by default, so nothing is stretched. |
 | Sound | Sound Blaster Pro compatible, with a Yamaha OPL2 FM chip | Plays music on the OPL2 at port 0x388 (three voices), or on the PC speaker if the OPL2 doesn't answer. Plays recordings (songs, mp3, Ogg, FLAC, WAV) through the Sound Blaster's DSP by DMA; `dsp` checks it. |
-| Keyboard | Swedish layout | Its own keyboard driver. Swedish by default; American, British, German, French, Spanish and Italian keyboards with `keyboard`. |
+| Keyboard | Swedish layout | Its own keyboard driver. Swedish by default; Norwegian, Danish, American, British, German, French, Belgian, Spanish and Italian keyboards with `keyboard`. |
 | Floppy | External 1.44MB drive on a dedicated port | Read and written through the laptop's own BIOS, which knows how this drive is wired. |
 | Serial | COM1 at 0x3F8, IRQ 4, a 16550-compatible chip | 115200 baud. Everything FLOPOS prints is copied down it, and it accepts typing. |
 | Clock | CMOS real-time clock | Read twice, and only believed when both readings agree. |

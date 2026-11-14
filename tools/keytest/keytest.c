@@ -43,6 +43,14 @@ int main(void)
     WANT("se", "euro, pound, tilde, pipe", L(G|0x12, G|0x04, G|0x1B, G|0x56), L(CH_EURO, CH_POUND, '~', '|'));
     WANT("fi", "the same as Swedish", L(0x27, S|0x08), L(CH_ODIA_L, '/'));
 
+    /* Norwegian and Danish: the same rows, the two letters swapped. */
+    WANT("no", "o-slash, ae, a-ring", L(0x27, 0x28, 0x1A, S|0x27), L(0xF8, 0xE6, CH_ARING_L, 0xD8));
+    WANT("dk", "ae, o-slash", L(0x27, 0x28, S|0x27), L(0xE6, 0xF8, 0xC6));
+    WANT("no", "pipe, backslash, at", L(0x29, 0x0D, G|0x03), L('|', '\\', '@'));
+    WANT("dk", "pipe, backslash", L(G|0x0D, G|0x56), L('|', '\\'));
+    WANT("no", "acute on AltGr, then e", L(G|0x0D, 0x12), L(0, 0xE9));
+    WANT("dk", "caps lock on ae", L(C|0x27), L(0xC6));
+
     /* American and British. */
     WANT("us", "signs", L(S|0x03, 0x35, 0x2B, S|0x29, 0x1A), L('@', '/', '\\', '~', '['));
     WANT("us", "no accent keys", L(0x28, 0x12), L('\'', 'e'));
@@ -70,6 +78,13 @@ int main(void)
          L('@', '~', '\\', '{', '}'));
     WANT("fr", "live circumflex on AltGr-9", L(G|0x0A, 0x12), L('^', 'e'));
     WANT("fr", "u-grave, colon, slash, full stop", L(0x28, 0x34, S|0x34, S|0x33), L(0xF9, ':', '/', '.'));
+
+    /* Belgian: AZERTY, but not the French one. */
+    WANT("be", "number row", L(0x02, 0x07, 0x09, 0x0D, S|0x0D), L('&', CH_SECTION, '!', '-', '_'));
+    WANT("be", "at, pipe, braces", L(G|0x03, G|0x02, G|0x0A, G|0x0B), L('@', '|', '{', '}'));
+    WANT("be", "micro, pound, equals, backslash", L(0x2B, S|0x2B, 0x35, G|0x56), L(0xB5, CH_POUND, '=', '\\'));
+    WANT("be", "acute on AltGr, then e; grave, then a", L(G|0x28, 0x12, G|0x2B, 0x10), L(0, 0xE9, 0, 0xE0));
+    WANT("be", "circumflex then o", L(0x1A, 0x18), L(0, 0xF4));
 
     /* Spanish. */
     WANT("es", "n-tilde, c-cedilla", L(0x27, S|0x27, 0x2B), L(0xF1, 0xD1, 0xE7));

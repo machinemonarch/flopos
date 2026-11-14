@@ -6,7 +6,7 @@
 #ifndef FONTMAP_H
 #define FONTMAP_H
 
-#define FONT_GLYPHS   156
+#define FONT_GLYPHS   160
 #define FACE_COUNT    2
 
 /* The widest and tallest cell any face uses, for buffers sized once. */
@@ -29,8 +29,8 @@
  * can draw, for apps/app.h to check itself against. */
 #define G_LATIN_BASE  105
 #define LATIN_MASK0   0x8031019Au
-#define LATIN_MASK1   0x9E5EFFB7u
-#define LATIN_MASK2   0x9E5EFFB7u
+#define LATIN_MASK1   0x9F5EFFF7u
+#define LATIN_MASK2   0x9F5EFFF7u
 
 #define G_A_RING       64
 #define G_A_DIAERESIS  65

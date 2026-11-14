@@ -110,8 +110,8 @@ typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
 /* Which Latin-1 numbers the font draws; the kernel checks these against
  * the font when it is built. */
 #define A_LATIN_MASK0 0x8031019Au
-#define A_LATIN_MASK1 0x9E5EFFB7u
-#define A_LATIN_MASK2 0x9E5EFFB7u
+#define A_LATIN_MASK1 0x9F5EFFF7u
+#define A_LATIN_MASK2 0x9F5EFFF7u
 
 /* A character as its Unicode number (the euro as 0x20AC), or 0 if it is
  * not a letter or sign of the ones above. */

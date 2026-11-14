@@ -57,6 +57,16 @@ LAYOUTS = [
     "altgr": ["··@£$€·{[]}\\·", "··€········~", "············", "|······µ···"],
   }),
   ("fi", "Finnish", None),                    # the same keys as Swedish
+  ("no", "Norwegian", {
+    "plain": ["|1234567890+\\", "qwertyuiopå‥", "asdfghjkløæ'", "<zxcvbnm,.-"],
+    "shift": ["§!\"#·%&/()=?ˋ", "QWERTYUIOPÅˆ", "ASDFGHJKLØÆ*", ">ZXCVBNM;:_"],
+    "altgr": ["··@£$€·{[]}·ˊ", "··€········~", "············", "|······µ···"],
+  }),
+  ("dk", "Danish", {
+    "plain": ["·1234567890+ˊ", "qwertyuiopå‥", "asdfghjklæø'", "<zxcvbnm,.-"],
+    "shift": ["§!\"#·%&/()=?ˋ", "QWERTYUIOPÅˆ", "ASDFGHJKLÆØ*", ">ZXCVBNM;:_"],
+    "altgr": ["··@£$€·{[]}·|", "··€········~", "············", "\\······µ···"],
+  }),
   ("us", "American", {
     "plain": ["`1234567890-=", "qwertyuiop[]", "asdfghjkl;'\\", "\\zxcvbnm,./"],
     "shift": ["~!@#$%^&*()_+", "QWERTYUIOP{}", "ASDFGHJKL:\"|", "|ZXCVBNM<>?"],
@@ -75,6 +85,11 @@ LAYOUTS = [
     "plain": ["·&é\"'(-è_çà)=", "azertyuiopˆ$", "qsdfghjklmù*", "<wxcvbn,;:!"],
     "shift": ["·1234567890°+", "AZERTYUIOP‥£", "QSDFGHJKLM%µ", ">WXCVBN?./§"],
     "altgr": ["··~#{[|`\\^@]}", "··€·········", "············", "···········"],
+  }),
+  ("be", "Belgian", {
+    "plain": ["·&é\"'(§è!çà)-", "azertyuiopˆ$", "qsdfghjklmùµ", "<wxcvbn,;:="],
+    "shift": ["·1234567890°_", "AZERTYUIOP‥*", "QSDFGHJKLM%£", ">WXCVBN?./+"],
+    "altgr": ["·|@#··^··{}··", "··€·······[]", "··········ˊˋ", "\\·········~"],
   }),
   ("es", "Spanish", {
     "plain": ["·1234567890'¡", "qwertyuiopˋ+", "asdfghjklñˊç", "<zxcvbnm,.-"],
