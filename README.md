@@ -7,6 +7,14 @@ It is not intended as a daily-driver OS but rather as an art project and an expe
 
 *Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside. Click for full size.*
 
+[![Saffran on the boot screen](docs/images/saffran-small.png)](docs/images/saffran.png) [![help, in the warm light](docs/images/help-small.png)](docs/images/help.png)
+
+*Left: Saffran on the boot screen, while the machine tells him what it is doing. Right: `help`, in the warm light.*
+
+[![scribe with a letter](docs/images/scribe-small.png)](docs/images/scribe.png) [![maelcum writing to a cassette](docs/images/maelcum-writing-small.png)](docs/images/maelcum-writing.png)
+
+*Left: scribe, the word processor, with a letter. Right: maelcum writing your files to a cassette.*
+
 TLDR: 
 ***"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."***
 
