@@ -7,7 +7,7 @@ It is not intended as a daily-driver OS but rather as an art project and an expe
 
 [![The wizard at the gate, asking his riddle](docs/images/wizard-small.png)](docs/images/wizard.png) [![The terminal, once inside](docs/images/terminal-small.png)](docs/images/terminal.png)
 
-*Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside. Click for full size.*
+*Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside, in the dusk light. Click for full size.*
 
 [![Saffran on the boot screen](docs/images/saffran-small.png)](docs/images/saffran.png) [![help, in the warm light](docs/images/help-small.png)](docs/images/help.png)
 
