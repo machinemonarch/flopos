@@ -81,14 +81,18 @@ it is FLOPOS itself and its own records; leave those where they are.
 
 ## Who makes it
 
-FLOPOS is an art project: a test of what an AI can build, of what the
-Toshiba's hardware can still do, and of its author's creativity. Max
-directs it: what it is called, how it looks, how it feels to use, and what
-it says. Claude writes the machine. Max uses it on the real laptop, which
-Claude cannot touch, and reports back: photos of the screen taken with a
-phone, the `report` command sent down a serial cable, and his own notes.
-The journal on the floppy lists every word typed that FLOPOS did not know,
-and that list is the to-do list for new commands.
+FLOPOS is an art project by Max: a test of what an AI can build, of what
+the Toshiba's hardware can still do, and of his own creativity. It is his
+idea, and every decision in it is his: what FLOPOS is, what it is called,
+how it looks, how it feels to use, what it says, and what is not good
+enough yet.
+
+Claude writes the code. Max does everything Claude can't: he runs every
+release on the real laptop, hunts down what breaks, and reports back with
+photos of the screen, the `report` command sent down a serial cable, and
+his own notes, then reviews the result until it is right. That has taken
+countless hours. The journal on the floppy lists every word typed that
+FLOPOS did not know, and that list is the to-do list for new commands.
 
 ## What it is like
 
@@ -169,4 +173,4 @@ or endorsed by any of them.
 Everything, the code, the documentation and the boot picture of Saffran
 the cat, is under the [MIT License](LICENSE).
 
-Directed by Max. Built with Claude.
+Created by Max, built with Claude.
