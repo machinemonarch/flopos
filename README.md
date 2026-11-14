@@ -30,7 +30,7 @@ What do I mean when I say that it is built from scratch?  It means:
 FLOPOS's code is synthesized by Claude drawing upon my ideas, thoughts and curiosity. I'm fascinated by old hardware and media and I wanted to test what AI and 30 year old hardware is capable of achieving when paired together. To see exactly where the limit goes and learn new things in the process. The ideas on how it's built come from whatever cultural and experiential references that came to my mind at the time.
 
 Given my human hours of testing and creativity, "vibe-coding" would not do it justice.
-Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer. Other times the ideas come from  things based on cultural genres of fiction (or non-fictional) media that I enjoy consuming. 
+Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer. Other times the ideas come from  things based on cultural genres of fiction (or non-fictional) media that I enjoy. 
 
 No copyrighted content is included in this project. See [docs](docs/project/references.md).
 
