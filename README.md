@@ -1,11 +1,11 @@
 # FLOPOS
 
+FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch.
+It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
+
 ![The wizard at the gate, asking his riddle](docs/images/wizard.png)
 
 ![The terminal, once inside](docs/images/terminal.png)
-
-FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch.
-It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
 TLDR: 
 *"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."*
