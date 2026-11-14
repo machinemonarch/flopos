@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.42.1 — 2026-11-14
+
 - browzer searches through DuckDuckGo Lite when words are typed in the
   address line: plain pages of results, over an encrypted connection.
   FrogFind, which it used before, no longer answers.
