@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.41.2 — 2026-11-14
+
 - maelcum: the tape sleeve's two cards touch on the page, so they are cut
   out as one piece and the inside is folded back behind the outside. The
   inside is printed upside down for that, and shows its folds as dashed
