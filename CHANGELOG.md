@@ -6,6 +6,11 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- maelcum: on the screen for ticking what to write, the key line was too
+  long and Esc was cut off; it fits again. The R line on the start screen
+  is no longer cut short, and a long message beside the cassette wraps
+  onto the next line instead of running into the frame.
+
 ## 1.41.1 — 2026-11-14
 
 - maelcum: once a header from another save on the same tape is heard,

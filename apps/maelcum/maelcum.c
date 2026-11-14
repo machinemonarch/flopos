@@ -878,7 +878,7 @@ static void read_end(int stopped)
     if (stopped && !same && !diff) say(part ? "Stopped part way. Nothing was judged." : "Stopped before anything was read.", A_CREAM);
     else if (!same && !diff && !part) { say("Nothing of yours was heard.", A_RED); if (!stopped) song = 1; }
     else if (!whole) {
-        A->format(sum, sizeof sum, "Only %u of %u files came whole: rewind, play, \1R\1.", (u32)(same + diff), (u32)(s_set_n > 0 ? s_set_n : same + diff + part));
+        A->format(sum, sizeof sum, "%u of %u came whole. Rewind, play, \1R\1.", (u32)(same + diff), (u32)(s_set_n > 0 ? s_set_n : same + diff + part));
         say(sum, A_RED);
         if (!stopped || s_rx.bad) song = 1;
     }
@@ -1267,7 +1267,24 @@ static void draw(void)
         } else if (s_mode == M_RESULT && s_others) text(px, y + 7, "(The tape holds another save as well.)", A_OLIVE);
         else if (s_mode == M_PICK && s_big) { A->format(m, sizeof m, "(%u too long for a tape, left out.)", (u32)s_big); text(px, y + 7, m, A_OLIVE); }
     }
-    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) text(px, y + 5, s_note, s_note_c);
+    if (*s_note && s_mode != M_READ && s_mode != M_WRITE && s_mode != M_ARMED) {
+        /* the last thing that happened: broken between words where it
+         * would run into the frame, over what is shown under it */
+        const char *t = s_note;
+        int room = W - 2 - px, row = y + 5, n, k, cut;
+        char line[80];
+        while (*t && row <= y + 7) {
+            for (n = 0, k = 0; t[n] && k < room && n < 79; n++) k += t[n] != 1;
+            cut = n;
+            if (t[n]) { for (cut = n; cut > 0 && t[cut] != ' '; cut--) { } if (!cut) cut = n; }
+            for (k = 0; k < cut; k++) line[k] = t[k];
+            line[cut] = 0;
+            A->win_band(row, px, W - 2, A_PAPER);
+            text(px, row++, line, s_note_c);
+            t += cut;
+            while (*t == ' ') t++;
+        }
+    }
 
     /* the files: one folder, as the inventory shows it */
     rows = H - 6 - ROW_LIST;
@@ -1289,7 +1306,7 @@ static void draw(void)
     text(2, ROW_LIST - 1, m, A_GOLD);
     if (no_list()) {
         text(2, ROW_LIST, "\1W\1 shows the files on the floppy, to tick and write to a tape.", A_GREY);
-        text(2, ROW_LIST + 1, "\1R\1 shows what the cassette holds as it plays, to tick and restore.", A_GREY);
+        text(2, ROW_LIST + 1, "\1R\1 shows the cassette's files as it plays, to tick and restore.", A_GREY);
     }
     else if (!s_nrows) text(2, ROW_LIST, tape_list() ? (s_mode == M_READ ? "Nothing heard yet." : "Nothing came from the tape.") : "Nothing here yet.", A_GREY);
     for (i = 0; i < rows && s_top + i < s_nrows; i++) {
@@ -1367,7 +1384,7 @@ static void draw(void)
     else if (s_mode == M_ARMED) text(2, H - 2, "\1Enter\1 start   \1Esc\1 not now", A_OLIVE);
     /* (the keys shown above, by the settings and in Run 'Tingz, are not repeated here) */
     else if (tape_list()) text(2, H - 2, "\1Up\1 \1Down\1 move  \1Space\1 tick  \1Enter\1 restore the ticked  \1Esc\1 done", A_OLIVE);
-    else if (s_mode == M_PICK) text(2, H - 2, "\1Up\1 \1Down\1 move  \1Space\1 tick  \1Enter\1 open a folder  \1Backspace\1 up  \1Esc\1 back", A_OLIVE);
+    else if (s_mode == M_PICK) text(2, H - 2, "\1Up\1 \1Down\1 move  \1Space\1 tick  \1Enter\1 open  \1Backspace\1 up  \1Esc\1 back", A_OLIVE);
     else if (no_list()) text(2, H - 2, "\1Esc\1 leave", A_OLIVE);
     else text(2, H - 2, "\1Up\1 \1Down\1 move  \1Esc\1 done", A_OLIVE);
 }
@@ -1436,7 +1453,7 @@ static void new_folder(void)
         name[i] = (char)c;
         if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) break;
     }
-    if (name[i]) { say("A folder's name: letters and digits, 8 at most.", A_RED); return; }
+    if (name[i]) { say("Folder names: 8 letters or digits at most.", A_RED); return; }
     if (A->inv_stat(name, &it)) {
         if (!it.folder) { say("There is a file by that name.", A_RED); return; }
         d = dir_for(name);
@@ -1491,7 +1508,7 @@ static void make_sleeve(void)
     Sleeve sl;
     u32 n;
     int i;
-    if (!s_done) { say("Write or read a tape first: it is for that.", A_CREAM); return; }
+    if (!s_done) { say("Write or read a tape first.", A_CREAM); return; }
     if (s_done == 2 && s_dest == -2 && !ensure_auto()) {
         A->format(why, sizeof why, "%s", A->inv_why());
         say(why, A_RED);
