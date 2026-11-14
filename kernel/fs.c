@@ -28,7 +28,7 @@
  * then are the old contents let go.  Cut anywhere, a file is whole, old
  * or new.  The worst left behind is a few clusters marked used that
  * nothing owns, which any disk checker returns.  (Two exceptions, both
- * told plainly in docs/inventory.md: with less room free than the new
+ * told plainly in docs/user-guide/inventory.md: with less room free than the new
  * copy needs, the old one has to give way first; and a move between
  * folders cut halfway leaves the thing listed in both.)
  * ===========================================================================

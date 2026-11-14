@@ -4,7 +4,7 @@
 
 - **The laptop**: a Toshiba Satellite Pro 430CDT, or any old PC close
   enough to it. FLOPOS also runs in the QEMU emulator (see
-  [Building](building.md)).
+  [Building](../development/building.md)).
 - **A 1.44MB floppy disk** (2HD).
 - **A Linux PC with a floppy drive**, to write the disk. A USB floppy drive
   is fine.

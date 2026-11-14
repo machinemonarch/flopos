@@ -179,7 +179,7 @@ around it. It may call `audio_space`, `audio_queued`, `audio_write` and `ms`,
 and use its own memory, nothing else. It should come back within about
 4 ms. Anything the app's own code shares with it must be changed under a
 flag the routine checks: browzer's `s_lock`. See
-[techniques.md](techniques.md).
+[techniques.md](../design/techniques.md).
 
 ### Added in version 5: listening
 

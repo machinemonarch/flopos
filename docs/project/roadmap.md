@@ -2,13 +2,13 @@
 
 Ideas waiting their turn. None is started until it is picked, and each
 gets a short plan with a rough cost first. Security work has its own list,
-in [security-roadmap.md](security-roadmap.md).
+in [security-roadmap.md](../design/security.md).
 
 ## Waiting to be picked
 
 ### Data backup to cassette
 
-**Done, as `maelcum`** ([maelcum](maelcum.md)). What was reached:
+**Done, as `maelcum`** ([maelcum](../user-guide/maelcum.md)). What was reached:
 
 - The sound (`apps/lib/tape`): two tones, 1200 and 2400 Hz, or an octave
   up for fast; blocks of 256 bytes, each with its own check.
@@ -30,7 +30,7 @@ in [security-roadmap.md](security-roadmap.md).
   tape sleeve to print.
 
 How far it has been tried on the laptop is at the top of
-[maelcum](maelcum.md).
+[maelcum](../user-guide/maelcum.md).
 
 ### A chat app
 
@@ -51,6 +51,6 @@ starts with an interview of its product owner.
 
 ### A wizard who answers
 
-Done in 1.28.0: see [Commands](commands.md) and
-[Internals](internals.md#the-wizards-words). Still open: he answers only
+Done in 1.28.0: see [Commands](../user-guide/commands.md) and
+[Internals](../design/architecture.md#the-wizards-words). Still open: he answers only
 unknown words, and can't yet be talked to.

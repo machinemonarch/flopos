@@ -72,19 +72,19 @@ it is FLOPOS itself and its own records; leave those where they are.
 
 Everything is in **[docs/](docs/README.md)**:
 
-- [Philosophy](docs/philosophy.md): what it is and the rules it's built by
-- [Getting started](docs/getting-started.md): floppy, booting, the serial line
-- [Commands](docs/commands.md): every word it knows
-- [The inventory](docs/inventory.md): your files and folders
-- [scribe](docs/scribe.md): the word processor
-- [maelcum](docs/maelcum.md): backup to an audio cassette
-- [The network](docs/network.md): the menu, browzer, and how private it is
-- [The hardware](docs/hardware.md): the laptop and its parts
-- [Lessons on the way](docs/lessons.md): what the laptop and the software taught us
-- [How it works](docs/internals.md): a tour of the inside
-- [Making apps](docs/making-apps.md): programs that live on the floppy
-- [Building and releasing](docs/building.md)
-- [References](docs/references.md): standards and documents consulted
+- [Philosophy](docs/project/philosophy.md): what it is and the rules it's built by
+- [Getting started](docs/user-guide/getting-started.md): floppy, booting, the serial line
+- [Commands](docs/user-guide/commands.md): every word it knows
+- [The inventory](docs/user-guide/inventory.md): your files and folders
+- [scribe](docs/user-guide/scribe.md): the word processor
+- [maelcum](docs/user-guide/maelcum.md): backup to an audio cassette
+- [The network](docs/user-guide/network.md): the menu, browzer, and how private it is
+- [The hardware](docs/design/hardware.md): the laptop and its parts
+- [Lessons on the way](docs/design/lessons.md): what the laptop and the software taught us
+- [How it works](docs/design/architecture.md): a tour of the inside
+- [Making apps](docs/development/making-apps.md): programs that live on the floppy
+- [Building and releasing](docs/development/building.md)
+- [References](docs/project/references.md): standards and documents consulted
 
 What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
@@ -100,6 +100,6 @@ Written from scratch against published standards and the publicly
 documented PC interfaces. Toshiba's manuals and drivers were consulted for
 facts about the machine; none of their code, firmware or text is included,
 and they are not in this repository. See
-[References](docs/references.md).
+[References](docs/project/references.md).
 
 Directed by Max. Built by Claude.

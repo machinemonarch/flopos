@@ -6,7 +6,7 @@ vocabulary of word pieces, trains a very small transformer on a mix of the
 sources, and writes it to OUT in the form FLOPOS will read: weights
 as single bytes, one scale a row.  speak.py reads the same file.
 
-Run it with the Python that has PyTorch (see docs/building.md).
+Run it with the Python that has PyTorch (see docs/development/building.md).
 Prints one line: ok or FAILED, the loss and the size.
 """
 import argparse, glob, os, random, re, struct, sys

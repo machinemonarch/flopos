@@ -49,7 +49,7 @@ On a Linux PC:
 | `docs/` | This documentation |
 | `CHANGELOG.md` | Every release and what changed |
 | `releases/` | Every released image and its notes (not in git) |
-| `reference/` | Manuals and drivers consulted for facts (not in git, see [References](references.md)) |
+| `reference/` | Manuals and drivers consulted for facts (not in git, see [References](../project/references.md)) |
 
 ## The floppy image
 
@@ -110,7 +110,7 @@ The emulator's network card never loses anything, and a real 3Com does.
 `net drop 10` makes FLOPOS throw away every tenth frame that arrives, to
 test recovery; `net drop 0` stops it. While sound plays, the serial cable
 reports every ten seconds what decoding costs, the screen's frame rate and
-how much music is in hand (see [techniques.md](techniques.md)).
+how much music is in hand (see [techniques.md](../design/techniques.md)).
 
 ## The test tools
 
@@ -186,7 +186,7 @@ minute. `--slow` holds it to the laptop's speed, for timing:
 
 ## Teaching the wizard
 
-The wizard is to answer in his own words one day ([roadmap](roadmap.md)).
+The wizard is to answer in his own words one day ([roadmap](../project/roadmap.md)).
 His model is trained on this PC, not on the laptop; only the finished
 file, `boot/wizard.wiz`, goes on the floppy, as `WIZARD.WIZ`. It is kept
 in the repository, so building FLOPOS needs none of what follows; this is

@@ -83,7 +83,7 @@ certificate look valid. The clock already refuses to go back past the last
   FLOPOS stops on the crash screen and says "The stack ran over its
   tripwire." Tried in a test build (`tripwire`).
 - **The readers fed garbage (1.32.1).** `tools/fuzz` (see
-  [Building](building.md)) gives damaged songs, recordings, certificate
+  [Building](../development/building.md)) gives damaged songs, recordings, certificate
   chains, secure conversations and web answers to FLOPOS's own code,
   built for the PC with a memory checker. Several hundred thousand
   inputs so far. It found three faults, all fixed:

@@ -115,7 +115,7 @@ been listening. **Esc** stops it.
 It starts once about three seconds have arrived, and the player screen
 shows how many seconds are in hand. The decoding is done by the system's
 timer, whatever browzer is doing, so the music doesn't pause for pages,
-drawing or the network (see [techniques.md](techniques.md)). If the
+drawing or the network (see [techniques.md](../design/techniques.md)). If the
 network ever falls behind and the sound runs out, it gathers a bigger
 cushion before going on, rather than stuttering through each scrap: 6
 seconds, then 12, then 24. A station that sends slower than it plays
@@ -232,7 +232,7 @@ What it does with modern pages:
   "Image of …" with the picture's description. Small icons stay inline as
   text, and invisible tracking pixels disappear.
 - **JavaScript** is not run, on purpose (see
-  [Philosophy](philosophy.md)). Where a page offers a no-JavaScript
+  [Philosophy](../project/philosophy.md)). Where a page offers a no-JavaScript
   version of itself, browzer shows that.
 - **A page that fails to load says why**, on the page.
 - Status messages also go down the serial line.
@@ -326,4 +326,4 @@ goes silent is given up on after 15 seconds, with the reason shown.
 
 In the QEMU emulator there are no PC Card slots, so FLOPOS also has a driver
 for an emulated **NE2000** card. It is only looked for when the machine has
-no PC Card adapter. See [Building](building.md).
+no PC Card adapter. See [Building](../development/building.md).

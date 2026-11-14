@@ -67,7 +67,7 @@ source files involved; every file opens with a comment explaining itself.
 | below 640KB | The kernel's code, data and stack |
 | 0x100000 (1MB) and up | The heap: screen buffers, lookup tables, network buffers. A simple allocator that only ever hands out more. Capped below 9MB. |
 | in the heap | The wizard's model: about 1.4MB once its weights are spread out for use |
-| 0xC00000 (12MB) to 20MB | The app area, the only memory an app can touch (see [Making apps](making-apps.md)) |
+| 0xC00000 (12MB) to 20MB | The app area, the only memory an app can touch (see [Making apps](../development/making-apps.md)) |
 | 0x7000000 | The video card's frame buffer, at 800×600 |
 
 Paging is on, with 4MB pages that map every address to itself; only the
@@ -201,7 +201,7 @@ is drawn by chance from the thirty likeliest. `@` in a line is where the
 typed word goes. The shell calls `wizsay()` only when every other meaning
 of a word has failed.
 
-How the model is made is in [Building](building.md#teaching-the-wizard).
+How the model is made is in [Building](../development/building.md#teaching-the-wizard).
 
 ## The floppy
 
@@ -218,7 +218,7 @@ files and folders. Every path is followed down from that folder and
 cannot leave it. A save goes in an order a power cut cannot turn into a
 damaged disk: data into unused clusters, then the allocation table (the
 spare copy first), then the folder entry, then the old clusters are let
-go. See [The inventory](inventory.md) and
+go. See [The inventory](../user-guide/inventory.md) and
 [techniques.md](techniques.md).
 
 - `kernel/disk.c`: sectors on and off the floppy through the BIOS, in
@@ -232,7 +232,7 @@ go. See [The inventory](inventory.md) and
   `inv_` calls). The same file is built for the PC and tested there
   (`tools/fstest/run.py`).
 - `kernel/apps.c`: loads `NAME.APP` files (see
-  [Making apps](making-apps.md)).
+  [Making apps](../development/making-apps.md)).
 
 ## The serial line
 
