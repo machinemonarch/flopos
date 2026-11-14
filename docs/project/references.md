@@ -6,8 +6,7 @@ what a register does, which answer a test should give), and no code or text
 was copied from any of them.
 
 **Who found what.** References Max suggested are marked *(Max)*. Most of
-the rest Claude found while building. For a few, such as Toshiba's
-specification sheets, who found them was not recorded.
+the rest Claude found while building.
 
 ## Standards FLOPOS implements
 
