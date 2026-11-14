@@ -104,7 +104,9 @@ int    url_resolve(const char *base, const char *href, char *out, int max);
 
 /* One character of the page: what it is, its colour, and which link or
  * field it belongs to (0 for none). */
-typedef struct { u8 ch, col; u16 link; } PageCell;
+/* ch is a character, wide ones too (Cyrillic, Hebrew); packed, since a
+ * page is a great many of them. */
+typedef struct __attribute__((packed)) { u16 ch; u8 col; u16 link; } PageCell;
 
 /* A <form>: where it is sent, and how. */
 typedef struct { char action[PAGE_HREF_MAX]; u8 post; } PageForm;

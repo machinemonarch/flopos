@@ -16,8 +16,102 @@
  * it changes grid, and this is the advance they were measured against. */
 #define DRAW_ADV 6
 
+/* ---- right to left -------------------------------------------------------
+ * Hebrew and Yiddish are written right to left; everything else here left
+ * to right.  FLOPOS keeps text in the order it is typed and turns it round
+ * only when it is drawn, a row at a time: a run of Hebrew -- from a Hebrew
+ * letter to the last Hebrew letter before anything Latin or Cyrillic, with
+ * the spaces and signs between, and a number that follows it -- is drawn
+ * mirrored, so its first letter is on the right.  Numbers inside it still read left to right, and brackets
+ * inside it are turned to face the right way.  Lines that wrap are each
+ * turned on their own, which reads right for a Hebrew paragraph too: top
+ * line first, each from its right end. */
+static int rtl(int c)    { return (c >= 0x590 && c <= 0x5FF) || (c >= 0xFB1D && c <= 0xFB4F); }
+static int digit(int c)  { return c >= '0' && c <= '9'; }
+static int strong_ltr(int c)
+{
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) return 1;
+    if (c >= CH_ARING && c <= CH_ODIA_L) return 1;          /* Å Ä Ö and kin */
+    if (c >= 0xC0 && c <= 0xFF && c != 0xD7 && c != 0xF7) return 1;
+    return c >= CH_WIDE && !rtl(c);
+}
+
+static void flip(u16 *o, int a, int b)   /* reverse o[a..b]                */
+{
+    while (a < b) { u16 t = o[a]; o[a++] = o[b]; o[b--] = t; }
+}
+
+int bidi_order(const u16 *ch, int n, u16 *order)
+{
+    int i, any = 0;
+    for (i = 0; i < n; i++) order[i] = (u16)i;
+    for (i = 0; i < n; ) {
+        int start, last, j, k;
+        if (!rtl(ch[i])) { i++; continue; }
+        start = last = i;
+        for (j = i + 1; j < n && !strong_ltr(ch[j]); j++)
+            if (rtl(ch[j]) || digit(ch[j])) last = j;   /* a number after it joins it */
+        /* A bracket closed just after it, and opened inside it, belongs
+         * to it: "(shalom)" turns round whole. */
+        if (last + 1 < n) {
+            int close = ch[last + 1], open = close == ')' ? '(' : close == ']' ? '[' : close == '}' ? '{' : 0;
+            if (open) {
+                int depth = 0;
+                for (j = last; j >= start; j--) {
+                    if (ch[j] == close) depth++;
+                    else if (ch[j] == open && depth-- == 0) { last++; break; }
+                }
+            }
+        }
+        flip(order, start, last);
+        /* Numbers keep their own order: find each in the text, and turn
+         * its part of the picture back round. */
+        for (j = start; j <= last; ) {
+            if (!digit(ch[j])) { j++; continue; }
+            k = j;
+            while (k + 1 <= last && (digit(ch[k + 1]) ||
+                   ((ch[k + 1] == '.' || ch[k + 1] == ',' || ch[k + 1] == ':') &&
+                    k + 2 <= last && digit(ch[k + 2])))) k++;
+            flip(order, start + last - k, start + last - j);
+            j = k + 1;
+        }
+        for (j = start; j <= last; j++) {
+            int c = ch[order[j]];
+            if (c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || c == '<' || c == '>')
+                order[j] |= BIDI_MIRROR;
+        }
+        any = 1;
+        i = last + 1;
+    }
+    return any;
+}
+
+int bidi_mirror(int c)
+{
+    switch (c) {
+    case '(': return ')';  case ')': return '(';
+    case '[': return ']';  case ']': return '[';
+    case '{': return '}';  case '}': return '{';
+    case '<': return '>';  case '>': return '<';
+    }
+    return c;
+}
+
+/* A wide character's slot, by binary search of the font's list. */
+int glyph_wide(int c)
+{
+    int lo = 0, hi = WIDE_COUNT - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (g_wide_code[mid] == c) return g_wide_slot[mid];
+        if (g_wide_code[mid] < c) lo = mid + 1; else hi = mid - 1;
+    }
+    return '?' - 32;
+}
+
 int glyph_index(int c)
 {
+    if (c >= CH_WIDE) return glyph_wide(c);
     c &= 0xFF;
 
     if (c >= 32 && c <= 95)  return c - 32;
@@ -68,8 +162,9 @@ void draw_char(u8 *buf, int x, int y, int c, u8 colour)
 
 void draw_text(u8 *buf, int x, int y, const char *s, u8 colour)
 {
-    while (*s) {
-        draw_char(buf, x, y, (u8)*s++, colour);
+    int c;
+    while ((c = ch_next(&s)) != 0) {
+        draw_char(buf, x, y, c, colour);
         x += DRAW_ADV;
         if (x >= SCR_W) break;
     }

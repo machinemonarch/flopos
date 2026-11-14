@@ -135,7 +135,7 @@ static void md_look(void)
         u8 at = 0, fg = style_fg((u8)st), sat = style_at((u8)st);
         for (k = ps; k < p; k++) { s_look_fg[k] = A_DIM; s_look_at[k] = 0; }
         while (p < e) {
-            u8 ch = s_doc.c[p].ch;
+            int ch = s_doc.c[p].ch;
             int n = 0;
             if (ch == '\\' && p + 1 < e) n = 1;
             else if (cells_are(p, e, "<u>"))  { n = 3; at |= AT_UNDERLINE; }
@@ -225,7 +225,7 @@ static void remove_range(int a, int b)            /* [a, b), never the last end 
     touched();
 }
 
-static void insert(u8 ch, u8 at)
+static void insert(int ch, u8 at)
 {
     int k;
     if (have_sel()) remove_range(sel_from(), sel_to());
@@ -486,7 +486,10 @@ static void doc_name(char *out, int cap)
     for (; k < e && n < cap - 1; k++) {
         if (s_md && cells_are(k, e, "<u>"))  { k += 2; continue; }
         if (s_md && cells_are(k, e, "</u>")) { k += 3; continue; }
-        if (!s_md || (s_doc.c[k].ch != '*' && s_doc.c[k].ch != '\\')) out[n++] = (char)s_doc.c[k].ch;
+        if (!s_md || (s_doc.c[k].ch != '*' && s_doc.c[k].ch != '\\')) {
+            if (n + 4 >= cap) break;
+            n += a_ch_put(out + n, s_doc.c[k].ch);
+        }
     }
     out[n] = 0;
     if (!n) A->format(out, (u32)cap, "%s", "untitled");
@@ -514,7 +517,8 @@ static void draw(int blink)
     x = A->win_text(x, 0, " ", A_GREY, pp);
     A->win_put(x++, 0, A_FR_H, A_GREY, pp, 0);
     x = A->win_text(x, 0, " ", A_GREY, pp);
-    for (i = 0; name[i] && x < W - 6; i++) A->win_put(x++, 0, (u8)name[i], A_TEXT, pp, 0);
+    { const char *t = name; int c;
+      while (x < W - 6 && (c = a_ch_next(&t)) != 0) A->win_put(x++, 0, c, A_TEXT, pp, 0); }
     if (s_dirty) A->win_put(x++, 0, '*', A_ACCENT, pp, 0);
     A->win_put(x, 0, ' ', A_GREY, pp, 0);
 
@@ -564,7 +568,7 @@ static void draw(int blink)
     if (blink && cl >= s_top && cl < s_top + TH) {
         Line *L = &s_line[cl];
         int cx = 2 + L->x0 + (s_cur - L->start);
-        u8 ch = s_doc.c[s_cur].ch == '\n' ? ' ' : s_doc.c[s_cur].ch;
+        int ch = s_doc.c[s_cur].ch == '\n' ? ' ' : s_doc.c[s_cur].ch;
         if (cx > W - 2) cx = W - 2;
         A->win_put(cx, 3 + cl - s_top, ch, A_PAPER, A_BRIGHT, 0);
     }
@@ -800,7 +804,7 @@ int app_main(const Api *api, int argc, char **argv)
         /* what kind of change this key would be, and the text before it */
         kind = G_OTHER;
         if (!(mods & M_CTRL) && !have_sel()) {
-            if ((key >= 32 && key < 127) || (key >= 0x80 && key < 0x100 && a_unicode(key)) || key == K_TAB) kind = G_TYPE;
+            if ((key >= 32 && key < 127) || (key >= 0x80 && key < 0x10000 && a_unicode(key)) || key == K_TAB) kind = G_TYPE;
             else if (key == K_BKSP || key == K_DEL) kind = G_DEL;
         }
         if (!((mods & M_CTRL) && (key == 'z' || key == 'y'))) {
@@ -906,7 +910,7 @@ int app_main(const Api *api, int argc, char **argv)
             break;
         case K_TAB: { int k; for (k = 0; k < 4; k++) insert(' ', s_pen); break; }
         default:
-            if ((key >= 32 && key < 127) || (key >= 0x80 && key < 0x100 && a_unicode(key))) insert((u8)key, s_pen);
+            if ((key >= 32 && key < 127) || (key >= 0x80 && key < 0x10000 && a_unicode(key))) insert(key, s_pen);
             else changed = 0;
             break;
         }

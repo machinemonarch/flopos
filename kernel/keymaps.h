@@ -3,12 +3,13 @@
 #define KEYMAPS_H
 
 #define KEYMAP_SCANS 0x59
-#define KEYMAP_COUNT 11
+#define KEYMAP_COUNT 17
 
 typedef struct {
     const char *code;                    /* what you type: se, us, de ...  */
     const char *name;                    /* what it is called              */
-    const u8 (*keys)[KEYMAP_SCANS];      /* [level][scancode]              */
+    const u16 (*keys)[KEYMAP_SCANS];     /* [level][scancode]              */
+    int latin;                           /* Alt+Shift switches to this one, or -1 */
 } Keymap;
 
 extern const Keymap g_keymaps[KEYMAP_COUNT];

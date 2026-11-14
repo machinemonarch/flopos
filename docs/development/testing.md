@@ -91,8 +91,10 @@ how much music is in hand (see [Techniques](../design/techniques.md#measuring-be
 
 - `tools/keytest/run.sh` builds the keyboard code (`kernel/keymap.c` and
   the layouts) for this PC and presses keys on every layout: the signs,
-  the accent keys, Caps Lock, Ctrl shortcuts by letter, and that the font
-  can draw everything any key types.
+  the accent keys, Caps Lock, Alt+Shift between alphabets, Ctrl shortcuts
+  by letter, and that the font can draw everything any key types. It also
+  checks the order Hebrew is drawn in (right to left, numbers and
+  brackets).
 
 - `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
   own code (`apps/lib/tape`), runs it through a pretend tape (wrong

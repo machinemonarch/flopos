@@ -98,6 +98,19 @@ void serial_putc(int c)
 
     if (!s_present) return;
 
+    /* A wide character goes down the wire as UTF-8, so the far end can
+     * read it; the one-byte codes go as they are, as they always have. */
+    if (c >= CH_WIDE) {
+        if (c >= 0x800) {
+            serial_putc(0xE0 | (c >> 12));
+            serial_putc(0x80 | ((c >> 6) & 0x3F));
+        } else {
+            serial_putc(0xC0 | (c >> 6));
+        }
+        serial_putc(0x80 | (c & 0x3F));
+        return;
+    }
+
     /* A dead or unplugged line must never hang the machine, so the wait
      * for room in the FIFO is bounded. */
     while (!(rd(REG_LSR) & LSR_TX_EMPTY))
@@ -115,7 +128,8 @@ void serial_putc(int c)
 
 void serial_print(const char *s)
 {
-    while (*s) serial_putc((u8)*s++);
+    int c;
+    while ((c = ch_next(&s)) != 0) serial_putc(c);
 }
 
 void serial_printf(const char *fmt, ...)

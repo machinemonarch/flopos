@@ -93,7 +93,17 @@ conventional memory. Everything the system itself needs fits in about
 - `kernel/kbd.c`, `kernel/keymap.c`: the keyboard on IRQ 1, which keys
   are held, a queue of presses, the modifier keys, and the layout in use
   (the tables in `kernel/keymaps.c`, made by `tools/mkkeymap.py`), with
-  the accent keys that wait for a letter. The keyboard's own auto-repeat is dropped. The keys that move
+  the accent keys that wait for a letter and Alt+Shift between the two
+  alphabets of a Cyrillic or Hebrew keyboard. `kernel/kbpick.c` is the
+  window Ctrl+Shift+F1 opens to choose a keyboard from, drawn over
+  anything, like the HUD.
+- Characters are ints: FLOPOS's own codes below 0x100, Unicode numbers
+  above (`flopos.h`, "characters past one byte"). The terminal, windows,
+  the HUD and the line editor keep them in 16 bits; in a C string a wide
+  one is four bytes that start with `CH_WIDE_ESC` (`ch_next`, `ch_put`).
+  Hebrew is turned right to left only when a row is drawn
+  (`bidi_order` in `kernel/draw.c`), so text is always kept in the order
+  it was typed. The keyboard's own auto-repeat is dropped. The keys that move
   something (Tab, the arrows, PgUp, PgDn, Backspace, Delete) repeat while
   held, 15 times a second after 0.4 s, made when a program asks for a
   key so that they never pile up behind a busy one.

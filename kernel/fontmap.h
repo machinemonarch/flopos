@@ -6,7 +6,7 @@
 #ifndef FONTMAP_H
 #define FONTMAP_H
 
-#define FONT_GLYPHS   160
+#define FONT_GLYPHS   259
 #define FACE_COUNT    2
 
 /* The widest and tallest cell any face uses, for buffers sized once. */
@@ -23,6 +23,10 @@
 #define G_LOWER_ARING 102
 #define G_LOWER_ADIA  103
 #define G_LOWER_ODIA  104
+
+/* Letters past one byte, and what they point at: g_wide_code, g_wide_slot. */
+#define G_WIDE_BASE   160
+#define WIDE_COUNT    125
 
 /* Then the other keyboards' letters; g_latin_slot finds them.  The masks
  * say which Latin-1 numbers (bit n of mask k is 0xA0 + 32k + n) the font

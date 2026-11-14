@@ -28,8 +28,8 @@
 #define STRIDE     100
 
 typedef struct {
-    u8 ch;
-    u8 col;
+    u16 ch;                              /* a character, wide ones too     */
+    u8  col;
 } Cell;
 
 static const Face *s_face = &g_faces[1];   /* close, by default      */
@@ -144,10 +144,13 @@ static void clear_row(u32 abs)
     for (i = 0; i < STRIDE; i++) { r[i].ch = ' '; r[i].col = 0; }
 }
 
+static void win_alloc(void);
+
 void term_init(void)
 {
     u32 i;
     s_grid = (Cell *)halloc(SCROLLBACK * STRIDE * sizeof(Cell));
+    win_alloc();
     for (i = 0; i < SCROLLBACK; i++) clear_row(i);
     s_line = 0;
     s_col = 0;
@@ -256,7 +259,7 @@ void term_putc(int c)
     if (s_col >= COLS) term_newline();
 
     r = row_of(s_line);
-    r[s_col].ch  = (u8)c;
+    r[s_col].ch  = (u16)c;
     r[s_col].col = s_colour;
     s_col++;
     s_view = 0;
@@ -264,7 +267,8 @@ void term_putc(int c)
 
 void term_print(const char *s)
 {
-    while (*s) term_putc((u8)*s++);
+    int c;
+    while ((c = ch_next(&s)) != 0) term_putc(c);
 }
 
 void term_printf(const char *fmt, ...)
@@ -323,14 +327,15 @@ void term_frame_top(int w, const char *title, int dbl)
 
     if (w > COLS) w = COLS;
     if (w < 4) w = 4;
-    if (title) while (title[n]) n++;
+    if (title) n = ch_count(title);
     if (n > w - 6) n = w - 6;
 
     term_putc(base | FR_DOWN | FR_RIGHT);
     if (n > 0) {
         term_putc(base | FR_LEFT | FR_RIGHT);
         term_putc(' ');
-        for (i = 0; i < n; i++) term_putc((u8)title[i]);
+        const char *t = title;
+        for (i = 0; i < n; i++) term_putc(ch_next(&t));
         term_putc(' ');
     }
     for (i = 0; i < w - 2 - (n > 0 ? n + 3 : 0); i++)
@@ -346,12 +351,12 @@ void term_frame_row(int w, const char *text, int dbl)
 
     if (w > COLS) w = COLS;
     if (w < 4) w = 4;
-    if (text) while (text[n]) n++;
+    if (text) n = ch_count(text);
     if (n > w - 4) n = w - 4;
 
     term_putc(base | FR_UP | FR_DOWN);
     term_putc(' ');
-    for (i = 0; i < n; i++) term_putc((u8)text[i]);
+    { const char *t = text; for (i = 0; i < n; i++) term_putc(ch_next(&t)); }
     for (i = n; i < w - 4; i++) term_putc(' ');
     term_putc(' ');
     term_putc(base | FR_UP | FR_DOWN);
@@ -392,18 +397,18 @@ void term_input_line(int from_col, const char *s, int caret, u8 colour)
 {
     Cell *r = row_of(s_line);
     int avail = COLS - from_col;
-    int len = 0, off = 0, i;
+    int off = 0, i, c;
 
     if (avail <= 0) return;
-    while (s[len]) len++;
 
     /* Slide the window so the caret stays on screen on a long line. */
     if (caret >= avail) off = caret - avail + 1;
 
+    for (i = 0; i < off && ch_next(&s); i++) ;
     for (i = 0; i < avail; i++) {
-        int src = off + i;
-        r[from_col + i].ch  = (src < len) ? (u8)s[src] : ' ';
-        r[from_col + i].col = (src < len) ? colour : 0;
+        c = ch_next(&s);                 /* 0 at the end, and stays there  */
+        r[from_col + i].ch  = c ? (u16)c : ' ';
+        r[from_col + i].col = c ? colour : 0;
     }
     s_col = from_col + (caret - off);
     if (s_col > COLS) s_col = COLS;
@@ -702,8 +707,11 @@ static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
  */
 #define WIN_W 100
 #define WIN_H 50
-static u8  s_win_ch[WIN_H][WIN_W], s_win_fg[WIN_H][WIN_W], s_win_bg[WIN_H][WIN_W];
-static u8  s_win_at[WIN_H][WIN_W];        /* bold, italic, underline        */
+/* Taken from the heap in term_init, as are the copies below: together they
+ * are too big to sit in the kernel's own memory under 0x70000. */
+static u16 (*s_win_ch)[WIN_W];
+static u8  (*s_win_fg)[WIN_W], (*s_win_bg)[WIN_W];
+static u8  (*s_win_at)[WIN_W];           /* bold, italic, underline        */
 static int s_win_on, s_win_c, s_win_r, s_win_w, s_win_h;
 static int s_win_bare;                   /* no paper, no shadow             */
 
@@ -713,8 +721,21 @@ static int s_win_bare;                   /* no paper, no shadow             */
  * cell differs from how it was drawn last time; the rows touched are
  * kept, so only those go to the card.  The picture is the same to the
  * pixel; the machine does a small part of the work. */
-static u8  s_dr_ch[WIN_H][WIN_W], s_dr_fg[WIN_H][WIN_W], s_dr_bg[WIN_H][WIN_W], s_dr_at[WIN_H][WIN_W];
+static u16 (*s_dr_ch)[WIN_W];
+static u8  (*s_dr_fg)[WIN_W], (*s_dr_bg)[WIN_W], (*s_dr_at)[WIN_W];
 static int s_win_fresh = 1;              /* draw every cell next time       */
+
+static void win_alloc(void)
+{
+    s_win_ch = (u16 (*)[WIN_W])halloc(WIN_H * WIN_W * sizeof(u16));
+    s_dr_ch  = (u16 (*)[WIN_W])halloc(WIN_H * WIN_W * sizeof(u16));
+    s_win_fg = (u8 (*)[WIN_W])halloc(WIN_H * WIN_W);
+    s_win_bg = (u8 (*)[WIN_W])halloc(WIN_H * WIN_W);
+    s_win_at = (u8 (*)[WIN_W])halloc(WIN_H * WIN_W);
+    s_dr_fg  = (u8 (*)[WIN_W])halloc(WIN_H * WIN_W);
+    s_dr_bg  = (u8 (*)[WIN_W])halloc(WIN_H * WIN_W);
+    s_dr_at  = (u8 (*)[WIN_W])halloc(WIN_H * WIN_W);
+}
 static int s_open_w, s_open_h, s_open_c, s_open_r;   /* the window as last opened */
 static int s_dirty_y0 = -1, s_dirty_y1 = -1;   /* pixel rows drawn this frame */
 
@@ -806,7 +827,7 @@ int  term_win_height(void) { return s_win_h; }
 void term_win_put_at(int x, int y, int ch, u8 fg, u8 bg, u8 attr)
 {
     if (x < 0 || y < 0 || x >= s_win_w || y >= s_win_h) return;
-    s_win_ch[y][x] = (u8)ch;
+    s_win_ch[y][x] = (u16)ch;
     s_win_fg[y][x] = fg;
     s_win_bg[y][x] = bg;
     s_win_at[y][x] = attr;
@@ -824,10 +845,10 @@ u8 g_key_colour = PAL_KEY;              /* pink, unless a program has asked for 
  * out.  (A program's name sits in the top edge, where it belongs.) */
 int term_win_text(int x, int y, const char *t, u8 fg, u8 bg)
 {
-    int key = 0;
-    for (; *t && x < s_win_w - 1; t++) {
-        if (*t == 1) { key = !key; continue; }
-        if (x >= 1) term_win_put(x, y, (u8)*t, key ? g_key_colour : fg, bg);
+    int key = 0, c;
+    while (x < s_win_w - 1 && (c = ch_next(&t)) != 0) {
+        if (c == 1) { key = !key; continue; }
+        if (x >= 1) term_win_put(x, y, c, key ? g_key_colour : fg, bg);
         x++;
     }
     return x;
@@ -923,17 +944,21 @@ static void render_window(u8 *dst, int only_changed)
     }
 
     for (y = 0; y < s_win_h; y++) {
+        u16 order[WIN_W];
+        int turned = bidi_order(s_win_ch[y], s_win_w, order);   /* Hebrew: right to left */
         for (x = 0; x < s_win_w; x++) {
+            int lx = turned ? (order[x] & ~BIDI_MIRROR) : x;
             int px = ox + x * cw, py = oy + y * ch;
-            int c = s_win_ch[y][x];
-            u8 at = s_win_at[y][x], fg = s_win_fg[y][x];
+            int c = s_win_ch[y][lx];
+            u8 at = s_win_at[y][lx], fg = s_win_fg[y][lx], bg = s_win_bg[y][lx];
+            if (turned && (order[x] & BIDI_MIRROR)) c = bidi_mirror(c);
             if (only_changed) {
-                if (s_dr_ch[y][x] == (u8)c && s_dr_fg[y][x] == fg &&
-                    s_dr_bg[y][x] == s_win_bg[y][x] && s_dr_at[y][x] == at) continue;
+                if (s_dr_ch[y][x] == (u16)c && s_dr_fg[y][x] == fg &&
+                    s_dr_bg[y][x] == bg && s_dr_at[y][x] == at) continue;
                 dirty(py, py + ch - 1);
             }
-            s_dr_ch[y][x] = (u8)c; s_dr_fg[y][x] = fg;
-            s_dr_bg[y][x] = s_win_bg[y][x]; s_dr_at[y][x] = at;
+            s_dr_ch[y][x] = (u16)c; s_dr_fg[y][x] = fg;
+            s_dr_bg[y][x] = bg; s_dr_at[y][x] = at;
             if (at & ATTR_CLEAR) {
                 /* Over the moving background: a drop shadow, as the
                  * terminal's own text has, or it sinks into the colours. */
@@ -943,7 +968,7 @@ static void render_window(u8 *dst, int only_changed)
                 blit_styled(dst, px, py, c, fg, at);
                 continue;
             }
-            fill_rect(dst, px, py, cw, ch, s_win_bg[y][x]);
+            fill_rect(dst, px, py, cw, ch, bg);
             /* Underline: a line under the letters, the width of the cell,
              * so an underlined word is one line rather than dashes. */
             if (at & ATTR_UNDERLINE)
@@ -960,7 +985,8 @@ void term_render(u8 *dst, u32 t)
     const Face *f = s_face;
     u32 base;
     int r;
-    int cursor_row = -1;
+    int cursor_row = -1, turned = 0, cursor_turned = 0;
+    u16 order[STRIDE];
     u8 st;
 
     geometry();
@@ -991,10 +1017,20 @@ void term_render(u8 *dst, u32 t)
 
         st = s_quirks ? s_style[abs % SCROLLBACK] : ST_PLAIN;
 
+        /* Hebrew in the row is drawn right to left (bidi_order). */
+        {
+            u16 chs[STRIDE];
+            for (c = 0; c < COLS; c++) chs[c] = row[c].ch;
+            turned = bidi_order(chs, COLS, order);
+            if (abs == s_line) cursor_turned = turned;
+        }
+
         for (c = 0; c < COLS; c++) {
-            int ch = row[c].ch;
+            int lc = turned ? (order[c] & ~BIDI_MIRROR) : c;
+            int ch = row[lc].ch;
             int x, dx = 0, dy = 0, as_rune = 0;
-            u8 col = row[c].col;
+            u8 col = row[lc].col;
+            if (turned && (order[c] & BIDI_MIRROR)) ch = bidi_mirror(ch);
             u8 runes[GLYPH_W];
             if (ch == ' ' || ch == 0) continue;
 
@@ -1032,7 +1068,15 @@ void term_render(u8 *dst, u32 t)
     /* The cursor: a soft block that breathes, with the character under it
      * punched back out in black so you can still read what you typed. */
     if (cursor_row >= 0 && s_view == 0 && s_col < COLS && !s_nocursor) {
-        int x = (f->x0 + s_col * f->adv) * s_scale;
+        int vc = s_col;
+        if (cursor_turned) {             /* on the character it is on      */
+            u16 chs[STRIDE];
+            int k;
+            for (k = 0; k < COLS; k++) chs[k] = row_of(s_line)[k].ch;
+            bidi_order(chs, COLS, order);
+            for (k = 0; k < COLS; k++) if ((order[k] & ~BIDI_MIRROR) == s_col) { vc = k; break; }
+        }
+        int x = (f->x0 + vc * f->adv) * s_scale;
         int y = cursor_row * f->pitch * s_scale;
         int phase = (int)((t >> 3) & (SINLEN - 1));
         int lvl = (SIN(phase * 2) + 4096) * (PAL_CURSOR_N - 1) >> 13;

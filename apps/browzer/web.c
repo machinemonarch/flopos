@@ -26,6 +26,7 @@
  * ===========================================================================
  */
 #include "web.h"
+#include "../app_glyphs.h"
 
 /* A line down the serial cable, if there is one. */
 static void wire(const char *a, const char *b)
@@ -80,7 +81,7 @@ static void out_newline(void)
     s_pg->col = 0;
 }
 
-static void out_char(u8 ch, u8 col, u16 link)
+static void out_char(int ch, u8 col, u16 link)
 {
     PageCell *c;
     if (!s_pg) { term_colour(col); term_putc(ch); return; }
@@ -128,7 +129,8 @@ static int  s_tag_len, s_tag_close, s_tag_done;
 static char s_skip_until[10];
 static char s_ent[10];
 static int  s_ent_len;
-static u8   s_word[80], s_word_col[80];
+static u16  s_word[80];
+static u8   s_word_col[80];
 static u16  s_word_link[80];
 static int  s_word_len, s_col, s_newlines, s_space;
 static int  s_bold, s_link, s_dim, s_in_title, s_kbd;
@@ -204,7 +206,7 @@ static void newline(int want)
     s_space = 0;
 }
 
-static void push(u8 g, u8 col)
+static void push(int g, u8 col)
 {
     if (s_word_len < (int)sizeof s_word) {
         s_word[s_word_len] = g;
@@ -215,10 +217,10 @@ static void push(u8 g, u8 col)
     if (s_word_len == (int)sizeof s_word) { s_word_cont = 1; flush_word(); s_word_cont = 0; }
 }
 
-static u8 glyph_for(u32 c)
+static int glyph_for(u32 c)
 {
     int f = (c >= 0x80) ? a_from_unicode(c) : 0;
-    if (f) return (u8)f;                 /* the font has the letter        */
+    if (f && (f < A_CH_WIDE || a_drawable((unsigned)f))) return f;   /* the font has it */
     switch (c) {
     case 0xE3: case 0xE6: return 'a';    case 0xC3: case 0xC6: return 'A';
     case 0xF5: case 0xF8: return 'o';    case 0xD5: case 0xD8: return 'O';
@@ -286,9 +288,9 @@ static void emit(u32 c)
             while (s_pg->title[n]) n++;
             if (c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == 0xA0) {
                 if (n && s_pg->title[n - 1] != ' ' && n < 62) { s_pg->title[n] = ' '; s_pg->title[n + 1] = 0; }
-            } else if (n < 62) {
-                s_pg->title[n] = (char)glyph_for(c);
-                s_pg->title[n + 1] = 0;
+            } else if (n < 59) {             /* room for a wide one: 4 bytes  */
+                n += a_ch_put(s_pg->title + n, glyph_for(c));
+                s_pg->title[n] = 0;
             }
             return;
         }
@@ -369,7 +371,7 @@ static void image(void)
     newline(1);
     for (y = 0; y < rows; y++) {
         for (x = 0; x < cw; x++) {
-            u8 ch;
+            int ch;
             if (y == 0)             ch = x == 0 ? FR_TL : x == cw - 1 ? FR_TR : FR_H;
             else if (y == rows - 1) ch = x == 0 ? FR_BL : x == cw - 1 ? FR_BR : FR_H;
             else                    ch = (x == 0 || x == cw - 1) ? FR_V : ' ';
@@ -447,7 +449,7 @@ static u16 add_link_to(const char *u)
     return (u16)s_pg->nlinks;
 }
 
-static int is_http(const u8 *w, int n)
+static int is_http(const u16 *w, int n)
 {
     return n > 10 && (w[0] | 32) == 'h' && w[1] == 't' && w[2] == 't' && w[3] == 'p' &&
            ((w[4] == ':' && w[5] == '/' && w[6] == '/') || (w[4] == 's' && w[5] == ':' && w[6] == '/' && w[7] == '/'));
@@ -465,13 +467,13 @@ static void bare_link(void)
     if (s_bare) {                                  /* the rest of a long one */
         char *h = s_pg->href[s_bare - 1];
         for (k = 0; h[k]; k++) { }
-        for (i = 0; i < s_word_len && k < PAGE_HREF_MAX - 1; i++) h[k++] = (char)s_word[i];
+        for (i = 0; i < s_word_len && k < PAGE_HREF_MAX - 1; i++) h[k++] = s_word[i] < 0x80 ? (char)s_word[i] : '?';
         h[k] = 0;
         for (i = 0; i < s_word_len; i++) { s_word_link[i] = s_bare; s_word_col[i] = C_ACCENT; }
     } else if (!s_word_link[0] && is_http(s_word, s_word_len)) {
         char u[PAGE_HREF_MAX];
         u16 id;
-        for (i = 0; i < s_word_len && i < PAGE_HREF_MAX - 1; i++) u[i] = (char)s_word[i];
+        for (i = 0; i < s_word_len && i < PAGE_HREF_MAX - 1; i++) u[i] = s_word[i] < 0x80 ? (char)s_word[i] : '?';
         u[i] = 0;
         id = add_link_to(u);
         if (id) {

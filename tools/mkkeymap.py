@@ -21,6 +21,17 @@ Accent keys that wait for the next letter ("dead keys") are written as:
 
 Pressing one and then a vowel gives the vowel with the mark; pressing it
 and then space (or itself again) gives the mark alone.
+
+A keyboard whose letters are not Latin (Bulgarian, Ukrainian, Hebrew,
+Yiddish) names a second layout for when Latin is wanted: Alt and Shift
+pressed together switch between the two.  A layout written as another's
+name (fi is se) has the same keys under its own name.
+
+The Bulgarian, Ukrainian, Romanian and Hebrew rows follow the standard
+layouts as Linux's keyboard files have them (xkb: bg bds, ua, ro std, il),
+less the signs the font cannot draw.  Yiddish is the Hebrew keyboard with
+the pointed letters Yiddish spells with on AltGr; that arrangement is
+FLOPOS's own.
 """
 import sys
 
@@ -45,7 +56,7 @@ def code(ch):
     if ch in SPECIAL:
         return SPECIAL[ch]
     n = ord(ch)
-    if 32 <= n < 127 or 0xB4 <= n <= 0xFF:
+    if 32 <= n < 127 or 0xB4 <= n <= 0xFF or 0x100 <= n <= 0xFFFF:
         return n
     sys.exit("no character code for %r" % ch)
 
@@ -56,7 +67,7 @@ LAYOUTS = [
     "shift": ["·!\"#·%&/()=?ˋ", "QWERTYUIOPÅ^", "ASDFGHJKLÖÄ*", ">ZXCVBNM;:_"],
     "altgr": ["··@£$€·{[]}\\·", "··€········~", "············", "|······µ···"],
   }),
-  ("fi", "Finnish", None),                    # the same keys as Swedish
+  ("fi", "Finnish", "se"),                    # the same keys as Swedish
   ("no", "Norwegian", {
     "plain": ["|1234567890+\\", "qwertyuiopå‥", "asdfghjkløæ'", "<zxcvbnm,.-"],
     "shift": ["§!\"#·%&/()=?ˋ", "QWERTYUIOPÅˆ", "ASDFGHJKLØÆ*", ">ZXCVBNM;:_"],
@@ -104,6 +115,55 @@ LAYOUTS = [
   }),
 ]
 
+def put(row, at, ch):
+    """A row with the key at `at` changed to ch (for the pointed letters,
+    which do not survive being typed into a string)."""
+    r = list(row)
+    r[at] = ch
+    return r
+
+HE = {
+    "plain": [";1234567890-=", "/'קראטוןםפ][", "שדגכעיחלךף,\\", "\\זסבהנמצתץ."],
+    "shift": ["~!@#$%^&*)(_+", "QWERTYUIOP}{", "ASDFGHJKL:\"|", "|ZXCVBNM><?"],
+    "altgr": ["···€·°·······", "·····װ······", "····ױײ······", "···········"],
+}
+YI = {
+    "plain": HE["plain"], "shift": HE["shift"],
+    "altgr": [HE["altgr"][0],
+              put(put(put("·····װ······", 4, "\uFB2E"), 6, "\uFB35"), 9, "\uFB44"),
+              put(put(put("····ױײ······", 0, "\uFB2B"), 3, "\uFB3B"), 6, "\uFB1D"),
+              put(put("···········", 3, "\uFB4C"), 8, "\uFB4A")],
+    "altgr_shift": ["·············",
+                    put(put("············", 4, "\uFB2F"), 9, "\uFB4E"),
+                    put("············", 5, "\uFB1F"),
+                    "···········"],
+}
+LAYOUTS += [
+  ("nl", "Dutch", "us"),                   # the American keys, as the Dutch use
+  ("ro", "Romanian", {
+    "plain": ["·1234567890-=", "qwertyuiopăî", "asdfghjklșțâ", "\\zxcvbnm,./"],
+    "shift": ["·!@#$%^&*()_+", "QWERTYUIOPĂÎ", "ASDFGHJKLȘȚÂ", "|ZXCVBNM;:?"],
+    "altgr": ["`············", "··€······§[]", "·ß·······;'\\", "········<>·"],
+    "altgr_shift": ["~············", "··········{}", "·········:\"|", "···········"],
+  }),
+  ("bg", "Bulgarian", {
+    "plain": ["(1234567890-.", ",уеишщксдзц;", "ьяаожгтнвмч·", "ѝюйъэфхпрлб"],
+    "shift": [")!?+\"%=:/··$€", "ыУЕИШЩКСДЗЦ§", "ѝЯАОЖГТНВМЧ·", "ЍЮЙЪЭФХПРЛБ"],
+    "altgr": ["[············", "··эѝ········", "ы···········", "···········"],
+    "altgr_shift": ["]············", "··ЭЍ········", "Ы···········", "···········"],
+    "latin": "us",
+  }),
+  ("ua", "Ukrainian", {
+    "plain": ["'1234567890-=", "йцукенгшщзхї", "фівапролджєґ", "/ячсмитьбю."],
+    "shift": ["~!\"·;%:?*()_+", "ЙЦУКЕНГШЩЗХЇ", "ФІВАПРОЛДЖЄҐ", "|ЯЧСМИТЬБЮ,"],
+    "altgr": ["···§$°<>·[]··", "···········ъ", "·ы········э\\", "··········/"],
+    "altgr_shift": ["····€····{}··", "···········Ъ", "·Ы········Э|", "···········"],
+    "latin": "us",
+  }),
+  ("il", "Hebrew", dict(HE, latin="us")),
+  ("yi", "Yiddish", dict(YI, latin="us")),
+]
+
 LEVELS = ["plain", "shift", "altgr", "altgr_shift"]
 
 def table(levels):
@@ -114,6 +174,7 @@ def table(levels):
         if rows:
             assert len(rows) == 4, lv
             for r, (scs, keys) in enumerate(zip(ROWS, rows)):
+                keys = list(keys)
                 assert len(keys) == len(scs), (lv, r + 1, keys, len(keys), len(scs))
                 for sc, ch in zip(scs, keys):
                     t[sc] = code(ch)
@@ -138,10 +199,10 @@ lines = ["""/* =================================================================
 """]
 done = {}
 for name, title, levels in LAYOUTS:
-    if levels is None:
+    if not isinstance(levels, dict):
         continue
     sym = "s_" + name
-    lines.append("static const u8 %s[4][KEYMAP_SCANS] = {" % sym)
+    lines.append("static const u16 %s[4][KEYMAP_SCANS] = {" % sym)
     for lv, t in zip(LEVELS, table(levels)):
         lines.append("    { /* %s */" % lv)
         for i in range(0, 0x59, 16):
@@ -152,9 +213,11 @@ for name, title, levels in LAYOUTS:
     done[name] = sym
 
 lines.append("const Keymap g_keymaps[KEYMAP_COUNT] = {")
+names = [n for n, _, _ in LAYOUTS]
 for name, title, levels in LAYOUTS:
-    sym = done[name] if levels else done["se"]
-    lines.append('    { "%s", "%s", %s },' % (name, title, sym))
+    sym = done[name] if isinstance(levels, dict) else done[levels]
+    latin = names.index(levels["latin"]) if isinstance(levels, dict) and "latin" in levels else -1
+    lines.append('    { "%s", "%s", %s, %d },' % (name, title, sym, latin))
 lines.append("};")
 open("kernel/keymaps.c", "w").write("\n".join(lines) + "\n")
 
@@ -168,7 +231,8 @@ hdr = """/* keymaps.h -- GENERATED by tools/mkkeymap.py.  Do not hand edit. */
 typedef struct {
     const char *code;                    /* what you type: se, us, de ...  */
     const char *name;                    /* what it is called              */
-    const u8 (*keys)[KEYMAP_SCANS];      /* [level][scancode]              */
+    const u16 (*keys)[KEYMAP_SCANS];     /* [level][scancode]              */
+    int latin;                           /* Alt+Shift switches to this one, or -1 */
 } Keymap;
 
 extern const Keymap g_keymaps[KEYMAP_COUNT];

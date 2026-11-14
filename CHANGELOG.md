@@ -6,22 +6,39 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
-- `keyboard`: FLOPOS now knows Norwegian, Danish, American, British,
-  German, French, Belgian, Spanish and Italian keyboards as well as the Swedish
-  one (and Finnish, which has the same keys). `keyboard de` changes it; `keyboard` alone
-  says which is in use. The choice is kept after a restart; a new release
-  on the floppy starts on Swedish again.
+- `keyboard`: FLOPOS now knows seventeen keyboards: Swedish (still the
+  default), Finnish, Norwegian, Danish, American, British, German,
+  French, Belgian, Spanish, Italian, Dutch, Romanian, Bulgarian,
+  Ukrainian, Hebrew and Yiddish. `keyboard de` changes it; `keyboard`
+  alone says which is in use. The choice is kept after a restart; a new
+  release on the floppy starts on Swedish again.
+
+- Ctrl+Shift+F1, on any keyboard and in any app, opens a window listing
+  every keyboard: the arrows pick, Enter chooses, Esc leaves it be. For
+  when the keyboard chosen makes `keyboard se` impossible to type.
+
+- The Bulgarian, Ukrainian, Hebrew and Yiddish keyboards type Latin
+  letters too: Alt and Shift together switch between the two. Ctrl
+  shortcuts always go by the Latin letter on the key.
 
 - The accent keys work: ´ then e is é, ¨ then u is ü, ^ then o is ô, on
   every keyboard that has them, Swedish included.
 
-- The font has the letters those keyboards type, in both text sizes:
-  æ ø ü ß é è ê à ç ñ and the rest, their capitals, and £ € § ° µ ¡ ¿. scribe
-  saves and opens them as UTF-8, browzer shows them on pages and types
-  them into boxes.
+- Hebrew and Yiddish are drawn right to left, everywhere text is shown:
+  the shell, scribe, browzer, the HUD. Numbers and brackets inside them
+  come out the right way round.
 
-- Ctrl shortcuts go by the letter printed on the key, so Ctrl-A is where
-  the A is on a French keyboard too.
+- The font has the letters all these keyboards type, in both text sizes:
+  æ ø ü ß é è ê à ç ñ ă ș ț and the rest with their capitals, £ € § ° µ
+  ¡ ¿, the Cyrillic alphabet as Bulgarian and Ukrainian use it, and the
+  Hebrew alphabet with Yiddish's pointed letters. scribe saves and opens
+  them as UTF-8; browzer shows them on pages (Hebrew station names on
+  72fm, which were "(a name in Hebrew)" before) and types them into boxes.
+
+- Under the hood, a character is no longer one byte: the screen, windows,
+  the HUD, the command line, scribe's documents and browzer's pages hold
+  two. Apps rebuild with the new `app.h`; special keys (`K_UP` and the
+  rest) have new numbers.
 
 ## 1.41.2 — 2026-11-14
 

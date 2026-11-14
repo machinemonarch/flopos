@@ -496,7 +496,9 @@ void wizard_gate(int lock)
                 }
                 continue;
             }
-            if (((k >= 32 && k < 127) || (k >= 0x80 && k <= 0x88)) && *flen < ANSWER_MAX) {
+            /* Letters of one byte only: the riddle is a short thing kept
+             * in the journal, and the answers are in English anyway. */
+            if (((k >= 32 && k < 127) || (k >= 0x80 && k < CH_WIDE && !CH_IS_CELL(k))) && *flen < ANSWER_MAX) {
                 field[(*flen)++] = (char)k;
                 if (serial_present()) serial_putc(k < 127 ? k : '?');
             }

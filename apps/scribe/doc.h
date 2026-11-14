@@ -10,7 +10,9 @@
 
 enum { ST_BODY, ST_TITLE, ST_H1, ST_H2, ST_H3, ST_H4, ST_COUNT };
 
-typedef struct { u8 ch, at; } DCell;     /* at: AT_* bits, or a style on '\n' */
+/* ch is a character, wide ones too; packed, since a document is kept
+ * many times over for undo. */
+typedef struct __attribute__((packed)) { u16 ch; u8 at; } DCell;     /* at: AT_* bits, or a style on '\n' */
 typedef struct { DCell c[DOC_MAX]; int len; } Doc;
 
 void doc_empty(Doc *d);

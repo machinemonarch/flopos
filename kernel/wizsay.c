@@ -261,7 +261,7 @@ int wizsay_init(void)
 
 /* A word of his goes on the screen whole: on the next row if this one has
  * no room left.  (The HUD breaks its own lines, so there it is left be.) */
-static char s_word[48];
+static int  s_word[48];                  /* characters, wide ones too      */
 static int  s_wn;
 
 static void word_out(void)
@@ -272,14 +272,14 @@ static void word_out(void)
         term_newline();
         if (s_word[0] == ' ') i = 1;
     }
-    for (; i < s_wn; i++) term_putc((u8)s_word[i]);
+    for (; i < s_wn; i++) term_putc(s_word[i]);
     s_wn = 0;
 }
 
 static void letter(int c)
 {
-    if (c == ' ' || s_wn >= (int)sizeof s_word) word_out();
-    s_word[s_wn++] = (char)c;
+    if (c == ' ' || s_wn >= (int)(sizeof s_word / sizeof *s_word)) word_out();
+    s_word[s_wn++] = c;
 }
 
 /* One line from him, written as he thinks of it, with the typed word put
@@ -301,8 +301,11 @@ int wizsay(const char *typed)
         if (id == 0) break;
         p = wiz_piece(id);
         for (i = 1; i <= p[0]; i++) {
-            if (p[i] == '@') for (n = 0; typed[n] && n < 24; n++) letter((u8)typed[n]);
-            else             letter(p[i]);
+            if (p[i] == '@') {
+                const char *t = typed;
+                int c;
+                for (n = 0; n < 24 && (c = ch_next(&t)) != 0; n++) letter(c);
+            } else letter(p[i]);
         }
         said = 1;
     }

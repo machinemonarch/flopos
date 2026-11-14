@@ -113,12 +113,22 @@ void kbd_irq(void)
 
     /* Modifiers are state, not events. */
     switch (code) {
-    case 0x2A: if (!ext) { s_shift_l = (u8)!release; return; } break;
-    case 0x36: s_shift_r = (u8)!release; return;
+    case 0x2A:
+        if (ext) break;
+        if (!release && !s_shift_l && s_alt) keymap_switch();     /* Alt+Shift */
+        s_shift_l = (u8)!release;
+        return;
+    case 0x36:
+        if (!release && !s_shift_r && s_alt) keymap_switch();
+        s_shift_r = (u8)!release;
+        return;
     case 0x1D: s_ctrl = (u8)!release; return;
     case 0x38:
         if (ext) s_altgr = (u8)!release;
-        else     s_alt   = (u8)!release;
+        else {
+            if (!release && !s_alt && (s_shift_l || s_shift_r)) keymap_switch();   /* Shift+Alt */
+            s_alt = (u8)!release;
+        }
         return;
     case 0x3A:
         if (!release) s_caps = (u8)!s_caps;
@@ -134,6 +144,7 @@ void kbd_irq(void)
 
     if (!s_down[code]) {                 /* drop the hardware auto-repeat  */
         if (code == 0x44 && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_hud_toggle = 1; return; }
+        if (code == 0x3B && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_kbpick_open = 1; return; }
         u8 nxt = (u8)((s_head + 1) % QLEN);
         if (nxt != s_tail) {
             s_queue[s_head] = (u16)(code | modifier_bits()
@@ -166,6 +177,7 @@ int kbd_event(void)
             e = s_queue[s_tail];
             s_tail = (u8)((s_tail + 1) % QLEN);
         }
+        if (kbpick_takes_keys()) { kbpick_key(e); continue; }   /* the keyboard window */
         if (!hud_takes_keys()) return e;
         hud_key(e);                      /* the HUD's command line has them */
     }

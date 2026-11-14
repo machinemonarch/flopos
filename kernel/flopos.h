@@ -58,6 +58,50 @@ typedef unsigned int        usize;
 #define CH_DEGREE   0x8F                 /* degree sign, B0                 */
 #define CH_LATIN    0xB4                 /* Latin-1 from here on            */
 
+/* ---- characters past one byte -------------------------------------------
+ * A character is an int.  Below 0x100 the codes are FLOPOS's own, as
+ * above: ASCII, the Nordic letters, the frames and shades, Latin-1.  From
+ * 0x100 up a code is its Unicode number: Romanian, Cyrillic, Hebrew.
+ *
+ * In a string (char *), such a character is four bytes: CH_WIDE_ESC and
+ * then the number in three bytes of seven bits each, every one with its
+ * top bit set, so no byte of it is ever 0, a space or a slash.  ch_next()
+ * reads a string a character at a time; ch_put() writes one. */
+#define CH_WIDE_ESC 0x1F
+#define CH_WIDE     0x100                /* the first Unicode-numbered code */
+
+static inline int ch_next(const char **ps)
+{
+    const u8 *p = (const u8 *)*ps;
+    int c = p[0];
+    if (!c) return 0;
+    if (c == CH_WIDE_ESC && (p[1] & 0x80) && (p[2] & 0x80) && (p[3] & 0x80)) {
+        *ps += 4;
+        return ((p[1] & 0x7F) << 14) | ((p[2] & 0x7F) << 7) | (p[3] & 0x7F);
+    }
+    *ps += 1;
+    return c;
+}
+
+/* Writes c at d: one byte, or four for a wide one.  Returns how many. */
+static inline int ch_put(char *d, int c)
+{
+    if (c < CH_WIDE) { d[0] = (char)c; return 1; }
+    d[0] = CH_WIDE_ESC;
+    d[1] = (char)(0x80 | ((c >> 14) & 0x7F));
+    d[2] = (char)(0x80 | ((c >> 7) & 0x7F));
+    d[3] = (char)(0x80 | (c & 0x7F));
+    return 4;
+}
+
+/* Characters in a string, which is not its bytes once wide ones are in it. */
+static inline int ch_count(const char *s)
+{
+    int n = 0;
+    while (ch_next(&s)) n++;
+    return n;
+}
+
 /* A character code as its Latin-1 number (the euro as 0xA4), or 0 if it
  * is not one of the letters or signs above. */
 static inline int ch_latin1(int c)
@@ -90,6 +134,15 @@ static inline int ch_from_latin1(unsigned cp)
 
 extern const u8 g_font5x8[FONT_GLYPHS][5];
 extern const u8 g_latin_slot[96];        /* Latin-1 (A0..FF) -> slot, 0 none */
+extern const u16 g_wide_code[WIDE_COUNT]; /* wide characters the font has   */
+extern const u16 g_wide_slot[WIDE_COUNT]; /* and where each is drawn        */
+/* Right to left (draw.c): order[v] is which character of the row is drawn
+ * in column v, with BIDI_MIRROR set for a bracket to turn round.  Returns
+ * 0, with order left as it is, when nothing in the row is Hebrew. */
+#define BIDI_MIRROR 0x8000
+int    bidi_order(const u16 *ch, int n, u16 *order);
+int    bidi_mirror(int c);
+int    glyph_wide(int c);                /* slot, or '?''s if there is none */
 
 /* Character code -> glyph slot, for everything the font can draw. */
 int    glyph_index(int c);
@@ -229,6 +282,9 @@ void   kbd_resync(void);  /* after anything that masked IRQ1 */
 int    keymap_char(int event);           /* character code, or 0            */
 int    keymap_key(int event);            /* the same, accent keys ignored   */
 int    keymap_set(const char *code);     /* "se", "us", "de"...: 1 if known */
+void   keymap_switch(void);              /* Alt+Shift: Latin, or back       */
+int    keymap_on_latin(void);            /* on a second keyboard's Latin side */
+int    keymap_has_latin(void);           /* this keyboard has a Latin side  */
 const char *keymap_code(void);           /* the one in use                  */
 int    keymap_count(void);
 const char *keymap_code_at(int i);
@@ -925,20 +981,20 @@ int    store_keys_set(const char *code);
 void   main_pump(int now);
 
 /* --- ui.c --------------------------------------------------------------- */
-#define UK_UP    0x101
-#define UK_DOWN  0x102
-#define UK_LEFT  0x103
-#define UK_RIGHT 0x104
-#define UK_ENTER 0x105
-#define UK_ESC   0x106
-#define UK_BKSP  0x107
-#define UK_TAB   0x108
-#define UK_BTAB  0x109
-#define UK_PGUP  0x10A
-#define UK_PGDN  0x10B
-#define UK_HOME  0x10C
-#define UK_END   0x10D
-#define UK_DEL   0x10E
+#define UK_UP    0x110001
+#define UK_DOWN  0x110002
+#define UK_LEFT  0x110003
+#define UK_RIGHT 0x110004
+#define UK_ENTER 0x110005
+#define UK_ESC   0x110006
+#define UK_BKSP  0x110007
+#define UK_TAB   0x110008
+#define UK_BTAB  0x110009
+#define UK_PGUP  0x11000A
+#define UK_PGDN  0x11000B
+#define UK_HOME  0x11000C
+#define UK_END   0x11000D
+#define UK_DEL   0x11000E
 int    ui_key(void);
 int    ui_wait_key(void);
 int    ui_key_mods(int *mods);
@@ -968,6 +1024,13 @@ int    power_off(void);  /* returns only if it could not */
 
 /* --- hud.c: ctrl-shift-f10 ------------------------------------------- */
 extern volatile int g_hud_toggle;
+
+/* kbpick.c: Ctrl+Shift+F1, a window to choose the keyboard from. */
+extern volatile int g_kbpick_open;
+int    kbpick_takes_keys(void);
+void   kbpick_key(int ev);
+void   kbpick_frame(u8 *dst, u32 t);
+int    kbpick_rect(int *x0, int *y0, int *x1, int *y1);
 extern u32 g_idle_cycles;
 void   hud_frame(u8 *canvas, u32 t);
 u32    perf_us(int phase);

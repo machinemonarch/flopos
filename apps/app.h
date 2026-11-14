@@ -113,11 +113,43 @@ typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
 #define A_LATIN_MASK1 0x9F5EFFF7u
 #define A_LATIN_MASK2 0x9F5EFFF7u
 
+/* Characters past one byte (Romanian, Cyrillic, Hebrew) are their
+ * Unicode numbers, from 0x100 up.  In a string such a character is four
+ * bytes: A_CH_WIDE_ESC, then the number in three bytes of seven bits, each
+ * with its top bit set.  The kernel's win_text and format understand them;
+ * a_ch_next and a_ch_put read and write them. */
+#define A_CH_WIDE     0x100
+#define A_CH_WIDE_ESC 0x1F
+
+static inline int a_ch_next(const char **ps)
+{
+    const unsigned char *p = (const unsigned char *)*ps;
+    int c = p[0];
+    if (!c) return 0;
+    if (c == A_CH_WIDE_ESC && (p[1] & 0x80) && (p[2] & 0x80) && (p[3] & 0x80)) {
+        *ps += 4;
+        return ((p[1] & 0x7F) << 14) | ((p[2] & 0x7F) << 7) | (p[3] & 0x7F);
+    }
+    *ps += 1;
+    return c;
+}
+
+static inline int a_ch_put(char *d, int c)
+{
+    if (c < A_CH_WIDE) { d[0] = (char)c; return 1; }
+    d[0] = A_CH_WIDE_ESC;
+    d[1] = (char)(0x80 | ((c >> 14) & 0x7F));
+    d[2] = (char)(0x80 | ((c >> 7) & 0x7F));
+    d[3] = (char)(0x80 | (c & 0x7F));
+    return 4;
+}
+
 /* A character as its Unicode number (the euro as 0x20AC), or 0 if it is
- * not a letter or sign of the ones above. */
+ * not a letter or sign of the ones above.  A wide one is its own number. */
 static inline unsigned a_unicode(int c)
 {
     static const unsigned short moved[6] = { 0xA1, 0xA3, 0x20AC, 0xA7, 0xA8, 0xB0 };
+    if (c >= A_CH_WIDE && c < 0x10000) return (unsigned)c;
     c &= 0xFF;
     switch (c) {
     case A_CH_ARING: return 0xC5;   case A_CH_ADIA: return 0xC4;   case A_CH_ODIA: return 0xD6;
@@ -128,7 +160,9 @@ static inline unsigned a_unicode(int c)
     return 0;
 }
 
-/* The other way: a Unicode number as the character the font draws, or 0. */
+/* The other way: a Unicode number as a character, or 0.  Past one byte
+ * every number (up to 0xFFFF) is kept, whether the font draws it or not:
+ * a letter it lacks shows as '?' and still goes back out as it came. */
 static inline int a_from_unicode(unsigned cp)
 {
     static const unsigned mask[3] = { A_LATIN_MASK0, A_LATIN_MASK1, A_LATIN_MASK2 };
@@ -138,25 +172,27 @@ static inline int a_from_unicode(unsigned cp)
     case 0xA1: return A_CH_IEXCL;   case 0xA3: return A_CH_POUND;  case 0x20AC: return A_CH_EURO;
     case 0xA7: return A_CH_SECTION; case 0xA8: return A_CH_DIAER;  case 0xB0: return A_CH_DEGREE;
     }
+    if (cp >= A_CH_WIDE && cp < 0x10000 && cp != 0x20AC) return (int)cp;
     if (cp < A_CH_LATIN || cp > 0xFF) return 0;
     return (mask[(cp - 0xA0) / 32] >> ((cp - 0xA0) % 32) & 1) ? (int)cp : 0;
 }
 
-/* Keys, as key() returns them; anything else is the character itself. */
-#define K_UP    0x101
-#define K_DOWN  0x102
-#define K_LEFT  0x103
-#define K_RIGHT 0x104
-#define K_ENTER 0x105
-#define K_ESC   0x106
-#define K_BKSP  0x107
-#define K_TAB   0x108
-#define K_BTAB  0x109
-#define K_PGUP  0x10A
-#define K_PGDN  0x10B
-#define K_HOME  0x10C
-#define K_END   0x10D
-#define K_DEL   0x10E
+/* Keys, as key() returns them; anything else is the character itself.
+ * They sit past the last Unicode number, so no character is ever one. */
+#define K_UP    0x110001
+#define K_DOWN  0x110002
+#define K_LEFT  0x110003
+#define K_RIGHT 0x110004
+#define K_ENTER 0x110005
+#define K_ESC   0x110006
+#define K_BKSP  0x110007
+#define K_TAB   0x110008
+#define K_BTAB  0x110009
+#define K_PGUP  0x11000A
+#define K_PGDN  0x11000B
+#define K_HOME  0x11000C
+#define K_END   0x11000D
+#define K_DEL   0x11000E
 #define M_SHIFT 0x0200
 #define M_CTRL  0x0400
 #define M_ALT   0x0800

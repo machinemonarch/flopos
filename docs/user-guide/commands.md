@@ -155,9 +155,50 @@ changes it, for the keys printed on yours:
 | `be` | Belgian |
 | `es` | Spanish |
 | `it` | Italian |
+| `nl` | Dutch: the American keys, which is what the Dutch type on |
+| `ro` | Romanian (the standard layout: ă î â ș ț beside P and L) |
+| `bg` | Bulgarian (BDS) |
+| `ua` | Ukrainian |
+| `il` | Hebrew (`he` works too) |
+| `yi` | Yiddish |
 
 The choice is kept on the floppy, so it is still there after a restart.
 Writing a new release onto the floppy starts it on Swedish again.
+
+**Lost?** Ctrl, Shift and F1 together open a small window listing every
+keyboard, anywhere, in an app too. The F keys are in the same place on
+every keyboard, so this works whatever is chosen. The arrows pick, Enter
+chooses, Esc leaves it as it was. Swedish is at the top.
+
+**Two alphabets.** The Bulgarian, Ukrainian, Hebrew and Yiddish keyboards
+type Latin letters too: Alt and Shift pressed together switch to the
+American keys and back. Ctrl shortcuts such as Ctrl-S work from the Latin
+letter on the key, whichever side is in use.
+
+**Right to left.** Hebrew and Yiddish are drawn right to left: a run of
+Hebrew words, with a number after it, reads from its right end, while the
+English around it still reads left to right. Brackets turn to face the
+right way, and numbers keep their own order. Text is kept in the order it
+was typed, so a saved document is ordinary Unicode any computer reads.
+
+**Yiddish** is the Hebrew keyboard, with Yiddish's own letters on AltGr:
+
+| AltGr and | Types | AltGr, Shift and | Types |
+|---|---|---|---|
+| T | אַ | T | אָ |
+| Y | װ | H | ײַ |
+| G | ױ | P | פֿ |
+| H | ײ | | |
+| J | יִ | | |
+| U | וּ | | |
+| P | פּ | | |
+| F | כּ | | |
+| A | שׂ | | |
+| C | בֿ | | |
+| , | תּ | | |
+
+The keys are named by the Latin letter printed on them. The Hebrew
+keyboard has װ ױ ײ on AltGr Y, G, H as well.
 
 Every key types what is printed on it, AltGr (the right Alt) included:
 on the Swedish keyboard `"` is Shift-2, `/` is Shift-7, `@` is AltGr-2,
@@ -166,10 +207,15 @@ the next letter, as they do on any PC: ´ then e is é, ¨ then u is ü,
 ^ then o is ô. An accent key and then space types the accent alone.
 
 The letters these keyboards need are in the font, in both text sizes:
-å ä ö, æ ø, ü ß, é è ê ë, à â, ì í î ï, ò ó ô, ù ú û, ñ, ç, ÿ and their
-capitals, and £ € § ° µ ¡ ¿. scribe saves them as UTF-8, so they read
-right on any other computer. Signs the font lacks (the French ², the
-Spanish º and ª, ¬, ½, ¤) type nothing.
+å ä ö, æ ø, ü ß, é è ê ë, à â, ì í î ï, ò ó ô, ù ú û, ñ, ç, ÿ, ă ș ț and
+their capitals, £ € § ° µ ¡ ¿, the Cyrillic letters Bulgarian and
+Ukrainian use (є і ї ґ among them), and the Hebrew letters with Yiddish's
+pointed ones. scribe saves them as UTF-8, so they read right on any other
+computer; browzer shows them on pages. Signs the font lacks (the French ²,
+the Spanish º and ª, ¬, ½, ¤, №, the shekel) type nothing.
+
+File names in the inventory stay plain Latin letters and digits, as FAT12
+on any PC expects. The address line in browzer takes Latin letters only.
 
 ## Behind the scenes
 

@@ -11,37 +11,45 @@
 
 #define HIST_N 24
 
-static char s_buf[LINE_MAX + 1];
+static int  s_code[LINE_MAX + 1];       /* the characters, wide ones too  */
+static char s_text[LINE_MAX * 4 + 1];   /* the same as a string (ch_put)  */
 static int  s_len, s_caret;
 
-static char s_hist[HIST_N][LINE_MAX + 1];
+static char (*s_hist)[LINE_MAX * 4 + 1];  /* HIST_N of them, from the heap */
 static int  s_hist_count;                /* how many are filled           */
 static int  s_hist_next;                 /* where the next one goes        */
 static int  s_hist_pos;                  /* 0 = editing, 1.. = looking back */
 
 void line_init(void)
 {
+    if (!s_hist) s_hist = (char (*)[LINE_MAX * 4 + 1])halloc(HIST_N * (LINE_MAX * 4 + 1));
     s_len = s_caret = 0;
-    s_buf[0] = 0;
+    s_code[0] = 0;
     s_hist_count = s_hist_next = s_hist_pos = 0;
 }
 
 void line_reset(void)
 {
     s_len = s_caret = 0;
-    s_buf[0] = 0;
+    s_code[0] = 0;
     s_hist_pos = 0;
 }
 
-const char *line_text(void)  { return s_buf; }
+const char *line_text(void)
+{
+    int i, n = 0;
+    for (i = 0; i < s_len; i++) n += ch_put(s_text + n, s_code[i]);
+    s_text[n] = 0;
+    return s_text;
+}
 int         line_len(void)   { return s_len; }
 int         line_caret(void) { return s_caret; }
 
 static void set_from(const char *s)
 {
-    int i = 0;
-    while (s[i] && i < LINE_MAX) { s_buf[i] = s[i]; i++; }
-    s_buf[i] = 0;
+    int i = 0, c;
+    while (i < LINE_MAX && (c = ch_next(&s)) != 0) s_code[i++] = c;
+    s_code[i] = 0;
     s_len = i;
     s_caret = i;
 }
@@ -58,7 +66,7 @@ static void history_push(const char *s)
         for (i = 0; p[i] == s[i]; i++) if (!s[i]) return;
     }
 
-    for (i = 0; s[i] && i < LINE_MAX; i++) s_hist[s_hist_next][i] = s[i];
+    for (i = 0; s[i] && i < LINE_MAX * 4; i++) s_hist[s_hist_next][i] = s[i];
     s_hist[s_hist_next][i] = 0;
     s_hist_next = (s_hist_next + 1) % HIST_N;
     if (s_hist_count < HIST_N) s_hist_count++;
@@ -73,7 +81,7 @@ static void history_recall(int delta)
     if (pos > s_hist_count) pos = s_hist_count;
     s_hist_pos = pos;
 
-    if (pos == 0) { s_len = s_caret = 0; s_buf[0] = 0; return; }
+    if (pos == 0) { s_len = s_caret = 0; s_code[0] = 0; return; }
     idx = (s_hist_next - pos + HIST_N * 2) % HIST_N;
     set_from(s_hist[idx]);
 }
@@ -82,20 +90,20 @@ static void insert(int c)
 {
     int i;
     if (s_len >= LINE_MAX) return;
-    for (i = s_len; i > s_caret; i--) s_buf[i] = s_buf[i - 1];
-    s_buf[s_caret] = (char)c;
+    for (i = s_len; i > s_caret; i--) s_code[i] = s_code[i - 1];
+    s_code[s_caret] = c;
     s_len++;
     s_caret++;
-    s_buf[s_len] = 0;
+    s_code[s_len] = 0;
 }
 
 static void erase_at(int at)
 {
     int i;
     if (at < 0 || at >= s_len) return;
-    for (i = at; i < s_len - 1; i++) s_buf[i] = s_buf[i + 1];
+    for (i = at; i < s_len - 1; i++) s_code[i] = s_code[i + 1];
     s_len--;
-    s_buf[s_len] = 0;
+    s_code[s_len] = 0;
 }
 
 /* A character from somewhere that has no scancodes.  The far end of a
@@ -104,8 +112,8 @@ static void erase_at(int at)
 int line_inject(int c)
 {
     if (c == '\r' || c == '\n') {
-        s_buf[s_len] = 0;
-        history_push(s_buf);
+        s_code[s_len] = 0;
+        history_push(line_text());
         return 1;
     }
     if (c == 0x08 || c == 0x7F) {        /* backspace or delete            */
@@ -114,12 +122,12 @@ int line_inject(int c)
     }
     if (c == 0x15) {                     /* ^U                             */
         s_len = s_caret = 0;
-        s_buf[0] = 0;
+        s_code[0] = 0;
         return 0;
     }
     if (c == 0x1B) {                     /* escape: abandon the line       */
         s_len = s_caret = 0;
-        s_buf[0] = 0;
+        s_code[0] = 0;
         return 0;
     }
     if (c >= 32 && c < 127) insert(c);
@@ -133,8 +141,8 @@ int line_key(int event)
 
     switch (sc) {
     case SC_ENTER:
-        s_buf[s_len] = 0;
-        history_push(s_buf);
+        s_code[s_len] = 0;
+        history_push(line_text());
         return 1;
 
     case SC_BKSP:
@@ -171,7 +179,7 @@ int line_key(int event)
 
     case SC_ESC:
         s_len = s_caret = 0;
-        s_buf[0] = 0;
+        s_code[0] = 0;
         s_hist_pos = 0;
         return 0;
 
@@ -184,7 +192,7 @@ int line_key(int event)
         /* By the letter on the key, so ^A is where the A is on a French
          * board too. */
         switch (keymap_key(event & ~KEV_CTRL) | 0x20) {
-        case 'u': s_len = s_caret = 0; s_buf[0] = 0; return 0;
+        case 'u': s_len = s_caret = 0; s_code[0] = 0; return 0;
         case 'a': s_caret = 0; return 0;
         case 'e': s_caret = s_len; return 0;
         case 'k': while (s_len > s_caret) erase_at(s_caret); return 0;

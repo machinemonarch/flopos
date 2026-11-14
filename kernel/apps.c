@@ -56,6 +56,7 @@ static void api_wire(const char *t) { if (serial_present()) serial_print(t); }
 _Static_assert(A_CH_ARING == CH_ARING && A_CH_ADIA == CH_ADIA && A_CH_ODIA == CH_ODIA &&
                A_CH_ARING_L == CH_ARING_L && A_CH_ADIA_L == CH_ADIA_L &&
                A_CH_ODIA_L == CH_ODIA_L, "app.h letters");
+_Static_assert(A_CH_WIDE == CH_WIDE && A_CH_WIDE_ESC == CH_WIDE_ESC, "app.h wide characters");
 _Static_assert(A_CH_IEXCL == CH_IEXCL && A_CH_EURO == CH_EURO && A_CH_DEGREE == CH_DEGREE &&
                A_CH_LATIN == CH_LATIN && A_LATIN_MASK0 == LATIN_MASK0 &&
                A_LATIN_MASK1 == LATIN_MASK1 && A_LATIN_MASK2 == LATIN_MASK2,

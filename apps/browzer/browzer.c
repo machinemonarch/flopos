@@ -528,10 +528,10 @@ static int link_line(int id)
 
 static void put_text_clipped(int x, int y, const char *t, u8 fg, u8 bg, int maxx)
 {
-    int key = 0;
-    for (; *t && x < maxx; t++) {                /* \1: a key, in pink */
-        if (*t == 1) { key = !key; continue; }
-        term_win_put(x++, y, (u8)*t, key ? C_KEY : fg, bg);
+    int key = 0, c;
+    while (x < maxx && (c = a_ch_next(&t)) != 0) {   /* \1: a key, in pink */
+        if (c == 1) { key = !key; continue; }
+        term_win_put(x++, y, c, key ? C_KEY : fg, bg);
     }
 }
 
@@ -569,7 +569,8 @@ static void draw(void)
     if (s_pg.title[0]) {
         term_win_put(x++, 0, FR_H, C_GREY, pp);
         term_win_put(x++, 0, ' ', C_GREY, pp);
-        for (i = 0; s_pg.title[i] && x < play_x - 2; i++) term_win_put(x++, 0, (u8)s_pg.title[i], C_TEXT, pp);
+        { const char *t = s_pg.title; int c;
+          while (x < play_x - 2 && (c = a_ch_next(&t)) != 0) term_win_put(x++, 0, c, C_TEXT, pp); }
         term_win_put(x, 0, ' ', C_GREY, pp);         /* the title stops short of it */
     }
 

@@ -86,7 +86,7 @@ $(BUILD)/kernel.bin: $(KOBJ) linker.ld
 .SECONDEXPANSION:
 $(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) \
                      $$(foreach l,$$(APPLIBS_$$*),$$(wildcard apps/lib/$$(l)/*.[ch])) \
-                     apps/crt.c apps/app.h apps/app.ld
+                     apps/crt.c apps/app.h apps/app_glyphs.h apps/app.ld
 	@mkdir -p $(BUILD)/apps
 	$(CC) $(APPCFLAGS) $(APPFLAGS_$*) $(foreach l,$(APPLIBS_$*),-Iapps/lib/$(l)) \
 	      -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ \

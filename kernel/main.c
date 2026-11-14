@@ -117,6 +117,7 @@ static void draw_frame_now(u32 t)
     term_render(vga_canvas(), t);
     if (g_frame_fx) g_frame_fx(vga_canvas(), vga_width(), vga_height(), t);
     hud_frame(vga_canvas(), t);
+    kbpick_frame(vga_canvas(), t);
     mood_neon(ms_now());
     b = perf_clock(); perf_add(PERF_TEXT, b - a); a = b;
 
@@ -127,6 +128,7 @@ static void draw_frame_now(u32 t)
         int y0, y1, hx0, hy0, hx1, hy1;
         if (term_dirty_rows(&y0, &y1)) vga_present_rows(y0, y1);
         if (hud_rect(&hx0, &hy0, &hx1, &hy1)) vga_present_rect(hx0, hy0, hx1, hy1);
+        if (kbpick_rect(&hx0, &hy0, &hx1, &hy1)) vga_present_rect(hx0, hy0, hx1, hy1);
     } else {
         int y0, y1;
         (void)term_dirty_rows(&y0, &y1);

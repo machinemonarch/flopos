@@ -239,6 +239,23 @@ Colours (`A_TEXT`, `A_DIM`, `A_BRIGHT`, `A_ACCENT`, `A_GREY`, `A_PAPER`,
 `A_HILITE`, `A_SELECT`), frame pieces (`A_FR_*`) and the Swedish letters
 (`A_CH_ARING` and so on) are named in `app.h`.
 
+**Characters are ints, not bytes.** Below 0x100 a character is FLOPOS's own
+code: ASCII, the Nordic letters, frames, and Latin-1 from 0xB4 (six signs
+whose Latin-1 numbers fall among the frames have codes of their own,
+`A_CH_POUND` and so on). From 0x100 up a character is its Unicode number:
+Romanian, Cyrillic, Hebrew. `key()` returns them as they are, and the
+special keys (`K_UP` and the rest) sit past the last Unicode number, so no
+character is ever one. Keep characters in `u16` or wider.
+
+In a string, a character from 0x100 up is four bytes, `A_CH_WIDE_ESC` and
+the number in three. `win_text` and `format` understand them; read a
+string with `a_ch_next()`, write one with `a_ch_put()`. `a_unicode()` and
+`a_from_unicode()` turn a character into its Unicode number and back, for
+UTF-8 in files; `a_drawable()` (in `app_glyphs.h`, made by `mkfont.py`)
+says whether the font can draw a wide one. Hebrew is turned right to left
+by the system when the window is drawn: put it in the window in the order
+it is read, and leave the rest to the screen.
+
 ## Files an app wants to keep
 
 What the user makes goes in the inventory, through the `inv_` calls below:

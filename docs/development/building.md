@@ -39,7 +39,7 @@ On a Linux PC:
 | `apps/lib/` | Code apps share, built into each app that asks for it (`audio`: songs into samples) |
 | `linker.ld` | Where the kernel sits in memory, with checks that it fits |
 | `tools/mkimage.py` | Builds the floppy image: a real FAT12 disk that also boots |
-| `tools/mkfont.py` | Generates the text faces from readable glyph art |
+| `tools/mkfont.py`, `tools/fontwide.py` | Generate the text faces from readable glyph art (`fontwide.py` holds the Romanian, Cyrillic, Hebrew and Yiddish letters), and `apps/app_glyphs.h` for the apps |
 | `tools/mkkeymap.py` | Generates the keyboard layouts (`kernel/keymaps.c`) from the keys written out row by row |
 | `tools/mksplash.py` | Turns a photograph into the boot picture |
 | `tools/mkaactab.py` | Makes `aactab.h`, the AAC codebooks, from the VisualOn AAC encoder's tables |

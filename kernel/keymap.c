@@ -1,7 +1,8 @@
 /* ===========================================================================
  * keymap.c -- turning a key into a character, on whichever keyboard is
- * plugged in: Swedish (the default), Finnish, American, British, German,
- * French, Spanish or Italian.
+ * plugged in: Swedish (the default) and sixteen others, `keyboard` lists
+ * them.  Bulgarian, Ukrainian, Hebrew and Yiddish keyboards have Latin
+ * letters too: Alt and Shift pressed together switch between the two.
  *
  * The layouts themselves are tables made by tools/mkkeymap.py, in
  * keymaps.c.  What lives here is what the tables cannot say: the accent
@@ -16,6 +17,16 @@ enum { D_GRAVE = 1, D_ACUTE, D_CIRC, D_DIAER };
 
 static int s_map;                        /* index into g_keymaps           */
 static int s_dead;                       /* an accent waiting, or 0        */
+static volatile int s_latin;             /* on its Latin side (Alt+Shift)  */
+
+/* Alt and Shift together: from the keyboard's interrupt, so only a flag. */
+void keymap_switch(void)
+{
+    if (g_keymaps[s_map].latin >= 0) { s_latin = !s_latin; s_dead = 0; }
+}
+
+int keymap_on_latin(void) { return g_keymaps[s_map].latin >= 0 && s_latin; }
+int keymap_has_latin(void) { return g_keymaps[s_map].latin >= 0; }
 
 /* The mark on its own, for an accent key followed by space. */
 static int mark_alone(int d)
@@ -57,6 +68,12 @@ static int caps(int c)
     if (c >= CH_ARING && c <= CH_ODIA) return c + (CH_ARING_L - CH_ARING);
     if (c >= 0xE0 && c <= 0xFE && c != 0xF7) return c - 0x20;
     if (c >= 0xC0 && c <= 0xDE && c != 0xD7) return c + 0x20;
+    if (c >= 0x430 && c <= 0x44F) return c - 0x20;          /* Cyrillic    */
+    if (c >= 0x410 && c <= 0x42F) return c + 0x20;
+    if (c >= 0x450 && c <= 0x45F) return c - 0x50;
+    if (c >= 0x400 && c <= 0x40F) return c + 0x50;
+    if (c == 0x490 || c == 0x102 || c == 0x218 || c == 0x21A) return c + 1;   /* Ґ Ă Ș Ț */
+    if (c == 0x491 || c == 0x103 || c == 0x219 || c == 0x21B) return c - 1;
     return c;
 }
 
@@ -64,7 +81,8 @@ static int caps(int c)
  * a character, an accent key (1..4), or 0. */
 static int lookup(int event)
 {
-    const u8 (*k)[KEYMAP_SCANS] = g_keymaps[s_map].keys;
+    int m = keymap_on_latin() ? g_keymaps[s_map].latin : s_map;
+    const u16 (*k)[KEYMAP_SCANS] = g_keymaps[m].keys;
     int sc = KEV_SCAN(event);
     int shift = (event & KEV_SHIFT) != 0;
     int c;
@@ -97,9 +115,17 @@ static int lookup(int event)
     return c;
 }
 
+/* For Ctrl and its shortcuts.  On a keyboard with a second alphabet the
+ * letter is taken from its Latin side, so Ctrl-S saves in Hebrew too. */
 int keymap_key(int event)
 {
     int c = lookup(event);
+    if (g_keymaps[s_map].latin >= 0 && !keymap_on_latin() && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z')) {
+        int was = s_latin;
+        s_latin = 1;
+        c = lookup(event);
+        s_latin = was;
+    }
     return c > D_DIAER ? c : 0;
 }
 
@@ -138,8 +164,9 @@ int keymap_set(const char *code)
 {
     int i;
     for (i = 0; i < KEYMAP_COUNT; i++)
-        if (same(code, g_keymaps[i].code)) { s_map = i; s_dead = 0; return 1; }
+        if (same(code, g_keymaps[i].code)) { s_map = i; s_dead = 0; s_latin = 0; return 1; }
     if (same(code, "gb")) return keymap_set("uk");
+    if (same(code, "he")) return keymap_set("il");
     return 0;
 }
 

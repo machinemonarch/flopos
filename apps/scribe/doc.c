@@ -33,7 +33,7 @@ static void puts_(Out *o, const char *s) { while (*s) put(o, (u8)*s++); }
 
 /* A letter past ASCII (Swedish, German, French, Spanish, Italian, the
  * pound and the euro) goes out as UTF-8; returns 0 for anything else. */
-static int put_letter(Out *o, u8 ch)
+static int put_letter(Out *o, int ch)
 {
     u32 cp = a_unicode(ch);
     if (!cp) return 0;
@@ -47,7 +47,7 @@ static int put_letter(Out *o, u8 ch)
     return 1;
 }
 
-static void put_char(Out *o, u8 ch)
+static void put_char(Out *o, int ch)
 {
     if (put_letter(o, ch)) return;
     if (ch == '*' || ch == '<' || ch == '\\') put(o, '\\');
@@ -102,7 +102,7 @@ int doc_to_text_at(const Doc *d, u8 *out, int cap, int want, int *got)
 }
 
 /* ---- in ------------------------------------------------------------------- */
-static int add(Doc *d, u8 ch, u8 at)
+static int add(Doc *d, int ch, u8 at)
 {
     if (d->len >= DOC_MAX - 1) return 0;     /* room kept for the last end */
     d->c[d->len].ch = ch;
@@ -120,7 +120,7 @@ static int starts(const u8 *p, const u8 *end, const char *s)
 /* A UTF-8 letter at p (two bytes, or three for the euro and the like)
  * becomes the font's letter, or '?' if the font has none.  Returns the
  * bytes it used, 0 if p is not the start of one. */
-static int get_letter(const u8 *p, const u8 *eol, u8 *g)
+static int get_letter(const u8 *p, const u8 *eol, int *g)
 {
     u32 cp;
     int n, c;
@@ -135,7 +135,7 @@ static int get_letter(const u8 *p, const u8 *eol, u8 *g)
         return 0;
     }
     c = a_from_unicode(cp);
-    *g = c ? (u8)c : '?';
+    *g = c ? c : '?';
     return n;
 }
 
@@ -178,7 +178,7 @@ void doc_from_text_at(Doc *d, const u8 *in, int len, int want, int *got)
         else if (starts(p, eol, "% "))    { style = ST_TITLE; p += 2; }
 
         while (p < eol) {
-            u8 b = *p, g;
+            u8 b = *p; int g;
             MARK(p);
             if (b == '\r') { p++; continue; }
             if (b == '\\' && p + 1 < eol) { add(d, p[1], at); p += 2; continue; }
@@ -238,7 +238,7 @@ int doc_from_plain(Doc *d, const u8 *in, int len, int want, int *got)
     d->len = 0;
     if (got) *got = want < 0 ? 0 : -1;
     while (p < end) {
-        u8 b = *p, g;
+        u8 b = *p; int g;
         MARK(p);
         if (d->len >= DOC_MAX - 1) { fits = 0; break; }
         if (b == '\n') { d->c[d->len].ch = '\n'; d->c[d->len].at = ST_BODY; d->len++; p++; continue; }

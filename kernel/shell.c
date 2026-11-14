@@ -541,6 +541,18 @@ static void keyboard_list(void)
     }
 }
 
+/* The way home, said in keys that are the same on every keyboard. */
+static void keyboard_lost(void)
+{
+    term_colour(C_DIM);
+    term_print("Lost? ");
+    term_colour(C_KEY);
+    term_print("Ctrl Shift F1");
+    term_colour(C_DIM);
+    term_print(" lists them, anywhere.");
+    term_newline();
+}
+
 static void cmd_keyboard(void)
 {
     if (s_argc < 2) {
@@ -549,6 +561,7 @@ static void cmd_keyboard(void)
         term_newline();
         keyboard_list();
         say_dim("Change it with: keyboard us");
+        keyboard_lost();
         return;
     }
     if (!keymap_set(s_argv[1])) {
@@ -559,6 +572,9 @@ static void cmd_keyboard(void)
     term_colour(C_ACCENT);
     term_printf("Now typing on the %s keyboard.", keyboard_name());
     term_newline();
+    if (keymap_has_latin())
+        say_dim("Alt and Shift together switch to Latin letters, and back.");
+    keyboard_lost();
     if (!store_keys_set(keymap_code()))
         say_dim("It goes back to Swedish when the machine restarts.");
 }
