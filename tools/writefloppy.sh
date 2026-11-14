@@ -240,8 +240,15 @@ if [ "$WRITE_BYTES" -lt "$FLOPPY_BYTES" ]; then
     note "             (--full writes all $FLOPPY_BYTES)"
 fi
 note ""
-note "  Everything currently on that disk will be gone. The image carries"
-note "  its own fresh FAT12 filesystem, so this formats it as it writes."
+if [ "$FRESH" -eq 1 ]; then
+    note "  Everything currently on that disk will be gone. The image carries"
+    note "  its own fresh FAT12 filesystem, so this formats it as it writes."
+else
+    note "  The disk gets this FLOPOS. Your files on it (the INVENTORY folder,"
+    note "  the journal, settings and bookmarks) are carried over to it."
+    note "  Everything else on the disk will be gone. For a clean disk with"
+    note "  nothing carried over, stop here and run it again with --fresh."
+fi
 note ""
 
 if [ "$ASSUME_YES" -ne 1 ]; then
