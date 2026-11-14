@@ -22,7 +22,13 @@ SOFTWARE.
 
 ---
 
-Not covered by this licence: the boot picture of Saffran the cat
-(boot/saffran.pix, SAFFRAN.PIX on the floppy). It is
-Copyright (c) 2026 Max Khairish, all rights reserved. Replace it with a
-picture of your own if you share FLOPOS further.
+The boot picture of Saffran the cat (boot/saffran.pix, SAFFRAN.PIX on the
+floppy) is not under the MIT License above. It is
+
+Copyright (c) 2026 Max Khairish (Machine Monarch)
+
+and licensed under Creative Commons Attribution 4.0 International
+(CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+
+You may share and adapt it, for any purpose, as long as you give credit:
+"Saffran, photo by Max Khairish (Machine Monarch), CC BY 4.0".
