@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.43.2 — 2026-11-14
+
 - The AAC decoder's tables come from the VisualOn AAC encoder, under the
   Apache License 2.0: its licence text and notice are now in `licenses/`,
   with credits for the MP3 tables and Mozilla's list of trusted
