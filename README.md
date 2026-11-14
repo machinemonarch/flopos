@@ -169,4 +169,4 @@ or endorsed by any of them.
 Everything, the code, the documentation and the boot picture of Saffran
 the cat, is under the [MIT License](LICENSE).
 
-Directed by Max. Built by Claude.
+Directed by Max. Built with Claude.
