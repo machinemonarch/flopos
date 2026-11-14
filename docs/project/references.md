@@ -145,7 +145,7 @@ text is in his training, except the two public-domain books.
 - **[Adventure Time](https://www.imdb.com/title/tt0421357/)**: The bright land of sweets and quests
 - **Kramer, from [Seinfeld](https://www.imdb.com/title/tt0098904/)**: The neighbour with a scheme
 - **Cereal Killer, and Razor and Blade, from the film [Hackers (1995)](https://www.imdb.com/title/tt0113243/)**: The pirates of the phone lines
-- **Tom Bombadil, from [The Lord of the Rings: The Fellowship of the Ring (2001)](https://www.imdb.com/title/tt0120737/)**: The singing fellow of the woods
+- **Tom Bombadil, from The Lord of the Rings**: The singing fellow of the woods
 - **Dungeons & Dragons, its game masters and its rules**: The game master reading you the rules
 
 [^1]: [Ralf Brown's Interrupt List](https://www.cs.cmu.edu/~ralf/files.html)
