@@ -87,7 +87,9 @@ to a 1.44MB (HD) diskette:
 
 - **Linux**, with this repository: `tools/writefloppy.sh --image flopos-X.Y.Z.img`.
   It finds the floppy drive by itself, refuses to touch anything that is
-  not exactly a 1.44MB disk, and checks every byte after writing.
+  not exactly a 1.44MB disk, and checks every byte after writing. So far
+  it has been used with a USB floppy drive; a PC's built-in drive should
+  work the same way, but hasn't been tried.
 - **Linux or a Mac**, without it: `sudo dd if=flopos-X.Y.Z.img of=/dev/YOURFLOPPY bs=512 && sync`.
   Find the right device first (`lsblk` on Linux, `diskutil list` on a
   Mac): `dd` writes over whatever you name, a hard disk too.
