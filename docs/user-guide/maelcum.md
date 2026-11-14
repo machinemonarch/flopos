@@ -9,6 +9,9 @@ On the laptop so far: reading a tape from a real recorder worked
 (1.33.0), and so did writing with Verify at normal speed (1.35.0). Fast
 speed with encryption read badly there (1.37.0); the reader was improved
 for that in 1.38.0, and that has only been tried against a pretend tape.
+Everything since 1.39.0 (restoring by ticks, the dated folder, the sleeve,
+the fairer counting of lost pieces in 1.41) has been tried only in the
+emulator.
 
 ## What it keeps
 
@@ -236,6 +239,31 @@ has a new salt and so a new key.
 
 `maelcum save` opens the screen ready to write, `maelcum load` opens it
 listening. A name after either keeps to that file.
+
+## Volume
+
+Nobody has measured the right levels on a real recorder yet, so these are
+starting points:
+
+- **Writing:** the laptop's volume wheel at about half. A MIC socket wants
+  a weak signal, and a headphone socket turned right up can distort the
+  tones. A data recorder with automatic level sets its own recording
+  level.
+- **Reading:** start the recorder's volume at about a third, press
+  <kbd>R</kbd> and play, then turn it up until the green bar sits half to
+  three-quarters full and the line under it says "a tape's tones". Too
+  loud is worse than too quiet. If the recorder has a tone (treble) knob,
+  turn it towards bright: weak treble is what spoils fast speed.
+
+To find your settings, tick one small file, switch Verify on and write it
+at normal speed. If the check passes and the line says "Smooth sailing.",
+keep the knobs there, then try fast speed the same way.
+
+## Several backups on one cassette
+
+A cassette can hold one backup after another. maelcum reads the first one
+it hears, so to read a later one, start the tape just before it. If the
+tape runs on into an older backup, its files are ignored.
 
 ## Tape types
 

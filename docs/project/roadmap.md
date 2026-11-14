@@ -78,6 +78,11 @@ certificate look valid. The clock already refuses to go back past the last
   listed, to tick and put on the floppy), the options in sections, a
   reader that copes better with a dull recorder at fast speed, and a
   tape sleeve to print.
+- 1.41.0 to 1.41.2: the file list shows the floppy's files only after W
+  and the cassette's only after R; a read is restored into a folder of
+  its own named by the date; the sleeve became one A4 PDF, cut as one
+  piece and folded, small enough to go on the tape; lost pieces are
+  counted fairly, and an older backup further along the tape is ignored.
 
 How far it has been tried on the laptop is at the top of
 [maelcum](../user-guide/maelcum.md).
