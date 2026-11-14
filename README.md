@@ -8,7 +8,7 @@ FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from 
 It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
 TLDR: 
-<i>"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."</i>
+*"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."*
 
 What do I mean when I say that it is built from scratch?  It means:
 
