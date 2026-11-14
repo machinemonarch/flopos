@@ -89,7 +89,7 @@ it is FLOPOS itself and its own records; leave those where they are.
 
 ## Who makes it
 
-FLOPOS is an art project by Max: a test of what an AI can build, of what
+FLOPOS is an art project by [Max](https://machinemonarch.com/about/): a test of what an AI can build, of what
 the Toshiba's hardware can still do, and of his own creativity. It is his
 idea, and every decision in it is his: what FLOPOS is, what it is called,
 how it looks, how it feels to use, what it says, and what is not good
