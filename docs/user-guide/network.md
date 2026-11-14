@@ -321,9 +321,3 @@ Sites that only speak older versions of TLS won't open.
 
 A secure page that is stuck can be cancelled with Esc, and a server that
 goes silent is given up on after 15 seconds, with the reason shown.
-
-## Testing without the laptop
-
-In the QEMU emulator there are no PC Card slots, so FLOPOS also has a driver
-for an emulated **NE2000** card. It is only looked for when the machine has
-no PC Card adapter. See [Building](../development/building.md).

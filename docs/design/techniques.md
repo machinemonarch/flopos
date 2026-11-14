@@ -13,10 +13,8 @@ work (pictures, compression, a DAW) can use them too.
 ## Measuring, before anything else
 
 FLOPOS is tested in an emulator held to about 62 million instructions a
-second, roughly this laptop's speed on this kind of code:
-`qemu -icount shift=4,sleep=on,align=on`. `align=on` matters. Without it
-the emulated clock runs as fast as the host can execute, and a stream
-looks ten times slower than it is.
+second, roughly this laptop's speed on this kind of code
+([how](../development/testing.md#running-at-the-laptops-speed)).
 
 While sound plays, FLOPOS reports to the serial cable every ten seconds:
 - what share of the machine decoding took
@@ -218,64 +216,6 @@ nothing, and the screen no frames.
   compared, score by score, with a plain Python version of the sums
   (`tools/wizard/enginetest.py`).
 
-## Files as sound, read by the gaps between crossings
-
-For the cassette (`apps/lib/tape`, `apps/maelcum`). Normal speed has read
-from a real recorder; fast speed has not yet. What follows holds against
-a simulated tape.
-
-- **Only the timing is trusted.** A cassette changes loudness, drifts the
-  wave's middle, may turn it upside down and runs a few percent off speed.
-  The time between crossings of the middle survives all of that, so that
-  is all the reader looks at, to a sixteenth of a sample, and it keeps
-  re-learning how long a short wave is.
-- **Whole waves, not halves.** The first reader timed each half of a
-  wave, and the first real recorder defeated it: nothing at all was read.
-  A recorder's output is lopsided, one half longer than the other, which
-  a simulated tape had not been. From one upward crossing to the next is
-  the same length however lopsided the wave. Since a tape may come back
-  upside down, a second reader times the downward crossings, and only
-  the one in step with the bits gets blocks past their check.
-- **Two speeds, no setting to read them.** Fast is the same signal an
-  octave up. Four readers run at once (two speeds, two ways up) and
-  only the right one gets a block past its check.
-- **Treble lifted for a dull recorder.** Fast speed read badly on the
-  real recorder. A dull recorder gives the high tone much weaker than the
-  low one, and the low one then decides where the wave crosses. So a
-  fast tape is heard a second way too: each sample less three quarters
-  of the one before, which lifts the high tone back up. In the simulated
-  dull tape, fast went from unreadable to read. Not yet tried on the
-  recorder itself.
-- **Count a loss once, and only if it is one.** With several readers on
-  one tape, one losing a block that another has is not a loss. A failure
-  waits a twentieth of a second; if any reader passes a block in that
-  time it is forgotten. Before this the counts ran high and the screen
-  could despair over a tape that was reading.
-- **Wait for the readers still inside the block.** The twentieth of a
-  second was not enough. On a dull recorder at fast speed the plain
-  readers lose every block half way, while the treble-lifted pair read
-  it to its end, which is longer than a twentieth of a second later.
-  Each loss was counted, the screen said "Sorry! Sorry!" throughout, and
-  the tape then came whole. Now a failure notes which readers were inside
-  a block at that moment (or came into it just after) and is counted only
-  when all of them have given it up; one of them finishing the block
-  clears it. The simulated tape test now fails if a tape read whole
-  counted any loss: before, four of its cases did, after, none.
-- **Packing that a spoiled piece cannot corrupt.** Files are packed with
-  LZSS (Storer and Szymanski, 1982; laid out as in Haruhiko Okumura's
-  LZSS.C of 1989, not his code). The pieces are still checked one by one
-  and the file is unpacked only when all are in, then checked whole.
-- **Missing is better than wrong.** Every block has its own check and is
-  dropped whole if it fails. The blocks say which file and which piece
-  they are, so a second playing fills only the gaps.
-- **Only what is in use.** FLOPOS's files never change size and are
-  mostly filling. The run of one repeated byte at the end is sent as a
-  count, which works for any file without knowing what it is.
-- **A pretend tape in the driver.** The emulator's sound card cannot
-  record. A test build keeps what it plays and hands it back when asked
-  to listen, so the whole app can be tried, saving and reading, without
-  a recorder.
-
 ## Writing a floppy's filesystem so a power cut cannot break it
 
 For the inventory (`kernel/fs.c`). FAT12 has no journal, so the order of
@@ -303,26 +243,6 @@ the writes is the whole of the safety.
 - **Cut the power on purpose.** The test stops the write after a random
   number of sectors, hundreds of times, and checks that every file is
   whole, old or new.
-
-## The whole browser on a pretend system, fed damaged pages
-
-Apps reach the system only through one table of functions (`apps/app.h`).
-So an app can be built for an ordinary PC and handed a different table:
-one whose network answers with whatever a test gives it, and whose
-keyboard is a script. `tools/fuzz/browzer.c` does that with browzer, and
-a memory checker watches every byte it touches while it reads damaged
-web answers, lays them out, follows links and plays what it is given.
-Nothing in the app is changed for the test.
-
-The secure connection is tested by playing back real conversations.
-FLOPOS's random numbers are replaced by ones that are the same every
-time, so it makes the same keys as when the conversation was recorded
-and the playback fits. Damage inside a sealed record would only fail the
-seal and be thrown away unread; so in the test the seal is opened
-whatever it says, and since these ciphers work by flipping bits, a
-flipped bit in the sealed text comes out as the same flipped bit in the
-message behind it.
-
 
 ## A wall the apps never notice
 

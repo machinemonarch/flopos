@@ -1,35 +1,56 @@
-# Security roadmap
+# Security
 
-This page lists the weak spots found in FLOPOS's code and what fixing each
-one would take. **Nothing here is started until Max picks it.** He sets the
-order. The order below is only a suggestion: most protection for the least
-work first.
+How FLOPOS protects what it does, and the record of the security review:
+what was fixed, and what was looked at and found fine. Open items are in
+the [roadmap](../project/roadmap.md#security-waiting-for-a-decision). To
+report a problem, see [SECURITY.md](../../SECURITY.md).
 
-These come from reading the code on 2026-11-10. None of them has been
-tried as a real attack.
+## Encryption
 
-Sizes are rough. **Small** is a change in one place. **Medium** touches
-several files or needs new tools. **Large** changes how the system works.
+All written from the published standards and checked against official
+test answers before it was trusted:
 
-## Waiting for a decision
+| File | What |
+|---|---|
+| `sha256.c` | SHA-256, HMAC, HKDF: the hashing every TLS 1.3 key is derived with |
+| `chacha.c` | ChaCha20-Poly1305 encryption |
+| `aes.c` | AES-128-GCM encryption |
+| `x25519.c` | X25519 key agreement |
+| `sha3.c` | SHA-3 and SHAKE, which ML-KEM is built on |
+| `mlkem.c` | ML-KEM-768, the post-quantum key agreement |
+| `random.c` | Random numbers: timing jitter between the timer and the processor's cycle counter, stirred into a SHA-256 pool |
+| `sha512.c` | SHA-512 and SHA-384, which many certificates are signed with |
+| `bignum.c` | Arithmetic modulo a big number (up to 4096 bits), Montgomery's way, for the signature checks |
+| `rsa.c` | RSA signature checks: PKCS#1 v1.5 (certificates) and PSS (the TLS 1.3 handshake) |
+| `ecdsa.c` | ECDSA signature checks on P-256 and P-384, in Jacobian coordinates |
+| `x509.c` | Reading certificates (DER) and checking a site's chain: names, dates, signatures, which authorities may vouch, up to `ROOTS.DAT` |
+| `selftest.c` | `crypto`: every one of the above checked on the machine itself |
 
-### 9. The time from the network is not signed (medium)
+A TLS connection offers both the hybrid post-quantum key (X25519MLKEM768:
+the ML-KEM secret and the X25519 secret, joined) and plain X25519, and
+uses whichever the server picks.
 
-**Set aside (2026-11-12), not dropped.** The laptop's clock battery
-works, so the clock is right without the network, and it already refuses
-to go back past the last `bye`. Signed time would cost a few seconds at
-every network start and a fixed outside time server. Take it up again if
-the clock battery fails.
+The server must then prove who it is (`tls.c`, `x509.c`):
 
-`rtc.c`, `ip.c`. The clock sets itself from a time server, and plain NTP
-has no signature. The answer is checked to come from the server asked and
-to carry back a random number from the question, so nobody off the path
-can fake it. Someone on your own network still could.
+1. Its Certificate message is copied out and split into the chain.
+2. `x509_check` reads each certificate and checks the site's own: its name
+   against the host asked for (with `*.` standing for exactly one label),
+   its dates against the clock (which sets itself from a time server when
+   the network comes up, or from the time saved at the last `bye`), that it is for websites, and that it
+   makes no critical demand this code doesn't understand.
+3. It walks up the chain. At each step it tries the roots in `ROOTS.DAT`
+   whose name matches the issuer; failing that, the certificates sent with
+   it. Each authority must be a CA, allowed to sign certificates, in date,
+   within its path-length limit and its name constraints, and its signature
+   must check.
+4. The CertificateVerify message must be the site's own key's signature
+   over the handshake so far: ECDSA on P-256 or P-384, or RSA-PSS.
+5. Finished is refused unless steps 2 to 4 happened.
 
-**Fix:** NTS, Network Time Security (RFC 8915), which is NTP with a TLS
-handshake first. **Stops:** a faked time making a recently expired
-certificate look valid. The clock already refuses to go back past the last
-`bye`, which limits how far back that can reach.
+The signature algorithms offered in the ClientHello are exactly the ones
+this code can check. All of it was tested against 518 signatures made by
+OpenSSL, the real chains of 14 well-known sites, and chains built to break
+one rule each.
 
 ## Done
 

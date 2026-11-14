@@ -201,7 +201,7 @@ is drawn by chance from the thirty likeliest. `@` in a line is where the
 typed word goes. The shell calls `wizsay()` only when every other meaning
 of a word has failed.
 
-How the model is made is in [Building](../development/building.md#teaching-the-wizard).
+How the model is made is in [Building](../development/training-the-wizard.md).
 
 ## The floppy
 
@@ -257,47 +257,5 @@ Each layer is its own file:
 
 ## Encryption
 
-All written from the published standards and checked against official
-test answers before it was trusted:
-
-| File | What |
-|---|---|
-| `sha256.c` | SHA-256, HMAC, HKDF: the hashing every TLS 1.3 key is derived with |
-| `chacha.c` | ChaCha20-Poly1305 encryption |
-| `aes.c` | AES-128-GCM encryption |
-| `x25519.c` | X25519 key agreement |
-| `sha3.c` | SHA-3 and SHAKE, which ML-KEM is built on |
-| `mlkem.c` | ML-KEM-768, the post-quantum key agreement |
-| `random.c` | Random numbers: timing jitter between the timer and the processor's cycle counter, stirred into a SHA-256 pool |
-| `sha512.c` | SHA-512 and SHA-384, which many certificates are signed with |
-| `bignum.c` | Arithmetic modulo a big number (up to 4096 bits), Montgomery's way, for the signature checks |
-| `rsa.c` | RSA signature checks: PKCS#1 v1.5 (certificates) and PSS (the TLS 1.3 handshake) |
-| `ecdsa.c` | ECDSA signature checks on P-256 and P-384, in Jacobian coordinates |
-| `x509.c` | Reading certificates (DER) and checking a site's chain: names, dates, signatures, which authorities may vouch, up to `ROOTS.DAT` |
-| `selftest.c` | `crypto`: every one of the above checked on the machine itself |
-
-A TLS connection offers both the hybrid post-quantum key (X25519MLKEM768:
-the ML-KEM secret and the X25519 secret, joined) and plain X25519, and
-uses whichever the server picks.
-
-The server must then prove who it is (`tls.c`, `x509.c`):
-
-1. Its Certificate message is copied out and split into the chain.
-2. `x509_check` reads each certificate and checks the site's own: its name
-   against the host asked for (with `*.` standing for exactly one label),
-   its dates against the clock (which sets itself from a time server when
-   the network comes up, or from the time saved at the last `bye`), that it is for websites, and that it
-   makes no critical demand this code doesn't understand.
-3. It walks up the chain. At each step it tries the roots in `ROOTS.DAT`
-   whose name matches the issuer; failing that, the certificates sent with
-   it. Each authority must be a CA, allowed to sign certificates, in date,
-   within its path-length limit and its name constraints, and its signature
-   must check.
-4. The CertificateVerify message must be the site's own key's signature
-   over the handshake so far: ECDSA on P-256 or P-384, or RSA-PSS.
-5. Finished is refused unless steps 2 to 4 happened.
-
-The signature algorithms offered in the ClientHello are exactly the ones
-this code can check. All of it was tested against 518 signatures made by
-OpenSSL, the real chains of 14 well-known sites, and chains built to break
-one rule each.
+How the encryption is built and how a site is made to prove who it is:
+[Security](security.md#encryption).

@@ -239,15 +239,5 @@ fully erase a Type IV (metal) tape.
 
 ## On the tape
 
-Two tones: a 0 is one cycle of 1200 Hz, a 1 is two cycles of 2400 Hz;
-fast is the same an octave up. A byte is a 0, its eight bits and a 1.
-Each file is its name and size (twice), its bytes in blocks of 256, and
-an end mark (twice); every block carries its own check, and the file a
-check of the whole. Packing is LZSS (Storer and Szymanski, 1982): a
-4096-byte window and copies of 3 to 18 bytes. Reading times whole waves,
-so loudness, a tape running fast or slow, a lopsided wave and a wave
-turned upside down do not matter. A fast tape is also listened to with
-its treble lifted, since a dull recorder gives the high tone much weaker
-than the low one. Several listeners hear the one tape; a block counts as
-spoiled only when none of them has it. A tape written by an earlier FLOPOS
-still reads. The details are in `apps/lib/tape/` and `apps/maelcum/maelcum.c`.
+How the files become sound, and are read back: [the cassette
+format](../design/cassette-format.md).
