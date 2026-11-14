@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.42.0 — 2026-11-14
+
 - `keyboard`: FLOPOS now knows seventeen keyboards: Swedish (still the
   default), Finnish, Norwegian, Danish, American, British, German,
   French, Belgian, Spanish, Italian, Dutch, Romanian, Bulgarian,
