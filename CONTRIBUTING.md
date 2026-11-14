@@ -31,3 +31,5 @@ Every change that someone using FLOPOS would notice gets a line under
 `## Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 
 Security problems: see [SECURITY.md](SECURITY.md), not a public report.
+
+What you contribute is under the same [MIT License](LICENSE) as the rest.

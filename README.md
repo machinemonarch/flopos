@@ -92,4 +92,9 @@ facts about the machine; none of their code, firmware or text is included,
 and they are not in this repository. See
 [References](docs/project/references.md).
 
+## Licence
+
+The code and the documentation are under the [MIT License](LICENSE). The
+boot picture of Saffran is not: see [LICENSE](LICENSE).
+
 Directed by Max. Built by Claude.
