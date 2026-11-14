@@ -9,9 +9,8 @@ fork it and take it wherever you like.
 ## The rules it is built by
 
 **The constraints are the point.** One floppy. One laptop from 1996: a
-120MHz Pentium, 32MB of memory, an 800×600 screen. Everything FLOPOS does,
-it does on that hardware alone: no proxy servers doing the hard work
-somewhere else, and no helper machines.
+120MHz Pentium, 32MB of memory, an 800×600 screen. No outside machine
+does FLOPOS's own computing for it.
 
 **No JavaScript.** A JavaScript engine is large, and it is the main way web
 pages attack the computer reading them. browzer reads the web without one

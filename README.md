@@ -32,7 +32,7 @@ FLOPOS's code is synthesized by Claude drawing upon my ideas, thoughts and curio
 Given my human hours of testing and creativity, "vibe-coding" would not do it justice.
 Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer. Other times the ideas come from things based on cultural genres of fiction (or non-fictional) media that I enjoy.
 
-No copyrighted content is included in this project. See [docs](docs/project/references.md).
+No copyrighted material is included without permission. See [docs](docs/project/references.md).
 
 Everything is its own: a boot sector, a protected-mode kernel, drivers for
 the screen, keyboard, sound, floppy, serial line and network card, a
@@ -208,6 +208,10 @@ are the property of their respective owners. FLOPOS is not affiliated with
 or endorsed by any of them.
 
 ## Licence
+
+Two tables of numbers in the audio decoders come from other projects; see
+[licenses/THIRD-PARTY.txt](licenses/THIRD-PARTY.txt).
+
 
 Everything, the code, the documentation and the pictures of Saffran and
 Ozzy the cats, is under the [MIT License](LICENSE).

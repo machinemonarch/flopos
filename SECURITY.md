@@ -36,7 +36,7 @@ a record, not as something to run.
 
 - **The network.** Secure pages use TLS 1.3 (or TLS 1.2 in its modern
   form) with post-quantum key exchange, and every site must prove who it
-  is. Nothing listens: no outside machine can start a conversation. How
+  is. How
   private it is for the user[^1], and how it is built[^2].
 - **Programs.** Each app runs behind a wall: it can touch only its own
   memory and must ask the system for everything else[^3].

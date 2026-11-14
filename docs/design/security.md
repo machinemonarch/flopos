@@ -154,8 +154,6 @@ holds.
     renegotiation, and FLOPOS does neither.
   - Tested against OpenSSL with RSA PKCS#1, RSA-PSS and ECDSA signatures,
     both ciphers, both curves, and without the extended master secret.
-- **Nothing listens.** No outside machine can start a conversation; FLOPOS
-  only answers ping.
 - **The mp3 decoder and the MOD/XM player:** sizes read from the file are
   clamped.
 - **TCP's out-of-order pieces (1.22):** a piece is kept only inside the

@@ -6,6 +6,9 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- The AAC decoder's tables come from the VisualOn AAC encoder, under the
+  Apache License 2.0: its licence text and notice are now in `licenses/`.
+
 ## 1.43.1 — 2026-11-14
 
 - `version` says "Cyberdelic Neurofunkadelic Dreamscape", "Directed by

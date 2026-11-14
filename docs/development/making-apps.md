@@ -48,7 +48,8 @@ To make a new app called `hello`, create `apps/hello/hello.c` and run
     }
 
 Apps are compiled with the same settings as the system: 32-bit, for a 486
-or better, no floating point, and no C library. `crt.c` provides `memset`,
+or better, and no C library. Floating point is off unless an app switches
+it on (see below). `crt.c` provides `memset`,
 `memcpy` and `memmove`, and the `Api` table provides everything else.
 
 ## Where an app sits

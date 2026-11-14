@@ -1,5 +1,6 @@
 /* aactab.h -- made by tools/mkaactab.py from the VisualOn AAC encoder's
- * tables (Apache License 2.0); see that tool.  Do not edit by hand. */
+ * tables (Apache License 2.0, Copyright 2003-2010, VisualOn, Inc.; see
+ * licenses/THIRD-PARTY.txt).  Do not edit by hand. */
 
 /* The eleven spectral codebooks, one after another: book b's entries
  * are AAC_HCODE[AAC_HSTART[b] + i], i the codebook's own index. */
