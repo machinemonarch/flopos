@@ -289,7 +289,8 @@ out of somebody else's printer at exactly a cassette sleeve's size.
   two, three and four times its size, and on its side for the spine, it
   is the same face as the screen's.
 - **The inside is mirrored.** It is laid behind the outside, printed side
-  out, so its wide panel is on the left, to fall behind the front.
+  out, so its wide panel is on the left, to fall behind the front. Its folds are dashed too, at the mirrored places, since it is cut
+  and folded on its own.
 
 Checked with `pdfinfo` (one A4 page) and by rendering it on the PC. Not
 yet printed.

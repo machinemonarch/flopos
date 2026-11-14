@@ -6,6 +6,9 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- maelcum: the inside of the tape sleeve shows where to fold it, with the
+  same dashed lines as the outside.
+
 - maelcum: on the screen for ticking what to write, the key line was too
   long and Esc was cut off; it fits again. The R line on the start screen
   is no longer cut short, and a long message beside the cassette wraps

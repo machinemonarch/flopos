@@ -186,10 +186,9 @@ static void inside(const Sleeve *s)
 
     rect(0, 0, PX, PX);
     /* Seen from the back the front is on the left, and everything is
-     * written on it.  Only ticks at the edges show the folds; the lines
-     * are on the other side. */
-    vline(front_w, 0, 8); vline(front_w, PX - 8, 8);
-    vline(front_w + SPINE_W, 0, 8); vline(front_w + SPINE_W, PX - 8, 8);
+     * written on it.  The folds are dashed here too, since the inside is
+     * cut out and folded on its own. */
+    fold(front_w); fold(front_w + SPINE_W);
 
     words(16, 16, "On this tape", 3);
     when_text(s, m, sizeof m);
