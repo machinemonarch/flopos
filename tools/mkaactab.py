@@ -118,7 +118,8 @@ def main():
     o = open(out_path, "w")
     w = o.write
     w("/* aactab.h -- made by tools/mkaactab.py from the VisualOn AAC encoder's\n")
-    w(" * tables (Apache License 2.0); see that tool.  Do not edit by hand. */\n\n")
+    w(" * tables (Apache License 2.0, Copyright 2003-2010, VisualOn, Inc.; see\n")
+    w(" * licenses/THIRD-PARTY.txt).  Do not edit by hand. */\n\n")
     w("/* The eleven spectral codebooks, one after another: book b's entries\n")
     w(" * are AAC_HCODE[AAC_HSTART[b] + i], i the codebook's own index. */\n")
     w("static const unsigned short AAC_HSTART[13] = { %s };\n" % ", ".join(str(v) for v in [0] + starts))
