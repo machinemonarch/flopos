@@ -23,7 +23,7 @@ TLDR:
 What do I mean when I say that it is built from scratch?  It means:
 
 * It does not build on code from any GNU/Linux project.
-* Fact is, it does not use code from any other open-source project.
+* Fact is, it does not use code from any other open-source project. Only two tables of numbers, the ones the MP3 and AAC standards define, were taken from open-source decoders, and they are credited.
 * Oh yeah, and it's not some scene demo or whatever.
 
 
