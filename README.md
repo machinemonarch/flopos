@@ -207,7 +207,9 @@ or endorsed by any of them.
 
 ## Licence
 
-Everything, the code, the documentation and the pictures of Saffran and
-Ozzy the cats, is under the [MIT License](LICENSE).
+The code and the documentation are under the [MIT License](LICENSE). The
+pictures of Saffran and Ozzy the cats are under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): share them freely,
+with credit (see [LICENSE](LICENSE)).
 
 Created by Max, built with Claude.
