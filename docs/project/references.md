@@ -5,9 +5,6 @@ from scratch. These documents were read for facts (how a protocol works,
 what a register does, which answer a test should give), and no code or text
 was copied from any of them.
 
-**Who found what.** References Max suggested are marked *(Max)*. Most of
-the rest Claude found while building.
-
 ## Standards FLOPOS implements
 
 ### Encryption
