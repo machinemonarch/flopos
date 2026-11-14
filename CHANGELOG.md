@@ -7,7 +7,16 @@ without it. Each version's notes are also written next to its image, as
 ## Unreleased
 
 - The AAC decoder's tables come from the VisualOn AAC encoder, under the
-  Apache License 2.0: its licence text and notice are now in `licenses/`.
+  Apache License 2.0: its licence text and notice are now in `licenses/`,
+  with credits for the MP3 tables and Mozilla's list of trusted
+  authorities.
+
+- `tools/writefloppy.sh` says before writing that your files on the floppy
+  are carried over, and that `--fresh` gives a clean disk. Before, it said
+  everything on the disk would be gone, and then kept your files.
+
+- The README on the floppy is the published one: the opening in Max's
+  words, screenshots, and how to put a release on a floppy.
 
 ## 1.43.1 — 2026-11-14
 
