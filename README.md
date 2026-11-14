@@ -3,6 +3,8 @@
 FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch and intended to run on the **Toshiba Satellite Pro 430CDT**.
 It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
+## Screenshots
+
 [![The wizard at the gate, asking his riddle](docs/images/wizard-small.png)](docs/images/wizard.png) [![The terminal, once inside](docs/images/terminal-small.png)](docs/images/terminal.png)
 
 *Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside. Click for full size.*
