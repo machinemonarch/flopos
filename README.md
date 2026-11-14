@@ -12,8 +12,8 @@ Toshiba Satellite Pro 430CDT, a laptop model from 1996, into a place.
 
 FLOPOS is not a scene demo, and it is not based on GNU/Linux or any other
 open-source project. It was synthesized from scratch together with Claude,
-or, as its author puts it: *"I'm the director, and Claude is the entire
-film crew."* The ideas come from whatever comes to Max's mind, and from
+or, as its author puts it: *"I'm the architect, and Claude is the
+builder."* The ideas come from whatever comes to Max's mind, and from
 his experience as a sysadmin and senior infrastructure engineer.
 
 Everything is its own: a boot sector, a protected-mode kernel, drivers for
