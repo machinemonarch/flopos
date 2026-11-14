@@ -49,6 +49,8 @@ static int      s_n;                     /* lines so far, all of them       */
 static int      s_skip;
 static int      s_full;                  /* the bar: all the way            */
 static u8      *s_pic;                   /* Saffran, untouched              */
+static u8      *s_ozzy;                  /* Ozzy: palette, then pixels      */
+static int      s_nobar;                 /* leaving: no progress bar        */
 
 /* ---- the figure -------------------------------------------------------
  * One glyph for head, body and legs, and four tildes either side for the
@@ -138,8 +140,10 @@ static void frame(int typed, int noodling)
     }
 
     if (bar > SCR_W) bar = SCR_W;
-    memset8(g_back + BAR_Y * SCR_W, SPL_BRIGHT, (usize)bar);
-    memset8(g_back + (BAR_Y + 1) * SCR_W, SPL_BRIGHT, (usize)bar);
+    if (!s_nobar) {
+        memset8(g_back + BAR_Y * SCR_W, SPL_BRIGHT, (usize)bar);
+        memset8(g_back + (BAR_Y + 1) * SCR_W, SPL_BRIGHT, (usize)bar);
+    }
 
     vga_present();
 }
@@ -220,4 +224,36 @@ void boot_end(void)
     vga_fade_out(18);
     memset8(g_back, 0, SCR_PIX);
     vga_present();
+}
+
+/* ---- the way out --------------------------------------------------------
+ * Ozzy, the other cat, sees the machine off on bye and reboot.  He is
+ * read off the floppy at boot (OZZY.PIX, made like Saffran's picture by
+ * tools/mksplash.py), so leaving never waits on the disk.  The goodbye
+ * uses the same narrator as the way in: the screen drops to 320x200, he
+ * appears, and each real step of shutting down is typed over him. */
+void leave_load(void)
+{
+    FsFile f;
+    if (!fs_mount() || !fs_find("OZZY.PIX", &f) || f.size != 768 + SCR_PIX) return;
+    s_ozzy = (u8 *)halloc(f.size);
+    if (s_ozzy && fs_read(&f, s_ozzy, f.size) != (int)f.size) s_ozzy = 0;
+}
+
+int leave_begin(void)
+{
+    if (!s_ozzy || !s_pic) return 0;
+    vga_go_small();
+    memcpy32(s_pic, s_ozzy + 768, SCR_PIX / 4);
+    memcpy32(g_back, s_pic, SCR_PIX / 4);
+    vga_present();
+    vga_set_palette(s_ozzy);
+    s_n = 0; s_skip = 0; s_full = 0; s_nobar = 1;
+    return 1;
+}
+
+void leave_end(void)
+{
+    wait_ms(HOLD_MS, 0);
+    vga_fade_out(22);
 }

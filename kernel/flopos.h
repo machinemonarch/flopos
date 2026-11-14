@@ -493,6 +493,9 @@ void   panel_set_wide(int on);
 
 void   boot_begin(void);                    /* the clock is running: start   */
 void   boot_step(const char *fmt, ...);     /* a step is about to happen     */
+void   leave_load(void);                 /* Ozzy, off the floppy, at boot   */
+int    leave_begin(void);                /* bye/reboot: Ozzy on the screen  */
+void   leave_end(void);
 void   boot_result(const char *fmt, ...);   /* ...and what it found          */
 void   boot_end(void);                      /* hold, then fade out           */
 

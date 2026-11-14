@@ -142,7 +142,9 @@ that was the cause of every freeze (see hardware[^1]).
 - `kernel/mathx.c`: integer sines, square roots and angles (no floating
   point anywhere).
 - `kernel/banana.c`, `kernel/vortex.c`, `kernel/arrive.c`: the banana,
-  `whaaat`, and the boot narration over Saffran.
+  `whaaat`, and the boot narration over Saffran; the same narrator types
+  the steps of `bye` and `reboot` over Ozzy, whose picture (`OZZY.PIX`)
+  is read off the floppy at boot so leaving never waits on the disk.
 
 ## The terminal
 

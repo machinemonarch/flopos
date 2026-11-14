@@ -98,7 +98,7 @@ $(BUILD)/test/%.app: tools/walltest/%.c apps/crt.c apps/app.h apps/app.ld
 	@mkdir -p $(BUILD)/test
 	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $<
 
-$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/roots.dat boot/wizard.wiz tools/mkimage.py README.md
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/ozzy.pix boot/roots.dat boot/wizard.wiz tools/mkimage.py README.md
 	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 
 size: $(BUILD)/kernel.bin

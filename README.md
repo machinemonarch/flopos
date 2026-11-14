@@ -151,6 +151,8 @@ FLOPOS did not know, and that list is the to-do list for new commands.
 - **Saffran**, Max's cat, is the first thing read off the floppy, and
   appears as fast as the drive delivers him. The machine then tells him,
   step by step, everything it is really doing to get ready.
+- **Ozzy**, the other cat, sees the machine off when you say `bye` or
+  `reboot`, while it tells him what it is doing to shut down.
 - **The wizard** stands at the gate to the shell, which is called
   cyberdelia. He is very tired, asks a riddle assembled from word lists by
   the clock, and accepts every answer. Getting in plays a chip-tune
@@ -205,7 +207,7 @@ or endorsed by any of them.
 
 ## Licence
 
-Everything, the code, the documentation and the boot picture of Saffran
-the cat, is under the [MIT License](LICENSE).
+Everything, the code, the documentation and the pictures of Saffran and
+Ozzy the cats, is under the [MIT License](LICENSE).
 
 Created by Max, built with Claude.

@@ -6,6 +6,10 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- Ozzy, the other cat, sees the machine off: `bye` and `reboot` show his
+  picture while the steps of shutting down are typed over him, the way
+  Saffran's boot lines are.
+
 ## 1.42.1 — 2026-11-14
 
 - browzer searches through DuckDuckGo Lite when words are typed in the

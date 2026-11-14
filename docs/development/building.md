@@ -63,6 +63,7 @@ On a Linux PC:
 can be read by DOS, Windows, Linux or a Mac. On it:
 
 - **`SAFFRAN.PIX`**: The boot picture, read first. In one unbroken run of sectors.
+- **`OZZY.PIX`**: Ozzy, shown on `bye` and `reboot`, made like Saffran's picture by `tools/mksplash.py`.
 - **`KERNEL.BIN`**: The system, read second. Also in one unbroken run, and both positions are written into the boot sector.
 - **`SCRIBE.APP`**: The word processor
 - **`BROWZER.APP`**: The web browser

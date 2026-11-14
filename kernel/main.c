@@ -265,6 +265,7 @@ void kmain(void)
      * once, here, so that no answer ever waits for the drive. */
     boot_step("Pouring the wizard his morning tea...");
     boot_result(wizsay_init() ? "he is humming" : "he is sleeping in");
+    leave_load();
 
     /* --- the environment ------------------------------------------------ */
     /* panel_init reads and keeps the old register values first, so `wide`

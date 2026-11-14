@@ -124,6 +124,10 @@ def main():
 
     # The wizard's way with words (tools/wizard), read once at boot.
     run("mcopy", "-i", out_path, "boot/wizard.wiz", "::WIZARD.WIZ")
+    # Ozzy, who sees the machine off on bye and reboot (kernel/arrive.c).
+    if os.path.getsize("boot/ozzy.pix") != SAFFRAN_BYTES:
+        sys.exit("boot/ozzy.pix should be %d bytes" % SAFFRAN_BYTES)
+    run("mcopy", "-i", out_path, "boot/ozzy.pix", "::OZZY.PIX")
 
     # Apps, each its own file: SCRIBE.APP for `scribe`.  The kernel finds
     # them by name when they are asked for, so where they land is theirs.

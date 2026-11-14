@@ -1311,19 +1311,26 @@ static void cmd_wizard(void)
 
 static void cmd_bye(void)
 {
-    clock_remember();                    /* for a clock with a flat battery */
-    if (store_unsaved()) {
-        say_dim("Writing things down first...");
-        screen_now();
-        store_save();
-    }
-
+    int ozzy;
     say(voice(V_BYE));
     screen_now();
     delay_ms(700);
-
+    ozzy = leave_begin();                /* Ozzy sees you out              */
+    if (ozzy) boot_step("Pinning the hour to the cork board...");
+    clock_remember();                    /* for a clock with a flat battery */
+    if (store_unsaved()) {
+        if (ozzy) {
+            boot_step("Scribbling the day into the journal...");
+            boot_step("Tucking the settings under the floppy's pillow...");
+        } else {
+            say_dim("Writing things down first...");
+            screen_now();
+        }
+        store_save();
+    }
+    if (ozzy) boot_step("Ozzy sees you out.");
     snd_silence();
-    vga_fade_out(22);
+    if (ozzy) leave_end(); else vga_fade_out(22);
 
     power_off();                         /* only returns if it could not  */
 
@@ -1344,15 +1351,26 @@ static void cmd_bye(void)
 
 static void cmd_reboot(void)
 {
-    if (store_unsaved()) {
-        say_dim("Writing things down first...");
-        screen_now();
-        store_save();
-    }
+    int ozzy;
     say(voice(V_BYE));
     screen_now();
     delay_ms(400);
-    vga_fade_out(16);
+    ozzy = leave_begin();
+    if (store_unsaved()) {
+        if (ozzy) {
+            boot_step("Scribbling the day into the journal...");
+            boot_step("Tucking the settings under the floppy's pillow...");
+        } else {
+            say_dim("Writing things down first...");
+            screen_now();
+        }
+        store_save();
+    }
+    if (ozzy) {
+        boot_step("Ozzy sees you out.");
+        boot_step("Spinning the crystal back to the beginning.");
+        leave_end();
+    } else vga_fade_out(16);
     reboot();
 }
 
