@@ -39,6 +39,9 @@ for f in files:
     for m in link.finditer(text):
         target = m.group(1)
         if re.match(r"[a-z]+:", target) or not target: continue
+        # The repository's own pages on GitHub (its releases, its issues),
+        # which exist there and not in a checkout.
+        if f == "README.md" and re.match(r"\.\./\.\./(releases|issues)\b", target): continue
         path, _, anchor = target.partition("#")
         dest = os.path.normpath(os.path.join(os.path.dirname(f), path)) if path else f
         if not os.path.exists(dest): bad.append(f"{f}: {target} (no such file)"); continue
