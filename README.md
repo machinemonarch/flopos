@@ -3,16 +3,10 @@
 FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch.
 It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
-<table>
-  <tr>
-    <td align="center"><a href="docs/images/wizard.png"><img src="docs/images/wizard.png" width="360" alt="The wizard at the gate, asking his riddle"></a></td>
-    <td align="center"><a href="docs/images/terminal.png"><img src="docs/images/terminal.png" width="360" alt="The terminal, once inside"></a></td>
-  </tr>
-  <tr>
-    <td align="center">The wizard at the gate, asking his riddle</td>
-    <td align="center">The terminal, once inside</td>
-  </tr>
-</table>
+<a href="docs/images/wizard.png"><img src="docs/images/wizard.png" width="300" alt="The wizard at the gate, asking his riddle"></a>
+<a href="docs/images/terminal.png"><img src="docs/images/terminal.png" width="300" alt="The terminal, once inside"></a>
+
+*Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside. Click for full size.*
 
 TLDR: 
 *"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."*
