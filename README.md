@@ -1,20 +1,14 @@
 # FLOPOS
 
-An operating system that fits on one 1.44MB floppy disk and boots a
-Toshiba Satellite Pro 430CDT, a laptop model from 1996, into a place.
+![The wizard at the gate, asking his riddle](docs/images/wizard.png)
 
-    FLOPOS
-    a place to be, on one floppy disk
-
-    Go on, then.
-
-    here> _
+![The terminal, once inside](docs/images/terminal.png)
 
 FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch.
 It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
 TLDR: 
-<i>"It's this weird operating system that works on a old 1990s Toshiba Satellite Pro 430CDT laptop."</i>
+<i>"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."</i>
 
 What do I mean when I say that it is built from scratch?  It means:
 
@@ -28,7 +22,7 @@ FLOPOS's code is synthesized by Claude drawing upon my ideas, thoughts and curio
 Given my human hours of testing and creativity, "vibe-coding" would not do it justice.
 Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer. Other times the ideas come from  things based on cultural genres of fiction (or non-fictional) media that I enjoy consuming. 
 
-No copyrighted content is included in this project. See docs.
+No copyrighted content is included in this project. See [docs](docs/project/references.md).
 
 Everything is its own: a boot sector, a protected-mode kernel, drivers for
 the screen, keyboard, sound, floppy, serial line and network card, a
