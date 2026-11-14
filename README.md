@@ -10,11 +10,25 @@ Toshiba Satellite Pro 430CDT, a laptop model from 1996, into a place.
 
     here> _
 
-FLOPOS is not a scene demo, and it is not based on GNU/Linux or any other
-open-source project. It was synthesized from scratch together with Claude,
-or, as its author puts it: *"I'm the architect, and Claude is the
-builder."* The ideas come from whatever comes to Max's mind, and from
-his experience as a sysadmin and senior infrastructure engineer.
+FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch.
+It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
+
+TLDR: 
+<i>"It's this weird operating system that works on a old 1990s Toshiba Satellite Pro 430CDT laptop."</i>
+
+What do I mean when I say that it is built from scratch?  It means:
+
+* It does not build on code from any GNU/Linux project.
+* Fact is, it does not use code from any other open-source project.
+* Oh yeah, and it's not some scene demo or whatever.
+
+
+FLOPOS's code is synthesized by Claude drawing upon my ideas, thoughts and curiosity. I'm fascinated by old hardware and media and I wanted to test what AI and 30 year old hardware is capable of achieving when paired together. To see exactly where the limit goes and learn new things in the process. The ideas on how it's built come from whatever cultural and experiential references that came to my mind at the time.
+
+Given my human hours of testing and creativity, "vibe-coding" would not do it justice.
+Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer. Other times the ideas come from  things based on cultural genres of fiction (or non-fictional) media that I enjoy consuming. 
+
+No copyrighted content is included in this project. See docs.
 
 Everything is its own: a boot sector, a protected-mode kernel, drivers for
 the screen, keyboard, sound, floppy, serial line and network card, a
