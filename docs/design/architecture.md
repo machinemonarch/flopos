@@ -201,7 +201,7 @@ is drawn by chance from the thirty likeliest. `@` in a line is where the
 typed word goes. The shell calls `wizsay()` only when every other meaning
 of a word has failed.
 
-How the model is made is in [Building](../development/training-the-wizard.md).
+How the model is made is in [Training the wizard](../development/training-the-wizard.md).
 
 ## The floppy
 
