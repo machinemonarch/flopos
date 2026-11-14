@@ -1102,8 +1102,26 @@ static const char *mood_line(u8 *c)
 
 /* ---- the screen ----------------------------------------------------------------- */
 #define ROW_SET  4                       /* the settings start here         */
-#define ROW_CAS  17                      /* the cassette                    */
+#define ROW_CAS  16                      /* the cassette: the line under its heading */
 #define ROW_LIST 26                      /* the files                       */
+
+/* Words in the frame's own turning colours (red, gold and green run
+ * through the letters by themselves), and a glint that sweeps across them
+ * every few seconds: three letters lit, moved on each time the screen is
+ * drawn anyway.  from: how many letters of the whole came on earlier
+ * lines, and all: the whole's length, so one glint runs across them all. */
+static void shiny(int x, int y, const char *t, int from, int all)
+{
+    int i, at = (int)(A->ms() / 60 % (u32)(all + 40)) - 3;
+    for (i = 0; t[i]; i++) {
+        int d = from + i - at;
+        u8 c = (u8)(A_NEON + (A_NEON_N - 1 - (from + i) % A_NEON_N));
+        if (d == 0) c = A_BRIGHT;
+        else if (d == -1 || d == 1) c = A_CREAM;
+        else if (d == -2 || d == 2) c = A_GOLD;
+        A->win_put(x + i, y, (u8)t[i], c, A_PAPER, d == 0 ? AT_BOLD : 0);
+    }
+}
 
 /* A setting with two values: the one in force in green. */
 static int two(int x, int y, const char *key, const char *label, const char *a, const char *b, int second)
@@ -1169,21 +1187,7 @@ static void draw(void)
 
     A->win_open(W, H);
     A->win_frame("maelcum", A_OLIVE);
-    {   /* the name of the thing, in the frame's own turning colours (red,
-         * gold and green run through the letters by themselves), and a
-         * glint that sweeps across it every few seconds: three letters
-         * lit, moved on each time the screen is drawn anyway */
-        static const char name[] = "Magnetic Rust: Riddim 'n' Vibrationz Engine";
-        int n = (int)sizeof name - 1, at = (int)(A->ms() / 60 % (u32)(n + 40)) - 3;
-        for (i = 0; name[i]; i++) {
-            int d = i - at;
-            u8 c = (u8)(A_NEON + (A_NEON_N - 1 - i % A_NEON_N));
-            if (d == 0) c = A_BRIGHT;
-            else if (d == -1 || d == 1) c = A_CREAM;
-            else if (d == -2 || d == 2) c = A_GOLD;
-            A->win_put(2 + i, 2, (u8)name[i], c, A_PAPER, d == 0 ? AT_BOLD : 0);
-        }
-    }
+    shiny(2, 2, "Magnetic Rust: Riddim 'n' Vibrationz Engine", 0, 43);
 
     /* the settings: what is in force in green, what is not in grey */
     y = ROW_SET;
@@ -1339,13 +1343,16 @@ static void draw(void)
         const char *t = mood_line(&c);
         char line[80];
         int row = H - 6, wide = W - 4 < 78 ? W - 4 : 78, n, k, cut;
+        int glow = t == s_outcome && *t, from = 0, all = len_of(t);   /* the verdict shines like the title */
         while (*t && row <= H - 4) {  /* up to three lines, broken between words */
             for (n = 0; t[n] && n < wide; n++) { }
             cut = n;
             if (t[n]) { for (cut = n; cut > 0 && t[cut] != ' '; cut--) { } if (!cut) cut = n; }
             for (k = 0; k < cut; k++) line[k] = t[k];
             line[cut] = 0;
-            text(2, row++, line, c);
+            if (glow) shiny(2, row++, line, from, all);
+            else text(2, row++, line, c);
+            from += cut + 1;
             t += cut;
             while (*t == ' ') t++;
         }
@@ -1355,19 +1362,11 @@ static void draw(void)
     if (s_menu) text(2, H - 2, "\1Up\1 \1Down\1 choose   \1Enter\1 take it   \1Esc\1 close", A_OLIVE);
     else if (busy) text(2, H - 2, s_mode == M_READ ? "\1S\1 stop   \1Tab\1 the other socket" : "\1S\1 stop", A_OLIVE);
     else if (s_mode == M_ARMED) text(2, H - 2, "\1Enter\1 start   \1Esc\1 not now", A_OLIVE);
-    else if (tape_list()) {
-        text(2, H - 3, "\1Space\1 tick  \1Enter\1 restore the ticked  \1D\1 where to  \1G\1 sleeve", A_OLIVE);
-        text(2, H - 2, "\1Up\1 \1Down\1 move  \1R\1 read again  \1Esc\1 done", A_OLIVE);
-    } else if (s_mode == M_PICK) {
-        text(2, H - 3, "\1W\1 write the ticked  \1Space\1 tick  \1Enter\1 open a folder  \1Backspace\1 up", A_OLIVE);
-        text(2, H - 2, "\1Up\1 \1Down\1 move  \1Esc\1 back", A_OLIVE);
-    } else if (no_list()) {
-        text(2, H - 3, "\1W\1 write  \1R\1 read  \1G\1 sleeve", A_OLIVE);
-        text(2, H - 2, "\1Esc\1 leave", A_OLIVE);
-    } else {
-        text(2, H - 3, "\1W\1 write  \1R\1 read  \1G\1 sleeve", A_OLIVE);
-        text(2, H - 2, "\1Up\1 \1Down\1 move  \1Esc\1 done", A_OLIVE);
-    }
+    /* (the keys shown above, by the settings and in Run 'Tingz, are not repeated here) */
+    else if (tape_list()) text(2, H - 2, "\1Up\1 \1Down\1 move  \1Space\1 tick  \1Enter\1 restore the ticked  \1Esc\1 done", A_OLIVE);
+    else if (s_mode == M_PICK) text(2, H - 2, "\1Up\1 \1Down\1 move  \1Space\1 tick  \1Enter\1 open a folder  \1Backspace\1 up  \1Esc\1 back", A_OLIVE);
+    else if (no_list()) text(2, H - 2, "\1Esc\1 leave", A_OLIVE);
+    else text(2, H - 2, "\1Up\1 \1Down\1 move  \1Esc\1 done", A_OLIVE);
 }
 
 /* ---- asking for a line: a passphrase (shown as stars), or a folder's name -------- */

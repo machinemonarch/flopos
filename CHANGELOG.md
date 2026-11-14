@@ -22,7 +22,10 @@ without it. Each version's notes are also written next to its image, as
   that was in the block has given it up (tools/tapetest checks that a
   tape read whole counts no losses). The verdict judges every file of the
   save, not only those heard, and the screen is drawn before the tune.
-- maelcum: a glint sweeps across the title.
+- maelcum: a glint sweeps across the title, and the verdict after a read
+  shines the same way.
+- maelcum: the bottom line no longer repeats keys shown above (W, R, G,
+  D); Run 'Tingz starts on the line under its heading, like the others.
 - maelcum: no smiley after "SELECTA!".
 - scribe: Ctrl-A, Ctrl-C, Ctrl-X, Ctrl-V, Ctrl-Z, Ctrl-Y, Ctrl with the
   arrows, Home, End, Backspace and Delete, as on any computer.

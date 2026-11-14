@@ -54,7 +54,8 @@ the one that is not is grey.
 | <kbd>D</kbd> | Restore into, from a list: **a folder named by the date**, DDMMYYYY (the first choice), where each file came from, the top of the inventory, any folder, or a folder you name, which is made at once at the top of the inventory. |
 
 The cassette's wheels turn while a tape is written or read, and beside it
-is the progress. Below is a list of files, and its title says whose:
+is the progress. The bottom line names only the keys not already shown
+above. Below is a list of files, and its title says whose:
 
 - At first it is empty, so it is never unclear what is shown.
 - <kbd>W</kbd> fills it with **the files on the floppy**, one folder at a
@@ -75,7 +76,8 @@ being spoiled or the tape runs off its speed. While recording it cannot
 hear the tape, so there the line goes only by how far along it is; the
 real judging happens when the tape is played back.
 When a tape has been read it sums up with one of ten sayings, five for a
-tape that came whole and five for one that did not. The plain facts stay
+tape that came whole and five for one that did not, in the title's
+turning colours, glint and all. The plain facts stay
 on the screen beside the cassette and in the list.
 
 The screen keeps to red, gold and green on black, frame included, with
