@@ -51,7 +51,7 @@ the one that is not is grey.
 | Key | Setting |
 |---|---|
 | <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
-| <kbd>D</kbd> | Restore into, from a list: **a new folder, named by the date and time** (the first choice), where each file came from, the top of the inventory, any folder, or a folder you name, which is made at once at the top of the inventory. |
+| <kbd>D</kbd> | Restore into, from a list: **a folder named by the date**, DDMMYYYY (the first choice), where each file came from, the top of the inventory, any folder, or a folder you name, which is made at once at the top of the inventory. |
 
 The cassette's wheels turn while a tape is written or read, and beside it
 is the progress. Below is a list of files, and its title says whose:
@@ -125,11 +125,10 @@ The whole save is kept in memory; nothing has touched the floppy. The
 list shows **what the tape holds**, each file marked new (not on this
 floppy), different (from the floppy's copy) or same.
 
-By default a read is restored into **a folder of its own**, named by when
-the reading ended. A FAT12 name has eight letters at most and a folder's
-no dot, so it is two folders, the day and then the time:
-`14-11-26/21-45` is the 14th of November 2026 at 21.45 (with no clock,
-`TAPE01`, `TAPE02`...). Everything that came whole starts ticked, so the
+By default a read is restored into **a folder of its own**, named by the
+day the reading ended, DDMMYYYY: `14112026` is the 14th of November 2026
+(with no clock, `TAPE01`, `TAPE02`...). A second read on the same day
+goes into the same folder. Everything that came whole starts ticked, so the
 folder is a whole copy of the tape, with the files' own folders inside
 it. Nothing already on the floppy is touched; the system's three records
 land there as ordinary files.
@@ -181,7 +180,8 @@ of the last twenty-five years opens it; this one is the plainest kind
 (version 1.3, one picture a page, and a line of Helvetica, which every
 reader has built in), about 90 KB. A bare picture has no paper size of
 its own, so the print program stretches it to the page. At 90 KB the
-sleeve is too long for a tape, so a backup leaves it out.
+sleeve is too long for a tape, so a backup leaves it out: a sleeve goes
+on the tape, not inside it.
 
 ## Encryption
 

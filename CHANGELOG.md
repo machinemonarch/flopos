@@ -11,9 +11,9 @@ without it. Each version's notes are also written next to its image, as
   cassette's files as they are heard, to tick and restore. Its title says
   which.
 - maelcum: a read is restored by default into a folder of its own, named
-  by when the reading ended (`14-11-26/21-45`: day, then time, as FAT12
-  allows), with everything that came whole ticked. **D** still offers
-  where each came from, the top, any folder, or a folder you name.
+  by the day the reading ended (`14112026`, DDMMYYYY), with everything
+  that came whole ticked. **D** still offers where each came from, the
+  top, any folder, or a folder you name.
 - maelcum: the tape sleeve is one `SLEEVE.PDF` of two A4 pages, the card
   at its true size on each, back to back when printed two-sided; the
   screen says where it will go. Replaces `SLEEVE.BMP` and `INSIDE.BMP`.

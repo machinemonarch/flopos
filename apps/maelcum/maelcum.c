@@ -98,7 +98,7 @@ static int  W, H;                        /* the screen, in characters      */
 /* The settings. */
 static int s_job;                        /* 0 Standard Backup, 1 Pick & Mix */
 static int s_packing = 1, s_fast, s_verify, s_line = 1;
-static int s_dest = -2;                  /* restore into: -2 a new folder named by the date and time, -1 where each came from, or a folder */
+static int s_dest = -2;                  /* restore into: -2 a folder named by the date, -1 where each came from, or a folder */
 static int s_auto = -1;                  /* that new folder, once this read has made it */
 static int s_menu, s_pick;               /* a list is open (1 the jobs, 2 the ciphers), and the line it is on */
 static int s_crypt, s_alg;               /* encrypt what goes to tape, and with which cipher */
@@ -951,15 +951,15 @@ static void now_here(const char *path, u32 size)
     if (f) { f->here = 1; f->size = size; f->on = !s_job; }
 }
 
-/* The folder a read tape is restored into, named by when the reading
- * ended.  A FAT12 name is eight letters at most and a folder's has no
- * dot, so it is two folders: the day, then the time.  14-11-26/21-45 is
- * the 14th of November 2026 at 21.45.  With no clock: TAPE01, TAPE02... */
+/* The folder a read tape is restored into, named by the day the reading
+ * ended: DDMMYYYY, eight digits, which a FAT12 name just holds.  14112026
+ * is the 14th of November 2026.  A second read on the same day goes into
+ * the same folder.  With no clock: TAPE01, TAPE02... */
 static int auto_name(char *m, u32 cap)
 {
     const u8 *w = s_done_when;
     if (!s_done_clock) return 0;
-    A->format(m, cap, "%02u-%02u-%02u/%02u-%02u", (u32)w[2], (u32)w[1], (u32)w[0], (u32)w[3], (u32)w[4]);
+    A->format(m, cap, "%02u%02u20%02u", (u32)w[2], (u32)w[1], (u32)w[0]);
     return 1;
 }
 
@@ -968,16 +968,9 @@ static int ensure_auto(void)
     char name[24];
     InvItem it;
     u32 n;
-    int k;
     if (s_auto >= 0) return 1;
     if (!auto_name(name, sizeof name))
         for (n = 1; n < 100; n++) { A->format(name, sizeof name, "TAPE%02u", n); if (!A->inv_stat(name, &it)) break; }
-    for (k = 0; name[k]; k++) {                  /* the day's folder first */
-        if (name[k] != '/') continue;
-        name[k] = 0;
-        if (!A->inv_stat(name, &it) && !A->inv_mkdir(name)) return 0;
-        name[k] = '/';
-    }
     if (!A->inv_stat(name, &it) && !A->inv_mkdir(name)) return 0;
     s_auto = dir_for(name);
     wire("made", name, 0, 0);
@@ -1135,7 +1128,7 @@ static void head(int y, const char *t)
 static int dest_count(void) { return s_ndirs + 3; }
 static void dest_name(int i, char *m, u32 cap)
 {
-    if (i == 0) A->format(m, cap, "%s", "a new folder, named by the date and time");
+    if (i == 0) A->format(m, cap, "%s", "a folder named by the date (DDMMYYYY)");
     else if (i == 1) A->format(m, cap, "%s", "where each file came from");
     else if (i == 2) A->format(m, cap, "%s", "the top of the inventory");
     else if (i <= s_ndirs + 1) A->format(m, cap, "%s/", s_dirs[i - 2]);
