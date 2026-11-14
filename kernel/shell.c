@@ -518,6 +518,51 @@ static void cmd_whaaat(void)
     say(voice(going_in ? V_WHAAAT_IN : V_WHAAAT_OUT));
 }
 
+/* ---- the keyboard ------------------------------------------------------
+ * Which country's keys are printed on it.  Kept on the floppy, until a
+ * new release goes on it: that starts on Swedish again. */
+static const char *keyboard_name(void)
+{
+    int i;
+    for (i = 0; i < keymap_count(); i++)
+        if (eq_ci(keymap_code(), keymap_code_at(i))) return keymap_name_at(i);
+    return "Swedish";
+}
+
+static void keyboard_list(void)
+{
+    int i;
+    for (i = 0; i < keymap_count(); i++) {
+        term_colour(C_ACCENT);
+        term_printf("  %s  ", keymap_code_at(i));
+        term_colour(C_DIM);
+        term_print(keymap_name_at(i));
+        term_newline();
+    }
+}
+
+static void cmd_keyboard(void)
+{
+    if (s_argc < 2) {
+        term_colour(C_TEXT);
+        term_printf("Typing on the %s keyboard.", keyboard_name());
+        term_newline();
+        keyboard_list();
+        say_dim("Change it with: keyboard us");
+        return;
+    }
+    if (!keymap_set(s_argv[1])) {
+        say("I don't know that keyboard. These I know:");
+        keyboard_list();
+        return;
+    }
+    term_colour(C_ACCENT);
+    term_printf("Now typing on the %s keyboard.", keyboard_name());
+    term_newline();
+    if (!store_keys_set(keymap_code()))
+        say_dim("It goes back to Swedish when the machine restarts.");
+}
+
 static void cmd_quirks(void)
 {
     term_quirks(!term_quirks_on());
@@ -1306,6 +1351,7 @@ static const Cmd s_cmds[] = {
     { "quiet",   "turn the sound off",           cmd_quiet   },
     { "quirks",  "steady the text, or let it go",cmd_quirks  },
     { "squint",  "fit more on the screen",       cmd_squint  },
+    { "keyboard","which country's keys",         cmd_keyboard},
     { "screen",  "how big the picture is",       cmd_screen  },
     { "wide",    "stop filling the screen",      cmd_wide    },
     { "time",    "the hour, and how long awake", cmd_time    },

@@ -123,6 +123,57 @@ const u8 g_font5x8[FONT_GLYPHS][5] = {
     { 0x20, 0x54, 0x55, 0x54, 0x78 },  /* 102  lowercase a-ring */
     { 0x20, 0x55, 0x54, 0x55, 0x78 },  /* 103  lowercase a-diaeresis */
     { 0x38, 0x45, 0x44, 0x45, 0x38 },  /* 104  lowercase o-diaeresis */
+    { 0x00, 0x00, 0x7D, 0x00, 0x00 },  /* 105  inverted exclamation mark U+00A1 */
+    { 0x48, 0x7E, 0x49, 0x41, 0x42 },  /* 106  pound sign U+00A3 */
+    { 0x0A, 0x55, 0x55, 0x55, 0x28 },  /* 107  section sign U+00A7 */
+    { 0x00, 0x01, 0x00, 0x01, 0x00 },  /* 108  diaeresis U+00A8 */
+    { 0x06, 0x09, 0x09, 0x06, 0x00 },  /* 109  degree sign U+00B0 */
+    { 0x00, 0x00, 0x02, 0x01, 0x00 },  /* 110  acute accent U+00B4 */
+    { 0xFC, 0x20, 0x40, 0x40, 0x3C },  /* 111  micro sign U+00B5 */
+    { 0x30, 0x48, 0x45, 0x40, 0x20 },  /* 112  inverted question mark U+00BF */
+    { 0x78, 0x15, 0x16, 0x14, 0x78 },  /* 113  latin capital letter a with grave U+00C0 */
+    { 0x78, 0x14, 0x16, 0x15, 0x78 },  /* 114  latin capital letter a with acute U+00C1 */
+    { 0x78, 0x16, 0x15, 0x16, 0x78 },  /* 115  latin capital letter a with circumflex U+00C2 */
+    { 0x3E, 0x41, 0xC1, 0x41, 0x22 },  /* 116  latin capital letter c with cedilla U+00C7 */
+    { 0x7C, 0x55, 0x56, 0x54, 0x44 },  /* 117  latin capital letter e with grave U+00C8 */
+    { 0x7C, 0x54, 0x56, 0x55, 0x44 },  /* 118  latin capital letter e with acute U+00C9 */
+    { 0x7C, 0x56, 0x55, 0x56, 0x44 },  /* 119  latin capital letter e with circumflex U+00CA */
+    { 0x7C, 0x55, 0x54, 0x55, 0x44 },  /* 120  latin capital letter e with diaeresis U+00CB */
+    { 0x00, 0x45, 0x7E, 0x44, 0x00 },  /* 121  latin capital letter i with grave U+00CC */
+    { 0x00, 0x44, 0x7E, 0x45, 0x00 },  /* 122  latin capital letter i with acute U+00CD */
+    { 0x00, 0x46, 0x7D, 0x46, 0x00 },  /* 123  latin capital letter i with circumflex U+00CE */
+    { 0x00, 0x45, 0x7C, 0x45, 0x00 },  /* 124  latin capital letter i with diaeresis U+00CF */
+    { 0x7E, 0x09, 0x12, 0x21, 0x7C },  /* 125  latin capital letter n with tilde U+00D1 */
+    { 0x38, 0x45, 0x46, 0x44, 0x38 },  /* 126  latin capital letter o with grave U+00D2 */
+    { 0x38, 0x44, 0x46, 0x45, 0x38 },  /* 127  latin capital letter o with acute U+00D3 */
+    { 0x38, 0x46, 0x45, 0x46, 0x38 },  /* 128  latin capital letter o with circumflex U+00D4 */
+    { 0x3C, 0x41, 0x42, 0x40, 0x3C },  /* 129  latin capital letter u with grave U+00D9 */
+    { 0x3C, 0x40, 0x42, 0x41, 0x3C },  /* 130  latin capital letter u with acute U+00DA */
+    { 0x3C, 0x42, 0x41, 0x42, 0x3C },  /* 131  latin capital letter u with circumflex U+00DB */
+    { 0x3C, 0x41, 0x40, 0x41, 0x3C },  /* 132  latin capital letter u with diaeresis U+00DC */
+    { 0x7E, 0x01, 0x49, 0x56, 0x20 },  /* 133  latin small letter sharp s U+00DF */
+    { 0x20, 0x55, 0x56, 0x54, 0x78 },  /* 134  latin small letter a with grave U+00E0 */
+    { 0x20, 0x54, 0x56, 0x55, 0x78 },  /* 135  latin small letter a with acute U+00E1 */
+    { 0x20, 0x56, 0x55, 0x56, 0x78 },  /* 136  latin small letter a with circumflex U+00E2 */
+    { 0x38, 0x44, 0xC4, 0x44, 0x28 },  /* 137  latin small letter c with cedilla U+00E7 */
+    { 0x38, 0x55, 0x56, 0x54, 0x18 },  /* 138  latin small letter e with grave U+00E8 */
+    { 0x38, 0x54, 0x56, 0x55, 0x18 },  /* 139  latin small letter e with acute U+00E9 */
+    { 0x38, 0x56, 0x55, 0x56, 0x18 },  /* 140  latin small letter e with circumflex U+00EA */
+    { 0x38, 0x55, 0x54, 0x55, 0x18 },  /* 141  latin small letter e with diaeresis U+00EB */
+    { 0x00, 0x45, 0x7E, 0x40, 0x00 },  /* 142  latin small letter i with grave U+00EC */
+    { 0x00, 0x44, 0x7E, 0x41, 0x00 },  /* 143  latin small letter i with acute U+00ED */
+    { 0x00, 0x46, 0x7D, 0x42, 0x00 },  /* 144  latin small letter i with circumflex U+00EE */
+    { 0x00, 0x45, 0x7C, 0x41, 0x00 },  /* 145  latin small letter i with diaeresis U+00EF */
+    { 0x7E, 0x05, 0x06, 0x06, 0x79 },  /* 146  latin small letter n with tilde U+00F1 */
+    { 0x38, 0x45, 0x46, 0x44, 0x38 },  /* 147  latin small letter o with grave U+00F2 */
+    { 0x38, 0x44, 0x46, 0x45, 0x38 },  /* 148  latin small letter o with acute U+00F3 */
+    { 0x38, 0x46, 0x45, 0x46, 0x38 },  /* 149  latin small letter o with circumflex U+00F4 */
+    { 0x3C, 0x41, 0x42, 0x40, 0x7C },  /* 150  latin small letter u with grave U+00F9 */
+    { 0x3C, 0x40, 0x42, 0x41, 0x7C },  /* 151  latin small letter u with acute U+00FA */
+    { 0x3C, 0x42, 0x41, 0x42, 0x7C },  /* 152  latin small letter u with circumflex U+00FB */
+    { 0x3C, 0x41, 0x40, 0x41, 0x7C },  /* 153  latin small letter u with diaeresis U+00FC */
+    { 0x1C, 0xA1, 0xA0, 0xA1, 0x7C },  /* 154  latin small letter y with diaeresis U+00FF */
+    { 0x14, 0x3E, 0x55, 0x55, 0x41 },  /* 155  euro sign U+20AC */
 };
 
 const u8 g_font4x6[FONT_GLYPHS][4] = {
@@ -231,6 +282,57 @@ const u8 g_font4x6[FONT_GLYPHS][4] = {
     { 0x0E, 0x13, 0x1E, 0x00 },  /* 102  lowercase a-ring */
     { 0x0F, 0x12, 0x1F, 0x00 },  /* 103  lowercase a-diaeresis */
     { 0x0D, 0x12, 0x0D, 0x00 },  /* 104  lowercase o-diaeresis */
+    { 0x00, 0x1D, 0x00, 0x00 },  /* 105  inverted exclamation mark U+00A1 */
+    { 0x14, 0x1F, 0x15, 0x00 },  /* 106  pound sign U+00A3 */
+    { 0x16, 0x15, 0x0D, 0x00 },  /* 107  section sign U+00A7 */
+    { 0x01, 0x00, 0x01, 0x00 },  /* 108  diaeresis U+00A8 */
+    { 0x02, 0x05, 0x02, 0x00 },  /* 109  degree sign U+00B0 */
+    { 0x00, 0x02, 0x01, 0x00 },  /* 110  acute accent U+00B4 */
+    { 0x3E, 0x10, 0x1E, 0x00 },  /* 111  micro sign U+00B5 */
+    { 0x08, 0x15, 0x10, 0x00 },  /* 112  inverted question mark U+00BF */
+    { 0x1F, 0x0A, 0x1E, 0x00 },  /* 113  latin capital letter a with grave U+00C0 */
+    { 0x1E, 0x0A, 0x1F, 0x00 },  /* 114  latin capital letter a with acute U+00C1 */
+    { 0x1E, 0x0B, 0x1E, 0x00 },  /* 115  latin capital letter a with circumflex U+00C2 */
+    { 0x0E, 0x31, 0x11, 0x00 },  /* 116  latin capital letter c with cedilla U+00C7 */
+    { 0x1F, 0x16, 0x12, 0x00 },  /* 117  latin capital letter e with grave U+00C8 */
+    { 0x1E, 0x16, 0x13, 0x00 },  /* 118  latin capital letter e with acute U+00C9 */
+    { 0x1E, 0x17, 0x12, 0x00 },  /* 119  latin capital letter e with circumflex U+00CA */
+    { 0x1F, 0x16, 0x13, 0x00 },  /* 120  latin capital letter e with diaeresis U+00CB */
+    { 0x13, 0x1E, 0x12, 0x00 },  /* 121  latin capital letter i with grave U+00CC */
+    { 0x12, 0x1E, 0x13, 0x00 },  /* 122  latin capital letter i with acute U+00CD */
+    { 0x12, 0x1F, 0x12, 0x00 },  /* 123  latin capital letter i with circumflex U+00CE */
+    { 0x13, 0x1E, 0x13, 0x00 },  /* 124  latin capital letter i with diaeresis U+00CF */
+    { 0x1F, 0x05, 0x08, 0x1F },  /* 125  latin capital letter n with tilde U+00D1 */
+    { 0x1F, 0x12, 0x1E, 0x00 },  /* 126  latin capital letter o with grave U+00D2 */
+    { 0x1E, 0x12, 0x1F, 0x00 },  /* 127  latin capital letter o with acute U+00D3 */
+    { 0x1E, 0x13, 0x1E, 0x00 },  /* 128  latin capital letter o with circumflex U+00D4 */
+    { 0x1F, 0x10, 0x1E, 0x00 },  /* 129  latin capital letter u with grave U+00D9 */
+    { 0x1E, 0x10, 0x1F, 0x00 },  /* 130  latin capital letter u with acute U+00DA */
+    { 0x1E, 0x11, 0x1E, 0x00 },  /* 131  latin capital letter u with circumflex U+00DB */
+    { 0x1F, 0x10, 0x1F, 0x00 },  /* 132  latin capital letter u with diaeresis U+00DC */
+    { 0x3E, 0x15, 0x0A, 0x00 },  /* 133  latin small letter sharp s U+00DF */
+    { 0x0F, 0x12, 0x1E, 0x00 },  /* 134  latin small letter a with grave U+00E0 */
+    { 0x0E, 0x12, 0x1F, 0x00 },  /* 135  latin small letter a with acute U+00E1 */
+    { 0x0E, 0x13, 0x1E, 0x00 },  /* 136  latin small letter a with circumflex U+00E2 */
+    { 0x0C, 0x32, 0x12, 0x00 },  /* 137  latin small letter c with cedilla U+00E7 */
+    { 0x0D, 0x16, 0x16, 0x00 },  /* 138  latin small letter e with grave U+00E8 */
+    { 0x0C, 0x16, 0x17, 0x00 },  /* 139  latin small letter e with acute U+00E9 */
+    { 0x0C, 0x17, 0x16, 0x00 },  /* 140  latin small letter e with circumflex U+00EA */
+    { 0x0D, 0x16, 0x17, 0x00 },  /* 141  latin small letter e with diaeresis U+00EB */
+    { 0x01, 0x1C, 0x00, 0x00 },  /* 142  latin small letter i with grave U+00EC */
+    { 0x00, 0x1C, 0x01, 0x00 },  /* 143  latin small letter i with acute U+00ED */
+    { 0x00, 0x1D, 0x00, 0x00 },  /* 144  latin small letter i with circumflex U+00EE */
+    { 0x01, 0x1C, 0x01, 0x00 },  /* 145  latin small letter i with diaeresis U+00EF */
+    { 0x1F, 0x03, 0x1C, 0x01 },  /* 146  latin small letter n with tilde U+00F1 */
+    { 0x0D, 0x12, 0x0C, 0x00 },  /* 147  latin small letter o with grave U+00F2 */
+    { 0x0C, 0x12, 0x0D, 0x00 },  /* 148  latin small letter o with acute U+00F3 */
+    { 0x0C, 0x13, 0x0C, 0x00 },  /* 149  latin small letter o with circumflex U+00F4 */
+    { 0x0F, 0x10, 0x1E, 0x00 },  /* 150  latin small letter u with grave U+00F9 */
+    { 0x0E, 0x10, 0x1F, 0x00 },  /* 151  latin small letter u with acute U+00FA */
+    { 0x0E, 0x11, 0x1E, 0x00 },  /* 152  latin small letter u with circumflex U+00FB */
+    { 0x0F, 0x10, 0x1F, 0x00 },  /* 153  latin small letter u with diaeresis U+00FC */
+    { 0x27, 0x28, 0x1F, 0x00 },  /* 154  latin small letter y with diaeresis U+00FF */
+    { 0x0E, 0x1B, 0x1B, 0x00 },  /* 155  euro sign U+20AC */
 };
 
 /* The faces as the terminal sees them.  adv and pitch are the cell, which
@@ -239,5 +341,16 @@ const u8 g_font4x6[FONT_GLYPHS][4] = {
 const Face g_faces[FACE_COUNT] = {
     { (const u8 *)g_font5x8, 5, 8, 6, 8, 53, 25, 1, 1, "roomy"  },
     { (const u8 *)g_font4x6, 4, 6, 4, 6, 80, 33, 0, 1, "close"  },
+};
+
+/* Latin-1 (Latin-9 for the euro at 0xA4) -> slot, from 0xA0; 0 means the
+ * font has no such letter. */
+const u8 g_latin_slot[96] = {
+      0, 105,   0, 106, 155,   0,   0, 107, 108,   0,   0,   0,   0,   0,   0,   0,  /* A0 */
+    109,   0,   0,   0, 110, 111,   0,   0,   0,   0,   0,   0,   0,   0,   0, 112,  /* B0 */
+    113, 114, 115,   0,  65,  64,   0, 116, 117, 118, 119, 120, 121, 122, 123, 124,  /* C0 */
+      0, 125, 126, 127, 128,   0,  66,   0,   0, 129, 130, 131, 132,   0,   0, 133,  /* D0 */
+    134, 135, 136,   0, 103, 102,   0, 137, 138, 139, 140, 141, 142, 143, 144, 145,  /* E0 */
+      0, 146, 147, 148, 149,   0, 104,   0,   0, 150, 151, 152, 153,   0,   0, 154,  /* F0 */
 };
 

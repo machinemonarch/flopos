@@ -15,6 +15,7 @@ terminal draws with. The slot numbers go into fontmap.h so nothing has to be
 kept in sync by hand.
 """
 import sys
+import unicodedata
 
 CELL_H = 8          # rows per glyph; row 7 is the descender / gap row
 CELL_W = 5
@@ -301,6 +302,119 @@ lo(chr(0xF6), "#.#.", ".#..", "#.#.", "#.#.", ".#..")   # o-diaeresis
 G4, EXTRA4, CELL4 = G, EXTRA, (CELL_W, CELL_H)
 
 # ---------------------------------------------------------------------------
+# The letters of the other keyboards: German, French, Spanish, Italian and
+# the British pound.  They are looked up by Latin-1 number (the euro where
+# Latin-9 puts it, 0xA4); the kernel's character codes for them are in
+# flopos.h, near CH_LATIN.  Most are built here
+# from a letter and a mark rather than drawn one by one, so every accent
+# sits the same way on every letter.
+#
+# Large face: the mark takes rows 0..1 over a lowercase body (rows 2..6),
+# and over a capital squeezed to five rows, like A-ring.  Small face: the
+# mark takes row 0 and a capital is squeezed to four rows.
+# ---------------------------------------------------------------------------
+MARK5 = {"grave": (".#...", "..#.."), "acute": ("...#.", "..#.."),
+         "circ":  ("..#..", ".#.#."), "diaer": (".#.#.", "....."),
+         "tilde": (".#.#.", "#.#.."),}
+MARK4 = {"grave": "#...", "acute": "..#.", "circ": ".#..", "diaer": "#.#.",
+         "tilde": "##.#"}
+SQUEEZE5 = {
+    "A": (".###.", "#...#", "#####", "#...#", "#...#"),
+    "E": ("#####", "#....", "####.", "#....", "#####"),
+    "I": (".###.", "..#..", "..#..", "..#..", ".###."),
+    "O": (".###.", "#...#", "#...#", "#...#", ".###."),
+    "U": ("#...#", "#...#", "#...#", "#...#", ".###."),
+    "N": ("#...#", "##..#", "#.#.#", "#..##", "#...#"),
+}
+SQUEEZE4 = {
+    "A": ("###.", "#.#.", "###.", "#.#."),
+    "E": ("###.", "##..", "#...", "###."),
+    "I": ("###.", ".#..", ".#..", "###."),
+    "O": ("###.", "#.#.", "#.#.", "###."),
+    "U": ("#.#.", "#.#.", "#.#.", "###."),
+    "N": ("#..#", "##.#", "#.##", "#..#"),
+}
+# (code, base letter, mark)
+ACCENTED = []
+for base, marks in (("a", "grave acute circ diaer"), ("e", "grave acute circ diaer"),
+                    ("i", "grave acute circ diaer"), ("o", "grave acute circ diaer"),
+                    ("u", "grave acute circ diaer"), ("n", "tilde")):
+    for m in marks.split():
+        low = unicodedata.lookup("LATIN SMALL LETTER %s WITH %s" % (base.upper(),
+              {"grave": "GRAVE", "acute": "ACUTE", "circ": "CIRCUMFLEX",
+               "diaer": "DIAERESIS", "tilde": "TILDE"}[m]))
+        ACCENTED.append((low, base, m))
+        ACCENTED.append((low.upper(), base.upper(), m))
+
+def latin5(gd):
+    out = {}
+    for ch, base, m in ACCENTED:
+        mk = MARK5[m]
+        if base.islower():
+            body = gd[base][2:7]
+            if base == "n" and m == "tilde":
+                rows = [".#..#", "#.##.", "####.", "#...#", "#...#", "#...#", "#...#"]
+            else:
+                rows = list(mk) + list(body)
+        else:
+            rows = list(mk) + list(SQUEEZE5[base])
+            if m == "diaer":
+                rows[1] = "....."
+        out[ch] = pad(ch, rows)
+    out["ç"] = pad("c", gd["c"][:7] + ["..#.."])            # c-cedilla
+    out["Ç"] = pad("C", gd["C"][:7] + ["..#.."])
+    out["ß"] = pad("ss", [".##..", "#..#.", "#..#.", "#.#..", "#..#.", "#...#", "#.##."])
+    out["ÿ"] = pad("y", [".#.#.", ".....", "#...#", "#...#", "#...#", ".####", "....#", ".###."])
+    out["£"] = pad("pound", ["..##.", ".#..#", ".#...", "###..", ".#...", ".#...", "#####"])
+    out["§"] = pad("section", [".###.", "#....", ".###.", "#...#", ".###.", "....#", ".###."])
+    out["°"] = pad("degree", [".##..", "#..#.", "#..#.", ".##..", ".....", ".....", "....."])
+    out["¿"] = pad("inv?", ["..#..", ".....", "..#..", ".#...", "#....", "#...#", ".###."])
+    out["¡"] = pad("inv!", ["..#..", ".....", "..#..", "..#..", "..#..", "..#..", "..#.."])
+    out["´"] = pad("acute", ["...#.", "..#..", ".....", ".....", ".....", ".....", "....."])
+    out["¨"] = pad("diaer", [".#.#.", ".....", ".....", ".....", ".....", ".....", "....."])
+    out["µ"] = pad("micro", [".....", ".....", "#...#", "#...#", "#...#", "##..#", "#.##.", "#...."])
+    out["€"] = pad("euro", ["..###", ".#...", "####.", ".#...", "####.", ".#...", "..###"])
+    return out
+
+def latin4(gd):
+    out = {}
+    for ch, base, m in ACCENTED:
+        mk = MARK4[m]
+        if base.islower():
+            rows = [mk] + list(gd[base][1:5])
+        else:
+            rows = [mk] + list(SQUEEZE4[base])
+        out[ch] = pad(ch, rows)
+    out["ç"] = pad("c", gd["c"][:5] + [".#.."])
+    out["Ç"] = pad("C", gd["C"][:5] + [".#.."])
+    out["ß"] = pad("ss", [".#..", "#.#.", "##..", "#.#.", "##..", "#..."])
+    out["ÿ"] = pad("y", ["#.#.", "#.#.", "#.#.", ".##.", "..#.", "##.."])
+    out["£"] = pad("pound", [".##.", ".#..", "###.", ".#..", "###."])
+    out["§"] = pad("section", [".##.", "#...", "###.", "..#.", "##.."])
+    out["°"] = pad("degree", [".#..", "#.#.", ".#..", "....", "...."])
+    out["¿"] = pad("inv?", [".#..", "....", ".#..", "#...", ".##."])
+    out["¡"] = pad("inv!", [".#..", "....", ".#..", ".#..", ".#.."])
+    out["´"] = pad("acute", ["..#.", ".#..", "....", "....", "...."])
+    out["¨"] = pad("diaer", ["#.#.", "....", "....", "....", "...."])
+    out["µ"] = pad("micro", ["....", "#.#.", "#.#.", "#.#.", "###.", "#..."])
+    out["€"] = pad("euro", [".##.", "###.", "#...", "###.", ".##."])
+    return out
+
+CELL_W, CELL_H = CELL5
+LAT5 = latin5(G5)
+CELL_W, CELL_H = CELL4
+LAT4 = latin4(G4)
+# The ones the Swedish letters already draw are left to them.
+for d in (LAT5, LAT4):
+    for ch in "äöÄÖ":
+        d.pop(ch, None)
+assert sorted(LAT5) == sorted(LAT4)
+LATIN = sorted(LAT5, key=lambda c: (c == "€", ord(c)))
+
+def code_of(ch):
+    return 0xA4 if ch == "€" else ord(ch)
+
+# ---------------------------------------------------------------------------
 # Emit kernel/font.c and kernel/fontmap.h.  Both faces are laid out in the
 # same slot order, so glyph_index() serves either one and a face can be
 # swapped under the terminal at runtime.
@@ -338,6 +452,9 @@ def build(gd, extra, cell):
     for ch, name in ((chr(0xE5), "a-ring"), (chr(0xE4), "a-diaeresis"),
                      (chr(0xF6), "o-diaeresis")):
         out.append(("lowercase " + name, columns(gd[ch], w, h)))
+    lat = LAT5 if cell == CELL5 else LAT4
+    for ch in LATIN:
+        out.append(("%s U+%04X" % (unicodedata.name(ch).lower(), ord(ch)), columns(lat[ch], w, h)))
     return out
 
 
@@ -349,6 +466,7 @@ total      = len(five)
 extra_base = 64
 lower_base = 64 + len(EXTRA5)
 swed_base  = lower_base + len(LOWER)
+latin_base = swed_base + 3
 extra_names = [(name, extra_base + i) for i, (name, _) in enumerate(EXTRA5)]
 
 
@@ -393,7 +511,25 @@ const Face g_faces[FACE_COUNT] = {
     { (const u8 *)g_font4x6, 4, 6, 4, 6, 80, 33, 0, 1, "close"  },
 };""")
 lines.append("")
+slot = [0] * 96
+for i, ch in enumerate(LATIN):
+    slot[code_of(ch) - 0xA0] = latin_base + i
+for ch, n in (("\u00c5", extra_base), ("\u00c4", extra_base + 1), ("\u00d6", extra_base + 2),
+              ("\u00e5", swed_base), ("\u00e4", swed_base + 1), ("\u00f6", swed_base + 2)):
+    slot[ord(ch) - 0xA0] = n
+lines.append("/* Latin-1 (Latin-9 for the euro at 0xA4) -> slot, from 0xA0; 0 means the")
+lines.append(" * font has no such letter. */")
+lines.append("const u8 g_latin_slot[96] = {")
+for r in range(0, 96, 16):
+    lines.append("    " + ", ".join("%3d" % v for v in slot[r:r + 16]) + ",  /* %02X */" % (0xA0 + r))
+lines.append("};")
+lines.append("")
 open("kernel/font.c", "w").write("\n".join(lines) + "\n")
+
+masks = [0, 0, 0]
+for i, v in enumerate(slot):
+    if v:
+        masks[i // 32] |= 1 << (i % 32)
 
 hdr = ["""/* ===========================================================================
  * fontmap.h -- where each glyph lives in both faces.  GENERATED by
@@ -420,8 +556,16 @@ hdr = ["""/* ===================================================================
 #define G_LOWER_ARING %d
 #define G_LOWER_ADIA  %d
 #define G_LOWER_ODIA  %d
-""" % (total, CELL5[0], CELL5[1], 80, 33,
-       lower_base, swed_base, swed_base + 1, swed_base + 2)]
+
+/* Then the other keyboards' letters; g_latin_slot finds them.  The masks
+ * say which Latin-1 numbers (bit n of mask k is 0xA0 + 32k + n) the font
+ * can draw, for apps/app.h to check itself against. */
+#define G_LATIN_BASE  %d
+#define LATIN_MASK0   0x%08Xu
+#define LATIN_MASK1   0x%08Xu
+#define LATIN_MASK2   0x%08Xu
+""" % ((total, CELL5[0], CELL5[1], 80, 33,
+       lower_base, swed_base, swed_base + 1, swed_base + 2, latin_base) + tuple(masks))]
 
 for name, n in extra_names:
     sym = name.upper().replace("-", "_").replace(" ", "_")
@@ -432,8 +576,8 @@ hdr.append("#endif /* FONTMAP_H */")
 open("kernel/fontmap.h", "w").write("\n".join(hdr) + "\n")
 
 print("wrote kernel/font.c and kernel/fontmap.h")
-print("  %d glyphs in each of 2 faces  (%d ascii, %d extra, %d lower, 3 swedish)"
-      % (total, 64, len(EXTRA5), len(LOWER)))
+print("  %d glyphs in each of 2 faces  (%d ascii, %d extra, %d lower, 3 swedish, %d latin)"
+      % (total, 64, len(EXTRA5), len(LOWER), len(LATIN)))
 
 # ---------------------------------------------------------------------------
 # A proof, printed, because a font is the one thing that cannot be verified

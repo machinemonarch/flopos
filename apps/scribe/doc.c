@@ -31,24 +31,25 @@ typedef struct { u8 *p; int n, cap, over; } Out;
 static void put(Out *o, u8 b) { if (o->n < o->cap) o->p[o->n++] = b; else o->over = 1; }
 static void puts_(Out *o, const char *s) { while (*s) put(o, (u8)*s++); }
 
-/* A Swedish letter goes out as UTF-8; returns 0 for anything else. */
-static int put_swedish(Out *o, u8 ch)
+/* A letter past ASCII (Swedish, German, French, Spanish, Italian, the
+ * pound and the euro) goes out as UTF-8; returns 0 for anything else. */
+static int put_letter(Out *o, u8 ch)
 {
-    u32 cp = 0;
-    switch (ch) {
-    case A_CH_ARING: cp = 0xC5; break;   case A_CH_ARING_L: cp = 0xE5; break;
-    case A_CH_ADIA:  cp = 0xC4; break;   case A_CH_ADIA_L:  cp = 0xE4; break;
-    case A_CH_ODIA:  cp = 0xD6; break;   case A_CH_ODIA_L:  cp = 0xF6; break;
-    }
+    u32 cp = a_unicode(ch);
     if (!cp) return 0;
-    put(o, (u8)(0xC0 | (cp >> 6)));
+    if (cp < 0x800) {
+        put(o, (u8)(0xC0 | (cp >> 6)));
+    } else {
+        put(o, (u8)(0xE0 | (cp >> 12)));
+        put(o, (u8)(0x80 | ((cp >> 6) & 0x3F)));
+    }
     put(o, (u8)(0x80 | (cp & 0x3F)));
     return 1;
 }
 
 static void put_char(Out *o, u8 ch)
 {
-    if (put_swedish(o, ch)) return;
+    if (put_letter(o, ch)) return;
     if (ch == '*' || ch == '<' || ch == '\\') put(o, '\\');
     put(o, ch);
 }
@@ -116,17 +117,26 @@ static int starts(const u8 *p, const u8 *end, const char *s)
     return 1;
 }
 
-/* A two-byte UTF-8 letter at p becomes the font's Swedish letter, or '?'.
- * Returns the bytes it used, 0 if p is not the start of one. */
-static int get_swedish(const u8 *p, const u8 *eol, u8 *g)
+/* A UTF-8 letter at p (two bytes, or three for the euro and the like)
+ * becomes the font's letter, or '?' if the font has none.  Returns the
+ * bytes it used, 0 if p is not the start of one. */
+static int get_letter(const u8 *p, const u8 *eol, u8 *g)
 {
     u32 cp;
-    if (!(p[0] >= 0xC2 && p[0] <= 0xDF && p + 1 < eol && (p[1] & 0xC0) == 0x80)) return 0;
-    cp = ((u32)(p[0] & 0x1F) << 6) | (p[1] & 0x3F);
-    *g = cp == 0xC5 ? A_CH_ARING : cp == 0xE5 ? A_CH_ARING_L :
-         cp == 0xC4 ? A_CH_ADIA  : cp == 0xE4 ? A_CH_ADIA_L  :
-         cp == 0xD6 ? A_CH_ODIA  : cp == 0xF6 ? A_CH_ODIA_L  : '?';
-    return 2;
+    int n, c;
+    if (p[0] >= 0xC2 && p[0] <= 0xDF && p + 1 < eol && (p[1] & 0xC0) == 0x80) {
+        cp = ((u32)(p[0] & 0x1F) << 6) | (p[1] & 0x3F);
+        n = 2;
+    } else if (p[0] >= 0xE0 && p[0] <= 0xEF && p + 2 < eol &&
+               (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
+        cp = ((u32)(p[0] & 0x0F) << 12) | ((u32)(p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+        n = 3;
+    } else {
+        return 0;
+    }
+    c = a_from_unicode(cp);
+    *g = c ? (u8)c : '?';
+    return n;
 }
 
 static int text_end(const u8 *in, int len)
@@ -181,7 +191,7 @@ void doc_from_text_at(Doc *d, const u8 *in, int len, int want, int *got)
                 if (n & 1) at ^= AT_ITALIC;
                 continue;
             }
-            if (get_swedish(p, eol, &g)) { add(d, g, at); p += 2; continue; }
+            { int k = get_letter(p, eol, &g); if (k) { add(d, g, at); p += k; continue; } }
             if (b >= 0x80) {                 /* longer UTF-8, or anything else */
                 p++;
                 while (p < eol && (*p & 0xC0) == 0x80) p++;
@@ -214,7 +224,7 @@ int doc_to_plain(const Doc *d, u8 *out, int cap, int want, int *got)
     if (got) *got = -1;
     for (i = 0; i < d->len; i++) {
         if (i == want && got) *got = o.n;
-        if (!put_swedish(&o, d->c[i].ch)) put(&o, d->c[i].ch);
+        if (!put_letter(&o, d->c[i].ch)) put(&o, d->c[i].ch);
     }
     if (got && *got < 0) *got = o.n;
     return o.over ? -1 : o.n;
@@ -233,7 +243,7 @@ int doc_from_plain(Doc *d, const u8 *in, int len, int want, int *got)
         if (d->len >= DOC_MAX - 1) { fits = 0; break; }
         if (b == '\n') { d->c[d->len].ch = '\n'; d->c[d->len].at = ST_BODY; d->len++; p++; continue; }
         if (b == '\r') { p++; continue; }
-        if (get_swedish(p, end, &g)) { add(d, g, 0); p += 2; continue; }
+        { int k = get_letter(p, end, &g); if (k) { add(d, g, 0); p += k; continue; } }
         if (b >= 0x80) {
             p++;
             while (p < end && (*p & 0xC0) == 0x80) p++;

@@ -49,6 +49,7 @@ clock.
 | `whaaat` | Pulls the screen through a hole in itself, turns it inside out, and drops you back somewhere colder. Say it again to come back up. |
 | `quirks` | Lines of text sometimes misbehave on purpose. This holds them still, or lets them go again. |
 | `squint` | Switches between the larger and the smaller text, for more room. |
+| `keyboard` | Which country's keys are printed on your keyboard: `keyboard de`. Alone, it says which is in use and lists the others (see [Keyboards](#keyboards)). |
 | `screen big` / `screen small` | 800×600 with smooth text (the default), or the chunky 320×200 picture. `screen` alone says which is on. |
 | `wide` | Only at 320×200: stretches the picture to fill the whole panel, or puts it back in its box. |
 | `goaway` | Wipes the screen. |
@@ -136,10 +137,36 @@ which is why it steps when an app opens and stays still while it runs.
 | Page Up / Page Down | Look back through what has scrolled away |
 | Esc | Abandon the line |
 
-The keyboard layout is **Swedish**. Letters are where they are on any
-QWERTY keyboard; symbols are where a Swedish keyboard prints them: `"` is
-Shift-2, `/` is Shift-7, `@` is AltGr-2, `\` is AltGr and the plus key.
-Å, Ä and Ö have their own letters in the font.
+## Keyboards
+
+FLOPOS starts on the **Swedish** keyboard. `keyboard` and a country's code
+changes it, for the keys printed on yours:
+
+| Code | Keyboard |
+|---|---|
+| `se` | Swedish (the default) |
+| `fi` | Finnish, the same keys as Swedish |
+| `us` | American |
+| `uk` | British (`gb` works too) |
+| `de` | German |
+| `fr` | French |
+| `es` | Spanish |
+| `it` | Italian |
+
+The choice is kept on the floppy, so it is still there after a restart.
+Writing a new release onto the floppy starts it on Swedish again.
+
+Every key types what is printed on it, AltGr (the right Alt) included:
+on the Swedish keyboard `"` is Shift-2, `/` is Shift-7, `@` is AltGr-2,
+`\` is AltGr and the plus key, `€` is AltGr-E. The accent keys wait for
+the next letter, as they do on any PC: ´ then e is é, ¨ then u is ü,
+^ then o is ô. An accent key and then space types the accent alone.
+
+The letters these keyboards need are in the font, in both text sizes:
+å ä ö, ü ß, é è ê ë, à â, ì í î ï, ò ó ô, ù ú û, ñ, ç, ÿ and their
+capitals, and £ € § ° µ ¡ ¿. scribe saves them as UTF-8, so they read
+right on any other computer. Signs the font lacks (the French ², the
+Spanish º and ª, ¬, ½, ¤) type nothing.
 
 ## Behind the scenes
 

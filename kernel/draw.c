@@ -22,6 +22,10 @@ int glyph_index(int c)
 
     if (c >= 32 && c <= 95)  return c - 32;
     if (c >= 'a' && c <= 'z') return G_LOWER_BASE + (c - 'a');
+    if (c >= CH_LATIN || (c >= CH_IEXCL && c <= CH_DEGREE)) {
+        int s = g_latin_slot[ch_latin1(c) - 0xA0];
+        return s ? s : '?' - 32;
+    }
 
     switch (c) {
     case CH_ARING:   return G_A_RING;

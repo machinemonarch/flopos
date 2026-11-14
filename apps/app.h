@@ -96,6 +96,52 @@ typedef struct { char name[13]; u8 folder; u16 date, time; u32 size; } InvItem;
 #define A_CH_ODIA_L  0x88                /* ö */
 #define A_CH_FILL    0xB3                /* a whole cell, filled          */
 
+/* The other keyboards' letters (German, French, Spanish, Italian, the
+ * pound): from 0xB4 up a letter's code is its Latin-1 number, é is 0xE9.
+ * Six signs whose Latin-1 numbers fall among the frames get these: */
+#define A_CH_IEXCL   0x8A                /* inverted exclamation          */
+#define A_CH_POUND   0x8B
+#define A_CH_EURO    0x8C
+#define A_CH_SECTION 0x8D
+#define A_CH_DIAER   0x8E                /* a diaeresis on its own        */
+#define A_CH_DEGREE  0x8F
+#define A_CH_LATIN   0xB4
+
+/* Which Latin-1 numbers the font draws; the kernel checks these against
+ * the font when it is built. */
+#define A_LATIN_MASK0 0x8031019Au
+#define A_LATIN_MASK1 0x9E5EFFB7u
+#define A_LATIN_MASK2 0x9E5EFFB7u
+
+/* A character as its Unicode number (the euro as 0x20AC), or 0 if it is
+ * not a letter or sign of the ones above. */
+static inline unsigned a_unicode(int c)
+{
+    static const unsigned short moved[6] = { 0xA1, 0xA3, 0x20AC, 0xA7, 0xA8, 0xB0 };
+    c &= 0xFF;
+    switch (c) {
+    case A_CH_ARING: return 0xC5;   case A_CH_ADIA: return 0xC4;   case A_CH_ODIA: return 0xD6;
+    case A_CH_ARING_L: return 0xE5; case A_CH_ADIA_L: return 0xE4; case A_CH_ODIA_L: return 0xF6;
+    }
+    if (c >= A_CH_IEXCL && c <= A_CH_DEGREE) return moved[c - A_CH_IEXCL];
+    if (c >= A_CH_LATIN) return (unsigned)c;
+    return 0;
+}
+
+/* The other way: a Unicode number as the character the font draws, or 0. */
+static inline int a_from_unicode(unsigned cp)
+{
+    static const unsigned mask[3] = { A_LATIN_MASK0, A_LATIN_MASK1, A_LATIN_MASK2 };
+    switch (cp) {
+    case 0xC5: return A_CH_ARING;   case 0xC4: return A_CH_ADIA;   case 0xD6: return A_CH_ODIA;
+    case 0xE5: return A_CH_ARING_L; case 0xE4: return A_CH_ADIA_L; case 0xF6: return A_CH_ODIA_L;
+    case 0xA1: return A_CH_IEXCL;   case 0xA3: return A_CH_POUND;  case 0x20AC: return A_CH_EURO;
+    case 0xA7: return A_CH_SECTION; case 0xA8: return A_CH_DIAER;  case 0xB0: return A_CH_DEGREE;
+    }
+    if (cp < A_CH_LATIN || cp > 0xFF) return 0;
+    return (mask[(cp - 0xA0) / 32] >> ((cp - 0xA0) % 32) & 1) ? (int)cp : 0;
+}
+
 /* Keys, as key() returns them; anything else is the character itself. */
 #define K_UP    0x101
 #define K_DOWN  0x102

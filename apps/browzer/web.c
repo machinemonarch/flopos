@@ -217,15 +217,12 @@ static void push(u8 g, u8 col)
 
 static u8 glyph_for(u32 c)
 {
+    int f = (c >= 0x80) ? a_from_unicode(c) : 0;
+    if (f) return (u8)f;                 /* the font has the letter        */
     switch (c) {
-    case 0xE5: return CH_ARING_L;        case 0xC5: return CH_ARING;
-    case 0xE4: return CH_ADIA_L;         case 0xC4: return CH_ADIA;
-    case 0xF6: return CH_ODIA_L;         case 0xD6: return CH_ODIA;
-    case 0xE9: case 0xE8: case 0xEA: case 0xEB: return 'e';
-    case 0xC9: return 'E';
-    case 0xFC: return 'u';               case 0xDC: return 'U';
-    case 0xE0: case 0xE1: case 0xE2: case 0xE6: return 'a';
-    case 0xF8: return 'o';               case 0xD8: return 'O';
+    case 0xE3: case 0xE6: return 'a';    case 0xC3: case 0xC6: return 'A';
+    case 0xF5: case 0xF8: return 'o';    case 0xD5: case 0xD8: return 'O';
+    case 0xFD: return 'y';               case 0xDD: return 'Y';
     case 0x2018: case 0x2019: return '\'';
     case 0x201C: case 0x201D: return '"';
     case 0x2013: case 0x2014: return '-';
@@ -1311,7 +1308,11 @@ static u32 entity_code(const char *n)
         { "copy", 0xA9 }, { "mdash", 0x2014 }, { "ndash", 0x2013 },
         { "hellip", 0x2026 }, { "rsquo", 0x2019 }, { "lsquo", 0x2018 },
         { "ldquo", 0x201C }, { "rdquo", 0x201D }, { "bull", 0x2022 },
-        { "middot", 0xB7 }, { 0, 0 } };
+        { "middot", 0xB7 }, { "uuml", 0xFC }, { "Uuml", 0xDC },
+        { "szlig", 0xDF }, { "egrave", 0xE8 }, { "agrave", 0xE0 },
+        { "ccedil", 0xE7 }, { "ntilde", 0xF1 }, { "Eacute", 0xC9 },
+        { "euro", 0x20AC }, { "pound", 0xA3 }, { "deg", 0xB0 },
+        { "sect", 0xA7 }, { 0, 0 } };
     int i, j;
 
     if (n[0] == '#') {

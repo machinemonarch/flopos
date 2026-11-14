@@ -56,6 +56,10 @@ static void api_wire(const char *t) { if (serial_present()) serial_print(t); }
 _Static_assert(A_CH_ARING == CH_ARING && A_CH_ADIA == CH_ADIA && A_CH_ODIA == CH_ODIA &&
                A_CH_ARING_L == CH_ARING_L && A_CH_ADIA_L == CH_ADIA_L &&
                A_CH_ODIA_L == CH_ODIA_L, "app.h letters");
+_Static_assert(A_CH_IEXCL == CH_IEXCL && A_CH_EURO == CH_EURO && A_CH_DEGREE == CH_DEGREE &&
+               A_CH_LATIN == CH_LATIN && A_LATIN_MASK0 == LATIN_MASK0 &&
+               A_LATIN_MASK1 == LATIN_MASK1 && A_LATIN_MASK2 == LATIN_MASK2,
+               "app.h's other letters must match the font: copy LATIN_MASK* from fontmap.h");
 
 static int  api_win_open(int w, int h) { return term_win_open(w, h); }
 static void api_win_put(int x, int y, int ch, u8 fg, u8 bg, u8 at) { term_win_put_at(x, y, ch, fg, bg, at); }

@@ -6,6 +6,23 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- `keyboard`: FLOPOS now knows American, British, German, French,
+  Spanish and Italian keyboards as well as the Swedish one (and Finnish,
+  which has the same keys). `keyboard de` changes it; `keyboard` alone
+  says which is in use. The choice is kept after a restart; a new release
+  on the floppy starts on Swedish again.
+
+- The accent keys work: ´ then e is é, ¨ then u is ü, ^ then o is ô, on
+  every keyboard that has them, Swedish included.
+
+- The font has the letters those keyboards type, in both text sizes:
+  ü ß é è ê à ç ñ and the rest, their capitals, and £ € § ° µ ¡ ¿. scribe
+  saves and opens them as UTF-8, browzer shows them on pages and types
+  them into boxes.
+
+- Ctrl shortcuts go by the letter printed on the key, so Ctrl-A is where
+  the A is on a French keyboard too.
+
 ## 1.41.2 — 2026-11-14
 
 - maelcum: the tape sleeve's two cards touch on the page, so they are cut

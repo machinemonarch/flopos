@@ -181,11 +181,13 @@ int line_key(int event)
 
     /* Control codes we honour, before the keymap gets a look in. */
     if (event & KEV_CTRL) {
-        switch (sc) {
-        case 0x16: s_len = s_caret = 0; s_buf[0] = 0; return 0;  /* ^U     */
-        case 0x1E: s_caret = 0; return 0;                        /* ^A     */
-        case 0x12: s_caret = s_len; return 0;                    /* ^E     */
-        case 0x25: while (s_len > s_caret) erase_at(s_caret); return 0; /* ^K */
+        /* By the letter on the key, so ^A is where the A is on a French
+         * board too. */
+        switch (keymap_key(event & ~KEV_CTRL) | 0x20) {
+        case 'u': s_len = s_caret = 0; s_buf[0] = 0; return 0;
+        case 'a': s_caret = 0; return 0;
+        case 'e': s_caret = s_len; return 0;
+        case 'k': while (s_len > s_caret) erase_at(s_caret); return 0;
         default: return 0;
         }
     }

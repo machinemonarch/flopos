@@ -17,6 +17,7 @@
  */
 #include "flopos.h"
 #include "io.h"
+#include "version.h"
 
 /* mkimage.py finds this by its signature and fills in the numbers.  The
  * volatile stops the compiler deciding the zeroes are the final word. */
@@ -158,6 +159,54 @@ void store_clock_set(u32 s)
     s_taught_dirty = 1;
 }
 
+/* The keyboard, before the clock.  It carries the version it was chosen
+ * under: a floppy written with a new release starts on Swedish again,
+ * even though writefloppy carries this file over. */
+typedef struct {
+    char magic[4];                       /* "KEYS"                         */
+    char code[4];                        /* "de", "fr"...                  */
+    char version[16];                    /* FLOPOS_VERSION when chosen     */
+    u32  sum;
+} SavedKeys;
+
+static SavedKeys *s_keys;
+
+static u32 keys_sum(const SavedKeys *k)
+{
+    u32 sum = 0x4B455953u;
+    const u8 *p = (const u8 *)k;
+    u32 i;
+    for (i = 0; i < (u32)__builtin_offsetof(SavedKeys, sum); i++) sum = (sum << 3 | sum >> 29) ^ p[i];
+    return sum;
+}
+
+const char *store_keys_get(void)
+{
+    if (!s_ready || !s_keys) return 0;
+    if (s_keys->magic[0] != 'K' || s_keys->magic[1] != 'E' || s_keys->magic[2] != 'Y' ||
+        s_keys->magic[3] != 'S' || s_keys->sum != keys_sum(s_keys)) return 0;
+    {
+        const char *a = s_keys->version, *b = FLOPOS_VERSION;
+        while (*a && *a == *b) { a++; b++; }
+        if (*a || *b) return 0;          /* another release chose it      */
+    }
+    s_keys->code[3] = 0;
+    return s_keys->code;
+}
+
+int store_keys_set(const char *code)
+{
+    int i;
+    if (!s_ready || !s_keys) return 0;
+    memset8(s_keys, 0, sizeof *s_keys);
+    s_keys->magic[0] = 'K'; s_keys->magic[1] = 'E'; s_keys->magic[2] = 'Y'; s_keys->magic[3] = 'S';
+    for (i = 0; i < 3 && code[i]; i++) s_keys->code[i] = code[i];
+    for (i = 0; i < 15 && FLOPOS_VERSION[i]; i++) s_keys->version[i] = FLOPOS_VERSION[i];
+    s_keys->sum = keys_sum(s_keys);
+    s_taught_dirty = 1;
+    return store_save();
+}
+
 static u32 settings_sum(const Settings *t)
 {
     return 0x5E7u ^ t->net_how ^ t->ip ^ (t->mask * 3) ^ (t->gw * 5) ^ (t->dns * 7);
@@ -244,6 +293,7 @@ void store_init(void)
     s_taught  = (Taught *)(statebuf + sizeof(StateHdr));
     s_set     = (Settings *)(statebuf + g_diskmap.state_sectors * SECTOR - 64);
     s_clk     = (SavedClock *)(statebuf + g_diskmap.state_sectors * SECTOR - 128);
+    s_keys    = (SavedKeys *)(statebuf + g_diskmap.state_sectors * SECTOR - 192);
 
     if (!read_in()) return;
     s_boots++;

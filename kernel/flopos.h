@@ -47,7 +47,49 @@ typedef unsigned int        usize;
 #define CH_ODIA_L   0x88                 /* o-diaeresis, lowercase          */
 #define CH_NOODLER  0x89                 /* a small figure, arms separate   */
 
+/* The other keyboards' letters use their Latin-1 numbers from 0xB4 up
+ * (é is 0xE9).  Below that the frames and shades live, so the six signs
+ * whose Latin-1 numbers fall there get codes of their own: */
+#define CH_IEXCL    0x8A                 /* inverted exclamation, Latin-1 A1 */
+#define CH_POUND    0x8B                 /* pound sign, A3                  */
+#define CH_EURO     0x8C                 /* euro sign (Latin-9 puts it at A4) */
+#define CH_SECTION  0x8D                 /* section sign, A7                */
+#define CH_DIAER    0x8E                 /* a diaeresis on its own, A8      */
+#define CH_DEGREE   0x8F                 /* degree sign, B0                 */
+#define CH_LATIN    0xB4                 /* Latin-1 from here on            */
+
+/* A character code as its Latin-1 number (the euro as 0xA4), or 0 if it
+ * is not one of the letters or signs above. */
+static inline int ch_latin1(int c)
+{
+    static const u8 moved[6] = { 0xA1, 0xA3, 0xA4, 0xA7, 0xA8, 0xB0 };
+    c &= 0xFF;
+    switch (c) {
+    case CH_ARING: return 0xC5;  case CH_ADIA: return 0xC4;  case CH_ODIA: return 0xD6;
+    case CH_ARING_L: return 0xE5; case CH_ADIA_L: return 0xE4; case CH_ODIA_L: return 0xF6;
+    }
+    if (c >= CH_IEXCL && c <= CH_DEGREE) return moved[c - CH_IEXCL];
+    if (c >= CH_LATIN) return c;
+    return 0;
+}
+
+/* The other way: a Latin-1 number (0xA4 for the euro) as the character
+ * code the font draws, or 0 if the font has no such letter. */
+static inline int ch_from_latin1(unsigned cp)
+{
+    static const unsigned mask[3] = { LATIN_MASK0, LATIN_MASK1, LATIN_MASK2 };
+    switch (cp) {
+    case 0xC5: return CH_ARING;   case 0xC4: return CH_ADIA;   case 0xD6: return CH_ODIA;
+    case 0xE5: return CH_ARING_L; case 0xE4: return CH_ADIA_L; case 0xF6: return CH_ODIA_L;
+    case 0xA1: return CH_IEXCL;   case 0xA3: return CH_POUND;  case 0xA4: return CH_EURO;
+    case 0xA7: return CH_SECTION; case 0xA8: return CH_DIAER;  case 0xB0: return CH_DEGREE;
+    }
+    if (cp < CH_LATIN || cp > 0xFF) return 0;
+    return (mask[(cp - 0xA0) / 32] >> ((cp - 0xA0) % 32) & 1) ? (int)cp : 0;
+}
+
 extern const u8 g_font5x8[FONT_GLYPHS][5];
+extern const u8 g_latin_slot[96];        /* Latin-1 (A0..FF) -> slot, 0 none */
 
 /* Character code -> glyph slot, for everything the font can draw. */
 int    glyph_index(int c);
@@ -185,6 +227,12 @@ void   kbd_resync(void);  /* after anything that masked IRQ1 */
 
 /* --- keymap.c ---------------------------------------------------------- */
 int    keymap_char(int event);           /* character code, or 0            */
+int    keymap_key(int event);            /* the same, accent keys ignored   */
+int    keymap_set(const char *code);     /* "se", "us", "de"...: 1 if known */
+const char *keymap_code(void);           /* the one in use                  */
+int    keymap_count(void);
+const char *keymap_code_at(int i);
+const char *keymap_name_at(int i);
 
 /* --- vga.c ------------------------------------------------------------- */
 extern u8 *g_back;
@@ -872,6 +920,8 @@ int    store_unsaved(void);
 void   store_reload(void);               /* the files changed under us     */
 int    store_net_get(u32 *how, u32 *ip, u32 *mask, u32 *gw, u32 *dns);
 int    store_net_set(u32 how, u32 ip, u32 mask, u32 gw, u32 dns);
+const char *store_keys_get(void);         /* chosen under this release, or 0 */
+int    store_keys_set(const char *code);
 void   main_pump(int now);
 
 /* --- ui.c --------------------------------------------------------------- */

@@ -1,111 +1,149 @@
 /* ===========================================================================
- * keymap.c -- Swedish (SE) keyboard layout.
+ * keymap.c -- turning a key into a character, on whichever keyboard is
+ * plugged in: Swedish (the default), Finnish, American, British, German,
+ * French, Spanish or Italian.
  *
- * The letters sit in the same physical places as US QWERTY -- Y and Z are
- * not swapped, that is the German board -- so nothing positional needs
- * remapping.  The symbols are another matter entirely, and a shell needs
- * them: on this keyboard " is Shift-2, / is Shift-7, @ is AltGr-2, \ is
- * AltGr-plus, and - sits where a US board keeps /.
- *
- * Three tables, indexed by scancode: unshifted, shifted, AltGr.  A zero
- * means the key produces no character, either because it is a modifier or
- * because the glyph is not in our font.  The two dead keys (acute and
- * diaeresis) insert nothing in this version rather than silently lying
- * about what they composed.
+ * The layouts themselves are tables made by tools/mkkeymap.py, in
+ * keymaps.c.  What lives here is what the tables cannot say: the accent
+ * keys that wait for the next letter (´ then e is é), Caps Lock, and the
+ * keypad, which on this laptop doubles as the arrows.
  * ===========================================================================
  */
 #include "flopos.h"
+#include "keymaps.h"
 
-#define _ 0
-#define AA CH_ARING_L                    /* unshifted: lowercase            */
-#define AE CH_ADIA_L
-#define OE CH_ODIA_L
-#define AAU CH_ARING                     /* shifted: capital                */
-#define AEU CH_ADIA
-#define OEU CH_ODIA
+enum { D_GRAVE = 1, D_ACUTE, D_CIRC, D_DIAER };
 
-/* Scancode set 1, 0x00..0x58. */
-static const u8 s_plain[0x59] = {
-/* 00 */ _,   _,  '1', '2', '3', '4', '5', '6',
-/* 08 */ '7', '8','9', '0', '+', _,   _,   _,
-/* 10 */ 'q', 'w','e', 'r', 't', 'y', 'u', 'i',
-/* 18 */ 'o', 'p',AA,  _,   _,   _,   'a', 's',
-/* 20 */ 'd', 'f','g', 'h', 'j', 'k', 'l', OE,
-/* 28 */ AE,  _,  _,   '\'','z', 'x', 'c', 'v',
-/* 30 */ 'b', 'n','m', ',', '.', '-', _,   '*',
-/* 38 */ _,   ' ',_,   _,   _,   _,   _,   _,
-/* 40 */ _,   _,  _,   _,   _,   _,   _,   _,
-/* 48 */ _,   _,  '-', _,   _,   _,   '+', _,
-/* 50 */ _,   _,  _,   _,   _,   _,   '<', _,
-};
+static int s_map;                        /* index into g_keymaps           */
+static int s_dead;                       /* an accent waiting, or 0        */
 
-static const u8 s_shift[0x59] = {
-/* 00 */ _,   _,  '!', '"', '#', _,   '%', '&',
-/* 08 */ '/', '(',')', '=', '?', _,   _,   _,
-/* 10 */ 'Q', 'W','E', 'R', 'T', 'Y', 'U', 'I',
-/* 18 */ 'O', 'P',AAU, '^', _,   _,   'A', 'S',
-/* 20 */ 'D', 'F','G', 'H', 'J', 'K', 'L', OEU,
-/* 28 */ AEU, _,  _,   '*', 'Z', 'X', 'C', 'V',
-/* 30 */ 'B', 'N','M', ';', ':', '_', _,   '*',
-/* 38 */ _,   ' ',_,   _,   _,   _,   _,   _,
-/* 40 */ _,   _,  _,   _,   _,   _,   _,   _,
-/* 48 */ _,   _,  '-', _,   _,   _,   '+', _,
-/* 50 */ _,   _,  _,   _,   _,   _,   '>', _,
-};
-
-static const u8 s_altgr[0x59] = {
-/* 00 */ _,   _,  _,   '@', _,   '$', _,   _,
-/* 08 */ '{', '[',']', '}', '\\',_,   _,   _,
-/* 10 */ _,   _,  _,   _,   _,   _,   _,   _,
-/* 18 */ _,   _,  _,   '~', _,   _,   _,   _,
-/* 20 */ _,   _,  _,   _,   _,   _,   _,   _,
-/* 28 */ _,   _,  _,   _,   _,   _,   _,   _,
-/* 30 */ _,   _,  'm', _,   _,   _,   _,   _,
-/* 38 */ _,   ' ',_,   _,   _,   _,   _,   _,
-/* 40 */ _,   _,  _,   _,   _,   _,   _,   _,
-/* 48 */ _,   _,  _,   _,   _,   _,   _,   _,
-/* 50 */ _,   _,  _,   _,   _,   _,   '|', _,
-};
-
-#undef _
-#undef AA
-#undef AE
-#undef OE
-#undef AAU
-#undef AEU
-#undef OEU
-
-int keymap_char(int event)
+/* The mark on its own, for an accent key followed by space. */
+static int mark_alone(int d)
 {
+    switch (d) {
+    case D_GRAVE: return '`';
+    case D_ACUTE: return 0xB4;
+    case D_CIRC:  return '^';
+    default:      return CH_DIAER;
+    }
+}
+
+/* A vowel with a mark, by its Latin-1 number; 0 if there is no such
+ * letter.  Rows: grave, acute, circumflex, diaeresis. */
+static int with_mark(int d, int c)
+{
+    static const char vowels[] = "aeiouAEIOU";
+    static const u8 cp[4][10] = {
+        { 0xE0, 0xE8, 0xEC, 0xF2, 0xF9, 0xC0, 0xC8, 0xCC, 0xD2, 0xD9 },
+        { 0xE1, 0xE9, 0xED, 0xF3, 0xFA, 0xC1, 0xC9, 0xCD, 0xD3, 0xDA },
+        { 0xE2, 0xEA, 0xEE, 0xF4, 0xFB, 0xC2, 0xCA, 0xCE, 0xD4, 0xDB },
+        { 0xE4, 0xEB, 0xEF, 0xF6, 0xFC, 0xC4, 0xCB, 0xCF, 0xD6, 0xDC },
+    };
+    int i;
+    if (d == D_DIAER && c == 'y') return ch_from_latin1(0xFF);
+    for (i = 0; vowels[i]; i++)
+        if (vowels[i] == c) return ch_from_latin1(cp[d - 1][i]);
+    return 0;
+}
+
+/* Caps Lock turns letters over, and only letters: the Swedish three, and
+ * the Latin-1 ones, whose capitals sit 0x20 below (but not ß or ÿ, which
+ * have none, and not the multiplication and division signs among them). */
+static int caps(int c)
+{
+    if (c >= 'a' && c <= 'z') return c - 32;
+    if (c >= 'A' && c <= 'Z') return c + 32;
+    if (c >= CH_ARING_L && c <= CH_ODIA_L) return c - (CH_ARING_L - CH_ARING);
+    if (c >= CH_ARING && c <= CH_ODIA) return c + (CH_ARING_L - CH_ARING);
+    if (c >= 0xE0 && c <= 0xFE && c != 0xF7) return c - 0x20;
+    if (c >= 0xC0 && c <= 0xDE && c != 0xD7) return c + 0x20;
+    return c;
+}
+
+/* What the key types on this keyboard, before accents are thought about:
+ * a character, an accent key (1..4), or 0. */
+static int lookup(int event)
+{
+    const u8 (*k)[KEYMAP_SCANS] = g_keymaps[s_map].keys;
     int sc = KEV_SCAN(event);
+    int shift = (event & KEV_SHIFT) != 0;
     int c;
 
-    if (sc >= 0x59) return 0;
+    if (sc >= KEYMAP_SCANS) return 0;
 
     /* The numeric keypad doubles as the arrow cluster on this laptop.
      * Without an E0 prefix those scancodes mean navigation, so they must
      * not also produce digits. */
     if (!(event & KEV_EXT) && sc >= 0x47 && sc <= 0x53) {
-        if (sc == 0x4A || sc == 0x4E) return s_plain[sc];   /* - and +     */
+        if (sc == 0x4A || sc == 0x4E) return k[0][sc];      /* - and +     */
         return 0;
     }
 
     if (event & KEV_ALTGR) {
-        c = s_altgr[sc];
-        if (c) return c;
-        return 0;                        /* AltGr-nothing is nothing       */
+        c = shift ? k[3][sc] : 0;
+        return c ? c : k[2][sc];         /* AltGr-nothing is nothing       */
     }
 
-    c = (event & KEV_SHIFT) ? s_shift[sc] : s_plain[sc];
-    if (!c) return 0;
-
-    /* Caps Lock affects letters only, and inverts whatever Shift did.
-     * The Swedish three count as letters, which is easy to forget. */
-    if (event & KEV_CAPS) {
-        if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-        else if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
-        else if (c >= CH_ARING_L && c <= CH_ODIA_L) c -= (CH_ARING_L - CH_ARING);
-        else if (c >= CH_ARING && c <= CH_ODIA) c += (CH_ARING_L - CH_ARING);
+    c = k[shift][sc];
+    if (c > D_DIAER && (event & KEV_CAPS)) {
+        /* Caps Lock inverts whatever Shift did, for letters.  French and
+         * Italian keep their accented letters on the number row and beside
+         * P, where Shift gives a digit or a sign: those stay as they are. */
+        int other = k[!shift][sc];
+        if (caps(c) != c && (other == caps(c) || other == 0 || (c >= 'A' && c <= 'z') ||
+                             (c >= CH_ARING && c <= CH_ODIA_L)))
+            c = caps(c);
     }
     return c;
 }
+
+int keymap_key(int event)
+{
+    int c = lookup(event);
+    return c > D_DIAER ? c : 0;
+}
+
+int keymap_char(int event)
+{
+    int c = lookup(event), d = s_dead;
+
+    if (!c) return 0;
+    if (c <= D_DIAER) {                  /* an accent key                  */
+        s_dead = c;
+        if (d) { s_dead = (d == c) ? 0 : c; return mark_alone(d); }
+        return 0;
+    }
+    if (!d) return c;
+    s_dead = 0;
+    if (c == ' ') return mark_alone(d);
+    {
+        int m = with_mark(d, c);
+        return m ? m : c;                /* no such letter: just the key   */
+    }
+}
+
+/* ---- choosing a keyboard --------------------------------------------- */
+static int same(const char *a, const char *b)       /* either case        */
+{
+    for (; *a && *b; a++, b++) {
+        char x = *a, y = *b;
+        if (x >= 'A' && x <= 'Z') x += 32;
+        if (y >= 'A' && y <= 'Z') y += 32;
+        if (x != y) return 0;
+    }
+    return *a == *b;
+}
+
+int keymap_set(const char *code)
+{
+    int i;
+    for (i = 0; i < KEYMAP_COUNT; i++)
+        if (same(code, g_keymaps[i].code)) { s_map = i; s_dead = 0; return 1; }
+    if (same(code, "gb")) return keymap_set("uk");
+    return 0;
+}
+
+const char *keymap_code(void) { return g_keymaps[s_map].code; }
+int keymap_count(void) { return KEYMAP_COUNT; }
+const char *keymap_code_at(int i) { return g_keymaps[i].code; }
+const char *keymap_name_at(int i) { return g_keymaps[i].name; }

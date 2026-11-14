@@ -90,7 +90,7 @@ int ui_key_mods(int *mods)
         default: break;
         }
         if (ev & KEV_CTRL) {
-            c = keymap_char(ev & ~KEV_CTRL);
+            c = keymap_key(ev & ~KEV_CTRL);
             if (c >= 'A' && c <= 'Z') c += 32;
             if (c > 32 && c < 127) return c;
             continue;

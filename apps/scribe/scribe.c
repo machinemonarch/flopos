@@ -800,7 +800,7 @@ int app_main(const Api *api, int argc, char **argv)
         /* what kind of change this key would be, and the text before it */
         kind = G_OTHER;
         if (!(mods & M_CTRL) && !have_sel()) {
-            if ((key >= 32 && key < 127) || (key >= 0x80 && key <= 0x88) || key == K_TAB) kind = G_TYPE;
+            if ((key >= 32 && key < 127) || (key >= 0x80 && key < 0x100 && a_unicode(key)) || key == K_TAB) kind = G_TYPE;
             else if (key == K_BKSP || key == K_DEL) kind = G_DEL;
         }
         if (!((mods & M_CTRL) && (key == 'z' || key == 'y'))) {
@@ -906,7 +906,7 @@ int app_main(const Api *api, int argc, char **argv)
             break;
         case K_TAB: { int k; for (k = 0; k < 4; k++) insert(' ', s_pen); break; }
         default:
-            if ((key >= 32 && key < 127) || (key >= 0x80 && key <= 0x88)) insert((u8)key, s_pen);
+            if ((key >= 32 && key < 127) || (key >= 0x80 && key < 0x100 && a_unicode(key))) insert((u8)key, s_pen);
             else changed = 0;
             break;
         }

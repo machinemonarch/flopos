@@ -1209,17 +1209,16 @@ static void submit(PageField *by)
 /* One typed character into the box being typed into, as UTF-8. */
 static void type_char(PageField *f, int k)
 {
-    char b[2];
+    char b[3];
     int n = 0, i;
-    switch (k) {
-    case CH_ARING:   b[0] = (char)0xC3; b[1] = (char)0x85; n = 2; break;
-    case CH_ADIA:    b[0] = (char)0xC3; b[1] = (char)0x84; n = 2; break;
-    case CH_ODIA:    b[0] = (char)0xC3; b[1] = (char)0x96; n = 2; break;
-    case CH_ARING_L: b[0] = (char)0xC3; b[1] = (char)0xA5; n = 2; break;
-    case CH_ADIA_L:  b[0] = (char)0xC3; b[1] = (char)0xA4; n = 2; break;
-    case CH_ODIA_L:  b[0] = (char)0xC3; b[1] = (char)0xB6; n = 2; break;
-    default:
-        if (k == '\n' || (k >= 32 && k < 127)) { b[0] = (char)k; n = 1; }
+    unsigned cp = (k >= 0x80 && k < 0x100) ? a_unicode(k) : 0;
+    if (cp >= 0x800) {
+        b[0] = (char)(0xE0 | (cp >> 12)); b[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        b[2] = (char)(0x80 | (cp & 0x3F)); n = 3;
+    } else if (cp) {
+        b[0] = (char)(0xC0 | (cp >> 6)); b[1] = (char)(0x80 | (cp & 0x3F)); n = 2;
+    } else if (k == '\n' || (k >= 32 && k < 127)) {
+        b[0] = (char)k; n = 1;
     }
     if (!n || f->vlen + (u32)n > f->vcap) return;
     for (i = 0; i < n; i++) s_pg.pool[f->val + f->vlen++] = b[i];

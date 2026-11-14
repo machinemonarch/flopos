@@ -89,6 +89,11 @@ how much music is in hand (see [Techniques](../design/techniques.md#measuring-be
   leads to a page, and every `#section` to a heading in it. Run it after
   moving or renaming a page or a heading.
 
+- `tools/keytest/run.sh` builds the keyboard code (`kernel/keymap.c` and
+  the layouts) for this PC and presses keys on every layout: the signs,
+  the accent keys, Caps Lock, Ctrl shortcuts by letter, and that the font
+  can draw everything any key types.
+
 - `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
   own code (`apps/lib/tape`), runs it through a pretend tape (wrong
   speed, wavering, quiet, noisy, dull, upside down, a dropout) and reads
