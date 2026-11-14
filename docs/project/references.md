@@ -94,14 +94,14 @@ for decades:
 | B. G. Lee, "A new algorithm to compute the DCT" (1984) | `dsp_dct2`; mp3's synthesis |
 | [TCP SACK, RFC 2018](https://www.rfc-editor.org/rfc/rfc2018) | `tcp.c`: saying which pieces came |
 | [NTP, RFC 5905](https://www.rfc-editor.org/rfc/rfc5905) | `ip.c`, `rtc.c`: setting the clock |
-| VEXP 1.3 by Adrian Gradwell (freeware, 1997) *(Max)* | `panel.c`: `wide` |
+| VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
 
 ## Toshiba's material (consulted, not included)
 
 Material on the Satellite Pro 430CDT:
 
-- two Toshiba Atlas support CDs, from 1995 and 1997 *(Max)*
+- two Toshiba Atlas support CDs, from 1995 and 1997
 - a collection of Toshiba's drivers for the Satellite Pro 430 and 435
 - Toshiba's specification sheets for the 430CDT
 - photographs of the machine
@@ -117,7 +117,7 @@ repository, and no Toshiba code, firmware or text is in FLOPOS.
 |---|---|
 | [NIST ACVP test vectors](https://github.com/usnistgov/ACVP-Server) | Official ML-KEM-768 test answers |
 | mpg123, LAME, libvorbis, libFLAC, FAAD2 | Reference decodes, test audio |
-| SomaFM *(Max)* and Radio Paradise | Recordings of real AAC stations to test with |
+| SomaFM and Radio Paradise | Recordings of real AAC stations to test with |
 | [OpenSSL](https://www.openssl.org/) | Cross-checking the encryption; a local TLS test server |
 | [Python](https://www.python.org/) `hashlib` | Cross-checking SHA-3, SHAKE, SHA-384, SHA-512 |
 | [pyca/cryptography](https://cryptography.io/) | Test signatures and test certificate chains |
@@ -140,13 +140,13 @@ The wizard's lines were written by Claude in the spirit of these, chosen
 by Max for taste and vibe. Nothing was copied from them, and none of their
 text is in his training, except the two public-domain books.
 
-- **The Jargon File 4.2.2 (public domain, Project Gutenberg) *(Max)***: Read in training: hacker words and their manner
-- **The complete works of Shakespeare (public domain, Project Gutenberg) *(Max)***: Read in training: the old-book gibberish he sometimes speaks
-- **Adventure Time *(Max)***: The bright land of sweets and quests
-- **Kramer, from Seinfeld *(Max)***: The neighbour with a scheme
-- **Cereal Killer, and Razor and Blade, from the film Hackers (1995) *(Max)***: The pirates of the phone lines
-- **Tom Bombadil, from The Lord of the Rings *(Max)***: The singing fellow of the woods
-- **Dungeons & Dragons, its game masters and its rules *(Max)***: The game master reading you the rules
+- **The Jargon File 4.2.2 (public domain, Project Gutenberg)**: Read in training: hacker words and their manner
+- **The complete works of Shakespeare (public domain, Project Gutenberg)**: Read in training: the old-book gibberish he sometimes speaks
+- **Adventure Time**: The bright land of sweets and quests
+- **Kramer, from Seinfeld**: The neighbour with a scheme
+- **Cereal Killer, and Razor and Blade, from the film Hackers (1995)**: The pirates of the phone lines
+- **Tom Bombadil, from The Lord of the Rings**: The singing fellow of the woods
+- **Dungeons & Dragons, its game masters and its rules**: The game master reading you the rules
 
 [^1]: [Ralf Brown's Interrupt List](https://www.cs.cmu.edu/~ralf/files.html)
 [^2]: [The OSDev wiki](https://wiki.osdev.org/)
