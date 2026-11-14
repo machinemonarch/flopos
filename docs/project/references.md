@@ -148,5 +148,11 @@ text is in his training, except the two public-domain books.
 - **Tom Bombadil, from The Lord of the Rings**: The singing fellow of the woods
 - **Dungeons & Dragons, its game masters and its rules**: The game master reading you the rules
 
+On IMDb:
+- [Adventure Time](https://www.imdb.com/title/tt0421357/)
+- [Seinfeld](https://www.imdb.com/title/tt0098904/)
+- [Hackers (1995)](https://www.imdb.com/title/tt0113243/)
+- [The Lord of the Rings: The Fellowship of the Ring (2001)](https://www.imdb.com/title/tt0120737/)
+
 [^1]: [Ralf Brown's Interrupt List](https://www.cs.cmu.edu/~ralf/files.html)
 [^2]: [The OSDev wiki](https://wiki.osdev.org/)
