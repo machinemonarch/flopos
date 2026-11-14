@@ -1,6 +1,6 @@
 # FLOPOS
 
-FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch and intended to run on the **Toshiba Satellite Pro 430CDT**.
+FLOPOS is a cyber-psychedelic (cyberdelic) neurofunkadelic dreamscape built from scratch and intended to run on the **Toshiba Satellite Pro 430CDT**.
 It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
 ## Screenshots
