@@ -6,6 +6,9 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- `version` no longer says "vibe-coded": it reads "Cyberdelic
+  Neurodivergent dream by Max, synthesized with Claude."
+
 ## 1.43.0 — 2026-11-14
 
 - Ozzy, the other cat, sees the machine off: `bye` and `reboot` show his
