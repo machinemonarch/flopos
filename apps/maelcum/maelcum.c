@@ -712,7 +712,10 @@ static void heard(void *ctx, int type, int seq, const u8 *d, int len)
         if (len == HEAD_LEN) plen = (u32)d[k + 16] | (u32)d[k + 17] << 8 | (u32)d[k + 18] << 16 | (u32)d[k + 19] << 24;
         if (!count || ord >= count || (seq >> 8) != ord) return;
         if (s_set < 0) { s_set = set; s_set_n = count; }
-        if (set != s_set || count != s_set_n) { s_others = 1; return; }
+        /* Another save on the same tape (an older one, say, after the end of
+         * this): its pieces carry no save number, only its headers do, so
+         * nothing is taken until a header of this save comes again. */
+        if (set != s_set || count != s_set_n) { s_others = 1; s_cur = -1; return; }
         for (i = 0; i < s_nf; i++)
             if (s_f[i].sys == (d[k + 15] != 0) && same_word(s_f[i].name, (const char *)d)) break;
         if (size > FILE_MAX || used > size || plen >= used + 1) { s_seen[ord] = -1; return; }
