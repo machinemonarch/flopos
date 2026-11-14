@@ -70,7 +70,7 @@ FLOPOS. See [References](references.md).
 
 **Every release is numbered, kept and described.** Each image gets a new
 version number and an archived copy, and nothing is released without a
-changelog entry. See [Building and releasing](../development/building.md).
+changelog entry. See [Releasing](../development/releasing.md).
 
 ## The voice
 

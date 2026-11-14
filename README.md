@@ -64,35 +64,25 @@ run it without the laptop.
 
 ## On the floppy
 
-Put it in any computer: it is an ordinary DOS floppy. `INVENTORY` is the
-folder with everything you have made, as plain files. Everything beside
-it is FLOPOS itself and its own records; leave those where they are.
-
-## Documentation
-
-Everything is in **[docs/](docs/README.md)**:
-
-- [Philosophy](docs/project/philosophy.md): what it is and the rules it's built by
-- [Getting started](docs/user-guide/getting-started.md): floppy, booting, the serial line
-- [Commands](docs/user-guide/commands.md): every word it knows
-- [The inventory](docs/user-guide/inventory.md): your files and folders
-- [scribe](docs/user-guide/scribe.md): the word processor
-- [maelcum](docs/user-guide/maelcum.md): backup to an audio cassette
-- [The network](docs/user-guide/network.md): the menu, browzer, and how private it is
-- [The hardware](docs/design/hardware.md): the laptop and its parts
-- [Lessons on the way](docs/design/lessons.md): what the laptop and the software taught us
-- [How it works](docs/design/architecture.md): a tour of the inside
-- [Making apps](docs/development/making-apps.md): programs that live on the floppy
-- [Building and releasing](docs/development/building.md)
-- [References](docs/project/references.md): standards and documents consulted
-
-What changed in each release: [CHANGELOG.md](CHANGELOG.md).
-
-## The disk
-
 The image is a genuine FAT12 floppy. Mount it or read it in DOS, Windows,
 Linux or a Mac and you'll find the system, the journal and your documents
 as ordinary files. It just also happens to boot.
+
+`INVENTORY` is the folder with everything you have made, as plain
+files. Everything beside it is FLOPOS itself and its own records; leave those where they are.
+
+## Documentation
+
+Everything is in **[docs/](docs/README.md)**, in four parts:
+
+- [User guide](docs/README.md#user-guide): getting started, every command, the inventory, scribe, maelcum, the network
+- [Development](docs/README.md#development): building, testing, making apps, releasing
+- [Design](docs/README.md#design): how it works inside, the hardware, the techniques, security, and the lessons learned
+- [Project](docs/README.md#project): the philosophy, the roadmap, and the references
+
+What changed in each release: [CHANGELOG.md](CHANGELOG.md). Reporting a
+security problem: [SECURITY.md](SECURITY.md). Taking part:
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Provenance
 

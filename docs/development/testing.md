@@ -85,6 +85,10 @@ how much music is in hand (see [Techniques](../design/techniques.md#measuring-be
   floppy with `WRITE2.MD`, an inventory with folders, a blank disk, and
   one too full to carry.
 
+- `tools/doccheck.py` checks that every link in the project's Markdown
+  leads to a page, and every `#section` to a heading in it. Run it after
+  moving or renaming a page or a heading.
+
 - `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
   own code (`apps/lib/tape`), runs it through a pretend tape (wrong
   speed, wavering, quiet, noisy, dull, upside down, a dropout) and reads
