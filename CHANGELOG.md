@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.43.0 — 2026-11-14
+
 - Ozzy, the other cat, sees the machine off: `bye` and `reboot` show his
   picture while the steps of shutting down are typed over him, the way
   Saffran's boot lines are.
