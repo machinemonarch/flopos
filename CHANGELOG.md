@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.43.1 — 2026-11-14
+
 - `version` says "Cyberdelic Neurofunkadelic Dreamscape", "Directed by
   Max and Synthesized with Claude.", and the day it was built.
 
