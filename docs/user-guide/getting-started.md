@@ -4,7 +4,7 @@
 
 - **The laptop**: a Toshiba Satellite Pro 430CDT, or any old PC close
   enough to it. FLOPOS also runs in the QEMU emulator (see
-  [Building](../development/building.md)).
+  Building[^1]).
 - **A 1.44MB floppy disk** (2HD).
 - **A Linux PC with a floppy drive**, to write the disk. A USB floppy drive
   is fine.
@@ -130,3 +130,5 @@ Both work on the laptop's own keyboard.
 Type `bye`. FLOPOS writes anything unsaved to the floppy and switches the
 laptop off by itself. If the power can't be cut that way, it tells you it
 is safe to switch off.
+
+[^1]: [Building](../development/building.md)

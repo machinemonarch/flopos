@@ -1,14 +1,21 @@
 # scribe
 
 A small word processor. Type `scribe` at the prompt for a new document, or
-`scribe letter` to open `LETTER.MD` from your [inventory](inventory.md)
+`scribe letter` to open `LETTER.MD` from your inventory[^1]
 (or start it, if it isn't there).
 
-    here> write
+    here> scribe letter
 
 It takes the whole screen: the document's name along the top, a toolbar
 showing **B**, *I* and U and the current paragraph's style, your text in
 the middle, and a status line and the keys along the bottom.
+
+![scribe with a letter open, in the emulator](../images/scribe.png)
+
+Every letter your keyboard types goes in, whichever of the seventeen
+keyboards is chosen: accents, Cyrillic, Hebrew (shown right to left) and
+the rest. Documents are saved as UTF-8, so they read right on any other
+computer.
 
 ## Formatting
 
@@ -60,6 +67,8 @@ steps; a run of typing, or of deleting, is one step.
 
 ## Markdown
 
+![The same letter in the Markdown view](../images/scribe-markdown.png)
+
 Documents are saved as Markdown, a plain-text format that marks styles
 with symbols:
 
@@ -87,14 +96,12 @@ In the Markdown view:
 
 The marks FLOPOS understands:
 
-| Mark | Meaning |
-|---|---|
-| `% ` at the start of a line | Title |
-| `# `, `## `, `### `, `#### ` at the start of a line | Heading 1 to 4 |
-| `**text**` | Bold |
-| `*text*` | Italic |
-| `<u>text</u>` | Underline (Markdown has none of its own; this is the HTML way, which most Markdown tools show) |
-| `\*`, `\<`, `\\` | A real star, angle bracket or backslash rather than a mark |
+- **`% ` at the start of a line**: Title
+- **`# `, `## `, `### `, `#### ` at the start of a line**: Heading 1 to 4
+- **`**text**`**: Bold
+- **`*text*`**: Italic
+- **`<u>text</u>`**: Underline (Markdown has none of its own; this is the HTML way, which most Markdown tools show)
+- **`\*`, `\<`, `\\`**: A real star, angle bracket or backslash rather than a mark
 
 Each line is one paragraph.
 
@@ -103,18 +110,16 @@ view and italic need the laptop's own keyboard.
 
 ## Saving and opening
 
-| Key | What it does |
-|---|---|
-| Ctrl-S | Save. A new document asks for a name first: up to eight letters, and it gets `.MD` if you give no ending. |
-| Ctrl-O | Open: goes to the inventory, where Enter on a document brings it back here. |
-| Ctrl-N | A new, empty document. |
-| Esc | Leave. If there are unsaved changes, it says so first; Esc again leaves without saving. |
+- **Ctrl-S**: Save. A new document asks for a name first: up to eight letters, and it gets `.MD` if you give no ending.
+- **Ctrl-O**: Open: goes to the inventory, where Enter on a document brings it back here.
+- **Ctrl-N**: A new, empty document.
+- **Esc**: Leave. If there are unsaved changes, it says so first; Esc again leaves without saving.
 
 A `*` after the name at the top means there are unsaved changes.
 
 ## Where documents live
 
-In the [inventory](inventory.md), under the names you give them, as many
+In the inventory[^1], under the names you give them, as many
 as fit on the floppy. Each holds up to 16KB of text and takes only the
 room it needs. A document goes into the folder `scribe` was opened for:
 `scribe notes/plan` keeps `PLAN.MD` in the folder `NOTES`, and
@@ -126,3 +131,5 @@ UTF-8, so they look right everywhere.
 
 When you write a new version of FLOPOS to the floppy, `writefloppy.sh`
 keeps your documents unless you ask for `--fresh`.
+
+[^1]: [inventory](inventory.md)

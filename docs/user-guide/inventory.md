@@ -26,17 +26,15 @@ form (`MYLONG~1.MD`).
 The list shows each thing's name, kind, size and the day it last changed,
 folders first. The bottom edge shows how much room is left on the floppy.
 
-| Key | What it does |
-|---|---|
-| Up, Down, PgUp, PgDn | Move along the list |
-| <kbd>Enter</kbd> | Step into a folder, or open a document in `scribe` (leaving `scribe` comes back here) |
-| <kbd>Backspace</kbd> | Up a folder |
-| <kbd>W</kbd> | Write a new document, to be kept in this folder |
-| <kbd>N</kbd> | A new folder here |
-| <kbd>R</kbd> | Rename |
-| <kbd>M</kbd> | Move: pick the thing up. Walk to the folder it should be in and press <kbd>P</kbd> to put it down. <kbd>Esc</kbd> puts it back. |
-| <kbd>D</kbd> | Drop it for good. It asks first. A folder must be empty. |
-| <kbd>Esc</kbd> | Leave |
+- **Up, Down, PgUp, PgDn**: Move along the list
+- **<kbd>Enter</kbd>**: Step into a folder, or open a document in `scribe` (leaving `scribe` comes back here)
+- **<kbd>Backspace</kbd>**: Up a folder
+- **<kbd>W</kbd>**: Write a new document, to be kept in this folder
+- **<kbd>N</kbd>**: A new folder here
+- **<kbd>R</kbd>**: Rename
+- **<kbd>M</kbd>**: Move: pick the thing up. Walk to the folder it should be in and press <kbd>P</kbd> to put it down. <kbd>Esc</kbd> puts it back.
+- **<kbd>D</kbd>**: Drop it for good. It asks first. A folder must be empty.
+- **<kbd>Esc</kbd>**: Leave
 
 `inventory NOTES` starts in that folder.
 

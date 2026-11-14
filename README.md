@@ -1,57 +1,65 @@
 # FLOPOS
 
-An operating system that fits on a 1.44MB floppy disk and boots a 1996
-Toshiba Satellite Pro 430CDT into a place.
+An operating system that fits on one 1.44MB floppy disk and boots a
+Toshiba Satellite Pro 430CDT, a laptop model from 1996, into a place.
 
     FLOPOS
     a place to be, on one floppy disk
 
     Go on, then.
 
-    here> whoami
-    You're alright.
-
     here> _
 
-Not a demo and not a Linux. Written from nothing: a boot sector, a
-protected-mode kernel, its own drivers for the screen, keyboard, sound,
-floppy, serial line and PC Card network card, a network stack with TLS 1.3
-and post-quantum key exchange, a web browser, a word processor, and a
-shell where `here` is not a folder. It fits on one floppy, with room to
-spare.
+FLOPOS is not a scene demo, and it is not based on GNU/Linux or any other
+open-source project. It was synthesized from scratch together with Claude,
+or, as its author puts it: *"I'm larping Steve Jobs and Claude gets to be
+Steve Wozniak."* The ideas come from whatever comes to Max's mind, and from
+his experience as a sysadmin and senior infrastructure engineer.
+
+Everything is its own: a boot sector, a protected-mode kernel, drivers for
+the screen, keyboard, sound, floppy, serial line and network card, a
+network stack with TLS 1.3 and post-quantum key exchange, a web browser, a
+word processor, a cassette backup program, and a shell where `here` is not
+a folder. It fits on one floppy, with room to spare.
 
 It is an art project, and its rule is that everything runs on the laptop's
 own hardware: a 120MHz Pentium with 32MB of memory. No helper machines, no
 proxies, no JavaScript.
 
-## What it does
+## What it can do
 
 - **Boots to 800×600** with smooth text over a slowly moving, generated
-  background, with music on the laptop's FM sound chip and a wireframe
-  banana tumbling in the corner.
-- **Talks back** in a warm deadpan, and keeps
-  a journal on the floppy that any computer can read.
-- **Gets online**: DHCP, DNS, `ping`, `browzer fetch` for reading a page as text,
-  and **browzer**, a small web browser with working forms, that shows
-  images as captioned boxes and searches through FrogFind.
+  background, music on the laptop's FM sound chip, and a wireframe banana
+  tumbling in the corner. Saffran the cat greets you on the way in.
+- **A wizard guards the shell.** He asks a riddle, accepts any answer, and
+  afterwards answers every word FLOPOS doesn't know with a line from his
+  own tiny language model: a quarter of a megabyte, trained for taste and
+  whimsy, running on the laptop itself.
+- **A HUD** for the cool cyberpunk: Ctrl-Shift-F10 anywhere shows the
+  sound, the battery, how hard the processor works, and a turning brain.
+- **Seventeen keyboards**, from Swedish to Hebrew, Yiddish, Bulgarian and
+  Ukrainian, with Hebrew written right to left and accent keys that work.
+  Ctrl-Shift-F1 brings back the keyboard list if you get lost.
+- **Gets online**: DHCP, DNS and `ping`, and **browzer**, a small web
+  browser with working forms and search, that plays internet radio and
+  music files (MP3, AAC, Ogg Vorbis, FLAC and tracker songs) while you
+  read.
 - **Speaks TLS 1.3** with X25519MLKEM768, ML-KEM-768, ChaCha20-Poly1305 and
-  AES-128-GCM, and makes every site prove who it is: certificate chains
-  checked with RSA and ECDSA up to Mozilla's trusted authorities. All of it
-  is written from the standards and checked against official test vectors
-  on the machine itself.
-- **`scribe`**, a word processor with bold, italic, underline, a title and
-  four headings, saving Markdown documents to the floppy, with a view for
-  editing the Markdown directly.
-- **`maelcum`**, a backup program that keeps your files on an ordinary
-  audio cassette as sound and reads them back: packing (LZSS), two
-  speeds, verifying, a check on every piece, and a running commentary.
-  Read back from a real recorder on the laptop.
-- **An inventory** of your own files and folders, as plain FAT12 files
-  any computer can read.
-- **Apps load from the floppy** beside the system, so programs don't make
-  the system bigger: `scribe`, `browzer`, `inventory` and `maelcum` are
-  apps. Each runs behind a wall: it can touch only its own memory and
-  must ask the system for everything else.
+  AES-128-GCM, and makes every site prove who it is, up to Mozilla's trusted
+  authorities. All of it written from the standards and checked against
+  their published test answers on the machine itself.
+- **scribe**, a word processor with bold, italic, underline, a title and
+  four headings, saving Markdown documents any computer can open.
+- **maelcum**, a backup program that keeps your files on an ordinary audio
+  cassette as sound, prints a sleeve for the tape, and reads it all back,
+  with a running commentary.
+- **An inventory** of your own files and folders, as plain FAT12 files.
+- **Apps load from the floppy** beside the system, each behind a wall: it
+  can touch only its own memory and must ask the system for everything
+  else.
+- **Remembers you**: a journal on the floppy that any computer can read,
+  and every word it didn't know, which became the list of what to build
+  next.
 
 ## Quick start
 
@@ -60,43 +68,105 @@ proxies, no JavaScript.
     tools/writefloppy.sh      put it on a real floppy
 
 Needs `gcc` with 32-bit support, binutils, `mtools` and `python3`; QEMU to
-run it without the laptop.
+run it without the laptop. Details in [Building](docs/development/building.md).
 
 ## On the floppy
 
-The image is a genuine FAT12 floppy. Mount it or read it in DOS, Windows,
-Linux or a Mac and you'll find the system, the journal and your documents
-as ordinary files. It just also happens to boot.
+The image is a genuine FAT12 floppy. Put it in DOS, Windows, Linux or a Mac
+and you'll find the system, the journal and your documents as ordinary
+files. It just also happens to boot.
 
-`INVENTORY` is the folder with everything you have made, as plain
-files. Everything beside it is FLOPOS itself and its own records; leave those where they are.
+`INVENTORY` is the folder with everything you have made. Everything beside
+it is FLOPOS itself and its own records; leave those where they are.
+
+## Who makes it
+
+FLOPOS is an art project: a test of what an AI can build, of what the
+Toshiba's hardware can still do, and of its author's creativity. Max
+directs it: what it is called, how it looks, how it feels to use, and what
+it says. Claude writes the machine. Max uses it on the real laptop, which
+Claude cannot touch, and reports back: photos of the screen taken with a
+phone, the `report` command sent down a serial cable, and his own notes.
+The journal on the floppy lists every word typed that FLOPOS did not know,
+and that list is the to-do list for new commands.
+
+## What it is like
+
+- **A place, not a directory.** Most command lines put you in a folder.
+  FLOPOS puts you somewhere. The prompt is `here>`, and `here` is a space,
+  not a path.
+- **Words it knows** get an answer in a warm deadpan: polite, a little dry,
+  never saying more than it needs to. Every one of those sentences lives in
+  one file, `kernel/voice.c`. **Words it doesn't know** go to the wizard,
+  who will, in his finite knowledge, make sure to answer you with something
+  you'll probably struggle to understand.
+- **Command names say what they do for you**, not how they work: `goaway`
+  clears the screen, `remember` saves, `bye` switches the machine off.
+- **Even the boot messages are true**, in a dialect of their own.
+  "Aligning the realm to the beat of the crystal..." is the timer being
+  started, which really does run off a crystal. "Flippely-Flopping" is the
+  floppy being read.
+- **The moving background** is generated, kept dark so the text always
+  wins, and breathes with the music, a step sequencer playing on the FM
+  chip.
+- **Saffran**, Max's cat, is the first thing read off the floppy, and
+  appears as fast as the drive delivers him. The machine then tells him,
+  step by step, everything it is really doing to get ready.
+- **The wizard** stands at the gate to the shell, which is called
+  cyberdelia. He is very tired, asks a riddle assembled from word lists by
+  the clock, and accepts every answer. Getting in plays a chip-tune
+  jingle, then the screen ripples and glows while bells climb. The glow is
+  kept gentle on purpose, for anyone sensitive to flashing light.
+- **whaaat** pulls the whole screen through a hole in itself and turns it
+  inside out. You'll find the rest.
 
 ## Documentation
 
-Everything is in **[docs/](docs/README.md)**, in four parts:
+**Using it**
+- [Getting started](docs/user-guide/getting-started.md): putting it on a floppy, booting it, talking to it over a serial cable
+- [Commands](docs/user-guide/commands.md): every word it knows, and the keys at the prompt and on the keyboards
+- [The inventory](docs/user-guide/inventory.md): your files and folders, and how safe they are
+- [scribe](docs/user-guide/scribe.md): the word processor
+- [maelcum](docs/user-guide/maelcum.md): your files on an audio cassette
+- [The network](docs/user-guide/network.md): the network menu, `ping`, the browzer web browser, and how private it is
 
-- [User guide](docs/README.md#user-guide): getting started, every command, the inventory, scribe, maelcum, the network
-- [Development](docs/README.md#development): building, testing, making apps, releasing
-- [Design](docs/README.md#design): how it works inside, the hardware, the techniques, security, and the lessons learned
-- [Project](docs/README.md#project): the philosophy, the roadmap, and the references
+**Working on it**
+- [Building](docs/development/building.md): tools, the project's files, the floppy image, the emulator
+- [Testing](docs/development/testing.md): the tests, the test tools, and the hardware for testing on the real laptop
+- [Making apps](docs/development/making-apps.md): programs that live on the floppy beside the system
+- [Releasing](docs/development/releasing.md): version numbers, the changelog, making a release
+- [Training the wizard](docs/development/training-the-wizard.md): how his model is taught
 
-What changed in each release: [CHANGELOG.md](CHANGELOG.md). Reporting a
-security problem: [SECURITY.md](SECURITY.md). Taking part:
-[CONTRIBUTING.md](CONTRIBUTING.md).
+**How it is made**
+- [Architecture](docs/design/architecture.md): boot, memory, interrupts, the BIOS, the screen, the disk, the network stack
+- [The hardware](docs/design/hardware.md): the laptop, and what FLOPOS does with each part
+- [Techniques](docs/design/techniques.md): how radio plays without a pause on a 120 MHz Pentium, and the other inventions
+- [The cassette format](docs/design/cassette-format.md): how files become sound on a tape, and are read back
+- [Security](docs/design/security.md): the encryption, how a site proves who it is, and the security review
+- [Lessons on the way](docs/design/lessons.md): what the laptop and the software taught, the hard way
+
+**The project**
+- [Roadmap](docs/project/roadmap.md): ideas waiting their turn, and open security items
+- [References](docs/project/references.md): standards, datasheets, tools and inspiration
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release
+- [SECURITY.md](SECURITY.md): reporting a security problem
+- [CONTRIBUTING.md](CONTRIBUTING.md): taking part, and the rules FLOPOS is built by
 
 ## Provenance
 
 Written from scratch against published standards and the publicly
 documented PC interfaces. Toshiba's manuals and drivers were consulted for
 facts about the machine; none of their code, firmware or text is included,
-and they are not in this repository. See
-[References](docs/project/references.md).
+and they are not in this repository. See [References](docs/project/references.md).
+
+All product names, brands and trademarks mentioned here and in the
+documentation (Toshiba, Satellite Pro, Sound Blaster, Pentium and the rest)
+are the property of their respective owners. FLOPOS is not affiliated with
+or endorsed by any of them.
 
 ## Licence
 
-The code and the documentation are under the [MIT License](LICENSE). The
-boot picture of Saffran the cat is under
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): share it freely,
-with credit (see [LICENSE](LICENSE)).
+Everything, the code, the documentation and the boot picture of Saffran
+the cat, is under the [MIT License](LICENSE).
 
 Directed by Max. Built by Claude.

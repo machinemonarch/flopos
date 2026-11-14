@@ -6,6 +6,24 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- browzer searches through DuckDuckGo Lite when words are typed in the
+  address line: plain pages of results, over an encrypted connection.
+  FrogFind, which it used before, no longer answers.
+
+- browzer could close with "it reached outside its own memory" on a page
+  with a very long word (1.42.0 only). Fixed.
+
+- The documentation was gone through from top to bottom: the README now
+  says what FLOPOS is, who makes it and everything it can do, and takes in
+  the old philosophy page and the index; long tables became lists; links
+  in the middle of a sentence became numbered notes at the bottom of each
+  page; the user guide has screenshots of scribe, browzer and maelcum;
+  maelcum's page carries a warning that cassettes are not for important
+  data.
+
+- Saffran's boot picture is now under the MIT License, like everything
+  else.
+
 ## 1.42.0 — 2026-11-14
 
 - `keyboard`: FLOPOS now knows seventeen keyboards: Swedish (still the

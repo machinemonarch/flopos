@@ -21,9 +21,9 @@
  * enter is a new line and tab finishes).  Enter on a button sends the
  * form with that button.  Esc stops typing.
  *
- * Typing words rather than an address searches, through FrogFind -- a
- * search engine made for old computers that answers in plain HTML over
- * plain http, which is exactly what this one can best read.
+ * Typing words rather than an address searches, through DuckDuckGo's
+ * plain page (lite.duckduckgo.com): results as simple HTML, no script,
+ * over TLS 1.3.
  * ===========================================================================
  */
 #include "web.h"
@@ -1251,9 +1251,10 @@ static void go_typed(const char *t)
         fmt_str(url, sizeof url, "http://%s", t);
         n = -1;
     } else {
-        /* Words: ask FrogFind, spelled the way a query is spelled. */
+        /* Words: ask DuckDuckGo's plain page, spelled the way a query
+         * is spelled. */
         static const char hexd[] = "0123456789ABCDEF";
-        const char *pre = "http://frogfind.com/?q=";
+        const char *pre = "https://lite.duckduckgo.com/lite/?q=";
         for (i = 0; pre[i]; i++) url[n++] = pre[i];
         for (i = 0; t[i] && n < (int)sizeof url - 4; i++) {
             u8 c = (u8)t[i];

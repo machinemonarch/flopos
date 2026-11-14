@@ -14,6 +14,27 @@ The encryption code was also tested on the PC against OpenSSL and Python
 across thousands of random inputs, and ML-KEM against NIST's official test
 vectors, before it went into FLOPOS.
 
+## Hardware for testing on the laptop
+
+What the parts the emulator can't stand in for are tested with:
+
+- **The laptop:** a Toshiba Satellite Pro 430CDT, or a machine of its age
+  with a Pentium and a Sound Blaster compatible sound chip.
+- **Floppies:** 1.44MB (HD) diskettes, a USB floppy drive on the PC to
+  write them, and the laptop's own external floppy drive to boot them.
+- **A serial cable:** a null-modem cable and a USB serial adapter on the
+  PC, for `report` and for watching everything FLOPOS prints
+  (`picocom -b 115200`).
+- **The network:** the 3Com 3C589D PC Card with its cable adapter, and a
+  network cable to a router.
+- **Cassettes:** a cassette data recorder or any tape recorder with a
+  volume knob, ordinary audio cassettes, and two audio cables: one from
+  the laptop's headphone socket to the recorder's input, one from the
+  recorder's output to the laptop's line-in (or its microphone socket).
+- **Paper:** any printer, for maelcum's tape sleeve.
+- **A phone camera,** for photos of the screen when something goes wrong
+  before the serial line is up.
+
 ## Running at the laptop's speed
 
 The emulator normally runs far faster than a 120 MHz Pentium, which hides
@@ -29,7 +50,7 @@ The emulator's network card never loses anything, and a real 3Com does.
 `net drop 10` makes FLOPOS throw away every tenth frame that arrives, to
 test recovery; `net drop 0` stops it. While sound plays, the serial cable
 reports every ten seconds what decoding costs, the screen's frame rate and
-how much music is in hand (see [Techniques](../design/techniques.md#measuring-before-anything-else)).
+how much music is in hand (see Techniques[^1]).
 
 ## The test tools
 
@@ -131,3 +152,5 @@ seal and be thrown away unread; so in the test the seal is opened
 whatever it says, and since these ciphers work by flipping bits, a
 flipped bit in the sealed text comes out as the same flipped bit in the
 message behind it.
+
+[^1]: [Techniques](../design/techniques.md#measuring-before-anything-else)

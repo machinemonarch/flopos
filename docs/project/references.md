@@ -5,6 +5,10 @@ from scratch. These documents were read for facts (how a protocol works,
 what a register does, which answer a test should give), and no code or text
 was copied from any of them.
 
+**Who found what.** References Max suggested are marked *(Max)*. Most of
+the rest Claude found while building. For a few, such as Toshiba's
+specification sheets, who found them was not recorded.
+
 ## Standards FLOPOS implements
 
 ### Encryption
@@ -49,7 +53,7 @@ was copied from any of them.
 | Document | Used in |
 |---|---|
 | Microsoft's FAT specification (fatgen103) | `fs.c`, `tools/mkimage.py` |
-| [CommonMark](https://commonmark.org/) and [Markdown](https://daringfireball.net/projects/markdown/) | `apps/write/doc.c` |
+| [CommonMark](https://commonmark.org/) and [Markdown](https://daringfireball.net/projects/markdown/) | `apps/scribe/doc.c` |
 
 ## The PC and its chips
 
@@ -58,13 +62,13 @@ for decades:
 
 - **The BIOS calls**: `INT 10h` (video), `INT 13h` (disk) and `INT 15h`
   (memory size, APM power), and the BIOS data area. Catalogued in
-  [Ralf Brown's Interrupt List](https://www.cs.cmu.edu/~ralf/files.html).
+  Ralf Brown's Interrupt List[^1].
 - **VESA BIOS Extension (VBE) Core Functions, version 2.0**: the 800×600
   mode and the flat frame buffer (`vbe.c`, `vga.c`).
 - **Intel 8259A** interrupt controller, **Intel 8254** timer, **8042**
   keyboard controller and the A20 gate, **16550** serial chip, **MC146818**
   CMOS clock, **VGA** registers, **Yamaha YM3812 (OPL2)** FM sound.
-  [The OSDev wiki](https://wiki.osdev.org/) covers all of these well.
+  The OSDev wiki[^2] covers all of these well.
 - **APM BIOS Interface Specification 1.2**: switching the power off
   (`cpu.c`).
 
@@ -94,26 +98,22 @@ for decades:
 | B. G. Lee, "A new algorithm to compute the DCT" (1984) | `dsp_dct2`; mp3's synthesis |
 | [TCP SACK, RFC 2018](https://www.rfc-editor.org/rfc/rfc2018) | `tcp.c`: saying which pieces came |
 | [NTP, RFC 5905](https://www.rfc-editor.org/rfc/rfc5905) | `ip.c`, `rtc.c`: setting the clock |
-| VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
+| VEXP 1.3 by Adrian Gradwell (freeware, 1997) *(Max)* | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
 
 ## Toshiba's material (consulted, not included)
 
 Material on the Satellite Pro 430CDT:
 
-- two Toshiba Atlas support CDs (1995 and April 1997)
-- the Satellite Pro 430/435 driver collection
-- Toshiba's 430CDT specification sheets, including Toshiba Canada's
-  product page
-- the 430CDT page from [minus zero degrees](https://www.minuszerodegrees.net/),
-  with photographs of the machine
+- two Toshiba Atlas support CDs, from 1995 and 1997 *(Max)*
+- a collection of Toshiba's drivers for the Satellite Pro 430 and 435
+- Toshiba's specification sheets for the 430CDT
+- photographs of the machine
 
 They were read for **facts only**: which chips are in the machine, which
 ports they sit on, that the serial port is 16550 compatible, and how the
-floppy and panel are wired.
-
-They are copyrighted. They live in `reference/`, which is never committed,
-and no Toshiba code, firmware or text is in FLOPOS.
+floppy and panel are wired. They are copyrighted, they are not in this
+repository, and no Toshiba code, firmware or text is in FLOPOS.
 
 ## Checking the work
 
@@ -121,7 +121,7 @@ and no Toshiba code, firmware or text is in FLOPOS.
 |---|---|
 | [NIST ACVP test vectors](https://github.com/usnistgov/ACVP-Server) | Official ML-KEM-768 test answers |
 | mpg123, LAME, libvorbis, libFLAC, FAAD2 | Reference decodes, test audio |
-| SomaFM and Radio Paradise | Recordings of real AAC stations to test with |
+| SomaFM *(Max)* and Radio Paradise | Recordings of real AAC stations to test with |
 | [OpenSSL](https://www.openssl.org/) | Cross-checking the encryption; a local TLS test server |
 | [Python](https://www.python.org/) `hashlib` | Cross-checking SHA-3, SHAKE, SHA-384, SHA-512 |
 | [pyca/cryptography](https://cryptography.io/) | Test signatures and test certificate chains |
@@ -135,4 +135,22 @@ and no Toshiba code, firmware or text is in FLOPOS.
 
 | Service | Used for |
 |---|---|
-| [FrogFind](http://frogfind.com/) | Searching. Made by Action Retro. |
+| [DuckDuckGo Lite](https://lite.duckduckgo.com/lite/) | Searching, when what is typed in the address line is not an address |
+| [Radio Browser](https://www.radio-browser.info/) | The stations on 72fm.com's country pages *(72fm: Max)* |
+
+## Inspiration for the wizard
+
+The wizard's lines were written by Claude in the spirit of these, chosen
+by Max for taste and vibe. Nothing was copied from them, and none of their
+text is in his training, except the two public-domain books.
+
+- **The Jargon File 4.2.2 (public domain, Project Gutenberg) *(Max)***: Read in training: hacker words and their manner
+- **The complete works of Shakespeare (public domain, Project Gutenberg) *(Max)***: Read in training: the old-book gibberish he sometimes speaks
+- **Adventure Time *(Max)***: The bright land of sweets and quests
+- **Kramer, from Seinfeld *(Max)***: The neighbour with a scheme
+- **Cereal Killer, and Razor and Blade, from the film Hackers (1995) *(Max)***: The pirates of the phone lines
+- **Tom Bombadil, from The Lord of the Rings *(Max)***: The singing fellow of the woods
+- **Dungeons & Dragons, its game masters and its rules *(Max)***: The game master reading you the rules
+
+[^1]: [Ralf Brown's Interrupt List](https://www.cs.cmu.edu/~ralf/files.html)
+[^2]: [The OSDev wiki](https://wiki.osdev.org/)

@@ -2,29 +2,29 @@
 
 How FLOPOS protects what it does, and the record of the security review:
 what was fixed, and what was looked at and found fine. Open items are in
-the [roadmap](../project/roadmap.md#security-waiting-for-a-decision). To
-report a problem, see [SECURITY.md](../../SECURITY.md).
+the roadmap[^1]. To
+report a problem, see SECURITY.md[^2].
 
 ## Encryption
 
-All written from the published standards and checked against official
-test answers before it was trusted:
+All written from the published standards, and checked before it was
+trusted against the test answers published with them: the worked
+examples in the RFCs and FIPS documents themselves, and NIST's test
+vectors for ML-KEM. `crypto` runs the checks again on the machine itself.
 
-| File | What |
-|---|---|
-| `sha256.c` | SHA-256, HMAC, HKDF: the hashing every TLS 1.3 key is derived with |
-| `chacha.c` | ChaCha20-Poly1305 encryption |
-| `aes.c` | AES-128-GCM encryption |
-| `x25519.c` | X25519 key agreement |
-| `sha3.c` | SHA-3 and SHAKE, which ML-KEM is built on |
-| `mlkem.c` | ML-KEM-768, the post-quantum key agreement |
-| `random.c` | Random numbers: timing jitter between the timer and the processor's cycle counter, stirred into a SHA-256 pool |
-| `sha512.c` | SHA-512 and SHA-384, which many certificates are signed with |
-| `bignum.c` | Arithmetic modulo a big number (up to 4096 bits), Montgomery's way, for the signature checks |
-| `rsa.c` | RSA signature checks: PKCS#1 v1.5 (certificates) and PSS (the TLS 1.3 handshake) |
-| `ecdsa.c` | ECDSA signature checks on P-256 and P-384, in Jacobian coordinates |
-| `x509.c` | Reading certificates (DER) and checking a site's chain: names, dates, signatures, which authorities may vouch, up to `ROOTS.DAT` |
-| `selftest.c` | `crypto`: every one of the above checked on the machine itself |
+- **`sha256.c`**: SHA-256, HMAC, HKDF: the hashing every TLS 1.3 key is derived with
+- **`chacha.c`**: ChaCha20-Poly1305 encryption
+- **`aes.c`**: AES-128-GCM encryption
+- **`x25519.c`**: X25519 key agreement
+- **`sha3.c`**: SHA-3 and SHAKE, which ML-KEM is built on
+- **`mlkem.c`**: ML-KEM-768, the post-quantum key agreement
+- **`random.c`**: Random numbers: timing jitter between the timer and the processor's cycle counter, stirred into a SHA-256 pool
+- **`sha512.c`**: SHA-512 and SHA-384, which many certificates are signed with
+- **`bignum.c`**: Arithmetic modulo a big number (up to 4096 bits), Montgomery's way, for the signature checks
+- **`rsa.c`**: RSA signature checks: PKCS#1 v1.5 (certificates) and PSS (the TLS 1.3 handshake)
+- **`ecdsa.c`**: ECDSA signature checks on P-256 and P-384, in Jacobian coordinates
+- **`x509.c`**: Reading certificates (DER) and checking a site's chain: names, dates, signatures, which authorities may vouch, up to `ROOTS.DAT`
+- **`selftest.c`**: `crypto`: every one of the above checked on the machine itself
 
 A TLS connection offers both the hybrid post-quantum key (X25519MLKEM768:
 the ML-KEM secret and the X25519 secret, joined) and plain X25519, and
@@ -52,7 +52,7 @@ this code can check. All of it was tested against 518 signatures made by
 OpenSSL, the real chains of 14 well-known sites, and chains built to break
 one rule each.
 
-## Done
+## Patched
 
 - **Two more requests for apps (after 1.39.0).** `clock` (the date and
   time) and `glyph` (a letter's shape in the system's face), added for
@@ -104,7 +104,7 @@ one rule each.
   FLOPOS stops on the crash screen and says "The stack ran over its
   tripwire." Tried in a test build (`tripwire`).
 - **The readers fed garbage (1.32.1).** `tools/fuzz` (see
-  [Building](../development/building.md)) gives damaged songs, recordings, certificate
+  Building[^3]) gives damaged songs, recordings, certificate
   chains, secure conversations and web answers to FLOPOS's own code,
   built for the PC with a memory checker. Several hundred thousand
   inputs so far. It found three faults, all fixed:
@@ -124,6 +124,12 @@ tried as a real attack.
 
 These were looked at in the same review and need no work. They don't need
 looking at again unless their code changes.
+
+Looked at again on 2026-11-14: since the review, this code has changed
+only in the fixes listed under Patched, in browzer's reader for the Radio
+Browser directory (1.26, whose every string is held to the size of its
+buffer), and in the wider characters of 1.42. All of the below still
+holds.
 
 - **Running out of memory:** an attack has nothing to use up. Every buffer
   is a fixed size, set up once, and never freed.
@@ -158,3 +164,7 @@ looking at again unless their code changes.
 - **The table decoders (1.22):** a bit reader never moves past the end of
   its padded buffer, and a codebook that is not a prefix code, or has
   codes too long for two tables, is refused when it is built.
+
+[^1]: [roadmap](../project/roadmap.md#security-waiting-for-a-decision)
+[^2]: [SECURITY.md](../../SECURITY.md)
+[^3]: [Building](../development/building.md)

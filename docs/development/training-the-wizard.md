@@ -1,7 +1,8 @@
 # Training the wizard
 
-The wizard is to answer in his own words one day ([roadmap](../project/roadmap.md)).
-His model is trained on this PC, not on the laptop; only the finished
+The wizard answers every word FLOPOS doesn't know with a line of his own,
+from a tiny language model. His model is trained on a PC, not on the
+laptop; only the finished
 file, `boot/wizard.wiz`, goes on the floppy, as `WIZARD.WIZ`. It is kept
 in the repository, so building FLOPOS needs none of what follows; this is
 only for teaching him again.
@@ -23,6 +24,14 @@ only for teaching him again.
   woods, and a game master. Those six are flavours only: no line is taken
   from a show, a film or a book. The books and the model stay outside the
   repository, in `~/.cache/flopos-wizard`.
+- **Where the flavours come from.** Max chose them, as inspiration for
+  taste and vibe: Adventure Time (the land of sweets and quests), Kramer
+  from Seinfeld (the neighbour with a scheme), Cereal Killer and Razor and
+  Blade from the film Hackers (the pirates of the phone lines), Tom
+  Bombadil from The Lord of the Rings (the singing fellow of the woods),
+  and Dungeons & Dragons (the game master). Claude wrote every line in
+  their spirit; none was copied. They are listed with the other
+  references[^1].
 - **The mix.** His own six flavours share the training evenly. The two
   books get a twentieth of it between them (`--books 0.05`): a model this
   small can't learn them and makes up words in their manner, so those
@@ -52,3 +61,5 @@ only for teaching him again.
 
 Training takes about a quarter of an hour on a graphics card. It is not
 the same twice: each run gives a slightly different wizard.
+
+[^1]: [References: inspiration for the wizard](../project/references.md#inspiration-for-the-wizard)

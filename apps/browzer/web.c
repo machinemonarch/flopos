@@ -208,13 +208,13 @@ static void newline(int want)
 
 static void push(int g, u8 col)
 {
-    if (s_word_len < (int)sizeof s_word) {
+    if (s_word_len < (int)(sizeof s_word / sizeof *s_word)) {
         s_word[s_word_len] = g;
         s_word_col[s_word_len] = col;
         s_word_link[s_word_len] = s_linkid;
         s_word_len++;
     }
-    if (s_word_len == (int)sizeof s_word) { s_word_cont = 1; flush_word(); s_word_cont = 0; }
+    if (s_word_len == (int)(sizeof s_word / sizeof *s_word)) { s_word_cont = 1; flush_word(); s_word_cont = 0; }
 }
 
 static int glyph_for(u32 c)

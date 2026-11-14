@@ -1,7 +1,12 @@
 # Lessons on the way
 
-What cost real time to find, kept because it is true of plenty of
-machines and programs like these. Nothing here is needed to use FLOPOS.
+Fair warning: this is a dull read. Nothing here is needed to use FLOPOS.
+
+These are Claude's findings, made with the help of Max's testing on the
+real laptop and his reports back: photos of the screen taken with his
+phone, later the `report` command sent down a serial cable, and notes he
+wrote himself. What is here cost real time to find, and is kept because it
+is true of plenty of machines and programs like these.
 
 ## What the machine taught us
 
@@ -81,3 +86,22 @@ and the video BIOS keep their buffers. Every disk read then wrote over the
 kernel's variables, and the first one to go was the keyboard's record of
 which keys are held. The machine believed Shift was down. `linker.ld` now
 refuses to build a kernel that reaches that line.
+
+## What the cassette taught us
+
+**A simulated tape is too kind.** The first reader timed each half of a
+wave. On the simulated tape it read everything; on the first real
+recorder it read nothing at all. A real recorder plays the wave back
+lopsided, one half longer than the other, which the simulated tape had
+not been. Timing whole waves, from one upward crossing to the next, fixed
+it, because a whole wave is the same length however lopsided it is.
+
+**One listener giving up is not a loss.** With several listeners on one
+tape, the screen counted a block as lost whenever any one of them lost
+it, even when another had it. It said "Sorry! Sorry!" all through a tape
+that then came back whole. A short wait before counting helped, but not
+enough: on a dull recorder at fast speed, the treble-lifted listeners
+finish a block well after the plain ones give up on it. Now a loss counts
+only when every listener inside that block has given it up. The tape test
+fails if a tape read whole counted any loss: before the change, four of
+its cases did; after it, none.

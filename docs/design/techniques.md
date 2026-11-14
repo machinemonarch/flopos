@@ -10,11 +10,13 @@ putting them all together on one floppy for one machine, and measuring
 each against that machine. They are written as shared pieces, so later
 work (pictures, compression, a DAW) can use them too.
 
-## Measuring, before anything else
+## How it is measured
+
+### Measuring, before anything else
 
 FLOPOS is tested in an emulator held to about 62 million instructions a
 second, roughly this laptop's speed on this kind of code
-([how](../development/testing.md#running-at-the-laptops-speed)).
+(how[^1]).
 
 While sound plays, FLOPOS reports to the serial cable every ten seconds:
 - what share of the machine decoding took
@@ -23,7 +25,9 @@ While sound plays, FLOPOS reports to the serial cable every ten seconds:
 
 Every change below was judged by those three numbers.
 
-## Sound: refilled at interrupt time
+## Sound and music
+
+### Sound: refilled at interrupt time
 
 *kernel/audio.c `audio_feeder`, app interface version 4.*
 
@@ -45,46 +49,15 @@ WAV and tracker songs.
 **Also good for:** anything that must keep time while the foreground is
 busy, such as a DAW's playback, or a synthesiser.
 
-## Network: nothing lost while busy
+### Where a song is while it plays
 
-*kernel/net.c, kernel/time.c, kernel/tcp.c.*
+A song or a recording opened in browzer, a file rather than a stream, is
+brought in whole over the network into browzer's own memory (room for 2
+MB) and played from there. It is never written to the floppy, and it is
+gone when browzer closes or opens the next one. A radio stream passes
+through the same memory a piece at a time, so it never runs out.
 
-- **The card emptied a thousand times a second.** The 3Com PC Card holds
-  only a few kilobytes, and a full frame arrives every 1.2 ms at 10 Mbit,
-  so anything not taken in time is lost. The timer now interrupts 1000
-  times a second instead of 250. Every interrupt moves whatever the card
-  holds into a 48-frame queue; every fourth is still the system's tick.
-- **A wider window.** TCP now lets a server have 16 segments in flight,
-  not 3. That used to hold a station 200 ms away to barely what it needs
-  to play.
-- **Out-of-order pieces kept, and SACK** (RFC 2018). A lost segment used
-  to cost every segment after it, resent one round trip at a time: two or
-  three seconds of nothing. Now pieces that arrive early are kept where
-  they belong. Every answer tells the server exactly which pieces have
-  come, so it resends only the missing one.
-- **Answers sent at every read**, not only when the app runs out of data.
-
-**Also good for:** every download, not only radio.
-
-## The screen: only what can be seen, only what changed
-
-*kernel/term.c `term_win_covers`, kernel/main.c, kernel/vga.c `vga_present_rows`.*
-
-The moving background took 21.5 ms of every frame on the slowed emulator.
-Inside browzer, it was drawn and enlarged, then completely covered by
-browzer's window. Now:
-- when a window with paper covers the whole screen, nothing under it is
-  drawn
-- the window is redrawn only where a cell differs from how it was drawn
-  last time
-- only the rows that changed are sent to the card, and nothing at all if
-  nothing changed
-
-The picture is the same to the pixel.
-
-**Also good for:** any full-screen app, such as `scribe`.
-
-## Decoding: the same arithmetic, less of it
+### Decoding: the same arithmetic, less of it
 
 *apps/lib/bits, apps/lib/dsp, and the decoders in apps/lib/audio.*
 
@@ -125,7 +98,7 @@ decoders: mpg123, FAAD2, libvorbis, libFLAC.
 | Ogg Vorbis, 136 kbps, 44.1 kHz | 26% |
 | a MOD song | under 1% |
 
-## Tracker songs: the score read as it plays
+### Tracker songs: the score read as it plays
 
 *apps/lib/audio/tracker.c.*
 
@@ -155,7 +128,7 @@ Archive: most match at 0.8 to 0.999 (`tools/audiotest`).
 **Also good for:** any app that plays a song: a game's music, a DAW's
 sample player.
 
-## Out of 8 bits: noise shaping
+### Out of 8 bits: noise shaping
 
 *apps/lib/audio/decode.c `lines`.*
 
@@ -166,11 +139,27 @@ with the error the last one left added in. The rounding error then comes
 out as a faint, even hiss in the treble. For a quiet tone, that is 14 dB
 less error where the ear listens hardest.
 
-## Lessons on the way
+## The screen
 
-Moved, whole, to [Lessons on the way](lessons.md).
+### The screen: only what can be seen, only what changed
 
-## Frames that shine without being redrawn
+*kernel/term.c `term_win_covers`, kernel/main.c, kernel/vga.c `vga_present_rows`.*
+
+The moving background took 21.5 ms of every frame on the slowed emulator.
+Inside browzer, it was drawn and enlarged, then completely covered by
+browzer's window. Now:
+- when a window with paper covers the whole screen, nothing under it is
+  drawn
+- the window is redrawn only where a cell differs from how it was drawn
+  last time
+- only the rows that changed are sent to the card, and nothing at all if
+  nothing changed
+
+The picture is the same to the pixel.
+
+**Also good for:** any full-screen app, such as `scribe`.
+
+### Frames that shine without being redrawn
 
 Every frame piece is drawn as geometry in one place (`blit_cell` in
 `kernel/term.c`), so colouring it there colours every program's frames.
@@ -186,37 +175,32 @@ Text can ride the same wheel. maelcum's name at the top is drawn once,
 each letter in the next of the sixteen entries (`A_NEON` for programs),
 and the colours then run through the letters at no cost at all.
 
+## The network
 
-## A language model beside a kernel that fits in 640K
+### Network: nothing lost while busy
 
-The wizard's model had to cost the floppy little, the kernel almost
-nothing, and the screen no frames.
+*kernel/net.c, kernel/time.c, kernel/tcp.c.*
 
-- **A byte a weight, trained that way.** Weights are stored as bytes with
-  one scale for each row. The last fifth of the training runs with the
-  weights already rounded to bytes, so what is written to the floppy is
-  what was trained, not an approximation of it.
-- **Word pieces, not letters.** He speaks in 512 pieces of words. A line
-  is about twenty pieces instead of seventy letters, so it takes a third
-  of the sums, and the model spends itself on phrasing, not spelling.
-- **Nothing to read, so nothing to parse.** He never reads what was typed.
-  He writes `@` where the word belongs and the shell puts it there. The
-  engine needs no way of cutting text into pieces, only the list of them.
-- **Remembering instead of redoing.** What each past piece offered to the
-  ones after it is kept, so each new piece costs one pass, however long
-  the line is.
-- **A layer, then a frame.** The engine hands the machine back between
-  layers, a few milliseconds apart. Measured at the laptop's speed with a
-  song playing: 30 frames a second before, during and after.
-- **Most of the voice is a grammar.** A model this small can't learn
-  Shakespeare, but it learns a few hundred sentence shapes with their
-  slots very well, and mixes them. The books are a twentieth of his
-  training, for the oddity.
-- **One engine, two builds.** The same C file is built for this PC and
-  compared, score by score, with a plain Python version of the sums
-  (`tools/wizard/enginetest.py`).
+- **The card emptied a thousand times a second.** The 3Com PC Card holds
+  only a few kilobytes, and a full frame arrives every 1.2 ms at 10 Mbit,
+  so anything not taken in time is lost. The timer now interrupts 1000
+  times a second instead of 250. Every interrupt moves whatever the card
+  holds into a 48-frame queue; every fourth is still the system's tick.
+- **A wider window.** TCP now lets a server have 16 segments in flight,
+  not 3. That used to hold a station 200 ms away to barely what it needs
+  to play.
+- **Out-of-order pieces kept, and SACK** (RFC 2018). A lost segment used
+  to cost every segment after it, resent one round trip at a time: two or
+  three seconds of nothing. Now pieces that arrive early are kept where
+  they belong. Every answer tells the server exactly which pieces have
+  come, so it resends only the missing one.
+- **Answers sent at every read**, not only when the app runs out of data.
 
-## Writing a floppy's filesystem so a power cut cannot break it
+**Also good for:** every download, not only radio.
+
+## Files and paper
+
+### Writing a floppy's filesystem so a power cut cannot break it
 
 For the inventory (`kernel/fs.c`). FAT12 has no journal, so the order of
 the writes is the whole of the safety.
@@ -244,25 +228,7 @@ the writes is the whole of the safety.
   number of sectors, hundreds of times, and checks that every file is
   whole, old or new.
 
-## A wall the apps never notice
-
-Apps were built to call the system through a table of function addresses.
-To put them behind a wall (ring 3 and paging) without rebuilding how they
-are written, the table they are handed now points at eight-byte stubs
-that live in the app's own memory: load a number, `INT 0x80`, return. The
-arguments stay where C left them, on the app's stack, and the kernel
-reads them from there after checking the stack is the app's. Going the
-other way, when the kernel must call a function the app gave it (the
-sound feeder, from inside the timer interrupt), it builds a small frame
-on the app's stack whose return address is another stub, `INT 0x81`, and
-drops to ring 3; the stub brings it back to exactly where it left off.
-These calls nest. The paging is the plainest possible: 4MB pages, every
-address mapped to itself, two of them open to apps. It goes off for each
-BIOS call, since the BIOS runs in 16-bit mode. Sources: Intel's
-architecture manuals (privilege levels, the task segment, 4MB pages).
-
-
-## A page that knows how big it is
+### A page that knows how big it is
 
 For maelcum's tape sleeve (`apps/maelcum/sleeve.c`). The laptop has no
 printer, so the sleeve leaves on the floppy as a file, and has to come
@@ -296,3 +262,53 @@ out of somebody else's printer at exactly a cassette sleeve's size.
 
 Checked with `pdfinfo` (one A4 page) and by rendering it on the PC. Not
 yet printed.
+
+## The system
+
+### A wall the apps never notice
+
+Apps were built to call the system through a table of function addresses.
+To put them behind a wall (ring 3 and paging) without rebuilding how they
+are written, the table they are handed now points at eight-byte stubs
+that live in the app's own memory: load a number, `INT 0x80`, return. The
+arguments stay where C left them, on the app's stack, and the kernel
+reads them from there after checking the stack is the app's. Going the
+other way, when the kernel must call a function the app gave it (the
+sound feeder, from inside the timer interrupt), it builds a small frame
+on the app's stack whose return address is another stub, `INT 0x81`, and
+drops to ring 3; the stub brings it back to exactly where it left off.
+These calls nest. The paging is the plainest possible: 4MB pages, every
+address mapped to itself, two of them open to apps. It goes off for each
+BIOS call, since the BIOS runs in 16-bit mode. Sources: Intel's
+architecture manuals (privilege levels, the task segment, 4MB pages).
+
+### A language model beside a kernel that fits in 640K
+
+The wizard's model had to cost the floppy little, the kernel almost
+nothing, and the screen no frames.
+
+- **A byte a weight, trained that way.** Weights are stored as bytes with
+  one scale for each row. The last fifth of the training runs with the
+  weights already rounded to bytes, so what is written to the floppy is
+  what was trained, not an approximation of it.
+- **Word pieces, not letters.** He speaks in 512 pieces of words. A line
+  is about twenty pieces instead of seventy letters, so it takes a third
+  of the sums, and the model spends itself on phrasing, not spelling.
+- **Nothing to read, so nothing to parse.** He never reads what was typed.
+  He writes `@` where the word belongs and the shell puts it there. The
+  engine needs no way of cutting text into pieces, only the list of them.
+- **Remembering instead of redoing.** What each past piece offered to the
+  ones after it is kept, so each new piece costs one pass, however long
+  the line is.
+- **A layer, then a frame.** The engine hands the machine back between
+  layers, a few milliseconds apart. Measured at the laptop's speed with a
+  song playing: 30 frames a second before, during and after.
+- **Most of the voice is a grammar.** A model this small can't learn
+  Shakespeare, but it learns a few hundred sentence shapes with their
+  slots very well, and mixes them. The books are a twentieth of his
+  training, for the oddity.
+- **One engine, two builds.** The same C file is built for this PC and
+  compared, score by score, with a plain Python version of the sums
+  (`tools/wizard/enginetest.py`).
+
+[^1]: [how](../development/testing.md#running-at-the-laptops-speed)

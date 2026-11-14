@@ -18,7 +18,7 @@ source files involved; every file opens with a comment explaining itself.
    files actually landed and writes those sector numbers into the boot
    sector.
 2. **The 16-bit stub** (`kernel/start.S`). The kernel is loaded at 0x10000.
-   It measures memory (three ways, see [hardware](hardware.md)), opens the
+   It measures memory (three ways, see hardware[^1]), opens the
    A20 gate (three ways, and checks it worked), loads a flat descriptor
    table and switches the processor into 32-bit protected mode.
 3. **The 32-bit start**: flat segments, a stack, zeroed memory for the
@@ -59,16 +59,14 @@ source files involved; every file opens with a comment explaining itself.
 
 ## Memory
 
-| Where | What |
-|---|---|
-| 0x07C00 | The boot sector, while booting |
-| 0x10000 | The kernel. Its first 64KB holds the code that returns to 16-bit mode for the BIOS, and the build checks it stays there. |
-| 0x70000 | The disk buffer: below 1MB, where the BIOS can reach it |
-| below 640KB | The kernel's code, data and stack |
-| 0x100000 (1MB) and up | The heap: screen buffers, lookup tables, network buffers. A simple allocator that only ever hands out more. Capped below 9MB. |
-| in the heap | The wizard's model: about 1.4MB once its weights are spread out for use |
-| 0xC00000 (12MB) to 20MB | The app area, the only memory an app can touch (see [Making apps](../development/making-apps.md)) |
-| 0x7000000 | The video card's frame buffer, at 800×600 |
+- **0x07C00**: The boot sector, while booting
+- **0x10000**: The kernel. Its first 64KB holds the code that returns to 16-bit mode for the BIOS, and the build checks it stays there.
+- **0x70000**: The disk buffer: below 1MB, where the BIOS can reach it
+- **below 640KB**: The kernel's code, data and stack
+- **0x100000 (1MB) and up**: The heap: screen buffers, lookup tables, network buffers. A simple allocator that only ever hands out more. Capped below 9MB.
+- **in the heap**: The wizard's model: about 1.4MB once its weights are spread out for use
+- **0xC00000 (12MB) to 20MB**: The app area, the only memory an app can touch (see Making apps[^2])
+- **0x7000000**: The video card's frame buffer, at 800×600
 
 Paging is on, with 4MB pages that map every address to itself; only the
 two pages of the app area are open to apps. It is switched off for the
@@ -127,7 +125,7 @@ function, `bios_int` in `kernel/bioscall.c`, which:
 6. throws away keys and serial bytes that arrived garbled in between
 
 Before this was the only way in, video calls skipped steps 1 and 4, and
-that was the cause of every freeze (see [hardware](hardware.md)).
+that was the cause of every freeze (see hardware[^1]).
 
 ## The screen
 
@@ -212,7 +210,7 @@ is drawn by chance from the thirty likeliest. `@` in a line is where the
 typed word goes. The shell calls `wizsay()` only when every other meaning
 of a word has failed.
 
-How the model is made is in [Training the wizard](../development/training-the-wizard.md).
+How the model is made is in Training the wizard[^3].
 
 ## The floppy
 
@@ -229,8 +227,8 @@ files and folders. Every path is followed down from that folder and
 cannot leave it. A save goes in an order a power cut cannot turn into a
 damaged disk: data into unused clusters, then the allocation table (the
 spare copy first), then the folder entry, then the old clusters are let
-go. See [The inventory](../user-guide/inventory.md) and
-[techniques.md](techniques.md).
+go. See The inventory[^4] and
+techniques.md[^5].
 
 - `kernel/disk.c`: sectors on and off the floppy through the BIOS, in
   runs where possible, via the buffer at 0x70000.
@@ -243,7 +241,7 @@ go. See [The inventory](../user-guide/inventory.md) and
   `inv_` calls). The same file is built for the PC and tested there
   (`tools/fstest/run.py`).
 - `kernel/apps.c`: loads `NAME.APP` files (see
-  [Making apps](../development/making-apps.md)).
+  Making apps[^2]).
 
 ## The serial line
 
@@ -255,18 +253,23 @@ write there first.
 
 Each layer is its own file:
 
-| Layer | File | What it does |
-|---|---|---|
-| PC Card | `pcic.c` | Powers the slots, reads each card's description, maps its registers into I/O space |
-| Cards | `el3.c`, `ne2000.c`, `net.c` | The 3Com 3C589, the emulator's NE2000, and a common interface for both. No card interrupts: the timer empties the card into a 48-frame queue a thousand times a second, so nothing is lost while FLOPOS is busy drawing or decoding. |
-| Addresses | `ip.c` | ARP (finding the hardware behind an address), IPv4, ICMP (ping), UDP, DHCP (being given an address), DNS (names) |
-| Conversations | `tcp.c` | TCP: ordered, reliable, retransmitted. A window of sixteen segments; pieces that come out of turn are kept, and every answer says which pieces have come (SACK), so a lost one costs one resend. |
-| Connections | `conn.c` | One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close |
-| Secure web | `tls.c` | TLS 1.3, and 1.2 in its AEAD-only form, client side |
-| Programs | `netui.c` | The network menu |
-| Web | `apps/browzer/` | BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`). |
+- **PC Card** (`pcic.c`): Powers the slots, reads each card's description, maps its registers into I/O space
+- **Cards** (`el3.c`, `ne2000.c`, `net.c`): The 3Com 3C589, the emulator's NE2000, and a common interface for both. No card interrupts: the timer empties the card into a 48-frame queue a thousand times a second, so nothing is lost while FLOPOS is busy drawing or decoding.
+- **Addresses** (`ip.c`): ARP (finding the hardware behind an address), IPv4, ICMP (ping), UDP, DHCP (being given an address), DNS (names)
+- **Conversations** (`tcp.c`): TCP: ordered, reliable, retransmitted. A window of sixteen segments; pieces that come out of turn are kept, and every answer says which pieces have come (SACK), so a lost one costs one resend.
+- **Connections** (`conn.c`): One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close
+- **Secure web** (`tls.c`): TLS 1.3, and 1.2 in its AEAD-only form, client side
+- **Programs** (`netui.c`): The network menu
+- **Web** (`apps/browzer/`): BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`).
 
 ## Encryption
 
 How the encryption is built and how a site is made to prove who it is:
-[Security](security.md#encryption).
+Security[^6].
+
+[^1]: [hardware](hardware.md)
+[^2]: [Making apps](../development/making-apps.md)
+[^3]: [Training the wizard](../development/training-the-wizard.md)
+[^4]: [The inventory](../user-guide/inventory.md)
+[^5]: [techniques.md](techniques.md)
+[^6]: [Security](security.md#encryption)

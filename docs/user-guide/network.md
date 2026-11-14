@@ -66,6 +66,8 @@ app, `BROWZER.APP` on the floppy: the system provides the connection
 (including the secure part and the certificate check), and browzer does
 the rest.
 
+![browzer searching, in the emulator: the results come from DuckDuckGo Lite over TLS 1.3 with post-quantum key exchange](../images/browzer-search.png)
+
 | Key | What it does |
 |---|---|
 | Up / Down | Scroll a line |
@@ -94,15 +96,13 @@ browzer when the first was meant to stop a page loading.
 
 Links to sound play it, through the Sound Blaster:
 
-| What | How |
-|---|---|
-| **.mp3** | MPEG-1, -2 and -2.5 layer III, any bitrate |
-| **.aac** | AAC LC and HE-AAC (AAC+), as ADTS: what most AAC stations send |
-| **.ogg** | Ogg Vorbis, any quality; and FLAC inside Ogg |
-| **.flac** | FLAC, 8 to 24 bits, up to 8 channels |
-| **.wav** | plain PCM, 8 to 32 bits, any rate, any number of channels |
-| **.mod**, **.xm**, **.s3m**, **.it** | tracker songs (ProTracker, FastTracker 2, Scream Tracker 3, Impulse Tracker), such as the ones on [modarchive.org](https://modarchive.org/) |
-| **radio** | mp3, AAC, Ogg and FLAC stations (Shoutcast, Icecast), and their **.m3u** and **.pls** playlists |
+- **.mp3**: MPEG-1, -2 and -2.5 layer III, any bitrate
+- **.aac**: AAC LC and HE-AAC (AAC+), as ADTS: what most AAC stations send
+- **.ogg**: Ogg Vorbis, any quality; and FLAC inside Ogg
+- **.flac**: FLAC, 8 to 24 bits, up to 8 channels
+- **.wav**: plain PCM, 8 to 32 bits, any rate, any number of channels
+- **.mod**, **.xm**, **.s3m**, **.it**: tracker songs (ProTracker, FastTracker 2, Scream Tracker 3, Impulse Tracker), such as the ones on modarchive.org[^1]
+- **radio**: mp3, AAC, Ogg and FLAC stations (Shoutcast, Icecast), and their **.m3u** and **.pls** playlists
 
 **A file of 2 MB or less** is downloaded first, then plays in the background
 while you go on browsing. The top edge shows what is playing and for how
@@ -115,7 +115,7 @@ been listening. **Esc** stops it.
 It starts once about three seconds have arrived, and the player screen
 shows how many seconds are in hand. The decoding is done by the system's
 timer, whatever browzer is doing, so the music doesn't pause for pages,
-drawing or the network (see [techniques.md](../design/techniques.md)). If the
+drawing or the network (see techniques.md[^2]). If the
 network ever falls behind and the sound runs out, it gathers a bigger
 cushion before going on, rather than stuttering through each scrap: 6
 seconds, then 12, then 24. A station that sends slower than it plays
@@ -156,8 +156,12 @@ streams it names in the same way.
 name their stations as plain text, and their script fetches the list from
 the open Radio Browser directory, which the page names. browzer asks that
 directory the same question and lists the country's 40 most voted stations
-as links, each with its format and bit rate. A name in a script the font
-can't draw is shown as "(a name in Hebrew)", or its Latin part alone.
+as links, each with its format and bit rate. Hebrew and Cyrillic names
+are shown as they are, Hebrew right to left. A name in a script the font
+can't draw (Arabic, say) is shown by its Latin part alone, or as "(a name
+in Arabic)".
+
+![72fm's page for Israel, imitated on the test site: station names in Hebrew](../images/browzer-radio.png)
 
 ### Pages that remember you, reload, or come in frames
 
@@ -222,9 +226,9 @@ followed. Not yet: file uploads.
 Text typed into a page goes to that site, so on a secure page check the
 status line says who vouched for it first.
 
-**Typing words instead of an address searches**, through FrogFind. It is a
-search engine made for old computers, and it answers with plain, simple
-pages that suit a machine like this one.
+**Typing words instead of an address searches**, through DuckDuckGo's
+plain page, DuckDuckGo Lite. It answers with simple pages of results and
+no scripts, over an encrypted connection.
 
 What it does with modern pages:
 
@@ -232,7 +236,7 @@ What it does with modern pages:
   "Image of …" with the picture's description. Small icons stay inline as
   text, and invisible tracking pixels disappear.
 - **JavaScript** is not run, on purpose (see
-  [Philosophy](../project/philosophy.md)). Where a page offers a no-JavaScript
+  the rules[^3]). Where a page offers a no-JavaScript
   version of itself, browzer shows that.
 - **A page that fails to load says why**, on the page.
 - Status messages also go down the serial line.
@@ -281,14 +285,12 @@ has nothing newer.
 
 FLOPOS refuses the page and says why:
 
-| What it says | What it means |
-|---|---|
-| its certificate is for a different site | the certificate names some other site |
-| its certificate ran out on 2026-01-27 / is not valid until … | out of date, or the laptop's clock is wrong |
-| nobody this machine trusts vouches for it | a self-made certificate, an unknown authority, or a site that forgot to send its authority's certificate |
-| a signature in its certificate chain does not check out | something in the chain was altered |
-| it could not prove the certificate is its own | it showed a certificate but couldn't sign with its key |
-| this laptop's clock says 1995 … | the clock is wrong, so nothing can be dated; see below |
+- **its certificate is for a different site**: the certificate names some other site
+- **its certificate ran out on 2026-01-27 / is not valid until …**: out of date, or the laptop's clock is wrong
+- **nobody this machine trusts vouches for it**: a self-made certificate, an unknown authority, or a site that forgot to send its authority's certificate
+- **a signature in its certificate chain does not check out**: something in the chain was altered
+- **it could not prove the certificate is its own**: it showed a certificate but couldn't sign with its key
+- **this laptop's clock says 1995 …**: the clock is wrong, so nothing can be dated; see below
 
 **The clock.** Certificates are only good between two dates, so the laptop
 has to know roughly what day it is, and its clock battery may long since
@@ -321,3 +323,7 @@ Sites that only speak older versions of TLS won't open.
 
 A secure page that is stuck can be cancelled with Esc, and a server that
 goes silent is given up on after 15 seconds, with the reason shown.
+
+[^1]: [modarchive.org](https://modarchive.org/)
+[^2]: [techniques.md](../design/techniques.md)
+[^3]: [the rules](../../CONTRIBUTING.md#the-rules-it-is-built-by)

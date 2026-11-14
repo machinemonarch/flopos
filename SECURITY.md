@@ -1,17 +1,31 @@
 # Security policy
 
+## First, what FLOPOS is
+
+FLOPOS is not meant to be an everyday operating system. It is an art
+project: a test of what an AI can build, of what a 1996 Toshiba laptop can
+still do, and of its author's creativity. It is a cyber-psychedelic
+sandbox, a playground for ideas on how to bridge the old with the new.
+
+Security is taken seriously in it, but it is not what the project is
+about. FLOPOS comes with no guarantee that it is fit for any purpose, and
+that goes for its security too. Don't trust it with anything that
+matters. Having said that:
+
 ## Reporting a problem
 
-Write to **hello@machinemonarch.com**. Please say:
+Either write to **hello@machinemonarch.com** with a subject that starts
+with **FLOPOS**, or open a public pull request with the fix.
+
+Please say:
 
 - what you found, and what it lets someone do
 - which version (`version` at the prompt says, as does the top line of
   every program)
 - how to make it happen again
 
-Please give it a chance to be fixed before telling anyone else. FLOPOS is
-an art project made by one person and an AI, with no bounty and no
-promise of how quickly an answer comes, but every report is read.
+Every report is read, when there is time. FLOPOS is made by one person
+and an AI, with no bounty and no promise of how quickly an answer comes.
 
 ## Which versions
 
@@ -22,17 +36,19 @@ a record, not as something to run.
 
 - **The network.** Secure pages use TLS 1.3 (or TLS 1.2 in its modern
   form) with post-quantum key exchange, and every site must prove who it
-  is. Nothing listens: no outside machine can start a conversation.
-  For users: [How private it is](docs/user-guide/network.md#how-private-it-is).
-  How it is built: [Security](docs/design/security.md).
+  is. Nothing listens: no outside machine can start a conversation. How
+  private it is for the user[^1], and how it is built[^2].
 - **Programs.** Each app runs behind a wall: it can touch only its own
-  memory and must ask the system for everything else.
-  [Making apps](docs/development/making-apps.md#the-wall).
-- **Tapes.** maelcum can encrypt a backup with a passphrase.
-  [maelcum](docs/user-guide/maelcum.md#encryption).
+  memory and must ask the system for everything else[^3].
+- **Tapes.** maelcum can encrypt a backup with a passphrase[^4].
 - **Not the floppy.** Your files are plain FAT12 files that any computer
   can read. That is on purpose: whoever holds the floppy holds your
   files.
 
-Weak spots that are known and not yet fixed are listed in the
-[roadmap](docs/project/roadmap.md#security-waiting-for-a-decision).
+Weak spots that are known and not yet fixed are listed in the roadmap[^5].
+
+[^1]: [The network: how private it is](docs/user-guide/network.md#how-private-it-is)
+[^2]: [Security](docs/design/security.md)
+[^3]: [Making apps: the wall](docs/development/making-apps.md#the-wall)
+[^4]: [maelcum: encryption](docs/user-guide/maelcum.md#encryption)
+[^5]: [Roadmap: security, waiting for a decision](docs/project/roadmap.md#security-waiting-for-a-decision)

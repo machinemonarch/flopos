@@ -1,9 +1,17 @@
 # maelcum: backup to an audio cassette
 
+> **Warning: not for important data.** maelcum may work. It also may not.
+> Consumer cassettes and recorders are unreliable: tapes stretch, wear,
+> drop out and lose their treble, and a backup that read back fine today
+> may not read next year. Keep the files that matter somewhere else too.
+> FLOPOS comes with no guarantee of any kind (see the licence).
+
 `maelcum` keeps a copy of your files on an ordinary audio cassette, as sound,
 the way the home computers of the 1980s did. It is for a cassette recorder
-with EAR and MIC sockets. It is named for the pilot in William Gibson's
+with EAR and MIC sockets. It is named after the pilot in William Gibson's
 *Neuromancer* (1984), who got people home.
+
+![maelcum's screen, in the emulator](../images/maelcum.png)
 
 On the laptop so far: reading a tape from a real recorder worked
 (1.33.0), and so did writing with Verify at normal speed (1.35.0). Fast
@@ -15,7 +23,7 @@ emulator.
 
 ## What it keeps
 
-Everything in your [inventory](inventory.md), folders and all, and three
+Everything in your inventory[^1], folders and all, and three
 of the system's own records: browzer's bookmarks, the journal, and the
 settings (the network's among them). Nothing else can go to a tape, and
 what comes back can only go into the inventory or over one of those three.
@@ -28,9 +36,8 @@ halves it again. A file over 64 KB is left out, and `maelcum` says so.
 
     here> maelcum
 
-The top line names it, "Magnetic Rust: Riddim 'n' Vibrationz Engine",
-in colours that run through the letters, with a glint that sweeps across
-it every few seconds.
+The top line names it, in colours that run through the letters, with a
+glint that sweeps across it every few seconds.
 
 At the top are the settings, each with its key, in two groups, and under
 them a third, **Run 'Tingz**, with the cassette and the three things to do:
@@ -40,21 +47,17 @@ the one that is not is grey.
 
 **Write Options**
 
-| Key | Setting |
-|---|---|
-| <kbd>J</kbd> | The job, from a list: **Standard Backup** (everything of yours on this floppy) or **Pick & Mix** (only what you tick, after <kbd>W</kbd>) |
-| <kbd>C</kbd> | Compress (LZSS): on or off. A file is sent packed when that is shorter. |
-| <kbd>F</kbd> | Speed: normal or fast. Fast takes half the tape and is easier to spoil: it wants a good recorder and tape. Reading needs no telling; it hears which. |
-| <kbd>V</kbd> | Verify after writing: on or off. On, the tape is read back straight after it is written. |
-| <kbd>E</kbd> | Encrypt: on or off (off to begin with). See below. |
-| <kbd>K</kbd> | The cipher, from a list of three |
+- **<kbd>J</kbd>**: The job, from a list: **Standard Backup** (everything of yours on this floppy) or **Pick & Mix** (only what you tick, after <kbd>W</kbd>)
+- **<kbd>C</kbd>**: Compress (LZSS): on or off. A file is sent packed when that is shorter.
+- **<kbd>F</kbd>**: Speed: normal or fast. Fast takes half the tape and is easier to spoil: it wants a good recorder and tape. Reading needs no telling; it hears which.
+- **<kbd>V</kbd>**: Verify after writing: on or off. On, the tape is read back straight after it is written.
+- **<kbd>E</kbd>**: Encrypt: on or off (off to begin with). See below.
+- **<kbd>K</kbd>**: The cipher, from a list of three
 
 **Read Options**
 
-| Key | Setting |
-|---|---|
-| <kbd>Tab</kbd> | Which socket listens: line-in or microphone |
-| <kbd>D</kbd> | Restore into, from a list: **a folder named by the date**, DDMMYYYY (the first choice), where each file came from, the top of the inventory, any folder, or a folder you name, which is made at once at the top of the inventory. |
+- **<kbd>Tab</kbd>**: Which socket listens: line-in or microphone
+- **<kbd>D</kbd>**: Restore into, from a list: **a folder named by the date**, DDMMYYYY (the first choice), where each file came from, the top of the inventory, any folder, or a folder you name, which is made at once at the top of the inventory.
 
 The cassette's wheels turn while a tape is written or read, and beside it
 is the progress. The bottom line names only the keys not already shown
@@ -72,22 +75,21 @@ above. Below is a list of files, and its title says whose:
 
 <kbd>Esc</kbd> empties it again.
 
-Above the keys, one line says how it is going, in plain words: "Buckle
-up!" when recording starts, "Now hear 'dis!" when playback starts,
-"Smooth sailing." when all is well, and less calm things when pieces are
-being spoiled or the tape runs off its speed. While recording it cannot
-hear the tape, so there the line goes only by how far along it is; the
-real judging happens when the tape is played back.
-When a tape has been read it sums up with one of ten sayings, five for a
-tape that came whole and five for one that did not, in the title's
-turning colours, glint and all. The plain facts stay
-on the screen beside the cassette and in the list.
+Above the keys, one line keeps up a running commentary, cheerful when
+all is well and less calm when pieces are being spoiled or the tape runs
+off its speed. While recording it cannot hear the tape, so there it goes
+only by how far along it is; the real judging happens when the tape is
+played back. When a tape has been read, it sums up with a verdict,
+positive or negative, in the title's turning colours. The plain facts
+stay on the screen beside the cassette and in the list.
 
 The screen keeps to red, gold and green on black, frame included, with
 the keys in yellow (everywhere else in FLOPOS they are pink) and what is
 switched on in a dark neon green.
 
 ## Writing
+
+![Ready to write: the floppy's files, ticked](../images/maelcum-write.png)
 
 1. Press <kbd>W</kbd>: the floppy's files are shown, ticked by the job.
    Change the ticks if you like, and press <kbd>W</kbd> again. It says
@@ -108,6 +110,8 @@ recorded, so the only way to be sure of a save is to read it back: that is
 what Verify does.
 
 ## Reading
+
+![A tape read back whole (from the emulator's pretend tape), with its verdict](../images/maelcum-read.png)
 
 1. Plug a cable from the recorder's EAR socket into the laptop's line-in
    socket (left side, marked with a note and an arrow).
@@ -164,10 +168,8 @@ of the inventory.
 It is a PDF of one A4 page with both cards on it, touching, one above
 the other:
 
-| Card | What |
-|---|---|
-| Top | The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it. |
-| Bottom, upside down | The inside: the files and their sizes. |
+- **Top**: The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it.
+- **Bottom, upside down**: The inside: the files and their sizes.
 
 Take the floppy to a computer with a printer and print it at 100%
 ("actual size"), on one side. A PDF page carries its own size, so the
@@ -205,11 +207,9 @@ passphrase, or a tape whose data was changed, is refused outright:
 nothing is restored. With Encrypt off, a sealed tape is recognised and
 `maelcum` says so.
 
-| Cipher | Key | |
-|---|---|---|
-| ChaCha20-Poly1305 | 256-bit | Quick on this laptop. The one to use. |
-| AES-256-GCM | 256-bit | As strong; several times slower here, since the Pentium has no AES instructions. |
-| AES-128-GCM | 128-bit | Sound today, but not against a future quantum computer. |
+- **ChaCha20-Poly1305** (256-bit): Quick on this laptop. The one to use.
+- **AES-256-GCM** (256-bit): As strong; several times slower here, since the Pentium has no AES instructions.
+- **AES-128-GCM** (128-bit): Sound today, but not against a future quantum computer.
 
 A 256-bit cipher is what "quantum-safe" means for a backup locked with a
 passphrase. The post-quantum key exchange FLOPOS uses online (ML-KEM) is
@@ -256,7 +256,7 @@ starting points:
   turn it towards bright: weak treble is what spoils fast speed.
 
 To find your settings, tick one small file, switch Verify on and write it
-at normal speed. If the check passes and the line says "Smooth sailing.",
+at normal speed. If the check passes and the commentary stays cheerful,
 keep the knobs there, then try fast speed the same way.
 
 ## Several backups on one cassette
@@ -275,3 +275,5 @@ fully erase a Type IV (metal) tape.
 
 How the files become sound, and are read back: [the cassette
 format](../design/cassette-format.md).
+
+[^1]: [inventory](inventory.md)
