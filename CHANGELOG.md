@@ -6,8 +6,10 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
-- maelcum: the inside of the tape sleeve shows where to fold it, with the
-  same dashed lines as the outside.
+- maelcum: the tape sleeve's two cards touch on the page, so they are cut
+  out as one piece and the inside is folded back behind the outside. The
+  inside is printed upside down for that, and shows its folds as dashed
+  lines like the outside.
 
 - maelcum: on the screen for ticking what to write, the key line was too
   long and Esc was cut off; it fits again. The R line on the start screen

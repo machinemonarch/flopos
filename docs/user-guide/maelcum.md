@@ -158,19 +158,25 @@ cassette's box, for the tape last written or read. It saves one file,
 read, in the folder it was restored into; for a tape written, at the top
 of the inventory.
 
-It is a PDF of one A4 page with both cards on it, one above the other:
+It is a PDF of one A4 page with both cards on it, touching, one above
+the other:
 
 | Card | What |
 |---|---|
 | Top | The outside: the front, the spine and the flap. The date and time the write or read finished (DD-MM-YYYY HH:MM), what was said of the tape, in quotes, and how much is on it. |
-| Bottom | The inside: the files and their sizes. |
+| Bottom, upside down | The inside: the files and their sizes. |
 
 Take the floppy to a computer with a printer and print it at 100%
-("actual size"), on one side. A PDF page carries its own size, so each
+("actual size"), on one side. A PDF page carries its own size, so the
 card comes out exactly a standard sleeve's size, 101.6 mm square: the
-front 65 mm, the spine 12.7 mm, the flap 23.9 mm. Cut both along the outer
-line, fold along the dashed ones, and lay the inside behind the outside,
-printed side out.
+front 65 mm, the spine 12.7 mm, the flap 23.9 mm. Cut around both cards
+as one piece, fold the lower one back along the dashed line between
+them, and then fold along the other dashed lines. The inside is printed
+upside down so that, folded back, it reads the right way up, with the
+file list behind the front.
+
+(Side by side would not fit: two cards are 203 mm and A4 is 210 mm wide,
+nearer the edge than most printers can print.)
 
 A tape written without Verify has had nothing said of it, so its sleeve
 carries no quote. For an encrypted save the inside says how many files

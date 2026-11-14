@@ -275,7 +275,7 @@ out of somebody else's printer at exactly a cassette sleeve's size.
   not to.
 - **So a PDF.** A PDF page has a size of its own (A4: 595.28 by 841.89
   points), and each card is placed on it at 288 points, four inches,
-  the outside above the inside. Print programs print a PDF's page as the
+  the outside above the inside, touching. Print programs print a PDF's page as the
   page. Written by hand, the plainest kind there is: version 1.3, seven
   objects, a table of where each starts, two pictures of one bit a dot
   and two lines of Helvetica, one of the fourteen faces every reader has
@@ -288,9 +288,11 @@ out of somebody else's printer at exactly a cassette sleeve's size.
 - **The system's own letters.** The font is five dots by eight. Drawn
   two, three and four times its size, and on its side for the spine, it
   is the same face as the screen's.
-- **The inside is mirrored.** It is laid behind the outside, printed side
-  out, so its wide panel is on the left, to fall behind the front. Its folds are dashed too, at the mirrored places, since it is cut
-  and folded on its own.
+- **The inside is mirrored, and turned.** It is printed right under the
+  outside and folded back behind it, so it is drawn with its wide panel
+  on the left (to fall behind the front) and then given half a turn on
+  the page: folding it back turns it the right way up again. Its folds
+  are dashed at the places that land behind the outside's.
 
 Checked with `pdfinfo` (one A4 page) and by rendering it on the PC. Not
 yet printed.

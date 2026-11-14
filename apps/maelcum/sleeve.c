@@ -9,11 +9,14 @@
  *
  * It is saved as a PDF of one A4 page: the outside (when, what was said
  * of the tape, how much is on it) at the top and the inside (the files)
- * under it.  A page of a PDF has a size of its own, so the cards come out
- * at their true size with nothing to set in the print program, which a
- * bare picture cannot promise.  Printed on one side, both are cut out and
- * the inside laid behind the outside.  The inside is laid out mirrored,
- * so that its wide panel falls behind the front.
+ * right under it, the two touching.  A page of a PDF has a size of its
+ * own, so the cards come out at their true size with nothing to set in
+ * the print program, which a bare picture cannot promise.  Printed on one
+ * side, the two are cut out as one piece and the inside folded back
+ * along the line between them.  So the inside is printed upside down, and
+ * laid out mirrored, so that its wide panel falls behind the front.
+ * (Side by side would not fit: two cards are 203 mm, A4 is 210 mm wide,
+ * and few printers print that near the edge.)
  *
  * The PDF is the plainest there is (version 1.3, 1999): two pictures of
  * one bit a dot, packed by run length (a filter every reader has had
@@ -34,6 +37,7 @@
 
 static u8 s_pdf[2 * (IMG + IMG / 128 + 2) + 2048];
 static u8 s_side[IMG];                   /* one side, drawn here, then packed */
+static u8 s_turned[IMG];                 /* the inside, turned upside down for the page */
 static u8 s_packed[IMG + IMG / 128 + 2]; /* run-length at its worst        */
 static u32 s_n;                          /* how much of the file is written */
 static u8 *s_img;                        /* the side being drawn           */
@@ -49,6 +53,10 @@ static void hline(int x, int y, int w) { while (w-- > 0) dot(x++, y); }
 static void vline(int x, int y, int h) { while (h-- > 0) dot(x, y++); }
 static void rect(int x, int y, int w, int h) { hline(x, y, w); hline(x, y + h - 1, w); vline(x, y, h); vline(x + w - 1, y, h); }
 static void fold(int x) { int y; for (y = 4; y < PX - 4; y++) if ((y & 7) < 3) dot(x, y); }
+static void hfold(int y) { int x; for (x = 0; x < PX; x++) if ((x & 7) < 3) dot(x, y); }
+/* The outer line to cut along, on three sides: the fourth is where the
+ * two cards meet. */
+static void edges(void) { hline(0, 0, PX); vline(0, 0, PX); vline(PX - 1, 0, PX); }
 
 static void ring(int cx, int cy, int r)
 {
@@ -143,7 +151,8 @@ static void outside(const Sleeve *s)
     char m[96];
     int x = FRONT_X + 16, y, wide = (PX - FRONT_X - 28) / 12;
 
-    rect(0, 0, PX, PX);                                  /* cut here           */
+    edges();                                             /* cut here           */
+    hfold(PX - 1);                                       /* fold the inside back here */
     fold(FLAP_W); fold(FRONT_X);
 
     /* the front */
@@ -184,11 +193,11 @@ static void inside(const Sleeve *s)
     u32 size;
     int i, y = 78, front_w = PX - FRONT_X, right = front_w - 14, most;
 
-    rect(0, 0, PX, PX);
+    edges();                     /* the side where it meets the outside is the outside's fold */
     /* Seen from the back the front is on the left, and everything is
-     * written on it.  The folds are dashed here too, since the inside is
-     * cut out and folded on its own. */
-    fold(front_w); fold(front_w + SPINE_W);
+     * written on it.  The folds are dashed here too, at the places that
+     * fall behind the outside's once it is turned for the page. */
+    fold(front_w - 1); fold(front_w + SPINE_W - 1);
 
     words(16, 16, "On this tape", 3);
     when_text(s, m, sizeof m);
@@ -265,13 +274,13 @@ static void whole(u32 v)                 /* a number, as few digits as it needs 
 u32 sleeve_pdf(const Api *api, const Sleeve *s, const u8 **pdf)
 {
     /* The one page: the outside at the top, 20 mm from the edge, the
-     * inside under it, each 288 points (4 inches) square and centred
-     * across, and under each how to print and cut. */
+     * inside right under it, upside down, each 288 points (4 inches)
+     * square and centred across; under them how to print, cut and fold. */
     static const char page[] =
         "q 288 0 0 288 153.64 497.2 cm /Im1 Do Q\n"
-        "q 288 0 0 288 153.64 177 cm /Im2 Do Q\n"
-        "BT /F1 8 Tf 153.64 486 Td (Outside. Print at 100% \\(actual size\\). Cut along the outer line; fold on the dashed ones.) Tj ET\n"
-        "BT /F1 8 Tf 153.64 166 Td (Inside. Cut and fold the same way; lay it behind the outside, printed side out.) Tj ET\n";
+        "q 288 0 0 288 153.64 209.2 cm /Im2 Do Q\n"
+        "BT /F1 8 Tf 153.64 196 Td (Print at 100% \\(actual size\\). Cut around both cards as one piece.) Tj ET\n"
+        "BT /F1 8 Tf 153.64 185 Td (Fold the lower card back along the line between them, then fold on the other dashed lines.) Tj ET\n";
     u32 at[8], i, xref, n;
     int side;
     A = api;
@@ -288,7 +297,15 @@ u32 sleeve_pdf(const Api *api, const Sleeve *s, const u8 **pdf)
         s_img = s_side;
         for (i = 0; i < IMG; i++) s_img[i] = 0;
         if (side) inside(s); else outside(s);
-        n = run_length(s_side, IMG, s_packed);
+        if (side) {                      /* half a turn: folded back under the outside, it reads upright */
+            u32 x, y;
+            for (i = 0; i < IMG; i++) s_turned[i] = 0;
+            for (y = 0; y < PX; y++)
+                for (x = 0; x < PX; x++)
+                    if (s_side[y * ROWB + (x >> 3)] & (0x80 >> (x & 7)))
+                        s_turned[(PX - 1 - y) * ROWB + ((PX - 1 - x) >> 3)] |= (u8)(0x80 >> ((PX - 1 - x) & 7));
+        }
+        n = run_length(side ? s_turned : s_side, IMG, s_packed);
         put("<< /Type /XObject /Subtype /Image /Width 600 /Height 600 /ColorSpace /DeviceGray\n"
             "   /BitsPerComponent 1 /Decode [1 0] /Filter /RunLengthDecode /Length ");
         whole(n); put(" >>\nstream\n");
