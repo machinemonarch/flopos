@@ -3,8 +3,10 @@
 FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch.
 It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
-<a href="docs/images/wizard.png"><img src="docs/images/wizard.png" width="300" alt="The wizard at the gate, asking his riddle"></a>
-<a href="docs/images/terminal.png"><img src="docs/images/terminal.png" width="300" alt="The terminal, once inside"></a>
+<p>
+  <a href="docs/images/wizard.png"><img src="docs/images/wizard.png" width="300" alt="The wizard at the gate, asking his riddle"></a>
+  <a href="docs/images/terminal.png"><img src="docs/images/terminal.png" width="300" alt="The terminal, once inside"></a>
+</p>
 
 *Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside. Click for full size.*
 
