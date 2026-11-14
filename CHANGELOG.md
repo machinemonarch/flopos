@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.41.1 — 2026-11-14
+
 - maelcum: once a header from another save on the same tape is heard,
   its pieces are ignored until a header of the save being read comes
   again. Before, a piece of an older save could be taken into a file of
