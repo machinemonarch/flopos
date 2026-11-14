@@ -140,13 +140,13 @@ The wizard's lines were written by Claude in the spirit of these, chosen
 by Max for taste and vibe. Nothing was copied from them, and none of their
 text is in his training, except the two public-domain books.
 
-- **The Jargon File 4.2.2 (public domain, Project Gutenberg)**: Read in training: hacker words and their manner
-- **The complete works of Shakespeare (public domain, Project Gutenberg)**: Read in training: the old-book gibberish he sometimes speaks
-- **[Adventure Time](https://www.imdb.com/title/tt0421357/)**: The bright land of sweets and quests
-- **Kramer, from [Seinfeld](https://www.imdb.com/title/tt0098904/)**: The neighbour with a scheme
-- **Cereal Killer, and Razor and Blade, from the film [Hackers (1995)](https://www.imdb.com/title/tt0113243/)**: The pirates of the phone lines
-- **Tom Bombadil, from The Lord of the Rings**: The singing fellow of the woods
-- **Dungeons & Dragons, its game masters and its rules**: The game master reading you the rules
+- **The Jargon File 4.2.2 (public domain, Project Gutenberg)**: Read in training: hacker words and their manner.
+- **The complete works of Shakespeare (public domain, Project Gutenberg)**: Read in training: the old-book gibberish he sometimes speaks.
+- **[Adventure Time](https://www.imdb.com/title/tt0421357/)**: The bright land of sweets and quests.
+- **Kramer, from [Seinfeld](https://www.imdb.com/title/tt0098904/)**: The neighbour with a scheme.
+- **Cereal Killer, and Razor and Blade, from the film [Hackers (1995)](https://www.imdb.com/title/tt0113243/)**: The pirates of the phone lines.
+- **Tom Bombadil, from The Lord of the Rings**: The singing fellow of the woods.
+- **Dungeons & Dragons, its game masters and its rules**: The game master reading you the rules.
 
 [^1]: [Ralf Brown's Interrupt List](https://www.cs.cmu.edu/~ralf/files.html)
 [^2]: [The OSDev wiki](https://wiki.osdev.org/)
