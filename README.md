@@ -1,6 +1,6 @@
 # FLOPOS
 
-FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch.
+FLOPOS is a cyber-psychedelic (cyberdelic) neurodivergent dreamscape built from scratch intended to run on the *Toshiba Satellite Pro 430CDT*.
 It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
 
 [![The wizard at the gate, asking his riddle](docs/images/wizard-small.png)](docs/images/wizard.png) [![The terminal, once inside](docs/images/terminal-small.png)](docs/images/terminal.png)
@@ -8,7 +8,7 @@ It is not intended as a daily-driver OS but rather as an art project and an expe
 *Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside. Click for full size.*
 
 TLDR: 
-*"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."*
+***"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."***
 
 What do I mean when I say that it is built from scratch?  It means:
 
@@ -70,6 +70,23 @@ proxies, no JavaScript.
   next.
 
 ## Quick start
+
+**Put it on a floppy.** Download the newest `flopos-X.Y.Z.img` from the
+[Releases](../../releases) page. It is the whole 1.44MB disk. Then write it
+to a 1.44MB (HD) diskette:
+
+- **Linux**, with this repository: `tools/writefloppy.sh --image flopos-X.Y.Z.img`.
+  It finds the floppy drive by itself, refuses to touch anything that is
+  not exactly a 1.44MB disk, and checks every byte after writing.
+- **Linux or a Mac**, without it: `sudo dd if=flopos-X.Y.Z.img of=/dev/YOURFLOPPY bs=512 && sync`.
+  Find the right device first (`lsblk` on Linux, `diskutil list` on a
+  Mac): `dd` writes over whatever you name, a hard disk too.
+- **Windows:** a raw floppy image writer such as RawWrite for Windows,
+  pointed at the image and the A: drive.
+
+Then boot the laptop from the floppy, and answer the wizard.
+
+**Build it yourself:**
 
     make                      build dist/flopos.img
     make run                  boot it in QEMU
