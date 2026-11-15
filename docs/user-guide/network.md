@@ -31,6 +31,8 @@ A window showing:
   `example.com` into an address)
 - **apply**, **ask again** and **close**
 
+![The network menu, in the emulator: the address came from the network](../images/network.png)
+
 Up and Down move, Enter changes or edits, Esc leaves. Over the serial line
 the arrow keys work too, and Tab moves down. Settings made by hand are
 saved to the floppy and still there after switching off.
@@ -160,8 +162,6 @@ as links, each with its format and bit rate. Hebrew and Cyrillic names
 are shown as they are, Hebrew right to left. A name in a script the font
 can't draw (Arabic, say) is shown by its Latin part alone, or as "(a name
 in Arabic)".
-
-![72fm's page for Israel, imitated on the test site: station names in Hebrew](../images/browzer-radio.png)
 
 ![Радио Music Bg playing, its name and the song in Cyrillic](../images/browzer-radio-bulgaria.png)
 
