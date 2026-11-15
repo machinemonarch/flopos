@@ -8,6 +8,8 @@ without it. Each version's notes are also written next to its image, as
 
 - browzer shows a radio station's name and the song it is playing in
   Cyrillic, Hebrew or accented letters, instead of garbled signs.
+- On the big screen D no longer looks like O: letters with a straight left
+  side keep their square corners.
 
 ## 1.43.2 — 2026-11-14
 

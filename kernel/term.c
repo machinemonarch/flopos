@@ -75,10 +75,12 @@ static void build_big(void)
                 int e0 = p, e1 = p, e2 = p, e3 = p;
 #undef ON
                 /* Where a diagonal steps, fill the inside corner.  Blowing
-                 * a letter up without this just makes bigger staircases. */
-                if (c == a && c != d && a != b) e0 = a;
+                 * a letter up without this just makes bigger staircases.
+                 * A straight left edge keeps its square corners, or D, B
+                 * and E round off until D reads as O. */
+                if (col > 0 && c == a && c != d && a != b) e0 = a;
                 if (a == b && a != c && b != d) e1 = b;
-                if (d == c && d != b && c != a) e2 = c;
+                if (col > 0 && d == c && d != b && c != a) e2 = c;
                 if (b == d && b != a && d != c) e3 = d;
 
                 if (e0) s_big[g][col * 2]     |= (u16)(1u << (row * 2));
