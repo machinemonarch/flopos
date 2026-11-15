@@ -6,6 +6,9 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+- browzer shows a radio station's name and the song it is playing in
+  Cyrillic, Hebrew or accented letters, instead of garbled signs.
+
 ## 1.43.2 — 2026-11-14
 
 - The AAC decoder's tables come from the VisualOn AAC encoder, under the

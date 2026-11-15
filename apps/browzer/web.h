@@ -91,6 +91,7 @@ int ui_key(void);
 #define URL_PATH_MAX 200
 typedef struct { char host[64]; char path[URL_PATH_MAX]; u16 port; int secure; } Url;
 int    url_parse(const char *u, Url *out);
+int    web_show_text(char *dst, int cap, const char *src);   /* a station's UTF-8 or Latin-1, for the screen */
 void   url_text(const Url *u, char *out, int max);
 int    url_resolve(const char *base, const char *href, char *out, int max);
 

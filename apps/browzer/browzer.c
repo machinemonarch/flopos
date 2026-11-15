@@ -81,7 +81,7 @@ static u32  s_dl_len;
 enum { DL_NONE, DL_COMING, DL_CAME, DL_BROKE, DL_BIG, DL_STREAM, DL_STREAM_END, DL_UNPLAYABLE, DL_NOCARD };
 static int  s_dl_state;
 static int  s_esc;                       /* esc stopped a stream            */
-static char s_dl_type[48], s_dl_url[PAGE_HREF_MAX + 16], s_station[48], s_now[100], s_title[64];
+static char s_dl_type[48], s_dl_url[PAGE_HREF_MAX + 16], s_station[96], s_now[200], s_title[64];
 static int  s_music;                     /* 0 quiet, 1 playing, 2 the end is queued */
 static int  s_src;                       /* 1 a song, 2 a recording         */
 static int  s_rate;                      /* the card's                      */
@@ -546,15 +546,17 @@ static void draw(void)
 
     /* What is playing, at the right of the top edge. */
     if (s_music) {
-        char m[60];
+        char m[220], w[200];
         /* What has been heard: made, less what is still queued, less
          * the sound card's own loop. */
         u32 t = heard_seconds();
-        int ml;
+        int ml = 0;
         const char *what = s_src == 1 ? (tracker_title()[0] ? tracker_title() : "a song")
                          : s_now[0] ? s_now : s_station[0] ? s_station : s_title[0] ? s_title : s_dec.kind;
-        fmt_str(m, sizeof m, " playing %s %u:%02u ", what, t / 60, t % 60);
-        for (ml = 0; m[ml]; ml++) { }
+        const char *q;
+        web_show_text(w, sizeof w, what);
+        fmt_str(m, sizeof m, " playing %s %u:%02u ", w, t / 60, t % 60);
+        for (q = m; a_ch_next(&q); ) ml++;            /* letters, not bytes */
         if (ml < s_w - 30) { play_x = s_w - 2 - ml; term_win_text(play_x, 0, m, C_ACCENT, pp); }
     }
 
@@ -608,8 +610,13 @@ static void draw(void)
     if (s_dl_state == DL_STREAM) {
         char t[120];
         u32 secs = heard_seconds();
-        term_win_text(4, 4, s_station[0] ? s_station : "A stream", C_BRIGHT, pp);
-        if (s_now[0]) { term_win_text(4, 6, "now:", C_DIM, pp); put_text_clipped(9, 6, s_now, C_TEXT, pp, s_w - 3); }
+        char shown[200];
+        web_show_text(shown, sizeof shown, s_station[0] ? s_station : "A stream");
+        put_text_clipped(4, 4, shown, C_BRIGHT, pp, s_w - 3);
+        if (s_now[0]) {
+            web_show_text(shown, sizeof shown, s_now);
+            term_win_text(4, 6, "now:", C_DIM, pp); put_text_clipped(9, 6, shown, C_TEXT, pp, s_w - 3);
+        }
         if (s_dec.decode) {
             fmt_str(t, sizeof t, "%s%s, mono, %u Hz", s_dec.kind, kbps_text(), (u32)s_dec.rate);
             term_win_text(4, 8, t, C_DIM, pp);

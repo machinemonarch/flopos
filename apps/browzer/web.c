@@ -235,6 +235,32 @@ static int glyph_for(u32 c)
     }
 }
 
+/* Text a station sends about itself (its name, what is playing): UTF-8,
+ * or Latin-1 where it does not hold together as UTF-8, turned into what
+ * the font can show.  Returns the bytes written; dst always ends in 0. */
+int web_show_text(char *dst, int cap, const char *src)
+{
+    const u8 *p = (const u8 *)src;
+    int o = 0;
+    while (*p) {
+        u32 c = *p++;
+        int g, more = c >= 0xF0 && c <= 0xF4 ? 3 : c >= 0xE0 && c <= 0xEF ? 2 : c >= 0xC2 && c <= 0xDF ? 1 : 0;
+        if (more) {
+            const u8 *q = p;
+            u32 v = c & (0x3Fu >> more);
+            int m = more;
+            while (m && (*q & 0xC0) == 0x80) { v = (v << 6) | (*q++ & 0x3F); m--; }
+            if (!m) { c = v; p = q; }             /* else: a Latin-1 letter */
+        }
+        if (c < 32) continue;
+        g = glyph_for(c);
+        if (o + (g >= A_CH_WIDE ? 4 : 1) > cap - 1) break;
+        o += a_ch_put(dst + o, g);
+    }
+    dst[o] = 0;
+    return o;
+}
+
 static int put_utf8(char *o, u32 c)
 {
     if (c < 0x80)    { o[0] = (char)c; return 1; }
@@ -1622,7 +1648,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     char req[PAGE_HREF_MAX + 200], line[96];
     int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0, asked = 0;
     u32 clen = 0, metaint = 0;
-    char station[48];
+    char station[96];
     u32 body = 0, said = 0;
     char ctype[48];
 
@@ -1747,7 +1773,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                     } else if (lower_eq(ln, "icy-name:", 9)) {
                         char *v = ln + 9; int k = 0;
                         while (*v == ' ') v++;
-                        while (v < end && *v != '\r' && k < 47) station[k++] = *v++;
+                        while (v < end && *v != '\r' && k < (int)sizeof station - 1) station[k++] = *v++;
                         station[k] = 0;
                     } else if (lower_eq(ln, "content-type:", 13)) {
                         char *v = ln + 13; int k = 0;
