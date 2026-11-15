@@ -32,6 +32,13 @@ On a Linux PC:
 | `make release PART=minor` | Makes a numbered release (Releasing[^2]) |
 | `make clean` | Removes what was built |
 
+**Build example:**
+
+    make                      build dist/flopos.img
+    make run                  boot it in QEMU
+    tools/writefloppy.sh      put it on a real floppy
+
+
 ## What is in the project
 
 - **`boot/boot.S`**: The boot sector

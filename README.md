@@ -1,77 +1,69 @@
 # FLOPOS
 
 FLOPOS is a cyber-psychedelic (cyberdelic) neurofunkadelic dreamscape built from scratch and intended to run on the **Toshiba Satellite Pro 430CDT**.
-It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware. Really old hardware.
+It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware.  
+Really old hardware.
 
-## Screenshots
+What do I mean when I say that it is built from scratch?  
 
-[![The wizard at the gate, asking his riddle](docs/images/wizard-small.png)](docs/images/wizard.png) [![The terminal, once inside](docs/images/terminal-small.png)](docs/images/terminal.png)
-
-*Left: the wizard at the gate, asking his riddle. Right: the terminal, once inside, in the dusk light. Click for full size.*
-
-[![Saffran on the boot screen](docs/images/saffran-small.png)](docs/images/saffran.png) [![help, in the warm light](docs/images/help-small.png)](docs/images/help.png)
-
-*Left: Saffran on the boot screen, while the machine tells him what it is doing. Right: `help`, in the warm light.*
-
-[![scribe with a letter](docs/images/scribe-small.png)](docs/images/scribe.png) [![maelcum writing to a cassette](docs/images/maelcum-writing-small.png)](docs/images/maelcum-writing.png)
-
-*Left: scribe, the word processor, with a letter. Right: maelcum writing your files to a cassette.*
-
-TLDR: 
-***"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."***
-
-What do I mean when I say that it is built from scratch?  It means:
-
+It means:
 * It does not build on code from any GNU/Linux project.
 * Fact is, it does not use code from any other open-source project. Only two tables of numbers, the ones the MP3 and AAC standards define, were taken from open-source decoders, and they are credited.
-* Oh yeah, and it's not some scene demo or whatever.
+* Oh yeah, and it's not some scene demo or whatever.  
+  
+  
+**TLDR:** *"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."*  
+
+... Or just have a look yourself.  
+## Screenshots
+
+[![The wizard at the gate, asking his riddle](docs/images/wizard-small.png)](docs/images/wizard.png)[![The terminal, once inside](docs/images/terminal-small.png)](docs/images/terminal.png)  
+[![Saffran on the boot screen](docs/images/saffran-small.png)](docs/images/saffran.png)[![help, in the warm light](docs/images/help-small.png)](docs/images/help.png)  
+[![scribe with a letter](docs/images/scribe-small.png)](docs/images/scribe.png)[![maelcum writing to a cassette](docs/images/maelcum-writing-small.png)](docs/images/maelcum-writing.png)
+
+FLOPOS's code is synthesized by Claude drawing upon my ideas, thoughts and curiosity. I'm fascinated by old hardware and media and I wanted to test what AI and ~30 year old hardware is capable of achieving when paired together. To see exactly where the limit goes and learn new things in the process.  
+The ideas on how and what gets built come from whatever circulates in my mind at the time of implementation. Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer.  
+Other times the ideas come from things based on culture genres of fiction (or non-fictional) media that I enjoy. Given my human hours of testing and creative processing, "vibe-coding" would not do it justice.
+
+Like I said, it is an art project, and its rule is that everything runs on the laptop's own hardware: a 120MHz Pentium with 32MB of memory. Booted from a 1.44MB MF2HD floppy disk. 
+So far, no dedicated helper servers, services or proxies. All processing happens on the laptop itself.
+
+## So what's it made of? What can it do?
+Everything is its own:
+- A boot sector
+- A protected-mode kernel
+- Drivers for the screen, keyboard, sound, floppy, serial line and network card.
+- A network stack with TLS 1.3 and post-quantum key exchange. Yes, you read that right.
+- A Quirky shell: You start Right `here>`. (... Right now. Right here. Right now.) Oh, and there's a help menu! You can also type `[command] help` for examples.
+  - If you type the wrong command, the wizard will guide you with his finite wisdom.
+  - Trust his wisdom. He gets is from a cup of tea he drinks during bootup.
+
+### Apps to help you out
+- **Browzer**: Text-based web browser which supports online web radio across many streaming formats.
+  - No javascript. So that leaves a lot less to think of.
+- **Scribe**: A word processor which can save files to the floppy. Document your experience.
+- **Maelcum**: The coolest data cassette backup program you've ever used. (Probably the only one you've ever used.)
+  - Inspired by a former spaceship pilot in William Gibsons Neuromancer; Maelcum transports your data between cyberdelia and the ferro-oxide realms of your backup tape.
+- **Inventory**: Where your persistent data goes.
 
 
-FLOPOS's code is synthesized by Claude drawing upon my ideas, thoughts and curiosity. I'm fascinated by old hardware and media and I wanted to test what AI and 30 year old hardware is capable of achieving when paired together. To see exactly where the limit goes and learn new things in the process. The ideas on how it's built come from whatever cultural and experiential references that came to my mind at the time.
+### Other cool stuff
 
-Given my human hours of testing and creativity, "vibe-coding" would not do it justice.
-Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer. Other times the ideas come from things based on cultural genres of fiction (or non-fictional) media that I enjoy.
-
-No copyrighted material is included without permission. See [docs](docs/project/references.md).
-
-Everything is its own: a boot sector, a protected-mode kernel, drivers for
-the screen, keyboard, sound, floppy, serial line and network card, a
-network stack with TLS 1.3 and post-quantum key exchange, a web browser, a
-word processor, a cassette backup program, and a shell where `here` is not
-a folder. It fits on one floppy, with room to spare.
-
-It is an art project, and its rule is that everything runs on the laptop's
-own hardware: a 120MHz Pentium with 32MB of memory. No helper machines, no
-proxies, no JavaScript.
-
-## What it can do
-
-- **Boots to 800×600** with smooth text over a slowly moving, generated
-  background, music on the laptop's FM sound chip, and a wireframe banana
-  tumbling in the corner. Saffran the cat greets you on the way in.
-- **A wizard guards the shell.** He asks a riddle, accepts any answer, and
-  afterwards answers every word FLOPOS doesn't know with a line from his
-  own tiny language model: a quarter of a megabyte, trained for taste and
-  whimsy, running on the laptop itself.
-- **A HUD** for the cool cyberpunk: Ctrl-Shift-F10 anywhere shows the
-  sound, the battery, how hard the processor works, and a turning brain.
-- **Seventeen keyboards**, from Swedish to Hebrew, Yiddish, Bulgarian and
-  Ukrainian, with Hebrew written right to left and accent keys that work.
-  Ctrl-Shift-F1 brings back the keyboard list if you get lost.
-- **Gets online**: DHCP, DNS and `ping`, and **browzer**, a small web
-  browser with working forms and search, that plays internet radio and
-  music files (MP3, AAC, Ogg Vorbis, FLAC and tracker songs) while you
-  read.
+- **Boots to 800×600** while listing relevant technical incantations. Saffran the cat greets you on the way in.
+- **Generated background... music**: Claude whipped up a couple of C-rendered tunez when I requested something that sounds...  
+    *"As if Autechre and Mefljus had met in the 90s and decided to do an act together with the Prodigy."*  
+    You decide but it *does* grow on you.
+- **Wireframe banana**: Tumbling in the upper right corner for good morale. 
+- **A very tired wizard guarding the shell**: He asks a riddle, if you get it right, you get access.
+- **A HUD**: Every cyberpunks right. `Ctrl-Shift-F10` anywhere shows the sound, the battery, how hard the 'puterz brain is *thunkin'*.
+- **Seventeen keyboards**, from Swedish to Hebrew, Yiddish, Bulgarian and Ukrainian, with Hebrew written right to left and accent keys that work.
+  - `Ctrl-Shift-F1` brings back the keyboard list if you get lost.
+- **Gets online**: DHCP, DNS and `ping`. The `network` command gets you set up.
+- **Music codecs**: MP3, AAC, Ogg Vorbis, FLAC and tracker songs.
 - **Speaks TLS 1.3** with X25519MLKEM768, ML-KEM-768, ChaCha20-Poly1305 and
   AES-128-GCM, and makes every site prove who it is, up to Mozilla's trusted
   authorities. All of it written from the standards and checked against
   their published test answers on the machine itself.
-- **scribe**, a word processor with bold, italic, underline, a title and
-  four headings, saving Markdown documents any computer can open.
-- **maelcum**, a backup program that keeps your files on an ordinary audio
-  cassette as sound, prints a sleeve for the tape, and reads it all back,
-  with a running commentary.
-- **An inventory** of your own files and folders, as plain FAT12 files.
 - **Apps load from the floppy** beside the system, each behind a wall: it
   can touch only its own memory and must ask the system for everything
   else.
@@ -99,69 +91,13 @@ to a 1.44MB (HD) diskette:
 Then boot the laptop from the floppy, and answer the wizard.
 
 **Build it yourself:**
-
-    make                      build dist/flopos.img
-    make run                  boot it in QEMU
-    tools/writefloppy.sh      put it on a real floppy
-
-Needs `gcc` with 32-bit support, binutils, `mtools` and `python3`; QEMU to
-run it without the laptop. Details in [Building](docs/development/building.md).
+Details in [Building](docs/development/building.md).
 
 ## On the floppy
 
 The image is a genuine FAT12 floppy. Put it in DOS, Windows, Linux or a Mac
 and you'll find the system, the journal and your documents as ordinary
 files. It just also happens to boot.
-
-`INVENTORY` is the folder with everything you have made. Everything beside
-it is FLOPOS itself and its own records; leave those where they are.
-
-## Who makes it
-
-FLOPOS is an art project by [Max](https://machinemonarch.com/about/): a test of what an AI can build, of what
-the Toshiba's hardware can still do, and of his own creativity. It is his
-idea, and every decision in it is his: what FLOPOS is, what it is called,
-how it looks, how it feels to use, what it says, and what is not good
-enough yet.
-
-Claude writes the code. Max does everything Claude can't: he runs every
-release on the real laptop, hunts down what breaks, and reports back with
-photos of the screen, the `report` command sent down a serial cable, and
-his own notes, then reviews the result until it is right. That has taken
-countless hours. The journal on the floppy lists every word typed that
-FLOPOS did not know, and that list is the to-do list for new commands.
-
-## What it is like
-
-- **A place, not a directory.** Most command lines put you in a folder.
-  FLOPOS puts you somewhere. The prompt is `here>`, and `here` is a space,
-  not a path.
-- **Words it knows** get an answer in a warm deadpan: polite, a little dry,
-  never saying more than it needs to. Every one of those sentences lives in
-  one file, `kernel/voice.c`. **Words it doesn't know** go to the wizard,
-  who will, in his finite knowledge, make sure to answer you with something
-  you'll probably struggle to understand.
-- **Command names say what they do for you**, not how they work: `goaway`
-  clears the screen, `remember` saves, `bye` switches the machine off.
-- **Even the boot messages are true**, in a dialect of their own.
-  "Aligning the realm to the beat of the crystal..." is the timer being
-  started, which really does run off a crystal. "Flippely-Flopping" is the
-  floppy being read.
-- **The moving background** is generated, kept dark so the text always
-  wins, and breathes with the music, a step sequencer playing on the FM
-  chip.
-- **Saffran**, Max's cat, is the first thing read off the floppy, and
-  appears as fast as the drive delivers him. The machine then tells him,
-  step by step, everything it is really doing to get ready.
-- **Ozzy**, the other cat, sees the machine off when you say `bye` or
-  `reboot`, while it tells him what it is doing to shut down.
-- **The wizard** stands at the gate to the shell, which is called
-  cyberdelia. He is very tired, asks a riddle assembled from word lists by
-  the clock, and accepts every answer. Getting in plays a chip-tune
-  jingle, then the screen ripples and glows while bells climb. The glow is
-  kept gentle on purpose, for anyone sensitive to flashing light.
-- **whaaat** pulls the whole screen through a hole in itself and turns it
-  inside out. You'll find the rest.
 
 ## Documentation
 
@@ -206,6 +142,8 @@ All product names, brands and trademarks mentioned here and in the
 documentation (Toshiba, Satellite Pro, Sound Blaster, Pentium and the rest)
 are the property of their respective owners. FLOPOS is not affiliated with
 or endorsed by any of them.
+
+No copyrighted material is included without permission.
 
 ## Licence
 

@@ -15,16 +15,16 @@ matters. Having said that:
 ## Reporting a problem
 
 Either write to **hello@machinemonarch.com** with a subject that starts
-with **FLOPOS**, or open a public pull request with the fix.
+with **FLOPOS**, or open a pull request with the suggested fix.
 
 Please say:
 
-- what you found, and what it lets someone do
-- which version (`version` at the prompt says, as does the top line of
-  every program)
-- how to make it happen again
+- What you found, and what it lets someone do.
+- Which version (`version` at the prompt says, as does the top line of
+  every program).
+- How to make it happen again.
 
-Every report is read, when there is time. FLOPOS is made by one person
+I intend to read every report but keep in mind that FLOPOS is made by one person
 and an AI, with no bounty and no promise of how quickly an answer comes.
 
 ## Which versions
@@ -40,7 +40,7 @@ a record, not as something to run.
   private it is for the user[^1], and how it is built[^2].
 - **Programs.** Each app runs behind a wall: it can touch only its own
   memory and must ask the system for everything else[^3].
-- **Tapes.** maelcum can encrypt a backup with a passphrase[^4].
+- **Tapes.** maelcum can encrypt and read back a backup with a passphrase[^4].
 - **Not the floppy.** Your files are plain FAT12 files that any computer
   can read. That is on purpose: whoever holds the floppy holds your
   files.
