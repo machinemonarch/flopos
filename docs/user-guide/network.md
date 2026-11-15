@@ -163,6 +163,8 @@ in Arabic)".
 
 ![72fm's page for Israel, imitated on the test site: station names in Hebrew](../images/browzer-radio.png)
 
+![Радио Music Bg playing, its name and the song in Cyrillic](../images/browzer-radio-bulgaria.png)
+
 ### Pages that remember you, reload, or come in frames
 
 - **Cookies** are kept so a site can remember you between pages: a login,
