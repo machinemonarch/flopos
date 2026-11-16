@@ -26,6 +26,8 @@ enum { D_INLINE, D_BLOCK, D_NONE, D_ITEM, D_TABLE, D_ROW, D_CELL };
 #define NF_VALUE   0x08                  /* value holds a typed value       */
 #define NF_SCRIPT_DONE 0x10              /* a <script> already run          */
 #define NF_HIDDEN  0x20                  /* worked out: not drawn           */
+#define NF_GAPL    0x40                  /* inline, with room before it (margin, padding) */
+#define NF_GAPR    0x80                  /* and after it                    */
 
 typedef struct {
     u16 parent, first, last, next, prev; /* 0: none                         */

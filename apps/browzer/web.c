@@ -545,9 +545,10 @@ static void bare_link(void)
 /* ---- sound a page names without a link to it ----------------------------
  * A player written in JavaScript keeps its stream's address in a script,
  * or in a data attribute, as JSON: "stream":"/sc/stream/1/", or
- * "url":"https:\/\/host\/show.mp3".  browzer runs no scripts.  It only
- * reads the page as it arrives, as plain text, for such addresses, and
- * lists them at the end as links.  Nothing in them is run. */
+ * "url":"https:\/\/host\/show.mp3".  Whether the site's scripts are allowed
+ * or not, browzer reads the page as it arrives, as plain text, for such
+ * addresses, and lists them at the top as links, by name where the page
+ * gives one.  Nothing in them is run. */
 #define SNIFF_MAX 12
 static char s_sniffed[SNIFF_MAX][PAGE_HREF_MAX];
 static char s_sniffname[SNIFF_MAX][48];  /* its "name" in the JSON, if any  */
@@ -1616,8 +1617,10 @@ static void tag_ended(void)
         return;
     }
     if (tag_is("a")) {
-        if (s_tag_close) { flush_word(); s_link = 0; s_linkid = 0; }
-        else if (s_href[0]) { flush_word(); s_link = 1; s_linkid = add_link(); }
+        /* No break at a link's edges: each letter knows its own link, so
+         * "(" and the link it opens stay one word and wrap together. */
+        if (s_tag_close) { s_link = 0; s_linkid = 0; }
+        else if (s_href[0]) { s_link = 1; s_linkid = add_link(); }
         return;
     }
     if (tag_is("img")) { image(); return; }

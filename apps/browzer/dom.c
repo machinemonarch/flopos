@@ -1152,7 +1152,9 @@ static void measure(u32 n, Measure *m, int depth)
         m->len += w + 1; if (w > m->word) m->word = w;
         return;
     }
+    if (g_node[n].flags & NF_GAPL) { m->len++; m->cur = 0; }      /* the spaces margins become */
     for (c = g_node[n].first; c; c = g_node[c].next) measure(c, m, depth + 1);
+    if (g_node[n].flags & NF_GAPR) { m->len++; m->cur = 0; }
 }
 
 static int cell_tag(u32 n) { const char *t = dom_tag(n); return eq(t, "td") || eq(t, "th"); }
@@ -1368,6 +1370,7 @@ static void render(u32 n, u8 col, u8 at, int depth)
         for (k = 0; snd[k]; k++) { }
         out("<a"); out_attr("href", snd, k); out(">");
     }
+    if (x->flags & NF_GAPL) web_html_byte(' ');
     if (!in_list(t, s_void)) {
         if (eq(t, "textarea") && (x->flags & NF_VALUE)) {
             u32 k;
@@ -1381,6 +1384,7 @@ static void render(u32 n, u8 col, u8 at, int depth)
         if (clickable == 3) { out("</a>"); s_playwrap = 0; }
         if (tag_out) { out("</"); out(eq(t, "li") && x->nobullet ? "fl-li" : t); out(">"); }
     }
+    if (x->flags & NF_GAPR) web_html_byte(' ');
     if (clickable == 1) out("</fl-c>");
     if (clickable == 2) { out("</a>"); s_playwrap = 0; }
     if (styled) out("</fl-s>");

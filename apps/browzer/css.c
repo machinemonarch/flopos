@@ -28,7 +28,7 @@
 #define BUCKETS   1024
 
 enum { P_DISPLAY, P_VISIBILITY, P_POSITION, P_COLOR, P_WEIGHT, P_STYLE, P_DECOR, P_ALIGN,
-       P_XFORM, P_LIST, P_MLEFT, P_PLEFT, P_OPACITY, P_TINY, P_CLIP, P_COUNT };
+       P_XFORM, P_LIST, P_MLEFT, P_PLEFT, P_OPACITY, P_TINY, P_CLIP, P_MRIGHT, P_PRIGHT, P_COUNT };
 
 typedef struct { u8 prop, important; s16 val; } Decl;
 typedef struct { u16 part, nparts, decl, ndecl, next; u32 rank; } Rule;
@@ -221,6 +221,14 @@ static void declaration(const char *nm, u32 nn, const char *v, u32 vn)
         left = (nn > 7 && (nm[nn - 4] == 'l' || nm[nn - 5] == 's')) || k == 1 ? vals[0] : k == 4 ? vals[3] : vals[1];
         if (left == -1) return;
         decl_add(pad ? P_PLEFT : P_MLEFT, left < 0 ? 0 : left > 3000 ? 3000 : left, imp);
+        if (nn == 6 || nn == 7) {                /* the shorthand: its right one too */
+            s32 right = k == 1 ? vals[0] : vals[1];
+            if (right >= 0) decl_add(pad ? P_PRIGHT : P_MRIGHT, right > 3000 ? 3000 : right, imp);
+        }
+    }
+    else if (word(nm, nn, "margin-right") || word(nm, nn, "padding-right") || word(nm, nn, "margin-inline-end") || word(nm, nn, "padding-inline-end")) {
+        s32 r = px(v, vn);
+        if (r >= 0) decl_add(nm[0] == 'p' ? P_PRIGHT : P_MRIGHT, r > 3000 ? 3000 : r, imp);
     }
     else if (word(nm, nn, "width") || word(nm, nn, "height") || word(nm, nn, "max-width") || word(nm, nn, "max-height")) {
         s32 p = px(v, vn);
@@ -501,7 +509,7 @@ static void compute(u32 n, const Node *parent, int depth)
     x->xform = parent ? parent->xform : 0;
     x->nobullet = parent ? parent->nobullet : 0;
     x->indent = 0;
-    x->flags &= (u8)~NF_HIDDEN;
+    x->flags &= (u8)~(NF_HIDDEN | NF_GAPL | NF_GAPR);
     if (parent && (parent->flags & NF_HIDDEN)) x->flags |= NF_HIDDEN;
     if (s_best[P_DISPLAY]) x->disp = (u8)s_val[P_DISPLAY];
     if (s_best[P_COLOR]) x->col = (u8)s_val[P_COLOR];
@@ -515,6 +523,15 @@ static void compute(u32 n, const Node *parent, int depth)
         s32 ind = (s_best[P_MLEFT] ? s_val[P_MLEFT] : 0) + (s_best[P_PLEFT] ? s_val[P_PLEFT] : 0);
         ind /= 10;                               /* 10 pixels a character  */
         x->indent = (u8)(ind > 12 ? 12 : ind < 0 ? 0 : ind);
+    }
+    /* An inline thing with a few pixels of room beside it -- a site's name
+     * set off from its menu, a button from the next -- has a space there:
+     * on a grid of letters a space is the smallest room there is. */
+    if (x->disp == D_INLINE) {
+        s32 l = (s_best[P_MLEFT] ? s_val[P_MLEFT] : 0) + (s_best[P_PLEFT] ? s_val[P_PLEFT] : 0);
+        s32 r = (s_best[P_MRIGHT] ? s_val[P_MRIGHT] : 0) + (s_best[P_PRIGHT] ? s_val[P_PRIGHT] : 0);
+        if (l >= 3) x->flags |= NF_GAPL;
+        if (r >= 3) x->flags |= NF_GAPR;
     }
     /* what is never drawn */
     if (x->disp == D_NONE || (s_best[P_VISIBILITY] && s_val[P_VISIBILITY]) || (s_best[P_OPACITY] && s_val[P_OPACITY]) ||
