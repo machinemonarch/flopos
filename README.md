@@ -1,32 +1,34 @@
 # FLOPOS
+FLOPOS s a cyber-psychedelic (cyberdelic) neurofunkadelic dreamscape built from scratch with Claude for the Toshiba Satellite Pro 430CDT. Tested on real hardware by me (a real mensch).
 
-FLOPOS is a cyber-psychedelic (cyberdelic) neurofunkadelic dreamscape built from scratch and intended to run on the **Toshiba Satellite Pro 430CDT**.
-It is not intended as a daily-driver OS but rather as an art project and an experiment bridging modern technology with old hardware.  
-Really old hardware.
+##
+Its runs on late 90s laptop equipped with nothing but a 120 MHz Pentium CPU, 32 MB RAM, all of it booted from a 1.44 MB (MF2HD) floppy disk!  
+So far: No dedicated helper servers, services or proxies. All the magic happens on the laptop itself!
 
-What do I mean when I say that it is built from scratch?  
-
-It means:
 * It does not build on code from any GNU/Linux project.
-* Fact is, it does not use code from any other open-source project. Only two tables of numbers, the ones the MP3 and AAC standards define, were taken from open-source decoders, and they are credited.
-* Oh yeah, and it's not some scene demo or whatever.  
-  
-  
-**TLDR:** *"It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."*  
+* It does not use code from any other open-source project. Only two tables of numbers, the ones the MP3 and AAC standards define, were taken from open-source decoders, and they are credited.
+* Oh yeah, and it's not some scene demo or whatever.
 
-... Or just have a look yourself.  
+
+TLDR: "It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."
+
+## Why
+It is an art project with the aim of bridging modern technology with old hardware. An attempt to push the hardwares (and Claudes) limits and see what cool things that can be achieved on a +30 year old retro laptop with the amazing tools of today.
+
+## DISCLAIMER
+It is in NO WAY intended as a daily-driver operating system. I've taken care to the best of my abilities (and expertise as a sysadmin and senior infrastructure engineer) to only implement things in such a way that I feel reduces unnecessary vulnerabilities and dangers. I've been careful to instruct Claude to design the project with as much safety in mind as possible. I've spent hours performing run-tests.  However, this project gives NO WARRANTIES AT ALL as to fitness of purpose and its code IS NOT thoroughly audited.
+
+-> For a full disclaimer, see the MIT license, in  the file called LICENSE. <-
+
+## Having said all that:
+It is also INCREDIBLY FUN to run and build! So I share it with the hope that someone out there, running similar hardware, will find it entertaining. Please let me know if you manage to run it on some other hardware or if you just want to share constructive ideas and enjoy the hobby!
+
+... Have a look at yourself:
 ## Screenshots
 
 [![The wizard at the gate, asking his riddle](docs/images/wizard-small.png)](docs/images/wizard.png)[![The terminal, once inside](docs/images/terminal-small.png)](docs/images/terminal.png)  
 [![Saffran on the boot screen](docs/images/saffran-small.png)](docs/images/saffran.png)[![help, in the warm light](docs/images/help-small.png)](docs/images/help.png)  
 [![scribe with a letter](docs/images/scribe-small.png)](docs/images/scribe.png)[![maelcum writing to a cassette](docs/images/maelcum-writing-small.png)](docs/images/maelcum-writing.png)
-
-FLOPOS's code is synthesized by Claude drawing upon my ideas, thoughts and curiosity. I'm fascinated by old hardware and media and I wanted to test what AI and ~30 year old hardware is capable of achieving when paired together. To see exactly where the limit goes and learn new things in the process.  
-The ideas on how and what gets built come from whatever circulates in my mind at the time of implementation. Sometimes I instruct Claude to behave in a way, or add features, drawn from my experiences as a sysadmin and senior infrastructure engineer.  
-Other times the ideas come from things based on culture genres of fiction (or non-fictional) media that I enjoy. Given my human hours of testing and creative processing, "vibe-coding" would not do it justice.
-
-Like I said, it is an art project, and its rule is that everything runs on the laptop's own hardware: a 120MHz Pentium with 32MB of memory. Booted from a 1.44MB MF2HD floppy disk. 
-So far, no dedicated helper servers, services or proxies. All processing happens on the laptop itself.
 
 ## So what's it made of? What can it do?
 Everything is its own:
