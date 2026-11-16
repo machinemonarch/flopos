@@ -6,60 +6,74 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
-- browzer shows a radio station's name and the song it is playing in
-  Cyrillic, Hebrew or accented letters, instead of garbled signs.
-- On the big screen D no longer looks like O: letters with a straight left
-  side keep their square corners.
+### FEATURES
+
 - browzer reads pages' styles: what a site hides stays hidden, with bold,
   italic, underline, colour, centring and indenting. Anything a page pins
   over its content (pop-ups, cookie walls, newsletter boxes) is never drawn.
 - browzer runs JavaScript on sites you allow with j, in a walled room of its
   own. Scripts are off everywhere else: "3 scripts, none of them run."
-- Smooth, shaded text on the big screen: 100 columns by 50 rows, drawn at
-  the screen's own pixels. `squint` also gives the large letters, the close
-  ones, and a fine size of 133 columns.
-- The moving background is drawn at 800x600 itself and dithered: no
-  blocks, no bands, and it drifts a pixel at a time.
+- Scripts can use `async` and `await`, and the browser pieces pages
+  often stop on (AbortController, FormData, TextEncoder and more).
+- On an allowed site, libraries from jsDelivr, cdnjs, Google's and unpkg
+  are fetched too, so pages built on jQuery work. Reading jQuery takes
+  about three seconds on the laptop.
+- browzer lays out tables as tables, in columns.
+- browzer finds on the page as `less` does: `/`, the words, Enter; `n`
+  and `N` for the next and the one before.
 - A radio page's "Listen live" button plays, with or without scripts. Streams
   a page names only in its data are listed at the top, by station name.
 - A "Listen live" or "Play" with no link, on a page that names a stream,
-  plays it. Links in headings look like links.
+  plays it.
+- Sound files are asked for from their first byte, as browsers' players
+  ask, so servers that send recordings only that way play them.
 - browzer's keys are yellow. Each bookmark is one link: its name, with
   its address under it.
 - Secure sites that use only the P-384 curve work, as they do in Chrome and
   Firefox: TLS 1.3 servers that ask for a second hello, and TLS 1.2 ones.
 - TLS 1.2 also speaks the two older ciphers Chrome still offers (AES in
   CBC mode with SHA-1), last, for servers with nothing newer.
-- Sound files are asked for from their first byte, as browsers' players
-  ask, so servers that send recordings only that way play them.
-- browzer lays out tables as tables, in columns.
-- Scripts can use `async` and `await`, and the browser pieces pages
-  often stop on (AbortController, FormData, TextEncoder and more).
-- On an allowed site, libraries from jsDelivr, cdnjs, Google's and unpkg
-  are fetched too, so pages built on jQuery work. Reading jQuery takes
-  about three seconds on the laptop.
-- browzer finds on the page as `less` does: `/`, the words, Enter; `n`
-  and `N` for the next and the one before.
-- The black screen at the start: after the switch to 800x600 the panel's
-  own power and output settings are put back as they were while it was
-  lit, and looked at again a moment later. If it still happens,
-  Ctrl-Shift-F5 switches the screen again from anywhere, no reboot needed.
-- In `network`, Tab goes round every setting and button.
-- Ctrl-C at the prompt drops what you were typing.
+- Smooth, shaded text on the big screen: 100 columns by 50 rows, drawn at
+  the screen's own pixels. `squint` also gives the large letters, the close
+  ones, and a fine size of 133 columns.
+- The moving background is drawn at 800x600 itself and dithered: no
+  blocks, no bands, and it drifts a pixel at a time.
 - `help` after any word or program says a little about it: `ping help`,
   `browzer help`. The text is `HELP.TXT` on the floppy, readable on any
   computer.
-- The project's files are arranged by kind: the code in `src/`, what
-  builds and writes it in `tools/`, the tests in `test/`, and what a tool
-  made in a `gen/` folder beside the code it belongs to.
-- What is built goes in `build/` (the tests' output too, one folder per
-  test); `dist/` holds only the finished floppy image.
-- `make wire` talks to the laptop over the serial line and adds every
-  session to one log, `logs/serial.log`.
-- The documentation is less than half as long: how-tos kept, history
-  and explanations the code already gives taken out.
+- In `network`, Tab goes round every setting and button.
+- Ctrl-C at the prompt drops what you were typing.
+- Ctrl-Shift-F5 switches the screen again, from anywhere.
 - `tools/floppy/writefloppy.sh --dev` writes your own build instead of
   the newest release.
+- `make wire` talks to the laptop over the serial line and adds every
+  session to one log, `logs/serial.log`.
+- The project's files are arranged by kind: the code in `src/`, what
+  builds and writes it in `tools/`, the tests in `test/`, and what a tool
+  made in a `gen/` folder beside the code it belongs to. What is built
+  goes in `build/`; `dist/` holds only the finished floppy image.
+- The documentation is less than half as long: how-tos kept, history
+  and explanations the code already gives taken out.
+
+### BUGFIXES
+
+- The black screen at the start: after the switch to 800x600 the panel's
+  own power and output settings are put back as they were while it was
+  lit, and looked at again a moment later.
+- browzer shows a radio station's name and the song it is playing in
+  Cyrillic, Hebrew or accented letters, instead of garbled signs.
+- On the big screen D no longer looks like O: letters with a straight left
+  side keep their square corners.
+- browzer keeps the space a page puts around a word with a margin
+  ("Hacker News new", not "Hacker Newsnew"), and a link no longer splits
+  a word at its edges.
+- Links in headings look like links.
+- In the emulator, the network card recovers when more arrives than it
+  can hold, instead of going quiet.
+
+### SECURITY FIXES
+
+- None in this release.
 
 ## 1.43.2 — 2026-11-14
 

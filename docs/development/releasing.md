@@ -9,7 +9,8 @@
 
 `CHANGELOG.md`, newest first. Its top heading is `## Unreleased`: whenever
 something changes that a user would notice, add a line there, in plain
-words as the user sees it ("Hebrew is drawn right to left").
+words as the user sees it ("Hebrew is drawn right to left"), under
+`### FEATURES`, `### BUGFIXES` or `### SECURITY FIXES`.
 
 ## Making a release
 
