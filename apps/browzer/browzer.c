@@ -26,24 +26,25 @@
  * over TLS 1.3.
  * ===========================================================================
  */
-#include "web.h"
+#include "dom.h"
 #include "tracker.h"
 #include "decode.h"
 
-#define MAX_LINES  1500
-#define MAX_WIDTH  98
+#define MAX_CELLS  147000             /* 1500 lines of 98, or fewer wider ones */
+#define MAX_WIDTH  130
 #define HISTORY    20
 
 const Api *A;
 
 /* Everything a page needs, kept here in the app's own memory. */
 static Page      s_pg;
-static PageCell  s_cells[MAX_LINES * MAX_WIDTH];
+static PageCell  s_cells[MAX_CELLS];
 static char      s_hrefs[PAGE_LINKS][PAGE_HREF_MAX];
 static PageForm  s_forms[PAGE_FORMS];
 static PageField s_fields[PAGE_FIELDS];
 static char      s_pool[PAGE_POOL];
 static u16       s_link_field[PAGE_LINKS + 1];
+static u16       s_link_node[PAGE_LINKS + 1];   /* link -> element in the page's tree */
 static PageOption s_opts[PAGE_OPTIONS];
 static u8        s_body[PAGE_POOL * 3];  /* a form, ready to send          */
 static int  s_ready;
@@ -484,6 +485,20 @@ static int  s_editing;
 static char s_edit[PAGE_HREF_MAX];
 static int  s_edit_len, s_edit_cur, s_edit_all;   /* the caret; ctrl-a picked all */
 static int  s_leave_armed;               /* asked whether to leave          */
+
+/* Finding on the page, as less does it: / and a few letters, then n for
+ * the next and N for the one before.  Letters are compared as the page
+ * shows them, big and small alike; a match stays within one line. */
+#define FIND_MAX 60
+static int  s_finding;                   /* typing what to find             */
+static int  s_find[FIND_MAX], s_find_len;    /* what is being typed         */
+static int  s_look[FIND_MAX], s_look_len;    /* what was last looked for    */
+static int  s_hit_line = -1, s_hit_col;  /* the match shown, or -1          */
+static u32  s_hit_gen;                   /* which page it was on            */
+static int  s_hit_n, s_hit_of;           /* it is the n-th of so many       */
+static int  s_find_said;                 /* the bottom line says so, until a key */
+static int  found_at(int ln, int col);
+static int  hit_shown(void);
 static int  s_loading;
 
 /* The home page: a few words, your bookmarks, and how browzer works. */
@@ -529,7 +544,7 @@ static int link_line(int id)
 static void put_text_clipped(int x, int y, const char *t, u8 fg, u8 bg, int maxx)
 {
     int key = 0, c;
-    while (x < maxx && (c = a_ch_next(&t)) != 0) {   /* \1: a key, in pink */
+    while (x < maxx && (c = a_ch_next(&t)) != 0) {   /* \1: a key, in yellow */
         if (c == 1) { key = !key; continue; }
         term_win_put(x++, y, c, key ? C_KEY : fg, bg);
     }
@@ -633,17 +648,24 @@ static void draw(void)
             }
         } else
             term_win_text(4, 8, "listening for the first of it...", C_DIM, pp);
-        term_win_text(4, 14, "\1esc\1 stops it", C_DIM, pp);
+        put_text_clipped(4, 14, "\1esc\1 stops it", C_DIM, pp, s_w - 2);
     } else
     /* The page. */
     for (y = 0; y < s_vh; y++) {
         int ln = s_top + y;
         if (ln >= s_pg.lines) break;
+        int lit = 0, cur = 0;                /* letters of a match still to light */
         for (x = 0; x < s_pg.width; x++) {
             PageCell *c = &s_pg.cells[ln * s_pg.width + x];
             int sel = s_sel && c->link == s_sel;
+            if (hit_shown() && !lit && found_at(ln, x)) { lit = s_look_len; cur = ln == s_hit_line && x == s_hit_col; }
+            if (lit) {                       /* a match: dark on light, the current one brightest */
+                term_win_put_at(2 + x, 3 + y, c->ch, pp, cur ? C_BRIGHT : C_ACCENT, c->at);
+                lit--;
+                continue;
+            }
             if (c->ch == ' ' && !sel) continue;
-            term_win_put(2 + x, 3 + y, c->ch, sel ? C_BRIGHT : c->col, sel ? WIN_HILITE : pp);
+            term_win_put_at(2 + x, 3 + y, c->ch, sel ? C_BRIGHT : c->col, sel ? WIN_HILITE : pp, c->at);
         }
     }
 
@@ -666,6 +688,13 @@ static void draw(void)
     /* Status: what is happening, or where the picked link goes. */
     if (s_leave_armed) {
         put_text_clipped(2, s_h - 2, "Leave browzer? \1y\1 leaves; any other key stays.", C_ACCENT, pp, s_w - 12);
+    } else if (s_finding) {
+        int k, cx = 3;
+        term_win_text(2, s_h - 2, "/", C_ACCENT, pp);
+        for (k = 0; k < s_find_len && cx < s_w - 13; k++) term_win_put(cx++, s_h - 2, s_find[k], C_BRIGHT, pp);
+        term_win_put(cx, s_h - 2, ' ', C_TEXT, C_BRIGHT);
+    } else if (s_find_said && s_pg.note[0]) {
+        put_text_clipped(2, s_h - 2, s_pg.note, s_pg.note_col, pp, s_w - 12);
     } else if (s_choosing >= 0) {
         PageField *f = &s_pg.fields[s_choosing];
         fmt_str(line, sizeof line, "choosing, %u of %u: \1up\1 and \1down\1 change it, \1enter\1 keeps it",
@@ -678,7 +707,7 @@ static void draw(void)
     } else if (s_sel && !s_loading && field_of(s_sel)) {
         PageField *f = field_of(s_sel);
         char where[PAGE_HREF_MAX + 16];
-        if (f->kind == FK_SUBMIT) {
+        if (f->kind == FK_SUBMIT && f->form != FORM_NONE) {
             const char *act = s_pg.forms[f->form].action;
             if (!url_resolve(s_pg.url, act[0] ? act : s_pg.url, where, sizeof where)) where[0] = 0;
             term_win_text(2, s_h - 2, "sends to", C_ACCENT, pp);
@@ -706,15 +735,17 @@ static void draw(void)
 
     /* Keys, let into the bottom of the frame. */
     {
-        const char *keys = s_choosing >= 0 ? " \1up down\1 choose  \1enter\1 keep  \1esc\1 undo "
+        const char *keys = s_finding ? " type  \1enter\1 find  \1esc\1 cancel "
+                         : s_choosing >= 0 ? " \1up down\1 choose  \1enter\1 keep  \1esc\1 undo "
                          : s_editing ? " type  \1arrows\1 move  \1ctrl-a\1 all  \1enter\1 go  \1esc\1 cancel "
                          : s_typing >= 0 ? " type  \1enter\1 send  \1tab\1 done  \1esc\1 stop "
+                         : s_w >= 80 ? " \1tab\1 link  \1enter\1 go  \1bksp\1 back  \1g\1 go to  \1/\1 find  \1b\1 mark  \1m\1 marks  \1esc\1 "
                          : s_w >= 66 ? " \1tab\1 link  \1enter\1 go  \1bksp\1 back  \1g\1 go to  \1b\1 mark  \1m\1 marks  \1esc\1 "
                          : s_w >= 60 ? " \1tab\1 link  \1enter\1 go  \1bksp\1 back  \1g\1 go to  \1esc\1 leave "
                                      : " \1tab\1 \1enter\1 \1bksp\1 \1g\1 \1esc\1 ";
         int kl = 0, i;
         for (i = 0; keys[i]; i++) if (keys[i] != 1) kl++;   /* the pink marks take no room */
-        if (kl < s_w - 4) term_win_text((s_w - kl) / 2, s_h - 1, keys, C_DIM, pp);
+        if (kl < s_w - 4) put_text_clipped((s_w - kl) / 2, s_h - 1, keys, C_DIM, pp, s_w - 1);
     }
 }
 
@@ -815,6 +846,57 @@ static void say(const char *t, u8 col)
     s_pg.note_col = col;
 }
 
+/* ---- finding ------------------------------------------------------------------ */
+static int fold(int g) { return g >= 'A' && g <= 'Z' ? g + 32 : g; }
+
+/* Does what was looked for start at this place on the page? */
+static int found_at(int ln, int col)
+{
+    int k, w = s_pg.width;
+    if (!s_look_len || col + s_look_len > w) return 0;
+    for (k = 0; k < s_look_len; k++)
+        if (fold(s_pg.cells[ln * w + col + k].ch) != fold(s_look[k])) return 0;
+    return 1;
+}
+
+static int hit_shown(void) { return s_hit_line >= 0 && s_hit_gen == s_pg.gen && s_hit_line < s_pg.lines; }
+
+/* The next match after (ln, col), or before it: round the page once. */
+static void find_step(int dir)
+{
+    int w = s_pg.width, total = s_pg.lines * w, start, i, at;
+    char m[96];
+    if (!s_look_len) { say("Nothing to find yet: \1/\1 starts.", C_DIM); return; }
+    if (hit_shown()) start = s_hit_line * w + s_hit_col;
+    else start = dir > 0 ? s_top * w - 1 : (s_top + s_vh) * w;
+    for (i = 1; i <= total; i++) {
+        at = ((start + dir * i) % total + total) % total;
+        if (found_at(at / w, at % w)) break;
+    }
+    if (i > total) {
+        s_hit_line = -1;
+        say("Not on this page.", C_ACCENT);
+        s_find_said = 1;
+        return;
+    }
+    s_hit_line = at / w; s_hit_col = at % w; s_hit_gen = s_pg.gen;
+    if (s_hit_line < s_top || s_hit_line >= s_top + s_vh) {
+        s_top = s_hit_line - s_vh / 3;
+        if (s_top > s_pg.lines - s_vh) s_top = s_pg.lines - s_vh;
+        if (s_top < 0) s_top = 0;
+    }
+    {   /* which one it is, of how many */
+        int n = 0, of = 0, k;
+        for (k = 0; k < total; k++) if (found_at(k / w, k % w)) { of++; if (k <= at) n++; }
+        s_hit_n = n; s_hit_of = of;
+    }
+    if (s_pg.cells[at].link) s_sel = s_pg.cells[at].link;   /* on a link: enter follows it */
+    else s_sel = 0;
+    fmt_str(m, sizeof m, "%u of %u.  \1n\1 next, \1N\1 the one before, \1esc\1 clears.", (u32)s_hit_n, (u32)s_hit_of);
+    say(m, C_DIM);
+    s_find_said = 1;
+}
+
 /* Text safe to put into a page we write ourselves. */
 static int html_text(char *out, int n, int cap, const char *t)
 {
@@ -833,6 +915,21 @@ static int put(char *out, int n, int cap, const char *t)
     return n;
 }
 
+/* One bookmark: its name, and its address on the line under it, both one
+ * link, so Tab stops at it once. */
+static int mark_link(char *page, int n, int cap, int i)
+{
+    n = put(page, n, cap, "<a href=\"");
+    n = html_text(page, n, cap, s_mark[i].url);
+    n = put(page, n, cap, "\">");
+    if (s_mark[i].title[0]) {
+        n = html_text(page, n, cap, s_mark[i].title);
+        n = put(page, n, cap, "<br>");
+    }
+    n = html_text(page, n, cap, s_mark[i].url);
+    return put(page, n, cap, "</a>");
+}
+
 static void home(void)
 {
     static char page[sizeof s_home_top + sizeof s_home_help + MARKS * (PAGE_HREF_MAX * 5 + 140) + 200];
@@ -844,17 +941,13 @@ static void home(void)
     if (!s_nmarks)
         n = put(page, n, cap, "<p>None yet. On any page, <kbd>b</kbd> keeps it here.</p>");
     else {
-        n = put(page, n, cap, "<ul>");
         for (pass = 0; pass < 2; pass++)              /* the ones put first, then the rest */
             for (i = 0; i < s_nmarks; i++) {
                 if ((s_mark[i].home ? 0 : 1) != pass) continue;
-                n = put(page, n, cap, "<li><a href=\"");
-                n = html_text(page, n, cap, s_mark[i].url);
-                n = put(page, n, cap, "\">");
-                n = html_text(page, n, cap, s_mark[i].title[0] ? s_mark[i].title : s_mark[i].url);
-                n = put(page, n, cap, "</a></li>");
+                n = put(page, n, cap, "<p>");
+                n = mark_link(page, n, cap, i);
+                n = put(page, n, cap, "</p>");
             }
-        n = put(page, n, cap, "</ul>");
     }
     n = put(page, n, cap, s_home_help);
     page[n] = 0;
@@ -881,19 +974,13 @@ static void marks_page(void)
         n = put(page, n, cap, "<p>None yet. On any page, <kbd>b</kbd> keeps it here.</p>");
     else {
         n = put(page, n, cap, "<p><kbd>tab</kbd> picks one, <kbd>enter</kbd> goes there, <kbd>p</kbd> puts it first on the home page "
-                              "or back among the rest, <kbd>d</kbd> deletes it.</p><ul>");
+                              "or back among the rest, <kbd>d</kbd> deletes it.</p>");
         for (i = 0; i < s_nmarks; i++) {
-            n = put(page, n, cap, "<li>");
+            n = put(page, n, cap, "<p>");
             if (s_mark[i].home) n = put(page, n, cap, "<b>first</b> ");
-            n = put(page, n, cap, "<a href=\"");
-            n = html_text(page, n, cap, s_mark[i].url);
-            n = put(page, n, cap, "\">");
-            n = html_text(page, n, cap, s_mark[i].title[0] ? s_mark[i].title : s_mark[i].url);
-            n = put(page, n, cap, "</a> <i>");
-            n = html_text(page, n, cap, s_mark[i].url);
-            n = put(page, n, cap, "</i></li>");
+            n = mark_link(page, n, cap, i);
+            n = put(page, n, cap, "</p>");
         }
-        n = put(page, n, cap, "</ul>");
     }
     page[n] = 0;
     http_page_html(page, &s_pg);
@@ -1113,6 +1200,10 @@ static void go_with(const char *url, const u8 *post, int postlen)
         else
             fmt_str(s_pg.note, sizeof s_pg.note, "%u bytes, not encrypted", s_pg.bytes);
         s_pg.note_col = s_pg.secure && !s_pg.checked ? C_ACCENT : C_DIM;
+        if (script_note()[0] && (!s_pg.secure || s_pg.checked)) {
+            fmt_str(s_pg.note, sizeof s_pg.note, "%s", script_note());
+            s_pg.note_col = C_DIM;
+        }
     }
 }
 
@@ -1170,7 +1261,10 @@ static int urlenc(u8 *out, int n, int cap, const char *p, u32 len)
  * in it, and the button, if a button was what sent it. */
 static void submit(PageField *by)
 {
-    PageForm *form = &s_pg.forms[by->form];
+    PageForm *form;
+    if (by->form == FORM_NONE) return;                 /* nothing to send it to */
+    if (script_submit(&s_pg, by->form)) return;        /* a script took it      */
+    form = &s_pg.forms[by->form];
     char url[PAGE_HREF_MAX + 16];
     int n = 0, i, cap = (int)sizeof s_body;
 
@@ -1340,10 +1434,12 @@ static void follow(void)
     char url[PAGE_HREF_MAX + 16];
     PageField *f;
     if (!s_sel) return;
+    if (script_click(&s_pg, s_sel)) return;            /* a script took it      */
+    if (s_pg.href[s_sel - 1][0] == 'f' && s_pg.href[s_sel - 1][1] == 'l') return;   /* flopos:node: only for scripts */
     if ((f = field_of(s_sel)) != 0) {
         if (f->kind == FK_SUBMIT) submit(f);
-        else if (f->kind == FK_CHECK) { f->on = !f->on; page_field_show(&s_pg, (int)(f - s_pg.fields)); }
-        else if (f->kind == FK_RADIO) radio_pick(f);
+        else if (f->kind == FK_CHECK) { f->on = !f->on; page_field_show(&s_pg, (int)(f - s_pg.fields)); script_changed(&s_pg, (int)(f - s_pg.fields)); }
+        else if (f->kind == FK_RADIO) { radio_pick(f); script_changed(&s_pg, (int)(f - s_pg.fields)); }
         else if (f->kind == FK_SELECT) { s_choosing = (int)(f - s_pg.fields); s_chose_was = f->sel; }
         else s_typing = (int)(f - s_pg.fields);
         return;
@@ -1426,8 +1522,9 @@ void browzer_run(const char *start)
         s_pg.fields = s_fields;
         s_pg.pool = s_pool;
         s_pg.link_field = s_link_field;
+        s_pg.link_node = s_link_node;
+        web_page_loaded = script_page;
         s_pg.opts = s_opts;
-        s_pg.max_lines = MAX_LINES;
         s_pg.progress = progress;
         web_media_start = media_start;
         web_media_bytes = media_bytes;
@@ -1438,8 +1535,9 @@ void browzer_run(const char *start)
 
     /* Pages are laid out for a width; if the screen changed since the
      * last visit, the old one is laid out wrong, so it is fetched again. */
-    if (s_pg.width != s_w - 4) {
-        s_pg.width = s_w - 4;
+    if (s_pg.width != (s_w - 4 < MAX_WIDTH ? s_w - 4 : MAX_WIDTH)) {
+        s_pg.width = s_w - 4 < MAX_WIDTH ? s_w - 4 : MAX_WIDTH;
+        s_pg.max_lines = MAX_CELLS / s_pg.width;
         if (!start || !start[0]) {
             if (s_pg.url[0] && s_pg.url[0] != 'f') start = s_pg.url;
             else start = 0;
@@ -1465,6 +1563,13 @@ void browzer_run(const char *start)
             if (refresh_wanted() && !s_editing && s_typing < 0 && s_choosing < 0 && !s_leave_armed &&
                 (s32)(A->ms() - due) >= 0)
                 refresh_page();
+            if (!s_editing && s_typing < 0 && s_choosing < 0 && !s_leave_armed) {
+                const char *to;
+                u32 lines_were = (u32)s_pg.lines;
+                script_tick(&s_pg);
+                if ((u32)s_pg.lines != lines_were) stale = 1;
+                if ((to = script_go()) != 0) { push_history(); go(to); stale = 1; }
+            }
             main_pump(0);
             continue;
         }
@@ -1479,7 +1584,7 @@ void browzer_run(const char *start)
             else if (k == UK_HOME) choose(f, 0);
             else if (k == UK_END) choose(f, f->nopt - 1);
             else if (k == UK_ESC) { choose(f, s_chose_was); s_choosing = -1; }
-            else if (k == UK_ENTER) s_choosing = -1;
+            else if (k == UK_ENTER) { s_choosing = -1; script_changed(&s_pg, (int)(f - s_pg.fields)); }
             else if (k == UK_TAB) { s_choosing = -1; pick(+1); }
             else if (k > 32 && k < 127) choose_letter(f, k);
             continue;
@@ -1487,13 +1592,30 @@ void browzer_run(const char *start)
 
         if (s_typing >= 0) {             /* into a box on the page          */
             PageField *f = &s_pg.fields[s_typing];
-            if (k == UK_ESC) s_typing = -1;
-            else if (k == UK_TAB) { s_typing = -1; pick(+1); }
+            int was = s_typing;
+            if (k == UK_ESC) { s_typing = -1; script_changed(&s_pg, was); }
+            else if (k == UK_TAB) { s_typing = -1; script_changed(&s_pg, was); pick(+1); }
             else if (k == UK_BKSP) unchar(f);
             else if (k == UK_ENTER) {
                 if (f->kind == FK_AREA) type_char(f, '\n');
-                else { s_typing = -1; submit(f); }
+                else { s_typing = -1; script_changed(&s_pg, was); submit(f); }
             } else type_char(f, k);
+            continue;
+        }
+
+        if (s_finding) {                 /* typing what to find             */
+            if (k == UK_ESC) s_finding = 0;
+            else if (k == UK_BKSP) { if (s_find_len) s_find_len--; }
+            else if (k == UK_ENTER) {
+                int i;
+                s_finding = 0;
+                if (s_find_len) { for (i = 0; i < s_find_len; i++) s_look[i] = s_find[i]; s_look_len = s_find_len; }
+                s_hit_line = -1;             /* from the top of the screen      */
+                find_step(+1);
+            } else if (k >= 32 && k < 0x110000 && s_find_len < FIND_MAX) {
+                int g = k < 128 ? k : a_from_unicode((unsigned)k);
+                s_find[s_find_len++] = g ? g : '?';
+            }
             continue;
         }
 
@@ -1538,6 +1660,8 @@ void browzer_run(const char *start)
         }
 
         if (k != 'd') s_del_armed = 0;
+        if (k != 'n' && k != 'N') s_find_said = 0;
+        if (k == UK_ESC && hit_shown()) { s_hit_line = -1; say("", C_DIM); continue; }   /* esc: the lights off first */
         switch (k) {
         case UK_ESC: case 'q':
             s_leave_armed = 1;
@@ -1553,7 +1677,10 @@ void browzer_run(const char *start)
         case UK_BTAB:  pick(-1); break;
         case UK_ENTER: follow(); break;
         case UK_BKSP: case UK_LEFT: back(); break;
-        case 'g': case '/': edit_start(); break;
+        case 'g': edit_start(); break;
+        case '/': s_finding = 1; s_find_len = 0; break;
+        case 'n': find_step(+1); break;
+        case 'N': find_step(-1); break;
         case 'r': if (s_pg.url[0]) { char u[PAGE_HREF_MAX + 16]; int i;
                       for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
                       u[i] = 0; go(u); } break;
@@ -1562,6 +1689,15 @@ void browzer_run(const char *start)
             if (s_music) { music_stop(); say("The music has stopped.", C_DIM); }
             break;
         case 'b': mark_this(); break;
+        case 'j':                        /* scripts on this site: on, or off again */
+            if (s_pg.url[0] && s_pg.url[0] != 'f') {
+                char u[PAGE_HREF_MAX + 16]; int i;
+                script_site_toggle(&s_pg);
+                for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
+                u[i] = 0;
+                go(u);
+            }
+            break;
         case 'm': push_history(); marks_page(); s_top = 0; s_sel = 0; break;
         case 'p': case 'd':
             if (on_marks_page()) mark_change(k);

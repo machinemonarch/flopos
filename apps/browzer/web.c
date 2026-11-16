@@ -25,7 +25,7 @@
  * clicked around in.
  * ===========================================================================
  */
-#include "web.h"
+#include "dom.h"
 #include "../app_glyphs.h"
 
 /* A line down the serial cable, if there is one. */
@@ -65,7 +65,7 @@ static void page_line_clear(int line)
     int i;
     for (i = 0; i < s_pg->width; i++) {
         PageCell *c = &s_pg->cells[line * s_pg->width + i];
-        c->ch = ' '; c->col = C_TEXT; c->link = 0;
+        c->ch = ' '; c->col = C_TEXT; c->link = 0; c->at = 0;
     }
 }
 
@@ -81,14 +81,15 @@ static void out_newline(void)
     s_pg->col = 0;
 }
 
-static void out_char(int ch, u8 col, u16 link)
+static void out_char_at(int ch, u8 col, u16 link, u8 at)
 {
     PageCell *c;
     if (!s_pg) { term_colour(col); term_putc(ch); return; }
     if (s_pg->full || s_pg->col >= s_pg->width) return;
     c = &s_pg->cells[(s_pg->lines - 1) * s_pg->width + s_pg->col++];
-    c->ch = ch; c->col = col; c->link = link;
+    c->ch = ch; c->col = col; c->link = link; c->at = at;
 }
+static void out_char(int ch, u8 col, u16 link) { out_char_at(ch, col, link, 0); }
 
 static int s_select, s_opt;              /* a list being read (below)       */
 
@@ -131,6 +132,20 @@ static char s_ent[10];
 static int  s_ent_len;
 static u16  s_word[80];
 static u8   s_word_col[80];
+static u8   s_word_at[80];
+/* Styles from the tree (css.c, through dom.c's marks): a colour and
+ * bold/italic/underline for a stretch, and blocks indented or aligned. */
+static u8   s_scol, s_sat;
+static u8   s_sstack[32][2];
+static int  s_sdepth;
+static int  s_indent;
+static struct { int line, align, indent; } s_bstack[32];
+static int  s_bdepth;
+static int  s_rerender;                  /* drawing from the tree, not the wire */
+static int  s_capture;                   /* building the tree as it streams in */
+static char s_fl[8], s_flc[6], s_fla[6], s_flal[4], s_flin[4], s_fln[8], s_fltx[6], s_fltw[6];
+static u16  fl_num(const char *s) { u32 v = 0; while (*s >= '0' && *s <= '9') v = v * 10 + (u32)(*s++ - '0'); return (u16)(v > 65535 ? 0 : v); }
+static void align_lines(int first, int last, int how);
 static u16  s_word_link[80];
 static int  s_word_len, s_col, s_newlines, s_space;
 static int  s_bold, s_link, s_dim, s_in_title, s_kbd;
@@ -165,7 +180,7 @@ static int  s_aval_len, s_aval_max;
 
 static u8 colour_now(void)
 {
-    return s_dim ? C_DIM : s_kbd ? C_KEY : s_bold ? C_BRIGHT : s_link ? C_ACCENT : C_TEXT;
+    return s_dim ? C_DIM : s_kbd ? C_KEY : s_link ? C_ACCENT : s_bold ? C_BRIGHT : s_scol ? s_scol : C_TEXT;
 }
 
 static int  s_word_cont;                 /* the word goes on past what is flushed */
@@ -178,6 +193,9 @@ static void flush_word(void)
     if (!s_word_len) return;
     bare_link();
     if (s_col && s_col + 1 + s_word_len > w) { out_newline(); s_col = 0; }
+    if (!s_col && s_indent && s_pg) {         /* an indented block's margin */
+        while (s_col < s_indent && s_col < w / 2) { out_char(' ', C_TEXT, 0); s_col++; }
+    }
     else if (s_col && s_space) {
         /* A space inside a link belongs to the link, so a highlighted link
          * is one unbroken bar rather than words with gaps. */
@@ -186,7 +204,7 @@ static void flush_word(void)
     }
     for (i = 0; i < s_word_len; i++) {
         if (s_col >= w) { out_newline(); s_col = 0; }
-        out_char(s_word[i], s_word_col[i], s_word_link[i]);
+        out_char_at(s_word[i], s_word_col[i], s_word_link[i], s_word_at[i]);
         s_col++;
     }
     s_word_len = 0;
@@ -211,6 +229,7 @@ static void push(int g, u8 col)
     if (s_word_len < (int)(sizeof s_word / sizeof *s_word)) {
         s_word[s_word_len] = g;
         s_word_col[s_word_len] = col;
+        s_word_at[s_word_len] = s_sat;
         s_word_link[s_word_len] = s_linkid;
         s_word_len++;
     }
@@ -229,6 +248,8 @@ static int glyph_for(u32 c)
     case 0x201C: case 0x201D: return '"';
     case 0x2013: case 0x2014: return '-';
     case 0x2026: return '.';
+    case 0x2190: return '<';             case 0x2192: return '>';
+    case 0x2191: return '^';             case 0x2193: return 'v';
     case 0xA9: return 'c';
     case 0x2022: case 0xB7: return '*';
     default: return (c >= 32 && c < 127) ? (u8)c : '?';
@@ -445,6 +466,7 @@ static u16 add_link(void)
     s_pg->href[s_pg->nlinks][i] = 0;
     ++s_pg->nlinks;
     if (s_pg->link_field) s_pg->link_field[s_pg->nlinks] = 0;
+    if (s_pg->link_node) s_pg->link_node[s_pg->nlinks] = fl_num(s_fl);
     return (u16)s_pg->nlinks;
 }
 
@@ -472,6 +494,7 @@ static u16 add_link_to(const char *u)
     s_pg->href[s_pg->nlinks][i] = 0;
     ++s_pg->nlinks;
     if (s_pg->link_field) s_pg->link_field[s_pg->nlinks] = 0;
+    if (s_pg->link_node) s_pg->link_node[s_pg->nlinks] = 0;
     return (u16)s_pg->nlinks;
 }
 
@@ -527,7 +550,13 @@ static void bare_link(void)
  * lists them at the end as links.  Nothing in them is run. */
 #define SNIFF_MAX 12
 static char s_sniffed[SNIFF_MAX][PAGE_HREF_MAX];
+static char s_sniffname[SNIFF_MAX][48];  /* its "name" in the JSON, if any  */
 static int  s_nsniffed;
+/* The last "name":"..." (or "title") read, and how many bytes ago: a
+ * stream's address in the same JSON object, soon after, takes it. */
+static char s_nm[48];
+static int  s_nm_len, s_nm_on;
+static u32  s_nm_age = 0xFFFFFFFFu;
 static char s_sn[PAGE_HREF_MAX];         /* the address being read          */
 static int  s_sn_len, s_sn_on;           /* 1 an absolute address, 2 a "stream" key's value */
 static int  s_azura;                     /* the page is an AzuraCast station's */
@@ -557,6 +586,20 @@ static int has_at(const char *u, int n, const char *w)
             if (c != w[k]) break;
         }
         if (!w[k]) return 1;
+    }
+    return 0;
+}
+
+/* A path that ends in a sound file's name. */
+static int sound_file(const char *u)
+{
+    static const char *const ext[] = { ".mp3", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav",
+                                       ".mod", ".xm", ".s3m", ".it", 0 };
+    int n = 0, k, e;
+    while (u[n] && u[n] != '?' && u[n] != '#') n++;
+    for (k = 0; ext[k]; k++) {
+        for (e = 0; ext[k][e]; e++) { }
+        if (n > e && has_at(u + n - e, e, ext[k])) return 1;
     }
     return 0;
 }
@@ -599,12 +642,50 @@ static void sniff_end(void)
     if (!k || !sounds(u, mode) || s_nsniffed >= SNIFF_MAX) return;
     for (i = 0; i < s_nsniffed; i++) if (eq_ci(s_sniffed[i], u)) return;
     for (i = 0; i <= k; i++) s_sniffed[s_nsniffed][i] = u[i];
+    s_sniffname[s_nsniffed][0] = 0;
+    if (s_nm_age < 400 && s_nm[0]) {              /* named just before, in the same object */
+        for (i = 0; s_nm[i]; i++) s_sniffname[s_nsniffed][i] = s_nm[i];
+        s_sniffname[s_nsniffed][i] = 0;
+        s_nm[0] = 0;
+    }
     s_nsniffed++;
+}
+
+/* A name's characters as JSON writes them: \uXXXX and \" undone. */
+static u32 s_nm_esc;
+static void name_char(u8 b)
+{
+    static u32 hex;
+    u32 esc = s_nm_esc;
+    if (esc == 1) {
+        if (b == 'u') { s_nm_esc = 2; hex = 0; return; }
+        s_nm_esc = 0;
+        if (b != '"' && b != '\\' && b != '/') return;
+    } else if (esc >= 2) {
+        hex = (hex << 4) | (u32)(b <= '9' ? b - '0' : (b | 32) - 'a' + 10);
+        if (++s_nm_esc < 6) return;
+        s_nm_esc = 0;
+        if (hex >= 32 && s_nm_len + 4 < (int)sizeof s_nm) s_nm_len += put_utf8(s_nm + s_nm_len, hex);
+        return;
+    } else if (b == '\\') { s_nm_esc = 1; return; }
+    if (s_nm_len < (int)sizeof s_nm - 1) s_nm[s_nm_len++] = (char)b;
 }
 
 static void sniff(u8 b)
 {
     s_ring[s_ring_at++ & 31] = (char)b;
+    if (s_nm_age != 0xFFFFFFFFu) s_nm_age++;
+    if (b == '}' || b == '{') s_nm_age = 0xFFFFFFFFu;    /* another object's: not this name */
+    if (s_nm_on) {
+        if (b == '"' && !s_nm_esc) { s_nm[s_nm_len] = 0; s_nm_on = 0; s_nm_age = 0; return; }
+        if (b < ' ' || s_nm_len >= (int)sizeof s_nm - 1) { s_nm_on = 0; s_nm[0] = 0; return; }
+        name_char(b);
+        return;
+    }
+    if (b == '"' && (ring_ends("\"name\":\"") || ring_ends("\"title\":\"") || ring_ends("\"name\": \""))) {
+        s_nm_on = 1; s_nm_len = 0; s_nm[0] = 0; s_nm_esc = 0;
+        return;
+    }
     if (b == '/' && ring_ends("/api/nowplaying/")) s_azura = 1;
     if (s_sn_on) {
         if (b == '"' || b == '\'' || b == '<' || b == '>' || b <= ' ' || b == ',' || b == '}' || b == ']' ||
@@ -818,27 +899,76 @@ static void radiobrowser(const Url *page)
 }
 
 /* At the end of a page: what it named, as links, unless it links to them. */
+/* Lines first.. (the end) of the page moved to its top: the sound a page
+ * names, where it is seen at once rather than under a long page. */
+static void move_to_top(int first)
+{
+    static PageCell tmp[48 * 160];
+    int w = s_pg->width, k = s_pg->lines - first, i;
+    if (k <= 0 || first <= 0 || k > 48 || w > 160 || s_pg->full) return;
+    memcpy(tmp, &s_pg->cells[first * w], (u32)(k * w) * sizeof(PageCell));
+    memmove(&s_pg->cells[k * w], &s_pg->cells[0], (u32)(first * w) * sizeof(PageCell));
+    memcpy(s_pg->cells, tmp, (u32)(k * w) * sizeof(PageCell));
+    for (i = 0; i < s_pg->nfields; i++) if (s_pg->fields[i].width) s_pg->fields[i].line = (u16)(s_pg->fields[i].line + k);
+}
+
+const char *web_first_sound(void)
+{
+    if (s_sn_on) sniff_end();
+    return s_nsniffed ? s_sniffed[0] : 0;
+}
+
 static void sniff_list(void)
 {
-    int i, j, shown = 0;
+    int i, j, shown = 0, first = 0, many = 0;
     if (s_sn_on) sniff_end();
+    for (i = 0; i < s_nsniffed; i++) {          /* how many will be listed */
+        for (j = 0; j < s_pg->nlinks && !eq_ci(s_pg->href[j], s_sniffed[i]); j++) { }
+        if (j == s_pg->nlinks) many++;
+    }
     for (i = 0; i < s_nsniffed; i++) {
         for (j = 0; j < s_pg->nlinks && !eq_ci(s_pg->href[j], s_sniffed[i]); j++) { }
         if (j < s_pg->nlinks) continue;
         if (!shown++) {
             newline(2);
-            emit_text("Sound this page names, without a link to it:", C_BRIGHT);
+            first = s_pg->lines - 1;
+            emit_text(many > 1 ? "Streams and recordings on this page:" : "A stream or recording on this page:", C_BRIGHT);
             newline(1);
         }
         s_linkid = add_link_to(s_sniffed[i]);
         if (!s_linkid) break;
         wire_line("sound it names: ", s_sniffed[i]);
         s_link = 1;
-        for (j = 0; s_sniffed[i][j]; j++) emit((u8)s_sniffed[i][j]);
+        if (s_sniffname[i][0]) {                  /* its name, and the address after it, dim */
+            char t[100];
+            const char *q = t;
+            int g;
+            web_show_text(t, sizeof t, s_sniffname[i]);
+            while ((g = a_ch_next(&q)) != 0) {
+                if (g == ' ') { flush_word(); s_space = 1; }
+                else push(g, C_ACCENT);
+            }
+            flush_word();
+            s_link = 0; s_linkid = 0;
+            {                                     /* the host it comes from, dim */
+                char h[64];
+                const char *u = s_sniffed[i];
+                int n = 0;
+                while (*u && *u != ':') u++;
+                if (u[0] == ':' && u[1] == '/' && u[2] == '/') u += 3;
+                while (*u && *u != '/' && *u != ':' && n < 63) h[n++] = *u++;
+                h[n] = 0;
+                s_space = 1;
+                if (n) { push('(', C_DIM); emit_text(h, C_DIM); push(')', C_DIM); }
+            }
+        } else {
+            for (j = 0; s_sniffed[i][j]; j++) emit((u8)s_sniffed[i][j]);
+        }
         flush_word();
         s_link = 0; s_linkid = 0;
         newline(1);
     }
+    if (shown && first > 0) { newline(2); move_to_top(first); }
 }
 
 /* ---- forms ------------------------------------------------------------- */
@@ -892,12 +1022,13 @@ static int add_field(int kind, const char *val, int vlen, int vcap)
     PageField *f;
     int nlen = 0, i;
 
-    if (!p || !p->fields || s_form < 0 || p->nfields >= PAGE_FIELDS) return -1;
+    if (!p || !p->fields || (s_form < 0 && !s_rerender) || p->nfields >= PAGE_FIELDS) return -1;
     while (s_fname[nlen]) nlen++;
     if (vcap < vlen) vcap = vlen;
     if (p->pool_used + (u32)nlen + (u32)vcap > PAGE_POOL) return -1;
     f = &p->fields[p->nfields];
-    f->form = (u8)s_form; f->kind = (u8)kind; f->link = 0; f->on = 0;
+    f->form = s_form < 0 ? FORM_NONE : (u8)s_form; f->kind = (u8)kind; f->link = 0; f->on = 0;
+    f->node = fl_num(s_fl);
     f->opt0 = f->nopt = f->sel = 0;
     f->line = f->col = f->width = 0;
     f->name = p->pool_used; f->nlen = (u32)nlen;
@@ -916,6 +1047,7 @@ static u16 field_link(int fi)
     p->href[p->nlinks][0] = 0;
     p->nlinks++;
     p->link_field[p->nlinks] = (u16)(fi + 1);
+    if (p->link_node) p->link_node[p->nlinks] = p->fields[fi].node;
     p->fields[fi].link = (u16)p->nlinks;
     return (u16)p->nlinks;
 }
@@ -1168,6 +1300,116 @@ static void input_tag(void)
     /* Files, and buttons that only do something with JavaScript: not yet. */
 }
 
+/* ---- tables ------------------------------------------------------------
+ * A table the tree laid out (dom.c) arrives as rows of cells, each with
+ * its place and width: <fl-tab>, <fl-tr>, <fl-td tx tw>.  Each cell is
+ * read on its own, into a scratch page of its own width at the far end of
+ * the page's memory (the page stops short of it while a table is open),
+ * so it wraps, links and boxes just as the page does; at the end of the
+ * row the cells are put side by side, line by line. */
+#define TAB_LINES 160                    /* lines one cell may take          */
+#define TAB_CELLS 16
+static int s_tab_ok, s_tab_keep, s_tab_used, s_in_cell, s_ntcell;
+static PageCell *s_tab_base;
+static struct { PageCell *at; int w, x, h, f0, f1; } s_tcell[TAB_CELLS];
+static struct { PageCell *cells; int width, lines, col, full, max_lines, scol, indent, newlines, space; } s_tmain;
+
+static int cell_line_empty(const PageCell *row, int w)
+{
+    int i;
+    for (i = 0; i < w; i++) if (row[i].ch != ' ' || row[i].link) return 0;
+    return 1;
+}
+
+static void table_mark(void)
+{
+    if (!s_pg) { if (!s_tag_close) { flush_word(); s_space = 1; } return; }
+    if (tag_is("fl-tab")) {
+        flush_word();
+        if (!s_tag_close) {
+            newline(1);
+            s_tab_ok = !s_in_cell && s_pg->max_lines - s_pg->lines > TAB_LINES + 20;
+            if (s_tab_ok) {
+                s_tab_keep = s_pg->max_lines;
+                s_pg->max_lines -= TAB_LINES;
+                s_tab_base = s_pg->cells + s_pg->max_lines * s_pg->width;
+            }
+        } else {
+            if (s_tab_ok) s_pg->max_lines = s_tab_keep;
+            s_tab_ok = 0;
+            newline(1);
+        }
+        return;
+    }
+    if (tag_is("fl-tr")) {
+        int r, i, top, H = 0;
+        flush_word();
+        if (!s_tag_close) { newline(1); s_ntcell = 0; s_tab_used = 0; return; }
+        if (!s_tab_ok) { newline(1); return; }
+        for (i = 0; i < s_ntcell; i++) if (s_tcell[i].h > H) H = s_tcell[i].h;
+        if (!H) return;
+        top = s_pg->lines - 1;
+        for (r = 0; r < H; r++) {
+            int L;
+            if (r) out_newline();
+            if (s_pg->full) break;
+            L = s_pg->lines - 1;
+            for (i = 0; i < s_ntcell; i++) {
+                int k, w = s_tcell[i].w;
+                if (r >= s_tcell[i].h) continue;
+                for (k = 0; k < w && s_tcell[i].x + k < s_pg->width; k++)
+                    s_pg->cells[L * s_pg->width + s_tcell[i].x + k] = s_tcell[i].at[r * w + k];
+            }
+        }
+        for (i = 0; i < s_ntcell; i++) {                 /* boxes move with their cell */
+            int f;
+            for (f = s_tcell[i].f0; f < s_tcell[i].f1 && f < s_pg->nfields; f++) {
+                s_pg->fields[f].line = (u16)(s_pg->fields[f].line + top);
+                s_pg->fields[f].col = (u16)(s_pg->fields[f].col + s_tcell[i].x);
+            }
+        }
+        s_col = 1; s_newlines = 0; s_space = 0;
+        s_ntcell = 0; s_tab_used = 0;
+        return;
+    }
+    /* fl-td */
+    if (!s_tag_close) {
+        int w = fl_num(s_fltw), x = fl_num(s_fltx);
+        flush_word();
+        if (!s_tab_ok || s_in_cell || s_ntcell >= TAB_CELLS) { s_space = 1; return; }
+        if (x >= s_pg->width) x = s_pg->width - 1;
+        if (w < 1) w = 1;
+        if (x + w > s_pg->width) w = s_pg->width - x;
+        if (s_tab_used + w * TAB_LINES > TAB_LINES * s_pg->width) { s_space = 1; return; }
+        s_tmain.cells = s_pg->cells; s_tmain.width = s_pg->width; s_tmain.lines = s_pg->lines;
+        s_tmain.col = s_pg->col; s_tmain.full = s_pg->full; s_tmain.max_lines = s_pg->max_lines;
+        s_tmain.scol = s_col; s_tmain.indent = s_indent; s_tmain.newlines = s_newlines; s_tmain.space = s_space;
+        s_tcell[s_ntcell].at = s_tab_base + s_tab_used;
+        s_tcell[s_ntcell].w = w;
+        s_tcell[s_ntcell].x = x;
+        s_tcell[s_ntcell].f0 = s_pg->nfields;
+        s_pg->cells = s_tcell[s_ntcell].at;
+        s_pg->width = w;
+        s_pg->lines = 0; s_pg->col = 0; s_pg->full = 0; s_pg->max_lines = TAB_LINES;
+        out_newline();
+        s_col = 0; s_indent = 0; s_newlines = 2; s_space = 0;
+        s_in_cell = 1;
+    } else if (s_in_cell) {
+        int h, w = s_pg->width;
+        flush_word();
+        h = s_pg->lines;
+        while (h > 0 && cell_line_empty(&s_pg->cells[(h - 1) * w], w)) h--;
+        s_tcell[s_ntcell].h = h;
+        s_tcell[s_ntcell].f1 = s_pg->nfields;
+        s_tab_used += w * TAB_LINES;
+        s_pg->cells = s_tmain.cells; s_pg->width = s_tmain.width; s_pg->lines = s_tmain.lines;
+        s_pg->col = s_tmain.col; s_pg->full = s_tmain.full; s_pg->max_lines = s_tmain.max_lines;
+        s_col = s_tmain.scol; s_indent = s_tmain.indent; s_newlines = s_tmain.newlines; s_space = s_tmain.space;
+        s_in_cell = 0;
+        s_ntcell++;
+    }
+}
+
 static void tag_ended(void)
 {
     static const char *block[] = { "p", "div", "tr", "ul", "ol", "table",
@@ -1175,6 +1417,57 @@ static void tag_ended(void)
         "dt", "dd", "form", "main", "center", "aside", "figure", 0 };
     int i;
 
+    /* Marks from the tree (dom.c): a styled stretch, a block that is
+     * indented or aligned, a list item without its bullet, and something
+     * a script has made clickable. */
+    if (tag_is("fl-s")) {
+        if (!s_tag_close) {
+            if (s_sdepth < 32) { s_sstack[s_sdepth][0] = s_scol; s_sstack[s_sdepth][1] = s_sat; }
+            s_sdepth++;
+            s_scol = (u8)fl_num(s_flc);
+            s_sat = (u8)fl_num(s_fla);
+        } else if (s_sdepth > 0) {
+            s_sdepth--;
+            if (s_sdepth < 32) { s_scol = s_sstack[s_sdepth][0]; s_sat = s_sstack[s_sdepth][1]; }
+        }
+        return;
+    }
+    if (tag_is("fl-b")) {
+        if (!s_tag_close) {
+            newline(1);
+            if (s_bdepth < 32) {
+                s_bstack[s_bdepth].line = s_pg ? s_pg->lines - 1 : 0;
+                s_bstack[s_bdepth].align = fl_num(s_flal);
+                s_bstack[s_bdepth].indent = s_indent;
+            }
+            s_bdepth++;
+            s_indent += fl_num(s_flin);
+            if (s_indent > 24) s_indent = 24;
+        } else if (s_bdepth > 0) {
+            s_bdepth--;
+            newline(1);
+            if (s_bdepth < 32) {
+                if (s_pg && s_bstack[s_bdepth].align) align_lines(s_bstack[s_bdepth].line, s_pg->lines - 1, s_bstack[s_bdepth].align);
+                s_indent = s_bstack[s_bdepth].indent;
+            }
+        }
+        return;
+    }
+    if (tag_is("fl-li")) { if (!s_tag_close) newline(1); return; }
+    if (tag_is("fl-tab") || tag_is("fl-tr") || tag_is("fl-td")) { table_mark(); return; }
+    if (tag_is("fl-c")) {
+        flush_word();
+        if (!s_tag_close && s_pg) {
+            char where[24];
+            fmt_str(where, sizeof where, "flopos:node:%s", s_fln);
+            for (i = 0; where[i] && i < PAGE_HREF_MAX - 1; i++) s_href[i] = where[i];
+            s_href[i] = 0;
+            for (i = 0; s_fln[i] && i < 7; i++) s_fl[i] = s_fln[i];
+            s_fl[i] = 0;
+            s_link = 1; s_linkid = add_link();
+        } else { s_link = 0; s_linkid = 0; }
+        return;
+    }
     if (tag_is("script") || tag_is("style") || tag_is("svg") || tag_is("template")) {
         if (!s_tag_close) {
             for (i = 0; s_tag[i]; i++) s_skip_until[i] = s_tag[i];
@@ -1208,6 +1501,7 @@ static void tag_ended(void)
             for (k = 0; s_action[k] && k < PAGE_HREF_MAX - 1; k++) f->action[k] = s_action[k];
             f->action[k] = 0;
             f->post = eq_ci(s_method, "post");
+            f->node = fl_num(s_fl);
             s_form = s_pg->nforms++;
         }
         return;
@@ -1230,6 +1524,18 @@ static void tag_ended(void)
         /* Its own words are its label: they become the link, in brackets. */
         if (!s_tag_close) {
             int n, fi;
+            if (eq_ci(s_type, "flopos") && s_pg) {   /* a button a script answers */
+                char where[24];
+                flush_word();
+                fmt_str(where, sizeof where, "flopos:node:%s", s_fl);
+                for (n = 0; where[n] && n < PAGE_HREF_MAX - 1; n++) s_href[n] = where[n];
+                s_href[n] = 0;
+                s_linkid = add_link();
+                s_link = 1;
+                s_button = -2;
+                push('[', C_GREY);
+                return;
+            }
             if (eq_ci(s_type, "button") || eq_ci(s_type, "reset")) return;
             decode_entities(s_val);
             for (n = 0; s_val[n]; n++) { }
@@ -1240,7 +1546,7 @@ static void tag_ended(void)
             s_link = 1;
             s_button = fi;
             push('[', C_GREY);
-        } else if (s_button >= 0) {
+        } else if (s_button >= 0 || s_button == -2) {
             push(']', C_GREY);
             flush_word();
             s_link = 0;
@@ -1340,7 +1646,9 @@ static u32 entity_code(const char *n)
         { "szlig", 0xDF }, { "egrave", 0xE8 }, { "agrave", 0xE0 },
         { "ccedil", 0xE7 }, { "ntilde", 0xF1 }, { "Eacute", 0xC9 },
         { "euro", 0x20AC }, { "pound", 0xA3 }, { "deg", 0xB0 },
-        { "sect", 0xA7 }, { 0, 0 } };
+        { "sect", 0xA7 }, { "larr", 0x2190 }, { "rarr", 0x2192 },
+        { "uarr", 0x2191 }, { "darr", 0x2193 }, { "laquo", 0xAB },
+        { "raquo", 0xBB }, { "times", 0xD7 }, { "reg", 0xAE }, { 0, 0 } };
     int i, j;
 
     if (n[0] == '#') {
@@ -1408,6 +1716,8 @@ static void attr_begin_value(void)
             { "type", s_type, 12 }, { "name", s_fname, 64 },
             { "http-equiv", s_equiv, 16 }, { "content", s_content, 256 }, { "src", s_src, PAGE_HREF_MAX },
             { "value", s_val, VAL_MAX }, { "size", s_size, 6 }, { "cols", s_size, 6 },
+            { "fl", s_fl, 8 }, { "c", s_flc, 6 }, { "a", s_fla, 6 }, { "al", s_flal, 4 },
+            { "in", s_flin, 4 }, { "n", s_fln, 8 }, { "tx", s_fltx, 6 }, { "tw", s_fltw, 6 },
         };
         int k, j;
         for (k = 0; k < (int)(sizeof more / sizeof more[0]); k++) {
@@ -1443,6 +1753,7 @@ static void tag_start(void)
     s_has_val = 0;
     s_checked = 0;
     s_equiv[0] = s_content[0] = s_src[0] = 0;
+    s_fl[0] = s_flc[0] = s_fla[0] = s_flal[0] = s_flin[0] = s_fln[0] = s_fltx[0] = s_fltw[0] = 0;
     s_hstate = H_TAG;
 }
 
@@ -1559,6 +1870,9 @@ static void html_byte(u8 b)
 
 static void filter_reset(int html)
 {
+    s_sdepth = s_bdepth = s_indent = 0;
+    s_tab_ok = s_in_cell = s_ntcell = s_tab_used = 0;
+    s_scol = s_sat = 0;
     s_html = html;
     s_hstate = H_TEXT;
     s_word_len = s_col = s_space = 0;
@@ -1572,6 +1886,7 @@ static void filter_reset(int html)
 static void body_byte(u8 b)
 {
     if (s_pg) sniff(b);
+    if (s_capture) dom_byte(b);
     if (s_html) { html_byte(b); return; }
     if (b == '\n') { flush_word(); out_newline(); s_col = 0; s_newlines = 1; return; }
     if (b == '\r') return;
@@ -1589,6 +1904,64 @@ static void body_byte(u8 b)
         return;
     }
     emit(b);
+}
+
+/* ---- for the tree (dom.c) and the scripts (script.c) ----------------------- */
+void (*web_page_loaded)(Page *pg, const Url *u);
+
+void web_html_byte(u8 b) { html_byte(b); }
+void web_html_flush(void) { flush_word(); }
+u32  web_entity(const char *name) { return entity_code(name); }
+
+/* Lines first..last of the page, moved to the middle (1) or the right (2)
+ * of the width, the boxes on them too. */
+static void align_lines(int first, int last, int how)
+{
+    int l, w = s_pg->width;
+    for (l = first; l <= last && l < s_pg->lines; l++) {
+        PageCell *row = &s_pg->cells[l * w];
+        int used = w, lead = 0, shift, k;
+        while (used > 0 && row[used - 1].ch == ' ' && !row[used - 1].link) used--;
+        while (lead < used && row[lead].ch == ' ' && !row[lead].link) lead++;
+        if (!used) continue;
+        shift = how == 1 ? (w - (used - lead)) / 2 - lead : w - used - 1;
+        if (shift <= 0) continue;
+        for (k = used - 1; k >= 0; k--) row[k + shift] = row[k];
+        for (k = 0; k < shift; k++) { row[k].ch = ' '; row[k].col = C_TEXT; row[k].link = 0; row[k].at = 0; }
+        for (k = 0; k < s_pg->nfields; k++) if (s_pg->fields[k].line == l && s_pg->fields[k].width) s_pg->fields[k].col = (u16)(s_pg->fields[k].col + shift);
+    }
+}
+
+/* The page drawn again, from its tree: what scripts and styles made of
+ * it.  What the page is (its address, title, how it came) stays. */
+void web_rerender(Page *pg)
+{
+    static Page keep;
+    Page *was = s_pg;
+    keep = *pg;
+    s_pg = pg;
+    page_clear(pg);
+    s_rerender = 1;
+    filter_reset(1);
+    dom_render(pg);
+    flush_word();
+    s_rerender = 0;
+    {
+        int i;
+        for (i = 0; i < (int)sizeof pg->title; i++) pg->title[i] = keep.title[i];
+    }
+    pg->status = keep.status; pg->secure = keep.secure; pg->pq = keep.pq;
+    pg->checked = keep.checked; pg->untrusted = keep.untrusted; pg->bytes = keep.bytes;
+    pg->refresh = keep.refresh;
+    {
+        int i;
+        for (i = 0; i < (int)sizeof pg->url; i++) pg->url[i] = keep.url[i];
+        for (i = 0; i < (int)sizeof pg->who; i++) pg->who[i] = keep.who[i];
+        for (i = 0; i < (int)sizeof pg->note; i++) pg->note[i] = keep.note[i];
+        for (i = 0; i < (int)sizeof pg->refresh_url; i++) pg->refresh_url[i] = keep.refresh_url[i];
+    }
+    pg->note_col = keep.note_col;
+    s_pg = was;
 }
 
 /* A page written by FLOPOS itself, through the same reader. */
@@ -1659,6 +2032,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     s_secure = u->secure;
     s_refresh_go = 0;
     s_nsniffed = 0; s_sn_on = 0; s_bare = 0; s_azura = 0; s_rb[0] = 0;
+    s_nm_on = 0; s_nm[0] = 0; s_nm_age = 0xFFFFFFFFu;
     if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->who[0] = 0; }
     if (!s_pg) main_pump(1);
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) {
@@ -1697,10 +2071,12 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                 "Connection: close\r\n",
                 u->path, u->host, A->os_version(), (u32)postlen);
     else
+        /* A sound file is asked for from its first byte on, as browsers'
+         * players ask for one: some servers send recordings only so. */
         fmt_str(req, sizeof req,
                 "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
-                "Accept: text/html, text/plain, */*\r\nIcy-MetaData: 1\r\nConnection: close\r\n",
-                u->path, u->host, A->os_version());
+                "Accept: text/html, text/plain, */*\r\nIcy-MetaData: 1\r\n%sConnection: close\r\n",
+                u->path, u->host, A->os_version(), sound_file(u->path) ? "Range: bytes=0-\r\n" : "");
     for (n = 0; req[n]; n++) { }
     conn_write((const u8 *)req, n);
     {
@@ -1818,6 +2194,8 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                     counting = 1;
                 } else {
                     filter_reset(html);
+                    s_capture = html && s_pg && web_page_loaded && status >= 200 && status < 300;
+                    if (s_capture) dom_begin();
                 }
             }
         }
@@ -1843,6 +2221,11 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
     flush_word();
     conn_close();
+    if (s_capture) {
+        s_capture = 0;
+        dom_end();
+        if (!asked && !s_refresh_go) web_page_loaded(s_pg, u);
+    }
     if (s_pg && !media && !counting && in_body) {
         char t[80];
         if (s_azura && status == 200) azuracast(u);

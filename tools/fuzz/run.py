@@ -149,6 +149,51 @@ text</textarea><button type="submit" name="go" value="1">Go</button><input type=
             resp("song-" + f + ".bin", b, ctype="application/octet-stream",
                  extra='Content-Disposition: attachment; filename="%s"\r\nSet-Cookie: dl=1\r\n' % f)
 
+    # Styles and scripts: the tree, the style sheets, and (when the fuzzer
+    # allows the site) the door, all get pieces of this.
+    css = """<html><head><title>styled</title><style>
+@media (max-width: 600px) { .a { display: none } } @media screen and (min-width: 700px), print { .b { color: #f00 } }
+@supports (display: grid) { .g { display: grid } } @font-face { font-family: x } @keyframes k { from { opacity: 0 } }
+div > p + p ~ span.x.y#z[data-k="v"]:not(.q):nth-child(2n+1):first-child { font-weight: bold !important; margin: 0 0 0 40px }
+ul li:hover a, .menu:focus-within, a::before, :is(.p, .q) > b { display: block; content: "x" }
+.pop { position: fixed } .sr { position: absolute; width: 1px; clip: rect(0 0 0 0) } [hidden] { display: none }
+h1 { text-align: center; text-transform: uppercase; color: rgb(10, 200, 30) } nav ul { list-style: none; padding-left: 2em }
+/* a comment */ .x { color: hsl(120, 50%, 50%); color: tomato } .y { }} .broken { color: </style></head>
+<body><h1 class="a b">Title</h1><div class="pop">Pop</div><nav><ul><li><a href="/">Home</a></li></ul></nav>
+<p class="sr">sr</p><span class="x y" id="z" data-k="v" style="color: red; font-style: italic">styled</span>
+<p hidden>gone</p><div onclick="alert(1)">click</div><button type="button" id="b">B</button>
+<script>document.getElementById('b').addEventListener('click', function () { this.textContent = 'pressed'; });
+var l = document.querySelectorAll('div > p, .x'); for (var i = 0; i < l.length; i++) l[i].classList.toggle('on');
+fetch('/api').then(function (r) { return r.json(); }).then(function (j) { document.body.insertAdjacentHTML('beforeend', '<p>' + j.a + '</p>'); });
+setTimeout(function () { document.title = 'later'; }, 10); document.write('<p>written</p>');</script>
+<script src="/app.js"></script><script src="http://elsewhere.test/x.js"></script></body></html>"""
+    resp("styled.http", css)
+
+    # Tables: laid out in columns (dom.c, web.c), with everything awkward.
+    rows = "".join("<tr><td>%d</td><td><a href='/r%d'>row %d</a></td><td>%s</td></tr>" % (i, i, i, "word " * (i * 7 % 40)) for i in range(60))
+    resp("tables.http", """<html><head><title>tables</title><style>.h{display:none}</style></head><body>
+<table><caption>c</caption><thead><tr><th>a<th>b<th colspan=999>c</tr></thead><tbody>%s</tbody></table>
+<table><tr><td><table><tr><td>in<td>side</table><td>outer</table>
+<table><tr><td colspan=0>x<td colspan=-3>y<td colspan=12>z<td>w</table>
+<table><tr>%s</tr></table>
+<table><tr><td><form><input name=a size=80><select name=s><option>1<option>2</select><textarea name=t>x</textarea><input type=checkbox name=c></form><td><h1>head</h1><p>para<ul><li>a<li>b</ul><hr><pre>pre
+text</pre></table>
+<table><tr><td></td><td></td></tr><tr></tr><tr><td class=h>hidden<td align=right>right<td align=center>mid</table>
+<table><tr><td>%s<td>long</table>
+<table><tbody><tr><td>1<td>2</tbody><tfoot><tr><td>f<td>g</tfoot></table>
+</body></html>""" % (rows, "<td>c</td>" * 40, "x" * 2900))
+
+    # A radio page: a player in an attribute, <audio>, and streams named in
+    # JSON, with escapes in the names.
+    resp("player.http", """<html><head><title>radio</title></head><body>
+<div class="play" url="/m/1" data-stream="https://s.test/a.mp3"><div>Listen Live</div></div>
+<a href="/x"><span data-audio="/in/a/link.mp3">inside a link</span></a>
+<audio controls src="/a.ogg"></audio><video><source src="/v.mp4"><source src="/b.aac"></video>
+<span data-src="/c.m3u8?x=1#y">c</span><span data-src="/not-sound.png">d</span>
+<script type="application/json">{"ch":[{"name":"Main \\u00e5 \\"q\\" \\u","stream_url":"https:\\/\\/a.test\\/l\\/main\\/radio.mp3"},
+{"title":"\\u0420\\u0430\\u0434\\u0438\\u043e","listen_url":"http://b.test:8000/stream"},{"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","mp3":"/m.mp3"},
+{"name":"left open</script><p>&larr; back &rarr; &laquo;x&raquo; &times;</p></body></html>""")
+
 def seeds_tls(d):
     """Real conversations: an authority and two sites' certificates are
     made, openssl serves them on this PC in each form FLOPOS takes, and

@@ -9,8 +9,14 @@
  *
  * Ways in: `browzer fetch`, which reads a page out as text, and the
  * browser proper, which lays it out, follows links, fills in forms and
- * plays what it is given. */
+ * plays what it is given.  Every page is built into a tree and its
+ * styles read (dom.c, css.c).  In half the runs the site's scripts are
+ * allowed, and a pretend script room knocks on browzer's door (script.c)
+ * with requests made from the input -- the door must survive anything
+ * the real room could send. */
 #include "app.h"
+#include "../../room/room.h"
+#include "../../room/door.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
@@ -58,14 +64,22 @@ static int key(int *mods)
     return keys[(s_mode >> (n % 13) ^ (u32)n * 7) % (sizeof keys / sizeof keys[0])];
 }
 
+static u8 s_sites[2048];                 /* SITES.TXT: fuzz.test allowed, half the time */
 static int  file_find(const char *name, AppFile *f)
 {
+    if (!strcmp(name, "SITES.TXT")) { f->first = 3; f->size = sizeof s_sites; return 1; }
     if (strcmp(name, "BOOKMARK.TXT")) return 0;
     f->first = 2; f->size = sizeof s_marks;
     return 1;
 }
-static int  file_read(const AppFile *f, u8 *buf, u32 max) { u32 n = f->size < max ? f->size : max; memcpy(buf, s_marks, n); return (int)n; }
-static int  file_write(const AppFile *f, const u8 *buf) { memcpy(s_marks, buf, f->size); return 1; }
+static int  file_read(const AppFile *f, u8 *buf, u32 max)
+{
+    const u8 *src = f->first == 3 ? s_sites : s_marks;
+    u32 n = f->size < max ? f->size : max;
+    memcpy(buf, src, n);
+    return (int)n;
+}
+static int  file_write(const AppFile *f, const u8 *buf) { memcpy(f->first == 3 ? s_sites : s_marks, buf, f->size); return 1; }
 static void file_each(void (*fn)(const char *, u32, void *), void *ctx) { (void)fn; (void)ctx; }
 static void format(char *out, u32 cap, const char *fmt, ...)
 {
@@ -124,6 +138,51 @@ static int  inv_move(const char *a, const char *b) { (void)a; (void)b; return 1;
 static u32  inv_room(void) { return 600000; }
 static const char *inv_why(void) { return "no."; }
 static void then(const char *c) { (void)strlen(c); }
+static void win_ember(int on) { (void)on; }
+static void crypt_key(const char *p, const u8 *salt, u32 sl, u32 it, u8 key[32]) { (void)p; (void)salt; (void)sl; (void)it; memset(key, 0, 32); }
+static void crypt_seal(int a, const u8 k[32], const u8 n[12], const u8 *aad, u32 al, const u8 *in, u32 len, u8 *out, u8 tag[16])
+{ (void)a; (void)k; (void)n; (void)aad; (void)al; memcpy(out, in, len); memset(tag, 0, 16); }
+static int  crypt_open(int a, const u8 k[32], const u8 n[12], const u8 *aad, u32 al, const u8 *in, u32 len, const u8 tag[16], u8 *out)
+{ (void)a; (void)k; (void)n; (void)aad; (void)al; (void)tag; memcpy(out, in, len); return 1; }
+static void rnd(u8 *out, u32 n) { u32 i; for (i = 0; i < n; i++) out[i] = (u8)(i * 7); }
+static int  clock6(u8 out[6]) { out[0] = 26; out[1] = 11; out[2] = 16; out[3] = 12; out[4] = 0; out[5] = 0; return 1; }
+static int  glyph(int ch, u8 cols[5]) { (void)ch; memset(cols, 0, 5); return 1; }
+
+/* A pretend script room: every task that would run script knocks on the
+ * door a few times with requests made from the input. */
+static u32 s_knock;                      /* where in the input the requests come from */
+static int room_open(void) { return 1; }
+static const char *room_why(void) { return "pretend"; }
+static int room_task(const u8 *task, u32 len, u8 *answer, u32 cap, u32 ms_, int (*door)(u8 *, u32, u32), u8 *buf, u32 bcap)
+{
+    int k, knocks = 0;
+    (void)ms_;
+    if (len && (task[0] == T_RUN || task[0] == T_CALL || task[0] == T_TIMERS)) knocks = 1 + (int)(s_mode >> 24) % 24;
+    for (k = 0; k < knocks && s_len; k++) {
+        u32 n = 0, f, at = s_knock;
+        u8 op = (u8)(1 + s_in[at % s_len] % (D_COUNT - 1));
+        buf[n++] = op;
+        for (f = 0; f < 4 && n + 300 < bcap; f++) {
+            u8 b = s_in[(at + 1 + f) % s_len];
+            if (b & 1) {                  /* a number: small, mostly an element */
+                u32 v = (b & 2) ? (u32)(s_in[(at + 5 + f) % s_len] % 64) : (u32)s_in[(at + 9 + f) % s_len] * 977u;
+                buf[n++] = (u8)v; buf[n++] = (u8)(v >> 8); buf[n++] = (u8)(v >> 16); buf[n++] = (u8)(v >> 24);
+            } else {                      /* a text: a piece of the input   */
+                u32 l = (u32)(b >> 1) % 200, i;
+                if ((b & 0xF0) == 0xF0) l = 0xFFFFFF00u;  /* a length that lies */
+                buf[n++] = (u8)l; buf[n++] = (u8)(l >> 8); buf[n++] = (u8)(l >> 16); buf[n++] = (u8)(l >> 24);
+                if (l > 200) l = 0;
+                for (i = 0; i < l && n < bcap; i++) buf[n++] = s_in[(at + 13 + i) % s_len];
+            }
+        }
+        s_knock = at + 17 + (u32)op;
+        (void)door(buf, n, bcap);
+    }
+    if (cap < 6) return -1;
+    memset(answer, 0, 6);
+    return 6;
+}
+
 
 static const Api s_api = {
     APP_API_VERSION,
@@ -134,6 +193,8 @@ static const Api s_api = {
     audio_open, audio_space, audio_queued, audio_write, audio_close, audio_feeder,
     audio_listen, audio_heard,
     inv_list, inv_stat, inv_read, inv_write, inv_mkdir, inv_remove, inv_move, inv_room, inv_why, then,
+    win_ember, crypt_key, crypt_seal, crypt_open, rnd, clock6, glyph,
+    room_open, room_task, room_why,
 };
 
 void fuzz_one(const u8 *data, u32 len, u32 mode)
@@ -143,6 +204,9 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
     s_in = malloc(len ? len : 1);
     memcpy(s_in, data, len);
     s_len = len; s_at = 0; s_mode = mode; s_opens = 0; s_keys = 0; s_quiet = 0; s_feeder = 0;
+    s_knock = 0;
+    memset(s_sites, ' ', sizeof s_sites);
+    if (mode & 8) memcpy(s_sites, "fuzz.test\n", 10);   /* scripts allowed, half the time */
     argv[0] = a0;
     if ((mode & 7) == 0) { argv[1] = a1; argv[2] = url; app_main(&s_api, 3, argv); }
     else                 { argv[1] = url; app_main(&s_api, 2, argv); }

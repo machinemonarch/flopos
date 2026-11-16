@@ -25,7 +25,7 @@ OLD="$1"; NEW="$2"; DIR="$3"
 [ -z "$(ls -A "$DIR")" ] || { echo "keepfiles: $DIR is not empty" >&2; exit 2; }
 export MTOOLS_SKIP_CHECK=1
 
-for f in JOURNAL.TXT STATE.BIN BOOKMARK.TXT; do
+for f in JOURNAL.TXT STATE.BIN BOOKMARK.TXT SITES.TXT; do
     if mcopy -n -i "$OLD" "::$f" "$DIR/$f" 2>/dev/null; then
         want=$( { mcopy -n -i "$NEW" "::$f" - 2>/dev/null || true; } | wc -c)
         have=$(stat -c%s "$DIR/$f")

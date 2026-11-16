@@ -27,7 +27,7 @@ void *memmove(void *d, const void *s, u32 n);
 #define C_DIM      A_DIM
 #define C_BRIGHT   A_BRIGHT
 #define C_ACCENT   A_ACCENT
-#define C_KEY      A_KEY
+#define C_KEY      A_BANANA           /* keys are yellow in browzer (Max, 2026-11-16) */
 #define C_GREY     A_GREY
 #define WIN_PAPER  A_PAPER
 #define WIN_HILITE A_HILITE
@@ -93,6 +93,7 @@ typedef struct { char host[64]; char path[URL_PATH_MAX]; u16 port; int secure; }
 int    url_parse(const char *u, Url *out);
 int    web_show_text(char *dst, int cap, const char *src);   /* a station's UTF-8 or Latin-1, for the screen */
 void   url_text(const Url *u, char *out, int max);
+const char *web_first_sound(void);       /* the first stream the page names, or 0 */
 int    url_resolve(const char *base, const char *href, char *out, int max);
 
 /* ---- a page ------------------------------------------------------------------ */
@@ -107,10 +108,10 @@ int    url_resolve(const char *base, const char *href, char *out, int max);
  * field it belongs to (0 for none). */
 /* ch is a character, wide ones too (Cyrillic, Hebrew); packed, since a
  * page is a great many of them. */
-typedef struct __attribute__((packed)) { u16 ch; u8 col; u16 link; } PageCell;
+typedef struct __attribute__((packed)) { u16 ch; u8 col; u16 link; u8 at; } PageCell;   /* at: AT_BOLD... */
 
 /* A <form>: where it is sent, and how. */
-typedef struct { char action[PAGE_HREF_MAX]; u8 post; } PageForm;
+typedef struct { char action[PAGE_HREF_MAX]; u8 post; u16 node; } PageForm;   /* node: in the tree (dom.c) */
 
 /* The kinds of field browzer understands. */
 enum { FK_TEXT = 1, FK_HIDDEN, FK_SUBMIT, FK_AREA, FK_PASSWORD, FK_CHECK, FK_RADIO, FK_SELECT };
@@ -130,7 +131,9 @@ typedef struct {
     u16 line, col, width;
     u32 name, nlen;
     u32 val, vlen, vcap;
+    u16 node;                            /* its element in the tree, 0: none */
 } PageField;
+#define FORM_NONE 0xFF                   /* a field outside any form (scripts use them) */
 
 typedef struct {
     PageCell *cells;                     /* max_lines rows of width         */
@@ -160,6 +163,7 @@ typedef struct {
     u16       *link_field;               /* PAGE_LINKS + 1: link -> field+1 */
     PageOption *opts;                    /* PAGE_OPTIONS                    */
     int        nopts;
+    u16       *link_node;                /* PAGE_LINKS + 1: link -> element in the tree */
 } Page;
 
 void   page_clear(Page *pg);
@@ -182,5 +186,9 @@ extern int  (*web_media_start)(const char *ctype, const char *url, u32 length,
                                u32 metaint, const char *station);
 extern int  (*web_media_bytes)(const u8 *p, int n);
 extern void (*web_media_end)(int whole);
+
+/* A page that has finished loading, with its tree built (dom.c): browzer
+ * sets this, and does styles and scripts there. */
+extern void (*web_page_loaded)(Page *pg, const Url *u);
 
 #endif
