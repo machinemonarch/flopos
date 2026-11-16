@@ -49,6 +49,12 @@ without it. Each version's notes are also written next to its image, as
 - The project's files are arranged by kind: the code in `src/`, what
   builds and writes it in `tools/`, the tests in `test/`, and what a tool
   made in a `gen/` folder beside the code it belongs to.
+- What is built goes in `build/` (the tests' output too, one folder per
+  test); `dist/` holds only the finished floppy image.
+- `make wire` talks to the laptop over the serial line and adds every
+  session to one log, `logs/serial.log`.
+- The documentation is less than half as long: how-tos kept, history
+  and explanations the code already gives taken out.
 - `tools/floppy/writefloppy.sh --dev` writes your own build instead of
   the newest release.
 

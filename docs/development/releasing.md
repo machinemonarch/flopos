@@ -2,40 +2,23 @@
 
 ## Version numbers
 
-`MAJOR.MINOR.PATCH`, kept in `VERSION`:
-
-- **Minor** (1.10.0 → 1.11.0) for new things.
-- **Patch** (1.10.0 → 1.10.1) for fixes.
-
-`version` says which one is running.
+`MAJOR.MINOR.PATCH`, kept in `VERSION`: **minor** for new things,
+**patch** for fixes. `version` says which is running.
 
 ## The changelog
 
-`CHANGELOG.md` is the story of every release, newest first. At its very
-top is a heading, `## Unreleased`, with a list of what has changed since
-the last release. Whenever something changes that someone using FLOPOS
-would notice, a line is added to that list, in plain words, as the user
-sees it ("Hebrew is drawn right to left"), not as the code does it.
-
-When a release is made, that list becomes the new version's notes: it is
-moved under the version number and copied beside the image. That is why
-a release refuses to start when the list is empty: there would be nothing
-to say about it. Keeping the list in the changelog itself, rather than in
-a separate file, means anyone reading the repository can see what the
-next release will bring.
+`CHANGELOG.md`, newest first. Its top heading is `## Unreleased`: whenever
+something changes that a user would notice, add a line there, in plain
+words as the user sees it ("Hebrew is drawn right to left").
 
 ## Making a release
 
-1. Check the list under `## Unreleased` in `CHANGELOG.md` says everything
-   that changed.
-2. Run `make release PART=minor` (or `PART=patch`).
+Check the Unreleased list says everything, then:
 
-The release refuses to start if `## Unreleased` is empty. Otherwise it:
+    make release PART=minor        (or PART=patch)
 
-1. bumps the version and regenerates `src/kernel/gen/version.h`
-2. builds everything from clean
-3. copies the image to `releases/flopos-X.Y.Z.img`, with its `.used` file
-4. moves the Unreleased notes under the new version number with today's
-   date, and writes them beside the image as `releases/flopos-X.Y.Z.txt`
-
-Any old version can be put back on a floppy from `releases/`.
+It refuses if Unreleased is empty. Otherwise it bumps the version
+(`src/kernel/gen/version.h`), builds from clean, copies the image to
+`releases/flopos-X.Y.Z.img`, and moves the Unreleased notes under the new
+version with today's date, also writing them to
+`releases/flopos-X.Y.Z.txt`.

@@ -122,7 +122,6 @@ files. It just also happens to boot.
 - [Techniques](docs/design/techniques.md): how radio plays without a pause on a 120 MHz Pentium, and the other inventions
 - [The cassette format](docs/design/cassette-format.md): how files become sound on a tape, and are read back
 - [Security](docs/design/security.md): the encryption, how a site proves who it is, and the security review
-- [Lessons on the way](docs/design/lessons.md): what the laptop and the software taught, the hard way
 
 **The project**
 - [Roadmap](docs/project/roadmap.md): ideas waiting their turn, and open security items

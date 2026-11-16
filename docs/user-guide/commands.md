@@ -1,248 +1,134 @@
 # Commands
 
-This is cyberdelia, the shell, where you land once the wizard at the gate
-has had his riddle answered (see Getting started[^1]).
+Type a word at `here>` and press Enter; capitals don't matter. `help`
+lists the everyday words. A word FLOPOS doesn't know goes into the
+journal, and the wizard answers it with a line from his tiny language
+model: he knows no facts, only sentences to put your word into.
 
-Type a word at `here>` and press Enter. Capital letters don't matter. A word
-FLOPOS doesn't know goes into the journal, so it can be considered for next
-time, and the wizard answers it.
-
-**The wizard's answers.** He has a very small language model of his own
-(a quarter of a megabyte on the floppy, read at boot) and says one line
-with it, in one of his moods: tired, delighted, scheming, paranoid,
-singing, or reading you the rules. He doesn't understand what was typed
-and knows no facts; he only puts your word into a sentence of his. Most
-lines make sense. About one in twenty comes out as old-book gibberish,
-which is him trying Shakespeare. On a machine with no floating-point unit
-or too little memory he stays silent, and FLOPOS says "I don't know that
-word." instead.
-
-`help` lists the everyday words. The behind-the-scenes ones at the end of
-this page are left out of `help` on purpose.
+FLOPOS also answers ordinary questions and pleasantries (*who are you*,
+*how are you*, *hello* / *hej*, *thanks* / *tack*, *what time is it* and
+more).
 
 ## Being here
 
-- **`whoami`**: Who you are.
-- **`look`**: What is around.
-- **`here`**: Where you are.
-- **`time`**: The time and date, how long FLOPOS has been awake, whether the clock's battery is good (as the clock chip and the BIOS see it), and how far out the network found the clock when it last set it.
-- **`sys`**: What this machine actually is: processor, measured speed, memory, screen mode, panel.
-- **`version`**: Which FLOPOS this is.
-- **`help`**: The list.
-
-FLOPOS also understands a handful of ordinary questions and pleasantries,
-however they are typed: *who are you*, *what's your name*, *how are you*,
-*are you alive*, *are you real*, *are you there*, *hello* / *hej*,
-*thanks* / *tack*, *sorry*, *please*, *yes* / *ja*, *no* / *nej*,
-*why*, *what now*, *good night*, and a few more. "What time is it" shows the
-clock. And when it doesn't understand, its resident wizard will, in his
-finite knowledge, make sure to answer you with something you'll probably
-struggle to understand instead.
+- **`whoami`, `look`, `here`:** Who and where you are.
+- **`time`:** Time and date, uptime, the clock battery, and how far off the network found the clock.
+- **`sys`:** Processor, speed, memory, screen, panel.
+- **`version`:** Which FLOPOS this is.
 
 ## Light, sound and screen
 
-- **`mood`**: Changes the light: the colours of the moving background. Moves to the next one, or name it: `mood dusk`. The five are STILL, WARM, DEEP, DUSK and VOID.
-- **`listen`**: A different rhythm: JUNGLE, BREAKS, DRIFT, ACID, TEMPLE, SPIRAL.
-- **`sound` / `quiet`**: Music on or off.
-- **`whaaat`**: Pulls the screen through a hole in itself, turns it inside out, and drops you back somewhere colder. Say it again to come back up.
-- **`quirks`**: Lines of text sometimes misbehave on purpose. This holds them still, or lets them go again.
-- **`squint`**: Changes the size of the text: easy (100 columns, smooth, the default on the big screen), large (66), close (100) or fine (133).
-- **`keyboard`**: Which country's keys are printed on your keyboard: `keyboard de`. Alone, it says which is in use and lists the others (see Keyboards[^2]).
-- **`screen big` / `screen small`**: 800×600 (the default), or the chunky 320×200 picture. `screen` alone says which is on.
-- **`wide`**: Only at 320×200: stretches the picture to fill the whole panel, or puts it back in its box.
-- **`goaway`**: Wipes the screen.
+- **`mood`:** The next colours for the background, or name one: STILL, WARM, DEEP, DUSK, VOID.
+- **`listen`:** The next rhythm: JUNGLE, BREAKS, DRIFT, ACID, TEMPLE, SPIRAL.
+- **`sound` / `quiet`:** Music on or off.
+- **`whaaat`:** Try it. Again to come back.
+- **`quirks`:** Stops text misbehaving, or lets it again.
+- **`squint`:** Text size: easy (the default), large, close or fine.
+- **`keyboard`:** The layout: `keyboard de`. Alone, lists them.
+- **`screen big` / `screen small`:** 800×600 or 320×200.
+- **`wide`:** At 320×200 only: fill the panel.
+- **`goaway`:** Clear the screen.
 
 ## Remembering
 
-FLOPOS keeps two files on the floppy, `JOURNAL.TXT` and `STATE.BIN`, and
-writes to them only when something asks it to.
+- **`journal`:** What FLOPOS wrote down, including every word it didn't know.
+- **`remember`:** Write everything to the floppy now.
 
-| Word | What it does |
-|---|---|
-| `journal` | Shows what FLOPOS has written down, and every word it didn't recognise. |
-| `remember` | Writes everything to the disk now. |
-
-The journal is plain text, so you can read it on any computer: open
-`JOURNAL.TXT` on the floppy.
+`JOURNAL.TXT` is plain text any computer can read.
 
 ## Programs
 
-- **`inventory`**: Your files and folders: open, rename, move, drop. See The inventory[^3].
-- **`scribe`**: The word processor. `scribe letter` opens or starts `LETTER.MD`. See scribe[^4].
-- **`maelcum`**: Backup to an audio cassette, on one screen; also `maelcum save`, `maelcum load`. See maelcum[^5].
-- **`apps`**: Lists the programs on the floppy. Typing a program's name runs it.
-- **`browzer`**: A small web browser, with forms, styles, and scripts on the sites you allow. An app on the floppy. See browzer[^7].
+- **`inventory`:** Your files and folders. See The inventory[^1].
+- **`scribe`:** The word processor; `scribe letter` opens `LETTER.MD`. See scribe[^2].
+- **`maelcum`:** Backup to cassette. See maelcum[^3].
+- **`browzer`:** The web browser. See browzer[^4].
+- **`apps`:** The programs on the floppy. A program's name runs it.
 
 ## The network
 
-- **`network`**: A menu showing the network card, the connection and the address, where you can choose automatic setup or set it by hand.
-- **`ping place`**: Asks a machine on the network whether it is there and times the answer: `ping example.com`, `ping 1.1.1.1`.
-- **`browzer fetch address`**: Reads a web page out as text in the terminal: `browzer fetch example.com`. (This is browzer, reading instead of showing.)
+- **`network`:** The connection menu.
+- **`ping place`:** `ping example.com`.
+- **`browzer fetch address`:** A page as text in the terminal.
 
-More in The network[^6].
+More in The network[^5].
 
 ## Stopping
 
-- **`wizard`**: Locks the screen: the wizard comes back, and the shell stays hidden until his riddle is answered. Some of the time he has wandered off and left a note asking you to riddle yourself.
-- **`bye`**: Writes everything down and switches the laptop off.
-- **`reboot`**: Starts the machine again.
-
-**Ctrl-Alt-Delete** restarts from anywhere, including the crash screen.
-
-**Ctrl-Shift-F5** switches the screen again, from anywhere. If the screen
-stays black at the start with the machine running behind it, press it:
-nothing needs to be seen to do so.
+- **`wizard`:** Locks the screen until his riddle is answered.
+- **`bye`:** Writes everything down and switches off.
+- **`reboot`:** Starts again.
+- **Ctrl-Alt-Delete:** Restarts from anywhere, the crash screen included.
+- **Ctrl-Shift-F5:** Switches the screen again, from anywhere. For a black screen at the start.
 
 ## The HUD
 
-It's dangerous out there. All cool cyberpunks need one.
-
-**Ctrl-Shift-F10**, from anywhere, opens a small window in the top right
-corner, over whatever is on the screen:
-
-- Bars that move with whatever sound is playing.
-- The battery, as the laptop's power management reports it.
-- **'Thunking**: How busy the processor is.
-- **'Membering:** How much of the memory is in use.
-- A brain, turning (two folded halves with the cleft between them, the
-  cerebellum and the stem), coloured by the two together: blue while the machine
-  is idle, then green, yellow and orange, and red when it works as hard
-  as it can.
-- A command line of its own, which takes the same commands as `here>`.
-
-While it is open its command line has the keys. **Esc** gives them back to
-whatever had them, and leaves it showing; **Ctrl-Shift-F10** again closes
-it. An app can't be started from it while another one is open.
-
-An answer longer than its four lines, such as `help`'s, makes the window
-grow to fit it. **PgUp**, **PgDn** and the arrows scroll through what was
-said, and **Esc** makes it small again.
-
-'Thunking counts the time the processor is not halted, the work done in
-interrupts included (sound is decoded there). 'Membering: counts what is
-claimed: the kernel, its buffers, and the whole of an open app's memory,
-which is why it steps when an app opens and stays still while it runs.
+**Ctrl-Shift-F10** opens a small window in the top right, over anything:
+sound bars, the battery, **'Thunking** (how busy the processor is),
+**'Membering** (memory claimed), a brain coloured blue to red by the two,
+and a command line that takes the same words as `here>`. Esc hands the
+keys back and leaves it showing; Ctrl-Shift-F10 again closes it. Long
+answers make it grow; PgUp, PgDn and the arrows scroll.
 
 ## Keys at the prompt
 
-| Key | What it does |
-|---|---|
-| Left / Right | Move along the line |
-| Home / End, Ctrl-A / Ctrl-E | Jump to the start or end |
-| Backspace / Delete | Remove a character either way |
-| Ctrl-U / Ctrl-K | Remove everything before / after the cursor |
-| Up / Down | Walk back through what you have typed |
-| Page Up / Page Down | Look back through what has scrolled away |
-| Esc | Abandon the line |
-| Ctrl-C | Abandon the line, leaving it on the screen marked `^C` |
+- **Left / Right:** Move along the line.
+- **Home / End, Ctrl-A / Ctrl-E:** Start or end.
+- **Backspace / Delete:** Remove a character.
+- **Ctrl-U / Ctrl-K:** Remove before / after the cursor.
+- **Up / Down:** Earlier lines.
+- **PgUp / PgDn:** Scroll back.
+- **Esc:** Drop the line.
+- **Ctrl-C:** Drop the line, leaving it on screen marked `^C`.
 
 ## Keyboards
 
-FLOPOS starts on the **Swedish** keyboard. `keyboard` and a country's code
-changes it, for the keys printed on yours:
+FLOPOS starts on **Swedish**. `keyboard` and a code changes it, and the
+choice is kept on the floppy (a new release starts on Swedish again):
 
-| Code | Keyboard |
-|---|---|
-| `se` | Swedish (the default) |
-| `fi` | Finnish, the same keys as Swedish |
-| `no` | Norwegian |
-| `dk` | Danish |
-| `us` | American |
-| `uk` | British (`gb` works too) |
-| `de` | German |
-| `fr` | French |
-| `be` | Belgian |
-| `es` | Spanish |
-| `it` | Italian |
-| `nl` | Dutch: the American keys, which is what the Dutch type on |
-| `ro` | Romanian (the standard layout: ă î â ș ț beside P and L) |
-| `bg` | Bulgarian (BDS) |
-| `ua` | Ukrainian |
-| `il` | Hebrew (`he` works too) |
-| `yi` | Yiddish |
+`se` Swedish, `fi` Finnish, `no` Norwegian, `dk` Danish, `us` American,
+`uk` British (or `gb`), `de` German, `fr` French, `be` Belgian, `es`
+Spanish, `it` Italian, `nl` Dutch (the American keys), `ro` Romanian,
+`bg` Bulgarian (BDS), `ua` Ukrainian, `il` Hebrew (or `he`), `yi`
+Yiddish.
 
-The choice is kept on the floppy, so it is still there after a restart.
-Writing a new release onto the floppy starts it on Swedish again.
+- **Lost?** Ctrl-Shift-F1 opens a list of every keyboard, from anywhere. Arrows pick, Enter chooses, Esc leaves.
+- **Two alphabets:** On Bulgarian, Ukrainian, Hebrew and Yiddish, Alt+Shift switches to the American keys and back. Ctrl shortcuts go by the Latin letter on the key.
+- **Right to left:** Hebrew and Yiddish are drawn right to left, numbers and brackets the right way; text is saved in typed order, as ordinary Unicode.
+- **Accent keys** wait for the next letter: ´ then e is é. Accent then space types the accent alone.
+- **AltGr** is the right Alt: on Swedish, `@` is AltGr-2, `\` AltGr-plus, `€` AltGr-E.
 
-**Lost?** Ctrl, Shift and F1 together open a small window listing every
-keyboard, anywhere, in an app too. The F keys are in the same place on
-every keyboard, so this works whatever is chosen. The arrows pick, Enter
-chooses, Esc leaves it as it was. Swedish is at the top.
+**Yiddish** is the Hebrew keyboard with its own letters on AltGr (keys
+named by their Latin letter):
 
-**Two alphabets.** The Bulgarian, Ukrainian, Hebrew and Yiddish keyboards
-type Latin letters too: Alt and Shift pressed together switch to the
-American keys and back. Ctrl shortcuts such as Ctrl-S work from the Latin
-letter on the key, whichever side is in use.
+- **AltGr:** T אַ, Y װ, G ױ, H ײ, J יִ, U וּ, P פּ, F כּ, A שׂ, C בֿ, comma תּ.
+- **AltGr-Shift:** T אָ, H ײַ, P פֿ.
 
-**Right to left.** Hebrew and Yiddish are drawn right to left: a run of
-Hebrew words, with a number after it, reads from its right end, while the
-English around it still reads left to right. Brackets turn to face the
-right way, and numbers keep their own order. Text is kept in the order it
-was typed, so a saved document is ordinary Unicode any computer reads.
-
-**Yiddish** is the Hebrew keyboard, with Yiddish's own letters on AltGr:
-
-| AltGr and | Types | AltGr, Shift and | Types |
-|---|---|---|---|
-| T | אַ | T | אָ |
-| Y | װ | H | ײַ |
-| G | ױ | P | פֿ |
-| H | ײ | | |
-| J | יִ | | |
-| U | וּ | | |
-| P | פּ | | |
-| F | כּ | | |
-| A | שׂ | | |
-| C | בֿ | | |
-| , | תּ | | |
-
-The keys are named by the Latin letter printed on them. The Hebrew
-keyboard has װ ױ ײ on AltGr Y, G, H as well.
-
-Every key types what is printed on it, AltGr (the right Alt) included:
-on the Swedish keyboard `"` is Shift-2, `/` is Shift-7, `@` is AltGr-2,
-`\` is AltGr and the plus key, `€` is AltGr-E. The accent keys wait for
-the next letter, as they do on any PC: ´ then e is é, ¨ then u is ü,
-^ then o is ô. An accent key and then space types the accent alone.
-
-The letters these keyboards need are in the font, in both text sizes:
-å ä ö, æ ø, ü ß, é è ê ë, à â, ì í î ï, ò ó ô, ù ú û, ñ, ç, ÿ, ă ș ț and
-their capitals, £ € § ° µ ¡ ¿, the Cyrillic letters Bulgarian and
-Ukrainian use (є і ї ґ among them), and the Hebrew letters with Yiddish's
-pointed ones. scribe saves them as UTF-8, so they read right on any other
-computer; browzer shows them on pages. Signs the font lacks (the French ²,
-the Spanish º and ª, ¬, ½, ¤, №, the shekel) type nothing.
-
-File names in the inventory stay plain Latin letters and digits, as FAT12
-on any PC expects. The address line in browzer takes Latin letters only.
+Signs the font lacks (² º ª ¬ ½ ¤ № ₪) type nothing. Inventory names stay
+plain Latin letters and digits, as FAT12 expects.
 
 ## Behind the scenes
 
-These are for finding out what is wrong. They are left out of `help`, and
-`report` runs all of them at once and sends the results down the serial
-cable, so normally you only ever need `report`.
+Left out of `help`; for finding faults. `report` runs them all and sends
+the results down the serial line.
 
-- **`report`**: Everything below, sent down the serial cable in one go.
-- **`vesa`**: What the video card can do: its memory and screen modes.
-- **`card`**: What is in the two PC Card slots, as the cards describe themselves. `card raw` shows their raw bytes.
-- **`net`**: Switches the network card on and reports what it found.
-- **`dsp`**: Finds the Sound Blaster's sample player, plays a short chime through it, and measures how fast the card really takes samples.
-- **`ip`**: The address, mask, way out (gateway) and name server. `ip 192.168.1.50 255.255.255.0 192.168.1.1` sets them by hand.
-- **`crypto`**: Checks every piece of the encryption code against known answers, and times the slow parts.
-- **`wire`**: The serial line: its settings and how much has gone each way.
-- **`speed`**: Where each frame's time goes.
-- **`disk`**: Reads the first sector of the floppy back, to prove the disk still answers.
-- **`frames`**: Draws the frame and shading pieces used by menus.
-- **`dump address`**: Shows the bytes at a place in memory.
+- **`report`:** Everything below, down the serial line.
+- **`vesa`:** The video card's memory and modes.
+- **`card`:** The PC Card slots; `card raw` shows the bytes.
+- **`net`:** Switches the network card on and says what it found.
+- **`dsp`:** Plays a chime through the Sound Blaster and measures its rate.
+- **`ip`:** Address, mask, gateway, name server.
+- **`crypto`:** Checks the encryption against known answers and times it.
+- **`wire`:** The serial line's settings and traffic.
+- **`speed`:** Where each frame's time goes.
+- **`disk`:** Reads the first sector back.
+- **`frames`:** Draws the frame pieces.
+- **`dump address`:** Bytes at a place in memory.
 
-Test builds (made with `EXTRA_CFLAGS=-DFLOPOS_TEST`) also have `stall`,
-which reproduces the old freeze on purpose to prove the fix holds, and a
-pretend tape: whatever is played is kept, and listening plays it back.
+Test builds (`make EXTRA_CFLAGS=-DFLOPOS_TEST`) add `stall` and a pretend
+tape.
 
-[^1]: [Getting started](getting-started.md#booting)
-[^2]: [Keyboards](#keyboards)
-[^3]: [The inventory](inventory.md)
-[^4]: [scribe](scribe.md)
-[^5]: [maelcum](maelcum.md)
-[^6]: [The network](network.md)
-[^7]: [browzer](browzer.md)
+[^1]: [The inventory](inventory.md)
+[^2]: [scribe](scribe.md)
+[^3]: [maelcum](maelcum.md)
+[^4]: [browzer](browzer.md)
+[^5]: [The network](network.md)

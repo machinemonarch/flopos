@@ -1,314 +1,69 @@
 # Techniques
 
-How FLOPOS keeps radio playing on a 120 MHz Pentium while the screen
-runs at its full 30 frames a second.
+How FLOPOS keeps radio playing on a 120 MHz Pentium while the screen runs
+at 30 frames a second, and the other tricks worth reusing. None is new;
+each is a known technique, credited in the references. They are written
+as shared pieces so later work can use them.
 
-To be honest about it first: none of these is new to the world. Each is a
-known technique from the 1980s and 1990s, or from later decoders, and the
-references say where it comes from. What is particular to FLOPOS is
-putting them all together on one floppy for one machine, and measuring
-each against that machine. They are written as shared pieces, so later
-work (pictures, compression, a DAW) can use them too.
+## Measuring
 
-## How it is measured
+Changes are judged in an emulator held to about the laptop's speed (see
+Testing[^1]). While sound plays, FLOPOS reports to the serial line every
+ten seconds: the share of the machine decoding takes, frames drawn, and
+seconds of music in hand.
 
-### Measuring, before anything else
+## Sound
 
-FLOPOS is tested in an emulator held to about 62 million instructions a
-second, roughly this laptop's speed on this kind of code
-(how[^1]).
+- **Refilled at interrupt time** (`audio_feeder` in `src/kernel/audio.c`). An app hands the system a refill routine, as the Mac's Sound Manager did. The timer calls it whenever the queue has room, with interrupts on and the FPU saved, in slices of at most 4 ms. The app can be busy drawing or waiting on the network and the music never stops.
+- **Songs in memory.** A file is fetched whole into browzer's memory (2 MB) and played from there; a stream passes through a piece at a time. Nothing goes to the floppy.
+- **Noise shaping to 8 bits** (`decode.c`). Each sample is rounded with the last one's error added in, which turns the 8-bit card's grit into a faint hiss in the treble.
 
-While sound plays, FLOPOS reports to the serial cable every ten seconds:
-- What share of the machine decoding took.
-- How many frames the screen drew.
-- How many seconds of music are in hand.
+## Decoding
 
-Every change below was judged by those three numbers.
+In `src/apps/lib/bits`, `dsp` and `audio`:
 
-## Sound and music
+- **Bits read 25 at a time** with one unaligned load, in either bit order.
+- **Huffman by table:** a codebook becomes a table on the next nine bits, one or two lookups a codeword.
+- **mp3's synthesis as a fast DCT** (B. G. Lee, 1984): 80 multiplications instead of 2048, and no 8 KB table to thrash the cache. Its inverse MDCT is an 18-point DCT-IV.
+- **Silence skipped:** zero subbands and coefficients are never transformed.
+- **Tables instead of division and sines** (AAC's codewords, Vorbis's window).
+- **Quick rounding** (`dsp_round`): adding 1.5 × 2²³ instead of the x87's slow cast.
 
-### Sound: refilled at interrupt time
+Every decoder is checked against its reference (mpg123, FAAD2, libvorbis,
+libFLAC). On the slowed emulator: AAC 128 kbps takes 16% of the machine,
+mp3 64 kbps 19%, Vorbis 136 kbps 26%, a MOD song under 1%.
 
-*src/kernel/audio.c `audio_feeder`, app interface version 4.*
+## Tracker songs
 
-A player can't count on being asked for more when it suits it. The app
-may be drawing, or waiting on the network, for longer than the sound card's
-queue lasts. So, as the Mac's Sound Manager did with its double-buffer
-callbacks, the app hands the system a refill routine. The timer calls it
-whenever the queue has room:
-- After acknowledging the interrupt.
-- With interrupts back on, so the clock, keys and network carry on.
-- Never inside itself.
-- With the floating-point unit's state saved around it, since decoders
-  use it and so might whatever was interrupted.
+In `src/apps/lib/audio/tracker.c`:
 
-It works in slices of at most 4 ms, so no frame of the screen waits on it
-for long. browzer's routine decodes every format: mp3, AAC, Vorbis, FLAC,
-WAV and tracker songs.
+- **The score is read as it plays,** a row at a time from the file, so a long song needs no unpacked copy.
+- **One player for four formats:** S3M and IT are turned into XM's terms as they are read.
+- **IT's packed samples** are unpacked into the spare room behind the file.
+- **Long strides:** between loop points a voice is mixed in a tight loop.
+- **Twenty voices at most;** the quietest wait silently past that.
 
-**Also good for:** anything that must keep time while the foreground is
-busy, such as a DAW's playback, or a synthesiser.
-
-### Where a song is while it plays
-
-A song or a recording opened in browzer, a file rather than a stream, is
-brought in whole over the network into browzer's own memory (room for 2
-MB) and played from there. It is never written to the floppy, and it is
-gone when browzer closes or opens the next one. A radio stream passes
-through the same memory a piece at a time, so it never runs out.
-
-### Decoding: the same arithmetic, less of it
-
-*src/apps/lib/bits, src/apps/lib/dsp, and the decoders in src/apps/lib/audio.*
-
-- **Bits read 25 at a time** (`bits.h`), with one unaligned load, in
-  either bit order. They used to be read one at a time, at tens of
-  instructions a bit.
-- **Huffman codes by table** (`prefix.h`). A codebook becomes a table on
-  the next nine bits, so a codeword costs one lookup, or two, instead of a
-  branch per bit. The same tables serve high-first codes (mp3, AAC, one
-  day JPEG) and low-first ones (Vorbis, one day gzip and PNG).
-- **Mp3's synthesis as a fast cosine transform** (`dsp_dct2`, B. G. Lee,
-  1984). The 64-by-32 multiplication it did 689 times a second is one
-  32-point DCT laid out by its symmetries: 80 multiplications instead of
-  2048, and no 8 KB table to thrash the Pentium's 8 KB data cache.
-- **Mp3's 36-point inverse MDCT as an 18-point DCT-IV**, read out by its
-  symmetries: half the multiplications.
-- **Silence skipped.** At radio bitrates mp3's upper subbands hold
-  nothing, and transforming zeros gives zeros. AAC skips zero coefficients
-  in the same way.
-- **No division where a table will do.** AAC's codewords were split into
-  their numbers by dividing by 27, 9 and 3, at 46 cycles a division on a
-  Pentium; now a table made once does it.
-- **Vorbis's window from a table.** It computed two sines for every
-  sample of every block, two thirds of all its time. Now each slope is
-  worked out once per stream.
-- **Quick rounding** (`dsp_round`). A cast from float to int makes the
-  x87 change its rounding mode and back at every sample. Adding
-  1.5 × 2²³ puts the integer where it can simply be read.
-
-Every decoder was checked against its previous output, sample for sample
-(within one step of rounding), and the formats against their reference
-decoders: mpg123, FAAD2, libvorbis, libFLAC.
-
-| On the slowed emulator | Decoding takes |
-|---|---|
-| AAC, 128 kbps (SomaFM) | 15.7% of the machine |
-| mp3, 64 kbps mono | 18.7% |
-| Ogg Vorbis, 136 kbps, 44.1 kHz | 26% |
-| a MOD song | under 1% |
-
-### Tracker songs: the score read as it plays
-
-*src/apps/lib/audio/tracker.c.*
-
-- **No score in memory.** A song's patterns used to be unpacked into a
-  table of notes before it played, and a long one didn't fit. Now each row
-  is read from the file when it is reached, carrying on from where the last
-  one ended; only a jump makes it read its pattern again from the top.
-- **Four formats, one player.** S3M and IT are put into XM's terms as
-  they are read: their effects become XM's, and each sample's own rate
-  becomes XM's relative note and finetune. Where XM has nothing alike (IT's
-  shared slide memories, its channel volume, its notes that ring on under
-  new ones), the player learns the one thing more.
-- **IT's packed samples** (Impulse Tracker 2.14's own compression) are
-  unpacked into the download buffer's spare room behind the file, so they
-  cost no memory of their own.
-- **Mixing in long strides.** Between a voice's loop points, nothing needs
-  checking: those stretches are mixed in a tight loop with the position in
-  registers. Only the samples at the ends are done one at a time.
-- **Twenty voices at most.** A voice too quiet to move an 8-bit sample is
-  skipped. Past twenty at once, the quietest wait silently, still keeping
-  their place. A 64-channel song went from a third of the machine, and a
-  stuttering screen, to under a fifth.
-
-Every format was checked against libopenmpt on real songs from The Mod
-Archive: most match at 0.8 to 0.999 (`test/audiotest`).
-
-**Also good for:** any app that plays a song: a game's music, a DAW's
-sample player.
-
-### Out of 8 bits: noise shaping
-
-*src/apps/lib/audio/decode.c `lines`.*
-
-The Sound Blaster Pro takes 8-bit samples. Dropping each sample's low
-byte leaves distortion nearly as loud as a quiet passage itself: the grit
-that makes an 8-bit card sound crackly. Instead, each sample is rounded
-with the error the last one left added in. The rounding error then comes
-out as a faint, even hiss in the treble. For a quiet tone, that is 14 dB
-less error where the ear listens hardest.
+Checked against libopenmpt with `test/audiotest`.
 
 ## The screen
 
-### The screen: only what can be seen, only what changed
-
-*src/kernel/term.c `term_win_covers`, src/kernel/main.c, src/kernel/vga.c `vga_present_rows`.*
-
-The moving background took 21.5 ms of every frame on the slowed emulator.
-Inside browzer, it was drawn and enlarged, then completely covered by
-browzer's window. Now:
-- When a window with paper covers the whole screen, nothing under it is
-  drawn.
-- The window is redrawn only where a cell differs from how it was drawn
-  last time.
-- Only the rows that changed are sent to the card, and nothing at all if
-  nothing changed.
-
-The picture is the same to the pixel.
-
-**Also good for:** any full-screen app, such as `scribe`.
-
-### Frames that shine without being redrawn
-
-Every frame piece is drawn as geometry in one place (`blit_cell` in
-`src/kernel/term.c`), so colouring it there colours every program's frames.
-Each pixel takes one of sixteen palette entries (`PAL_NEON`) by its place
-on the screen's diagonal, so neighbouring cells join without a seam, and
-every other pixel is taken half a band on, which blends one band into the
-next. The sixteen entries hold a full turn of the colour wheel at full
-strength. `mood_neon` turns that wheel in the palette fifteen times a
-second: 48 bytes to the card, and not one pixel drawn again. The entries
-came out of the prompt's ramp, which had 32 and needed 16.
-
-Text can ride the same wheel. maelcum's name at the top is drawn once,
-each letter in the next of the sixteen entries (`A_NEON` for programs),
-and the colours then run through the letters at no cost at all.
+- **Only what can be seen:** under a full-screen window nothing is drawn (`term_win_covers`).
+- **Only what changed:** a window is redrawn where a cell differs, and only changed rows go to the card (`vga_present_rows`).
+- **Colour without redrawing:** frames and some text use sixteen palette entries placed along the screen's diagonal (`PAL_NEON`, `A_NEON` for apps). Turning those entries in the palette makes them shine for 48 bytes a step and no pixels drawn.
 
 ## The network
 
-### Network: nothing lost while busy
-
-*src/kernel/net.c, src/kernel/time.c, src/kernel/tcp.c.*
-
-- **The card emptied a thousand times a second.** The 3Com PC Card holds
-  only a few kilobytes, and a full frame arrives every 1.2 ms at 10 Mbit,
-  so anything not taken in time is lost. The timer now interrupts 1000
-  times a second instead of 250. Every interrupt moves whatever the card
-  holds into a 48-frame queue; every fourth is still the system's tick.
-- **A wider window.** TCP now lets a server have 16 segments in flight,
-  not 3. That used to hold a station 200 ms away to barely what it needs
-  to play.
-- **Out-of-order pieces kept, and SACK** (RFC 2018). A lost segment used
-  to cost every segment after it, resent one round trip at a time: two or
-  three seconds of nothing. Now pieces that arrive early are kept where
-  they belong. Every answer tells the server exactly which pieces have
-  come, so it resends only the missing one.
-- **Answers sent at every read**, not only when the app runs out of data.
-
-**Also good for:** every download, not only radio.
+- **The card emptied 1000 times a second,** into a 48-frame queue, so nothing is lost while FLOPOS is busy.
+- **A 16-segment TCP window,** and **SACK** (RFC 2018) with out-of-order pieces kept, so a lost segment costs one resend.
 
 ## Files and paper
 
-### Writing a floppy's filesystem so a power cut cannot break it
-
-For the inventory (`src/kernel/fs.c`). FAT12 has no journal, so the order of
-the writes is the whole of the safety.
-
-- **New data never lands on old data.** A changed file goes into
-  clusters nothing uses. The folder entry is one sector, written last but
-  one; until it lands the old file is untouched, and after it the new one
-  is complete. Only then are the old clusters let go.
-- **The spare table first.** FAT12 keeps two copies of its allocation
-  table. The spare is written before the one in use, so if a sector of
-  the main one is cut mid-write and will not read, the spare has it
-  whole. At the first change of a session the two are compared and made
-  to agree.
-- **The user's folder is a fence.** The system's files are never moved
-  or resized and the top folder is never written. Every inventory path
-  is followed down from one folder, and a name beginning with a dot is
-  not a name, so nothing can climb out.
-- **Test it with someone else's reader.** The file code is built for the
-  PC and run through thousands of random changes; the judges are
-  `fsck.fat` and mtools, not FLOPOS. That found one thing no reading of
-  the format would have: mtools rejects a disk whose very last cluster is
-  in use, though the format allows it. FLOPOS never gives that cluster
-  out.
-- **Cut the power on purpose.** The test stops the write after a random
-  number of sectors, hundreds of times, and checks that every file is
-  whole, old or new.
-
-### A page that knows how big it is
-
-For maelcum's tape sleeve (`src/apps/maelcum/sleeve.c`). The laptop has no
-printer, so the sleeve leaves on the floppy as a file, and has to come
-out of somebody else's printer at exactly a cassette sleeve's size.
-
-- **First try: a picture that says its size.** A BMP's header has a
-  place for dots to the metre, and 600 dots at 150 to the inch is a
-  sleeve to the dot. On a real printer it was stretched over the whole
-  A4 all the same: print programs fit a picture to the page unless told
-  not to.
-- **So a PDF.** A PDF page has a size of its own (A4: 595.28 by 841.89
-  points), and each card is placed on it at 288 points, four inches,
-  the outside above the inside, touching. Print programs print a PDF's page as the
-  page. Written by hand, the plainest kind there is: version 1.3, seven
-  objects, a table of where each starts, two pictures of one bit a dot
-  and two lines of Helvetica, one of the fourteen faces every reader has
-  built in. No library: about seventy lines.
-- **Packed by run length.** PDF has read run-length packing
-  (RunLengthDecode) since its first version: a count byte, then bytes as
-  they are, or one byte repeated. A sleeve is mostly white paper, so the
-  two pictures shrink from 90 KB to about 22 KB, small enough for a tape.
-- **One bit a dot.** Black on white needs no more.
-- **The system's own letters.** The font is five dots by eight. Drawn
-  two, three and four times its size, and on its side for the spine, it
-  is the same face as the screen's.
-- **The inside is mirrored, and turned.** It is printed right under the
-  outside and folded back behind it, so it is drawn with its wide panel
-  on the left (to fall behind the front) and then given half a turn on
-  the page: folding it back turns it the right way up again. Its folds
-  are dashed at the places that land behind the outside's.
-
-Checked with `pdfinfo` (one A4 page) and by rendering it on the PC. Not
-yet printed.
+- **A power-cut-safe FAT12** (`src/kernel/fs.c`): new data goes into unused clusters, then the spare allocation table, then the main one, then the folder entry; only then are the old clusters freed. The user's folder is a fence no path can climb out of. Tested with `fsck.fat` and mtools as judges, with random power cuts (`test/fstest`).
+- **A page that knows its size** (`src/apps/maelcum/sleeve.c`): maelcum's sleeve is a hand-written PDF 1.3 (a picture has no paper size, so printers stretch it). One-bit pictures packed by run length, about 22 KB.
 
 ## The system
 
-### A wall the apps never notice
+- **A wall apps never notice:** the call table an app gets points at small stubs in its own memory that do `INT 0x80`. The kernel reads the arguments off the app's stack after checking it. Calls back into the app (the sound feeder) go through `INT 0x81`.
+- **A language model beside a 640K kernel:** byte weights trained already rounded, 512 word pieces, cached past pieces so each new one costs one pass, and a frame drawn between layers. The same C file is checked against a Python version (`tools/wizard/enginetest.py`).
 
-Apps were built to call the system through a table of function addresses.
-To put them behind a wall (ring 3 and paging) without rebuilding how they
-are written, the table they are handed now points at eight-byte stubs
-that live in the app's own memory: load a number, `INT 0x80`, return. The
-arguments stay where C left them, on the app's stack, and the kernel
-reads them from there after checking the stack is the app's. Going the
-other way, when the kernel must call a function the app gave it (the
-sound feeder, from inside the timer interrupt), it builds a small frame
-on the app's stack whose return address is another stub, `INT 0x81`, and
-drops to ring 3; the stub brings it back to exactly where it left off.
-These calls nest. The paging is the plainest possible: 4MB pages, every
-address mapped to itself, two of them open to apps. It goes off for each
-BIOS call, since the BIOS runs in 16-bit mode. Sources: Intel's
-architecture manuals (privilege levels, the task segment, 4MB pages).
-
-### A language model beside a kernel that fits in 640K
-
-The wizard's model had to cost the floppy little, the kernel almost
-nothing, and the screen no frames.
-
-- **A byte a weight, trained that way.** Weights are stored as bytes with
-  one scale for each row. The last fifth of the training runs with the
-  weights already rounded to bytes, so what is written to the floppy is
-  what was trained, not an approximation of it.
-- **Word pieces, not letters.** He speaks in 512 pieces of words. A line
-  is about twenty pieces instead of seventy letters, so it takes a third
-  of the sums, and the model spends itself on phrasing, not spelling.
-- **Nothing to read, so nothing to parse.** He never reads what was typed.
-  He writes `@` where the word belongs and the shell puts it there. The
-  engine needs no way of cutting text into pieces, only the list of them.
-- **Remembering instead of redoing.** What each past piece offered to the
-  ones after it is kept, so each new piece costs one pass, however long
-  the line is.
-- **A layer, then a frame.** The engine hands the machine back between
-  layers, a few milliseconds apart. Measured at the laptop's speed with a
-  song playing: 30 frames a second before, during and after.
-- **Most of the voice is a grammar.** A model this small can't learn
-  Shakespeare, but it learns a few hundred sentence shapes with their
-  slots very well, and mixes them. The books are a twentieth of his
-  training, for the oddity.
-- **One engine, two builds.** The same C file is built for this PC and
-  compared, score by score, with a plain Python version of the sums
-  (`tools/wizard/enginetest.py`).
-
-[^1]: [how](../development/testing.md#running-at-the-laptops-speed)
+[^1]: [Testing](../development/testing.md#running-at-the-laptops-speed)
