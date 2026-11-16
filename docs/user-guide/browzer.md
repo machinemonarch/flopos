@@ -3,7 +3,7 @@
 FLOPOS's web browser, `BROWZER.APP` on the floppy.
 
     here> browzer
-    here> browzer www.nojs.chat
+    here> browzer example.com
     here> browzer fetch example.com      the page as text in the terminal
 
 ![browzer searching DuckDuckGo Lite, in the emulator](../images/browzer-search.png)

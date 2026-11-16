@@ -132,7 +132,7 @@ repository, and no Toshiba code, firmware or text is in FLOPOS.
 | Service | Used for |
 |---|---|
 | [DuckDuckGo Lite](https://lite.duckduckgo.com/lite/) | Searching, when what is typed in the address line is not an address |
-| [Radio Browser](https://www.radio-browser.info/) | The stations on 72fm.com's country pages *(72fm: Max)* |
+| [Radio Browser](https://www.radio-browser.info/) | Stations on radio pages that ask this open directory for them |
 
 ## Ideas from other projects
 

@@ -776,9 +776,9 @@ static void azuracast(const Url *u)
     side_fetch(u, path, "Asking the station (AzuraCast) for its streams...", sniff);
 }
 
-/* 72fm.com's country pages (/radio/il) name their stations without links:
- * its script asks the open Radio Browser directory, which the page names
- * in a <link rel="preconnect">.  browzer asks it the same way, and lists
+/* Some radio pages name their stations without links: their script asks
+ * the open Radio Browser directory, which the page names in a
+ * <link rel="preconnect">.  browzer asks it the same way, and lists
  * the stations, most voted first, as links to their streams. */
 static struct {
     char str[PAGE_HREF_MAX], key[16], name[96], url[PAGE_HREF_MAX], codec[12];
