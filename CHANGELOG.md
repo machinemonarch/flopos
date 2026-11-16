@@ -44,7 +44,8 @@ without it. Each version's notes are also written next to its image, as
   `browzer help`. The text is `HELP.TXT` on the floppy, readable on any
   computer.
 - `gibson on` makes every key sound a thumpy pair of phone tones, like a
-  film's mainframe; `gibson off` quiets them.
+  film's mainframe (a recorded hit, mixed into whatever plays); `gibson
+  off` quiets them.
 - In `network`, Tab goes round every setting and button.
 - Ctrl-C at the prompt drops what you were typing.
 - Ctrl-Shift-F5 switches the screen again, from anywhere.

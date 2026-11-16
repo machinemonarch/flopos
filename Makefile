@@ -127,7 +127,7 @@ $(BUILD)/roomtest/rogueroom.bin: test/roomtest/rogueroom.c src/room/room.h src/r
 	@mkdir -p $(@D)
 	$(CC) $(APPCFLAGS) -static -Wl,-T,src/room/room.ld -Wl,--no-warn-rwx-segments -o $@ $<
 
-$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) $(BUILD)/room.bin data/saffran.pix data/ozzy.pix data/roots.dat data/wizard.wiz data/help.txt tools/build/mkimage.py README.md
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) $(BUILD)/room.bin data/saffran.pix data/ozzy.pix data/roots.dat data/wizard.wiz data/help.txt data/gibson.raw tools/build/mkimage.py README.md
 	@mkdir -p $(DIST)
 	$(PYTHON) tools/build/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 

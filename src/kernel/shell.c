@@ -206,8 +206,7 @@ static void cmd_gibson(void)
     else if (s_argc >= 2 && eq_ci(s_argv[1], "off")) on = 0;
     else { say_dim(on ? "Keys sound like a film's mainframe. gibson off stops it."
                       : "Keys are quiet. gibson on makes them sound like a film's mainframe."); return; }
-    if (on && !snd_has_fm()) { say("There is no FM chip here to make the sounds with."); return; }
-    snd_gibson(on);
+    if (snd_gibson(on) != on) { say("There is no sound card here to make the sounds with."); return; }
     say(on ? "Keys sound like a film's mainframe now." : "Keys are quiet again.");
 }
 
