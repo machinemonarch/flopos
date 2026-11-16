@@ -146,6 +146,7 @@ void kbd_irq(void)
         if (code == 0x44 && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_hud_toggle = 1; return; }
         if (code == 0x3B && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_kbpick_open = 1; return; }
         if (code == 0x3F && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_screen_again = 1; return; }
+        g_tw_key = (u8)(code + 1);           /* gibson, if it is on */
         u8 nxt = (u8)((s_head + 1) % QLEN);
         if (nxt != s_tail) {
             s_queue[s_head] = (u16)(code | modifier_bits()

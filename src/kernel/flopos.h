@@ -654,6 +654,8 @@ void   snd_fx_begin(void);               /* the music steps aside           */
 void   snd_fx_square(int hz);            /* a chip-tune note; 0 stops it    */
 void   snd_fx_bell(int hz);              /* a bell, struck and left to ring */
 void   snd_fx_end(void);
+int    snd_gibson(int on);           /* key sounds: 1 on, 0 off, -1 asks */
+extern volatile u8 g_tw_key;          /* kbd.c leaves a key for the timer */
 extern volatile u8  g_beat;
 extern volatile u8  g_bar;
 extern volatile u32 g_step;

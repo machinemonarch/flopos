@@ -21,6 +21,11 @@ whaaat        through the hole in the screen; again to come back
 [listen]
 listen        the next rhythm: jungle, breaks, drift, acid, temple, spiral
 
+[gibson]
+gibson        whether the keys make sounds
+gibson on     every key a thumpy pair of phone tones, like a film's mainframe
+gibson off    quiet keys again
+
 [sound quiet]
 sound         music on
 quiet         music off

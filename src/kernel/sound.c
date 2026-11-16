@@ -35,6 +35,8 @@ static int s_ticks_per_step;
 static int s_gate_left;
 static int s_slide_to, s_slide_cur;
 static int s_sweeping;
+volatile u8 g_tw_key;                    /* gibson: a key to sound, plus one */
+static u8 s_tw, s_tw_voiced;             /* gibson on; its voices are set up */
 
 /* --- note tables, built once ------------------------------------------- */
 static u16 s_div[128];                   /* PIT divisor per MIDI note      */
@@ -500,6 +502,7 @@ static void opl_hz(int ch, int hz, int on)
 void snd_fx_begin(void)
 {
     s_sweeping = 1;
+    s_tw_voiced = 0;
     spk_off();
     s_bell_ch = 0;
     if (s_fm) {
@@ -551,8 +554,41 @@ void snd_fx_end(void)
 }
 
 /* --- the sequencer, called at TICK_HZ ---------------------------------- */
+/* ---- gibson ------------------------------------------------------
+ * Every key sounds a pair of telephone (DTMF) tones, softened as if through
+ * a low-pass filter (the high one quieter than the low), over a short low
+ * thump: a film computer's typing.  On FM channels 3 to 5, which the music
+ * never uses.  The keyboard's interrupt only leaves the key here; the timer
+ * strikes it, so the chip is never written from two places at once. */
+
+int snd_gibson(int on)
+{
+    if (on >= 0) { s_tw = (u8)(on && s_fm); s_tw_voiced = 0; }
+    return s_tw;
+}
+
+static void tw_strike(int k)
+{
+    static const u16 lo[4] = { 697, 770, 852, 941 }, hi[4] = { 1209, 1336, 1477, 1633 };
+    if (!s_tw_voiced) {
+        /* sine carriers, struck and left to die away fast; the thump's
+         * modulator dies faster still, for the knock at its start */
+        opl_voice(3, 0x01, 0x3F, 0xFF, 0xFF, 0x00, 0x01, 0x12, 0xF9, 0xF9, 0x00, 0x00);
+        opl_voice(4, 0x01, 0x3F, 0xFF, 0xFF, 0x00, 0x01, 0x1A, 0xF9, 0xF9, 0x00, 0x00);
+        opl_voice(5, 0x01, 0x1C, 0xFC, 0xFC, 0x00, 0x01, 0x06, 0xFA, 0xFA, 0x00, 0x06);
+        s_tw_voiced = 1;
+    }
+    opl_hz(3, lo[k & 3], 0);        opl_hz(3, lo[k & 3], 1);
+    opl_hz(4, hi[(k >> 2) & 3], 0); opl_hz(4, hi[(k >> 2) & 3], 1);
+    opl_hz(5, 70, 0);               opl_hz(5, 70, 1);
+}
+
 void snd_tick(void)
 {
+    if (g_tw_key) {
+        if (s_tw && !s_sweeping) tw_strike((g_tw_key - 1) * 5);
+        g_tw_key = 0;
+    }
     if (s_sweeping) return;
 
     const Pattern *p = &s_pats[s_pat];

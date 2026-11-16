@@ -188,7 +188,7 @@ static void cmd_help(void)
         {
             int w = 0;
             while (s_cmds[i].name[w]) w++;
-            while (w < 10) { term_putc(' '); w++; }
+            do { term_putc(' '); w++; } while (w < 10);   /* at least one space */
         }
         term_colour(C_DIM);
         term_print(s_cmds[i].summary);
@@ -197,6 +197,18 @@ static void cmd_help(void)
     }
     say_dim(voice(V_HELP_FOOT));
     say_dim("Put help after a word for more: ping help");
+}
+
+static void cmd_gibson(void)
+{
+    int on = snd_gibson(-1);
+    if (s_argc >= 2 && eq_ci(s_argv[1], "on"))  on = 1;
+    else if (s_argc >= 2 && eq_ci(s_argv[1], "off")) on = 0;
+    else { say_dim(on ? "Keys sound like a film's mainframe. gibson off stops it."
+                      : "Keys are quiet. gibson on makes them sound like a film's mainframe."); return; }
+    if (on && !snd_has_fm()) { say("There is no FM chip here to make the sounds with."); return; }
+    snd_gibson(on);
+    say(on ? "Keys sound like a film's mainframe now." : "Keys are quiet again.");
 }
 
 static void cmd_clear(void)
@@ -1390,6 +1402,7 @@ static const Cmd s_cmds[] = {
     { "mood",    "change the light",             cmd_mood    },
     { "whaaat",  "whaaat",                       cmd_whaaat  },
     { "listen",  "a different rhythm",           cmd_listen  },
+    { "gibson",  "keys that sound like a film",  cmd_gibson  },
     { "sound",   "turn the sound on",            cmd_sound   },
     { "quiet",   "turn the sound off",           cmd_quiet   },
     { "quirks",  "steady the text, or let it go",cmd_quirks  },

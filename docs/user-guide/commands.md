@@ -22,6 +22,7 @@ more).
 - **`mood`:** The next colours for the background, or name one: STILL, WARM, DEEP, DUSK, VOID.
 - **`listen`:** The next rhythm: JUNGLE, BREAKS, DRIFT, ACID, TEMPLE, SPIRAL.
 - **`sound` / `quiet`:** Music on or off.
+- **`gibson on` / `gibson off`:** Every key sounds a thumpy pair of phone tones, like a film's mainframe. Needs the FM chip; lasts until the machine is switched off.
 - **`whaaat`:** Try it. Again to come back.
 - **`quirks`:** Stops text misbehaving, or lets it again.
 - **`squint`:** Text size: easy (the default), large, close or fine.
