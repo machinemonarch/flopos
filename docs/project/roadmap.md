@@ -8,7 +8,6 @@ CHANGELOG; what was fixed in the security review is in Security[^1].
 
 - **A chat app:** Like Discord, IRC, WhatsApp or Signal; which is open. IRC is easiest for this machine, given a channel worth being in.
 - **A mystical protocol for sharing data:** A client on the Toshiba and a server elsewhere, doing what SFTP, NFS or SMB do without reinventing netcat. It should feel obscure and enticing, like a forgotten metro tunnel, all the way down to how it checks data and starts a session. What it is for is undecided, so it starts with an interview of its product owner.
-- **A wizard you can talk to:** One who remembers what was said.
 
 ## Security, waiting for a decision
 
