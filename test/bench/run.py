@@ -85,7 +85,7 @@ def main():
     cmd = ["qemu-system-i386", "-machine", "pc", "-cpu", "pentium", "-m", "32",
            "-drive", "file=%s,if=floppy,format=raw,snapshot=on" % a.image, "-boot", "a", "-vga", "std", "-display", "none",
            "-monitor", "stdio", "-audiodev", "wav,id=snd1,path=%s" % os.path.join(a.out, "sound.wav"),
-           "-machine", "pcspk-audiodev=snd1", "-device", "sb16,audiodev=snd1", "-serial", "file:" + log,
+           "-machine", "pcspk-audiodev=snd1", "-device", "sb16,audiodev=snd1", "-device", "adlib,audiodev=snd1", "-serial", "file:" + log,
            "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9"]
     cmd[1:1] = ["-icount", "shift=4,sleep=on,align=" + ("on" if a.slow else "off")]
     q = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

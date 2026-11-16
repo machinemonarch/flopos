@@ -200,14 +200,15 @@ def main():
                 compare(img, after, "uncut " + cmd)
                 continue
             cuts += 1
-            run(img, ["room", "write HEALED.TXT 700 5"])       # the next session: mends the table's copies, and can still write
+            ans, _ = run(img, ["room", "write HEALED.TXT 700 5"])   # the next session: mends the table's copies, and can still write
+            healed = len(ans) > 1 and ans[1].startswith("ok")  # unless the disk is too full for it
             # A move between folders is two entries in two places and cannot be
             # cut cleanly: the thing may be listed in both, which a disk
             # checker will remark on.  Nothing is lost; that is checked below.
             if not (eff[0] == "m" and m.parent(eff[1]) != m.parent(eff[2])): fsck(img, lost_ok=True)
-            for mm in (m, after): mm.files["HEALED.TXT"] = (700, 5)
+            if healed:
+                for mm in (m, after): mm.files["HEALED.TXT"] = (700, 5)
             files, dirs = on_disk(img)
-            for mm in (m, after): mm.files.setdefault("HEALED.TXT", (700, 5))
             # every file whole, old or new; a moved thing may be in both places
             for p, data in files.items():
                 good = [fill(*mm.files[p]) for mm in (m, after) if p in mm.files]
