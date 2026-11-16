@@ -40,7 +40,6 @@ Everything is its own:
 
 ### Apps to help you out
 - **Browzer**: Text-based web browser which supports online web radio across many streaming formats.
-  - No javascript. So that leaves a lot less to think of.
 - **Scribe**: A word processor which can save files to the floppy. Document your experience.
 - **Maelcum**: The coolest data cassette backup program you've ever used. (Probably the only one you've ever used.)
   - Inspired by a former spaceship pilot in William Gibsons Neuromancer; Maelcum transports your data between cyberdelia and the ferro-oxide realms of your backup tape.
