@@ -354,13 +354,15 @@ int    isqrt32(u32 v);
 int    iatan2(int y, int x);
 
 /* --- term.c ------------------------------------------------------------ *
- * The terminal's grid is not a constant.  Two faces are compiled in and
- * either can be under the terminal while it runs, because the only person
- * who can judge how small text may get is the one looking at the panel.
+ * The terminal's grid is not a constant.  Four faces are compiled in and
+ * any can be under the terminal while it runs, because the only person who
+ * can judge how small text may get is the one looking at the panel.  At
+ * 320x200, and then at 800x600:
  *
- *   roomy   53 columns by 25 rows   -- generous, and what FLOPOS grew up in
- *   close   80 columns by 33 rows   -- the grid every text interface
- *                                      worth copying was designed on
+ *   roomy   53 by 25, 66 by 37   -- generous, and what FLOPOS grew up in
+ *   close   80 by 33, 100 by 50  -- the grid text interfaces were designed on
+ *   fine    --        133 by 66  -- the large letters at the screen's own pixels
+ *   easy    --        100 by 50  -- those 1.4 times the size, shaded: the default
  *
  * adv and pitch are the cell: what one character occupies, ink plus air.
  * Anything drawn to the cell rather than to the ink -- rules, frames,

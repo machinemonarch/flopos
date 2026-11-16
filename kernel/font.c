@@ -3,7 +3,7 @@
  * glyph art in that file.  Do not hand edit; edit the art and regenerate.
  *
  * One byte per column with bit 0 at the top, which makes the renderer a
- * shift-and-test loop.  Two faces, laid out in the same slot order so one
+ * shift-and-test loop.  Two sets of letters, in the same slot order so one
  * glyph_index() serves both and the terminal can change face while running:
  *
  *   g_font5x8   five wide, eight tall, 6x8 cell -> 53 columns by 25 rows
