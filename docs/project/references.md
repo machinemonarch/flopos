@@ -134,11 +134,11 @@ repository, and no Toshiba code, firmware or text is in FLOPOS.
 | [DuckDuckGo Lite](https://lite.duckduckgo.com/lite/) | Searching, when what is typed in the address line is not an address |
 | [Radio Browser](https://www.radio-browser.info/) | The stations on 72fm.com's country pages *(72fm: Max)* |
 
-## Inspiration for browzer
+## Consulted for browzer's CSS and JavaScript
 
-Ideas only; browzer's code is written from scratch.
+Ideas only, no code; browzer is written from scratch.
 
-- **[Chawan](https://sr.ht/~bptato/chawan/), a text-mode browser by bptato**: Laying tables out in columns on a grid of letters, every size rounded to whole cells. Also the push to make scripts and styles work on real pages.
+- **[Chawan](https://sr.ht/~bptato/chawan/), a text-mode browser by bptato**: Looked at for how a text-mode browser handles CSS and JavaScript. One idea taken: fitting CSS tables to a grid of letters, every size rounded to whole cells.
 
 ## Inspiration for the wizard
 
