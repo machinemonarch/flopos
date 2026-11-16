@@ -9,7 +9,7 @@ fork it.
 ## The rules it is built by
 
 - **The constraints are the point.** One floppy, one 1996 laptop. No outside machine does FLOPOS's computing for it.
-- **JavaScript only where allowed, and walled off.** None runs until a site is allowed, other sites' scripts never run, and the rest runs in a room that can reach nothing but the page.
+- **JavaScript only where allowed, and walled off.** None runs until a site is allowed, other sites' scripts never run (except libraries from four well-known hosts), and the rest runs in a room that can reach nothing but the page.
 - **Ask before anything risky.** Features that open the machine to the outside world are discussed first.
 - **The nice things are the default.** You shouldn't need a command to get the good version.
 - **Never freeze.** A feature may arrive rough; the machine may not hang.

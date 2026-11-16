@@ -1,7 +1,7 @@
 # Testing
 
 Every test lives in `test/`, one folder each, and prints `ok` or
-`FAILED`. Each builds into `build/<its name>/`. Reuse and extend them;
+`FAILED`. Each builds into its own folder under `build/`. Reuse and extend them;
 never write a throwaway harness.
 
 ## What is tested where

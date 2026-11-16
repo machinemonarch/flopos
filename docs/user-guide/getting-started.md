@@ -9,10 +9,14 @@
 
 ## Putting it on a floppy
 
-Released images are in `releases/` as `flopos-X.Y.Z.img`, with notes
-beside them. `make` builds your own as `dist/flopos.img`. Write it with:
+Download the newest `flopos-X.Y.Z.img` from the Releases page on GitHub,
+or run `make` to build your own as `dist/flopos.img`. Write it with:
 
-    tools/floppy/writefloppy.sh
+    tools/floppy/writefloppy.sh --image flopos-X.Y.Z.img
+    tools/floppy/writefloppy.sh --dev           your own build
+
+Alone, it writes the newest image in `releases/`, where `make release`
+keeps them.
 
 It finds the floppy drive itself (and writes to nothing that isn't
 exactly a floppy's size), asks you to type `YES`, and carries your
@@ -22,7 +26,7 @@ they wouldn't fit, nothing is written.
 - **`/dev/sde`:** Name the drive yourself.
 - **`-y`:** Don't ask.
 - **`--fresh`:** Start clean, keeping nothing.
-- **`--full`:** Write all 1.44 MB (otherwise only the used part, about 16 seconds).
+- **`--full`:** Write all 1.44 MB. Otherwise an empty inventory writes only the used part (about 16 seconds), and one with files writes it all.
 - **`--lowlevel`:** Low-level format a suspect disk first (slow).
 - **`--dev`:** Write your own build instead of the newest release.
 

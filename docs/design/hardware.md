@@ -5,7 +5,7 @@ FLOPOS was made for one machine: a **Toshiba Satellite Pro 430CDT** from
 
 ## The parts
 
-- **Processor:** Intel Pentium, 119 MHz measured, no MMX. FLOPOS uses no instruction newer than a 486; only the wizard and the audio decoders use the FPU.
+- **Processor:** Intel Pentium, 119 MHz measured, no MMX. FLOPOS uses no instruction newer than a 486; only the wizard, the audio decoders and the script room use the FPU.
 - **Memory:** 32 MB, measured at boot through the BIOS. 12–20 MB is kept for apps.
 - **Video:** Chips & Technologies 65550, 2 MB, VESA 2.0. 800×600 in 256 colours (VESA mode 103), flat frame buffer at 0x7000000; VGA 320×200 if that fails. The BIOS sets the mode; FLOPOS draws every pixel.
 - **Screen:** 11.3" 800×600 TFT, run at its native size.
@@ -33,7 +33,6 @@ change, so they are written after the mode is set.
 
 - **One X25519 key exchange:** 284 ms.
 - **ML-KEM-768:** 60 ms to make a key, 72 ms to open a share.
-- **Moving background:** About 24 ms a frame.
 - **Drawing every character:** About 3.4 ms a frame.
 - **Sending a frame to the card at 800×600:** About 32 ms.
 
