@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """enginetest.py MODEL -- does FLOPOS's engine do the same sums as speak.py?
 
-Builds kernel/wizsay.c for this PC (into dist/), has both work through the
+Builds src/kernel/wizsay.c for this PC (into dist/), has both work through the
 same lines piece by piece, and compares every score.  Prints ok or FAILED.
 """
 import os, subprocess, sys

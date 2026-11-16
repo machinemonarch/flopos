@@ -73,7 +73,7 @@ one rule each.
   for everything else; every pointer it hands over is checked. An app
   that breaks the rules is closed and FLOPOS carries on. Tested in the
   emulator with an app that breaks each rule on purpose
-  (`tools/walltest`), and with every real app. Cost measured there: the
+  (`test/walltest`), and with every real app. Cost measured there: the
   browser playing a song uses 7.1% of the machine for sound instead of
   6.8%, and the screen stays at 30 frames a second. On the laptop the
   apps have run behind it since 1.33.0; the cost has not been measured
@@ -100,10 +100,10 @@ one rule each.
   asked from are two separate random numbers, and an answer is taken only
   from the name server that was asked, while a question is open.
 - **The tripwire (1.32.0).** A known number sits 108 KB down the stack
-  (`kernel/time.c`) and is checked 250 times a second. If it changes,
+  (`src/kernel/time.c`) and is checked 250 times a second. If it changes,
   FLOPOS stops on the crash screen and says "The stack ran over its
   tripwire." Tried in a test build (`tripwire`).
-- **The readers fed garbage (1.32.1).** `tools/fuzz` (see
+- **The readers fed garbage (1.32.1).** `test/fuzz` (see
   Building[^3]) gives damaged songs, recordings, certificate
   chains, secure conversations and web answers to FLOPOS's own code,
   built for the PC with a memory checker. Several hundred thousand
@@ -115,7 +115,7 @@ one rule each.
   buffer in browzer. Not covered: the network's own packets (ARP, IP,
   TCP, DNS, DHCP), which were read through by hand in the review.
 - **Four ways a crafted Ogg file could write past its buffers**
-  (`apps/lib/audio/vorbis.c`), fixed before 1.19.0 shipped.
+  (`src/apps/lib/audio/vorbis.c`), fixed before 1.19.0 shipped.
 
 These were checked by reading and by the ordinary network tests. None was
 tried as a real attack.
@@ -134,7 +134,7 @@ holds.
 - **Scripts (not yet released):** Run only on sites allowed with `j`, in
   the script room: 4 MB the processor walls off, with no network, files
   or cookies. Every request goes through one door, which browzer checks
-  (`apps/browzer/script.c`); the kernel stops a room that faults or runs
+  (`src/apps/browzer/script.c`); the kernel stops a room that faults or runs
   past its time. Other sites' scripts are never fetched, except libraries
   from four public library hosts over https. The fuzzer plays a room that
   sends crafted requests, cloning included.

@@ -55,36 +55,36 @@ how much music is in hand (see Techniques[^1]).
 ## The test tools
 
 
-- `tools/audiotest/render.c` plays a tracker song on this PC through
+- `test/audiotest/render.c` plays a tracker song on this PC through
   FLOPOS's own tracker; `compare.py` holds the result up against
   libopenmpt. `songs.txt` lists the songs from The Mod Archive that test
   it, and `fetch.py` fetches them (they are their authors', so they are
   never kept here).
-- `tools/bench/site.py` is a small web site that imitates the sites
+- `test/bench/site.py` is a small web site that imitates the sites
   browzer has had trouble with: The Mod Archive's downloads, DuckDuckGo's
   front page, ERICADE Radio, 72fm.com (and the Radio Browser directory
   its country pages ask) and an AzuraCast station.
-- `tools/bench/run.py` boots the image in the emulator, opens pages and
+- `test/bench/run.py` boots the image in the emulator, opens pages and
   presses keys, and checks each step against what FLOPOS says on its
   serial wire. It prints a line per step: ok, or what was wrong.
   browzer writes a line there for each page it gets (`[page] ...`) and the
   HUD for each time it closes (`[hud] ...`). It also records everything
   the Sound Blaster played, which `findsong.py` can find a song in.
-- `tools/bench/tlstest.py` makes a test authority, an image that trusts it,
+- `test/bench/tlstest.py` makes a test authority, an image that trusts it,
   and six local OpenSSL servers (TLS 1.2 in each form FLOPOS takes, TLS
   1.3, and a TLS 1.1 one that must be refused), and checks them all.
 
-- `tools/fstest/run.py` builds FLOPOS's own file code (`kernel/fs.c`) for
+- `test/fstest/run.py` builds FLOPOS's own file code (`src/kernel/fs.c`) for
   this PC and runs it on a copy of the image: thousands of random makes,
   changes, moves and removals in the inventory, then `fsck.fat` and
   mtools must agree with every one; then the same with the power cut
   after a random number of sectors. Run it after any change to `fs.c`.
 
-- `tools/walltest/run.py` builds an app that breaks each of the wall's
-  rules on purpose (`tools/walltest/rogue.c`), runs it in the emulator and
+- `test/walltest/run.py` builds an app that breaks each of the wall's
+  rules on purpose (`test/walltest/rogue.c`), runs it in the emulator and
   checks that FLOPOS closes it and still answers afterwards.
 
-- `tools/fuzz/run.py` feeds FLOPOS's readers garbage. The code that
+- `test/fuzz/run.py` feeds FLOPOS's readers garbage. The code that
   reads what comes from outside is built for this PC with the compiler's
   memory checker, and given real inputs damaged at random: bits flipped,
   sizes changed, pieces cut out, moved and repeated. The targets are
@@ -94,35 +94,35 @@ how much music is in hand (see Techniques[^1]).
   back damaged, with the seals opened whatever they say so the damage
   reaches the code behind them) and `browzer` (the whole browser, on a
   pretend system whose every connection answers with the input).
-  `tools/fuzz/run.py --runs 60000` runs them all; an input that broke
+  `test/fuzz/run.py --runs 60000` runs them all; an input that broke
   something is kept in `dist/fuzz/finds`. Songs come from
   `~/.cache/flopos-songs`, and recordings from `~/.cache/flopos-fuzz/audio`
   (the first 96 KB of any mp3, ogg or flac; never kept in the project).
   Run it after any change to a decoder, the browser's page reading, or
   the certificate and TLS code.
 
-- `tools/keeptest.sh` tries what `writefloppy.sh` does to carry the
-  user's files to a new release (`tools/keepfiles.sh`), on images: an old
+- `test/keeptest.sh` tries what `writefloppy.sh` does to carry the
+  user's files to a new release (`tools/floppy/keepfiles.sh`), on images: an old
   floppy with `WRITE2.MD`, an inventory with folders, a blank disk, and
   one too full to carry.
 
-- `tools/doccheck.py` checks that every link in the project's Markdown
+- `test/doccheck.py` checks that every link in the project's Markdown
   leads to a page, and every `#section` to a heading in it. Run it after
   moving or renaming a page or a heading.
 
-- `tools/keytest/run.sh` builds the keyboard code (`kernel/keymap.c` and
+- `test/keytest/run.sh` builds the keyboard code (`src/kernel/keymap.c` and
   the layouts) for this PC and presses keys on every layout: the signs,
   the accent keys, Caps Lock, Alt+Shift between alphabets, Ctrl shortcuts
   by letter, and that the font can draw everything any key types. It also
   checks the order Hebrew is drawn in (right to left, numbers and
   brackets).
 
-- `tools/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
-  own code (`apps/lib/tape`), runs it through a pretend tape (wrong
+- `test/tapetest/run.sh` turns a file into cassette sound with FLOPOS's
+  own code (`src/apps/lib/tape`), runs it through a pretend tape (wrong
   speed, wavering, quiet, noisy, dull, upside down, a dropout) and reads
   it back. The `maelcum` app itself is tried in a test build
   (`make EXTRA_CFLAGS=-DFLOPOS_TEST`), where the sound driver keeps what
-  it plays and plays it back when asked to listen: with `tools/bench/run.py`,
+  it plays and plays it back when asked to listen: with `test/bench/run.py`,
   `type:maelcum save\n`, `key:ret=>\[tape\] saved files 3`, `key:esc`,
   `type:maelcum load\n=>\[tape\] same STATE.BIN`. Delete the bench's
   `sound.wav` afterwards; it is large.
@@ -131,15 +131,15 @@ how much music is in hand (see Techniques[^1]).
 emulated clock run ahead of the wall's. A full check takes about half a
 minute. `--slow` holds it to the laptop's speed, for timing:
 
-    tools/bench/run.py dist/flopos.img /tmp/out --site SONGS \
+    test/bench/run.py dist/flopos.img /tmp/out --site SONGS \
         'm/201549=>octet-stream' 'key:ctrl-shift-f10' 'type:whoami\n=>alright'
 
 ### The whole browser on a pretend system, fed damaged pages
 
-Apps reach the system only through one table of functions (`apps/app.h`).
+Apps reach the system only through one table of functions (`src/apps/sdk/app.h`).
 So an app can be built for an ordinary PC and handed a different table:
 one whose network answers with whatever a test gives it, and whose
-keyboard is a script. `tools/fuzz/browzer.c` does that with browzer, and
+keyboard is a script. `test/fuzz/browzer.c` does that with browzer, and
 a memory checker watches every byte it touches while it reads damaged
 web answers, lays them out, follows links and plays what it is given.
 Nothing in the app is changed for the test.

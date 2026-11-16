@@ -29,7 +29,7 @@ Every change below was judged by those three numbers.
 
 ### Sound: refilled at interrupt time
 
-*kernel/audio.c `audio_feeder`, app interface version 4.*
+*src/kernel/audio.c `audio_feeder`, app interface version 4.*
 
 A player can't count on being asked for more when it suits it. The app
 may be drawing, or waiting on the network, for longer than the sound card's
@@ -59,7 +59,7 @@ through the same memory a piece at a time, so it never runs out.
 
 ### Decoding: the same arithmetic, less of it
 
-*apps/lib/bits, apps/lib/dsp, and the decoders in apps/lib/audio.*
+*src/apps/lib/bits, src/apps/lib/dsp, and the decoders in src/apps/lib/audio.*
 
 - **Bits read 25 at a time** (`bits.h`), with one unaligned load, in
   either bit order. They used to be read one at a time, at tens of
@@ -100,7 +100,7 @@ decoders: mpg123, FAAD2, libvorbis, libFLAC.
 
 ### Tracker songs: the score read as it plays
 
-*apps/lib/audio/tracker.c.*
+*src/apps/lib/audio/tracker.c.*
 
 - **No score in memory.** A song's patterns used to be unpacked into a
   table of notes before it played, and a long one didn't fit. Now each row
@@ -123,14 +123,14 @@ decoders: mpg123, FAAD2, libvorbis, libFLAC.
   stuttering screen, to under a fifth.
 
 Every format was checked against libopenmpt on real songs from The Mod
-Archive: most match at 0.8 to 0.999 (`tools/audiotest`).
+Archive: most match at 0.8 to 0.999 (`test/audiotest`).
 
 **Also good for:** any app that plays a song: a game's music, a DAW's
 sample player.
 
 ### Out of 8 bits: noise shaping
 
-*apps/lib/audio/decode.c `lines`.*
+*src/apps/lib/audio/decode.c `lines`.*
 
 The Sound Blaster Pro takes 8-bit samples. Dropping each sample's low
 byte leaves distortion nearly as loud as a quiet passage itself: the grit
@@ -143,7 +143,7 @@ less error where the ear listens hardest.
 
 ### The screen: only what can be seen, only what changed
 
-*kernel/term.c `term_win_covers`, kernel/main.c, kernel/vga.c `vga_present_rows`.*
+*src/kernel/term.c `term_win_covers`, src/kernel/main.c, src/kernel/vga.c `vga_present_rows`.*
 
 The moving background took 21.5 ms of every frame on the slowed emulator.
 Inside browzer, it was drawn and enlarged, then completely covered by
@@ -162,7 +162,7 @@ The picture is the same to the pixel.
 ### Frames that shine without being redrawn
 
 Every frame piece is drawn as geometry in one place (`blit_cell` in
-`kernel/term.c`), so colouring it there colours every program's frames.
+`src/kernel/term.c`), so colouring it there colours every program's frames.
 Each pixel takes one of sixteen palette entries (`PAL_NEON`) by its place
 on the screen's diagonal, so neighbouring cells join without a seam, and
 every other pixel is taken half a band on, which blends one band into the
@@ -179,7 +179,7 @@ and the colours then run through the letters at no cost at all.
 
 ### Network: nothing lost while busy
 
-*kernel/net.c, kernel/time.c, kernel/tcp.c.*
+*src/kernel/net.c, src/kernel/time.c, src/kernel/tcp.c.*
 
 - **The card emptied a thousand times a second.** The 3Com PC Card holds
   only a few kilobytes, and a full frame arrives every 1.2 ms at 10 Mbit,
@@ -202,7 +202,7 @@ and the colours then run through the letters at no cost at all.
 
 ### Writing a floppy's filesystem so a power cut cannot break it
 
-For the inventory (`kernel/fs.c`). FAT12 has no journal, so the order of
+For the inventory (`src/kernel/fs.c`). FAT12 has no journal, so the order of
 the writes is the whole of the safety.
 
 - **New data never lands on old data.** A changed file goes into
@@ -230,7 +230,7 @@ the writes is the whole of the safety.
 
 ### A page that knows how big it is
 
-For maelcum's tape sleeve (`apps/maelcum/sleeve.c`). The laptop has no
+For maelcum's tape sleeve (`src/apps/maelcum/sleeve.c`). The laptop has no
 printer, so the sleeve leaves on the floppy as a file, and has to come
 out of somebody else's printer at exactly a cassette sleeve's size.
 

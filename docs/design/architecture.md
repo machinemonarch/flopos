@@ -5,7 +5,7 @@ source files involved; every file opens with a comment explaining itself.
 
 ## Booting
 
-1. **The boot sector** (`boot/boot.S`, 512 bytes). The BIOS loads it at
+1. **The boot sector** (`src/boot/boot.S`, 512 bytes). The BIOS loads it at
    address 0x7C00. It switches the screen to VGA mode 13h, then reads two
    files off the floppy, a track at a time with retries:
    - `SAFFRAN.PIX` (his palette, then 320×200 pixels) into 0x80000. After
@@ -17,25 +17,25 @@ source files involved; every file opens with a comment explaining itself.
    The disk is a real FAT12 floppy, so the build works out where both
    files actually landed and writes those sector numbers into the boot
    sector.
-2. **The 16-bit stub** (`kernel/start.S`). The kernel is loaded at 0x10000.
+2. **The 16-bit stub** (`src/kernel/start.S`). The kernel is loaded at 0x10000.
    It measures memory (three ways, see hardware[^1]), opens the
    A20 gate (three ways, and checks it worked), loads a flat descriptor
    table and switches the processor into 32-bit protected mode.
 3. **The 32-bit start**: flat segments, a stack, zeroed memory for the
    kernel's variables.
-4. **`main`** (`kernel/main.c`) takes Saffran over from the screen
+4. **`main`** (`src/kernel/main.c`) takes Saffran over from the screen
    (`vga_adopt`) and starts the machine: memory, interrupts, timer,
    keyboard, serial line, the processor's measured speed, sound, the saved
    state from the floppy, the panel, the text, the background, the shell,
    and the switch to 800×600 unless Shift is held.
 
-   `kernel/arrive.c` narrates this. `boot_step` puts up a line just
+   `src/kernel/arrive.c` narrates this. `boot_step` puts up a line just
    before each step runs, and `boot_result` adds what the step found. The
    first few steps happen before the timer exists, so their lines are
    told just after, in order. From the serial line's own step onward, each
    line also goes down the cable as `[boot] ...`.
 
-5. **The wizard** (`kernel/wizard.c`). Saffran fades out and the gate
+5. **The wizard** (`src/kernel/wizard.c`). Saffran fades out and the gate
    comes up: a riddle, built by taking one of twenty shapes ("Where do %A
    %P go to %V?") and filling it from lists of adjectives, nouns and verbs,
    with plurals, "it" forms and "a"/"an" worked out by rule. Which shape
@@ -44,7 +44,7 @@ source files involved; every file opens with a comment explaining itself.
    a xorshift. The wizard is character art in a window with no paper
    (`term_win_bare`), so the moving background shows around him. Any
    answer is accepted, and the riddle and answer go into the journal.
-6. **The way in** (`kernel/cyberdelia.c`). An original chip-tune jingle on
+6. **The way in** (`src/kernel/cyberdelia.c`). An original chip-tune jingle on
    the PC speaker (a real square wave) doubled on FM, then about three
    seconds of ripple: every row of the finished frame slid sideways along
    two sine waves, through a hook (`g_frame_fx`) the main loop applies
@@ -70,8 +70,8 @@ source files involved; every file opens with a comment explaining itself.
 
 Paging is on, with 4MB pages that map every address to itself; only the
 two pages of the app area are open to apps. It is switched off for the
-length of each BIOS call and on again after (`kernel/wall.c`,
-`kernel/bioscall.c`).
+length of each BIOS call and on again after (`src/kernel/wall.c`,
+`src/kernel/bioscall.c`).
 
 If the BIOS admits to no memory above 1MB, the heap moves into
 conventional memory. Everything the system itself needs fits in about
@@ -79,20 +79,20 @@ conventional memory. Everything the system itself needs fits in about
 
 ## Interrupts and time
 
-- `kernel/isr.S`, `kernel/idt.c`: entry points for the 32 processor
+- `src/kernel/isr.S`, `src/kernel/idt.c`: entry points for the 32 processor
   exceptions and 16 hardware interrupts. The two 8259 interrupt
   controllers are moved out of the way of the exceptions. A crash prints
   its details (which fault, where, the registers) down the serial line
   first, then on a panic screen.
-- `kernel/time.c`: the 8254 timer ticks 250 times a second, and
+- `src/kernel/time.c`: the 8254 timer ticks 250 times a second, and
   everything is timed from it. The processor's own cycle counter is used
   as a second opinion. If the timer ever stops ticking for 100ms of cycle
   time, the clock restarts it and logs that it had to.
-- `kernel/kbd.c`, `kernel/keymap.c`: the keyboard on IRQ 1, which keys
+- `src/kernel/kbd.c`, `src/kernel/keymap.c`: the keyboard on IRQ 1, which keys
   are held, a queue of presses, the modifier keys, and the layout in use
-  (the tables in `kernel/keymaps.c`, made by `tools/mkkeymap.py`), with
+  (the tables in `src/kernel/gen/keymaps.c`, made by `tools/build/mkkeymap.py`), with
   the accent keys that wait for a letter and Alt+Shift between the two
-  alphabets of a Cyrillic or Hebrew keyboard. `kernel/kbpick.c` is the
+  alphabets of a Cyrillic or Hebrew keyboard. `src/kernel/kbpick.c` is the
   window Ctrl+Shift+F1 opens to choose a keyboard from, drawn over
   anything, like the HUD.
 - Characters are ints: FLOPOS's own codes below 0x100, Unicode numbers
@@ -100,7 +100,7 @@ conventional memory. Everything the system itself needs fits in about
   the HUD and the line editor keep them in 16 bits; in a C string a wide
   one is four bytes that start with `CH_WIDE_ESC` (`ch_next`, `ch_put`).
   Hebrew is turned right to left only when a row is drawn
-  (`bidi_order` in `kernel/draw.c`), so text is always kept in the order
+  (`bidi_order` in `src/kernel/draw.c`), so text is always kept in the order
   it was typed. The keyboard's own auto-repeat is dropped. The keys that move
   something (Tab, the arrows, PgUp, PgDn, Backspace, Delete) repeat while
   held, 15 times a second after 0.4 s, made when a program asks for a
@@ -114,8 +114,8 @@ modes (`INT 10h`, VESA), measuring memory and switching the power off
 (`INT 15h`).
 
 To call it, FLOPOS drops from 32-bit mode back to 16-bit "real" mode, makes
-the call, and comes back (`kernel/bios.S`). Every call goes through one
-function, `bios_int` in `kernel/bioscall.c`, which:
+the call, and comes back (`src/kernel/bios.S`). Every call goes through one
+function, `bios_int` in `src/kernel/bioscall.c`, which:
 
 1. hands the interrupt controllers back to the BIOS's own layout
 2. sets the timer to the BIOS's speed
@@ -129,26 +129,26 @@ that was the cause of every freeze (see hardware[^1]).
 
 ## The screen
 
-- `kernel/vga.c`: everything is drawn into a 320×200, 256-colour buffer
+- `src/kernel/vga.c`: everything is drawn into a 320×200, 256-colour buffer
   in memory. At 320×200 that buffer is copied to the screen as it is. At
   800×600 it is scaled up into an 800×600 canvas first, and the text is
   drawn on top at double size, so it stays sharp instead of being blown
   up. Frames are capped at about 30 a second. If the first frames at
   800×600 take over 400ms, FLOPOS drops back to 320×200 by itself.
-- `kernel/vbe.c`: asks the video BIOS what modes it has.
-- `kernel/panel.c`: the 65550's panel stretching, for `wide`.
-- `kernel/mood.c`: the moving background, worked out at 80×50 and blown up
+- `src/kernel/vbe.c`: asks the video BIOS what modes it has.
+- `src/kernel/panel.c`: the 65550's panel stretching, for `wide`.
+- `src/kernel/mood.c`: the moving background, worked out at 80×50 and blown up
   four times, which is cheap. Its brightness follows the music.
-- `kernel/mathx.c`: integer sines, square roots and angles (no floating
+- `src/kernel/mathx.c`: integer sines, square roots and angles (no floating
   point anywhere).
-- `kernel/banana.c`, `kernel/vortex.c`, `kernel/arrive.c`: the banana,
+- `src/kernel/banana.c`, `src/kernel/vortex.c`, `src/kernel/arrive.c`: the banana,
   `whaaat`, and the boot narration over Saffran; the same narrator types
   the steps of `bye` and `reboot` over Ozzy, whose picture (`OZZY.PIX`)
   is read off the floppy at boot so leaving never waits on the disk.
 
 ## The terminal
 
-`kernel/term.c` draws every character by hand onto the frame. It has:
+`src/kernel/term.c` draws every character by hand onto the frame. It has:
 
 - A grid of cells with scrollback, and per-line "quirks" (the text effects
   `quirks` switches off).
@@ -162,19 +162,19 @@ that was the cause of every freeze (see hardware[^1]).
   own colours, bold (drawn twice, a pixel apart), italic (each row of the
   letter shifted) and underline.
 
-`kernel/line.c` is the line editor at the prompt; `kernel/shell.c` is the
-prompt, the tokeniser and the command table; `kernel/voice.c` is every
-sentence FLOPOS says and every phrase it recognises; `kernel/ui.c` turns
+`src/kernel/line.c` is the line editor at the prompt; `src/kernel/shell.c` is the
+prompt, the tokeniser and the command table; `src/kernel/voice.c` is every
+sentence FLOPOS says and every phrase it recognises; `src/kernel/ui.c` turns
 keys and serial escape sequences into single keypresses for menus and
 apps.
 
 ## Sound
 
-`kernel/sound.c` is a step sequencer. It plays rhythms on the OPL2 FM chip
+`src/kernel/sound.c` is a step sequencer. It plays rhythms on the OPL2 FM chip
 when there is one, and on the PC speaker when there isn't, driven from the
 timer interrupt so it keeps time whatever else is happening.
 
-Recorded sound is `kernel/audio.c`: the Sound Blaster's DSP plays 8-bit
+Recorded sound is `src/kernel/audio.c`: the Sound Blaster's DSP plays 8-bit
 samples from a 16 KB buffer it reads by itself, by DMA on channel 1, looping
 forever. Nothing waits on the card's interrupt: 250 times a second the
 system timer asks the DMA controller where the card is reading, and fills
@@ -194,7 +194,7 @@ FM channels 3 to 5, which the music never uses.
 
 ## The wizard's words
 
-`kernel/wizsay.c` runs a small transformer (512 word pieces, 3 layers, 96
+`src/kernel/wizsay.c` runs a small transformer (512 word pieces, 3 layers, 96
 wide, a memory of 64 pieces; about 240,000 weights) from `WIZARD.WIZ`.
 The file is read once at boot, about eight seconds of floppy, so no answer
 waits for the drive. Each weight is a byte on the floppy and becomes a
@@ -233,22 +233,22 @@ spare copy first), then the folder entry, then the old clusters are let
 go. See The inventory[^4] and
 techniques.md[^5].
 
-- `kernel/disk.c`: sectors on and off the floppy through the BIOS, in
+- `src/kernel/disk.c`: sectors on and off the floppy through the BIOS, in
   runs where possible, via the buffer at 0x70000.
-- `kernel/store.c`: `JOURNAL.TXT` (plain text, ending with the DOS
+- `src/kernel/store.c`: `JOURNAL.TXT` (plain text, ending with the DOS
   end-of-file character so every computer stops reading in the right
   place) and `STATE.BIN` (settings, network settings, with a
   checksum).
-- `kernel/fs.c`: the FAT12 filesystem: finds and reads any file by name,
+- `src/kernel/fs.c`: the FAT12 filesystem: finds and reads any file by name,
   writes system files in place, and everything in the inventory (the
   `inv_` calls). The same file is built for the PC and tested there
-  (`tools/fstest/run.py`).
-- `kernel/apps.c`: loads `NAME.APP` files (see
+  (`test/fstest/run.py`).
+- `src/kernel/apps.c`: loads `NAME.APP` files (see
   Making apps[^2]).
 
 ## The serial line
 
-`kernel/serial.c`: COM1 at 115200 baud. Everything the terminal prints is
+`src/kernel/serial.c`: COM1 at 115200 baud. Everything the terminal prints is
 copied there, typing there is fed in as keys, and `report` and crashes
 write there first.
 
@@ -263,7 +263,7 @@ Each layer is its own file:
 - **Connections** (`conn.c`): One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close.
 - **Secure web** (`tls.c`): TLS 1.3, and 1.2 (its AEAD ciphers and Chrome's two CBC ones), client side.
 - **Programs** (`netui.c`): The network menu.
-- **Web** (`apps/browzer/`): BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`).
+- **Web** (`src/apps/browzer/`): BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`).
 
 ## Encryption
 

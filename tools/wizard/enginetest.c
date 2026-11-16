@@ -1,11 +1,11 @@
-/* enginetest.c -- FLOPOS's own wizard engine (kernel/wizsay.c), built for
+/* enginetest.c -- FLOPOS's own wizard engine (src/kernel/wizsay.c), built for
  * this PC.  Given the model and a line of piece numbers, it prints the
  * scores for the next piece after each one, for enginetest.py to hold up
  * against speak.py. */
 #include <stdio.h>
 #include <stdlib.h>
 #define WIZ_HOST
-#include "../../kernel/wizsay.c"
+#include "../../src/kernel/wizsay.c"
 
 static void *take(u32 n) { return malloc(n); }
 

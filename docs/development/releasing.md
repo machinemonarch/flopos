@@ -32,7 +32,7 @@ next release will bring.
 
 The release refuses to start if `## Unreleased` is empty. Otherwise it:
 
-1. bumps the version and regenerates `kernel/version.h`
+1. bumps the version and regenerates `src/kernel/gen/version.h`
 2. builds everything from clean
 3. copies the image to `releases/flopos-X.Y.Z.img`, with its `.used` file
 4. moves the Unreleased notes under the new version number with today's

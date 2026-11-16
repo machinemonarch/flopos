@@ -120,7 +120,7 @@ site fail.
 mean another connection, to the authority, for every site), and fetching an
 authority's certificate that a badly set-up site forgot to send.
 
-**Keeping the list up to date:** `tools/mkroots.py` rebuilds
+**Keeping the list up to date:** `tools/build/mkroots.py` rebuilds
 `data/roots.dat` from a Linux PC's trusted list
 (`/etc/ssl/certs/ca-certificates.crt`). The current file was made from
 Ubuntu's ca-certificates 20260816. Authorities with keys FLOPOS can't

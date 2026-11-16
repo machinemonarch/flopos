@@ -11,9 +11,9 @@ releases/
 # or copied from -- it is read to learn facts about the hardware.
 reference/
 
-# Photographs dropped in to be turned into a boot screen. The generated
-# kernel/splash.c is committed, so the build does not need these; only
-# regenerating it does.
+# Photographs dropped in to be turned into a boot picture. The pictures
+# made from them (data/*.pix) are committed, so the build does not need
+# these; only making them again does.
 photos/
 
 *.ppm

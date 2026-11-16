@@ -41,15 +41,15 @@ was copied from any of them.
 | [RFC 2131](https://www.rfc-editor.org/rfc/rfc2131) | DHCP | `ip.c` |
 | [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035) | DNS | `ip.c` |
 | [RFC 9293](https://www.rfc-editor.org/rfc/rfc9293) | TCP | `tcp.c` |
-| [RFC 1945](https://www.rfc-editor.org/rfc/rfc1945) | HTTP/1.0 | `apps/browzer/web.c` |
-| [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) | URLs, joining a link to a page | `apps/browzer/url.c` |
+| [RFC 1945](https://www.rfc-editor.org/rfc/rfc1945) | HTTP/1.0 | `src/apps/browzer/web.c` |
+| [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) | URLs, joining a link to a page | `src/apps/browzer/url.c` |
 
 ### Files
 
 | Document | Used in |
 |---|---|
-| Microsoft's FAT specification (fatgen103) | `fs.c`, `tools/mkimage.py` |
-| [CommonMark](https://commonmark.org/) and [Markdown](https://daringfireball.net/projects/markdown/) | `apps/scribe/doc.c` |
+| Microsoft's FAT specification (fatgen103) | `fs.c`, `tools/build/mkimage.py` |
+| [CommonMark](https://commonmark.org/) and [Markdown](https://daringfireball.net/projects/markdown/) | `src/apps/scribe/doc.c` |
 
 ## The PC and its chips
 
@@ -79,15 +79,15 @@ for decades:
 | Chips & Technologies 65550 panel registers | `panel.c`: `wide` |
 | Creative Sound Blaster hardware programming guide | `audio.c`: the DSP |
 | Intel 8237A DMA controller datasheet | `audio.c`: channel 1, auto-init |
-| ProTracker MOD format notes | `apps/lib/audio/tracker.c` |
-| XM format notes (XM.TXT, Triton) | `apps/lib/audio/tracker.c` |
-| ISO/IEC 11172-3 and 13818-3 (MPEG audio) | `apps/lib/audio/mp3.c` |
+| ProTracker MOD format notes | `src/apps/lib/audio/tracker.c` |
+| XM format notes (XM.TXT, Triton) | `src/apps/lib/audio/tracker.c` |
+| ISO/IEC 11172-3 and 13818-3 (MPEG audio) | `src/apps/lib/audio/mp3.c` |
 | [PDMP3](https://github.com/technosaurus/PDMP3), public domain | `mp3tab.h`: the standard's tables |
-| ISO/IEC 13818-7 and 14496-3 (AAC) | `apps/lib/audio/aac.c` |
+| ISO/IEC 13818-7 and 14496-3 (AAC) | `src/apps/lib/audio/aac.c` |
 | [VisualOn AAC encoder](https://github.com/mstorsjo/vo-aacenc), Apache 2.0 | `aactab.h`: the codebooks |
-| [Vorbis I specification](https://xiph.org/vorbis/doc/Vorbis_I_spec.html) | `apps/lib/audio/vorbis.c` |
+| [Vorbis I specification](https://xiph.org/vorbis/doc/Vorbis_I_spec.html) | `src/apps/lib/audio/vorbis.c` |
 | [Ogg, RFC 3533](https://www.rfc-editor.org/rfc/rfc3533) | `vorbis.c`: pages and packets |
-| [FLAC, RFC 9639](https://www.rfc-editor.org/rfc/rfc9639) | `apps/lib/audio/flac.c` |
+| [FLAC, RFC 9639](https://www.rfc-editor.org/rfc/rfc9639) | `src/apps/lib/audio/flac.c` |
 | [Ogg FLAC mapping](https://xiph.org/flac/ogg_mapping.html) | `vorbis.c`: FLAC inside Ogg |
 | SHOUTcast/Icecast metadata (ICY) | browzer: station titles |
 | Inside Macintosh: Sound, the double-buffer callback | `audio_feeder`: refilling at interrupt time |

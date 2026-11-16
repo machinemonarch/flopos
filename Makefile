@@ -19,7 +19,7 @@ CFLAGS  := -m32 -std=gnu99 -ffreestanding -nostdlib -nostdinc \
            -fno-asynchronous-unwind-tables -fno-unwind-tables \
            -fno-stack-protector -fomit-frame-pointer \
            -fno-tree-loop-distribute-patterns \
-           -Wall -Wextra -Wno-unused-parameter -Wno-array-bounds -Ikernel \
+           -Wall -Wextra -Wno-unused-parameter -Wno-array-bounds -Isrc/kernel \
            $(EXTRA_CFLAGS)
 # -Wno-array-bounds: the boot info block genuinely lives at fixed low
 # addresses, and gcc reads any absolute dereference as an array at zero.
@@ -29,27 +29,33 @@ ASFLAGS := --32
 BUILD   := dist
 OBJDIR  := $(BUILD)/obj
 
-CSRC    := $(wildcard kernel/*.c)
-ASRC    := kernel/start.S kernel/isr.S kernel/bios.S
-COBJ    := $(patsubst kernel/%.c,$(OBJDIR)/%.o,$(CSRC))
-AOBJ    := $(patsubst kernel/%.S,$(OBJDIR)/%.o,$(ASRC))
+# The source is under src/: boot/, src/kernel/, src/room/ and src/apps/.  What a tool
+# makes (tools/build) is in a gen/ folder beside the code it belongs to.
+CSRC    := $(wildcard src/kernel/*.c)
+GSRC    := $(wildcard src/kernel/gen/*.c)
+ASRC    := src/kernel/start.S src/kernel/isr.S src/kernel/bios.S
+COBJ    := $(patsubst src/kernel/%.c,$(OBJDIR)/%.o,$(CSRC)) $(patsubst src/kernel/gen/%.c,$(OBJDIR)/%.o,$(GSRC))
+AOBJ    := $(patsubst src/kernel/%.S,$(OBJDIR)/%.o,$(ASRC))
+KHDRS   := $(wildcard src/kernel/*.h src/kernel/gen/*.h)
 
 # start.o must come first: it owns physical 0x10000.
 KOBJ    := $(OBJDIR)/start.o $(OBJDIR)/isr.o $(OBJDIR)/bios.o $(COBJ)
 
 IMG     := $(BUILD)/flopos.img
 
-# Apps: every folder under apps/ is one, built into its own file and put on
-# the floppy beside the kernel.  They share the kernel's compiler flags but
-# none of its code -- only apps/app.h.
-APPNAMES  := $(filter-out lib,$(patsubst apps/%/,%,$(wildcard apps/*/)))
+# Apps: every folder under src/apps/ is one (but sdk/, what every app is
+# built with, and lib/, code they share), built into its own file and put
+# on the floppy beside the kernel.  They share the kernel's compiler flags
+# but none of its code -- only src/apps/sdk/app.h.
+SDK       := src/apps/sdk
+APPNAMES  := $(filter-out lib sdk,$(patsubst src/apps/%/,%,$(wildcard src/apps/*/)))
 APPFILES  := $(patsubst %,$(BUILD)/apps/%.app,$(APPNAMES))
-APPCFLAGS := $(filter-out -Ikernel,$(CFLAGS)) -Iapps
+APPCFLAGS := $(filter-out -Isrc/kernel,$(CFLAGS)) -I$(SDK)
 # browzer plays songs and mp3s, which want the Pentium's FPU; nothing in the
 # kernel uses it, so an app has it to itself.
 APPFLAGS_browzer := -m80387 -mhard-float
 
-# Libraries apps share: apps/lib/<name>/, built into each app that lists
+# Libraries apps share: src/apps/lib/<name>/, built into each app that lists
 # it.  audio turns songs into samples, for browzer and whatever plays sound
 # next.
 APPLIBS_browzer := audio bits dsp
@@ -62,64 +68,66 @@ $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
 # Every object is rebuilt when a header changes: a table such as the apps'
-# (apps/app.h) is laid out in more than one file, and a stale one misleads.
-$(OBJDIR)/%.o: kernel/%.c $(wildcard kernel/*.h) apps/app.h | $(OBJDIR)
+# (src/apps/sdk/app.h) is laid out in more than one file, and a stale one misleads.
+$(OBJDIR)/%.o: src/kernel/%.c $(KHDRS) $(SDK)/app.h | $(OBJDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJDIR)/%.o: src/kernel/gen/%.c $(KHDRS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # The wizard's talk is sums in floating point: the one kernel file that
-# uses the FPU (see kernel/wizsay.c).
+# uses the FPU (see src/kernel/wizsay.c).
 $(OBJDIR)/wizsay.o: CFLAGS += -m80387 -mhard-float
 
-$(OBJDIR)/%.o: kernel/%.S | $(OBJDIR)
+$(OBJDIR)/%.o: src/kernel/%.S | $(OBJDIR)
 	$(AS) $(ASFLAGS) $< -o $@
 
-$(BUILD)/boot.bin: boot/boot.S | $(OBJDIR)
+$(BUILD)/boot.bin: src/boot/boot.S | $(OBJDIR)
 	$(AS) $(ASFLAGS) $< -o $(OBJDIR)/boot.o
 	$(LD) -m elf_i386 --section-start=.boot=0x7c00 --oformat binary \
 	      $(OBJDIR)/boot.o -o $@
 	@test $$(stat -c%s $@) -eq 512 || (echo "boot sector is not 512 bytes"; exit 1)
 
-$(BUILD)/kernel.bin: $(KOBJ) linker.ld
-	$(LD) -m elf_i386 -T linker.ld -o $@ $(KOBJ) --no-warn-rwx-segments
+$(BUILD)/kernel.bin: $(KOBJ) src/kernel/linker.ld
+	$(LD) -m elf_i386 -T src/kernel/linker.ld -o $@ $(KOBJ) --no-warn-rwx-segments
 	@echo "   kernel.bin: $$(stat -c%s $@) bytes"
 
 .SECONDEXPANSION:
-$(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) \
-                     $$(foreach l,$$(APPLIBS_$$*),$$(wildcard apps/lib/$$(l)/*.[ch])) \
-                     apps/crt.c apps/app.h apps/app_glyphs.h apps/app.ld
+$(BUILD)/apps/%.app: $$(wildcard src/apps/%/*.c) $$(wildcard src/apps/%/*.h) \
+                     $$(foreach l,$$(APPLIBS_$$*),$$(wildcard src/apps/lib/$$(l)/*.[ch] src/apps/lib/$$(l)/gen/*.h)) \
+                     $(SDK)/crt.c $(SDK)/app.h $(SDK)/gen/app_glyphs.h $(SDK)/app.ld
 	@mkdir -p $(BUILD)/apps
-	$(CC) $(APPCFLAGS) $(APPFLAGS_$*) $(foreach l,$(APPLIBS_$*),-Iapps/lib/$(l)) \
-	      -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ \
-	      apps/crt.c $(wildcard apps/$*/*.c) $(foreach l,$(APPLIBS_$*),$(wildcard apps/lib/$(l)/*.c))
+	$(CC) $(APPCFLAGS) $(APPFLAGS_$*) $(foreach l,$(APPLIBS_$*),-Isrc/apps/lib/$(l)) \
+	      -DAPP_NAME='"$*"' -static -Wl,-T,$(SDK)/app.ld -Wl,--no-warn-rwx-segments -o $@ \
+	      $(SDK)/crt.c $(wildcard src/apps/$*/*.c) $(foreach l,$(APPLIBS_$*),$(wildcard src/apps/lib/$(l)/*.c))
 	@echo "   $*.app: $$(stat -c%s $@) bytes"
 
-# The script room's engine (room/): its own program, linked to run in the
-# room's memory, never an app (there is no word that starts it).
-ROOMSRC := $(wildcard room/*.c)
-$(BUILD)/room.bin: $(ROOMSRC) $(wildcard room/*.h) room/room.ld
+# The script room's engine (src/room/): its own program, linked to run in
+# the room's memory, never an app (there is no word that starts it).
+ROOMSRC := $(wildcard src/room/*.c)
+$(BUILD)/room.bin: $(ROOMSRC) $(wildcard src/room/*.h) src/room/room.ld
 	@mkdir -p $(BUILD)
-	$(CC) $(APPCFLAGS) -m80387 -mhard-float -Iroom -static -Wl,-T,room/room.ld -Wl,--no-warn-rwx-segments -o $@ $(ROOMSRC)
+	$(CC) $(APPCFLAGS) -m80387 -mhard-float -Isrc/room -static -Wl,-T,src/room/room.ld -Wl,--no-warn-rwx-segments -o $@ $(ROOMSRC)
 	@echo "   room.bin: $$(stat -c%s $@) bytes"
 
-# Test apps (tools/walltest): built like any app, never put on the floppy.
-$(BUILD)/test/%.app: tools/walltest/%.c apps/crt.c apps/app.h apps/app.ld
+# Test apps (test/walltest): built like any app, never put on the floppy.
+$(BUILD)/test/%.app: test/walltest/%.c $(SDK)/crt.c $(SDK)/app.h $(SDK)/app.ld
 	@mkdir -p $(BUILD)/test
-	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $<
+	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,$(SDK)/app.ld -Wl,--no-warn-rwx-segments -o $@ $(SDK)/crt.c $<
 
-# The script room's tests (tools/roomtest): an app that drives it, and a
+# The script room's tests (test/roomtest): an app that drives it, and a
 # room that breaks the rules on purpose.  Never put on the floppy.
-$(BUILD)/test/roomt.app: tools/roomtest/roomt.c apps/crt.c apps/app.h apps/app.ld room/room.h
+$(BUILD)/test/roomt.app: test/roomtest/roomt.c $(SDK)/crt.c $(SDK)/app.h $(SDK)/app.ld src/room/room.h
 	@mkdir -p $(BUILD)/test
-	$(CC) $(APPCFLAGS) -DAPP_NAME='"roomt"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $<
-$(BUILD)/test/rogueroom.bin: tools/roomtest/rogueroom.c room/room.h room/room.ld
+	$(CC) $(APPCFLAGS) -DAPP_NAME='"roomt"' -static -Wl,-T,$(SDK)/app.ld -Wl,--no-warn-rwx-segments -o $@ $(SDK)/crt.c $<
+$(BUILD)/test/rogueroom.bin: test/roomtest/rogueroom.c src/room/room.h src/room/room.ld
 	@mkdir -p $(BUILD)/test
-	$(CC) $(APPCFLAGS) -static -Wl,-T,room/room.ld -Wl,--no-warn-rwx-segments -o $@ $<
+	$(CC) $(APPCFLAGS) -static -Wl,-T,src/room/room.ld -Wl,--no-warn-rwx-segments -o $@ $<
 
-$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) $(BUILD)/room.bin data/saffran.pix data/ozzy.pix data/roots.dat data/wizard.wiz tools/mkimage.py README.md
-	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) $(BUILD)/room.bin data/saffran.pix data/ozzy.pix data/roots.dat data/wizard.wiz tools/build/mkimage.py README.md
+	$(PYTHON) tools/build/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 
 size: $(BUILD)/kernel.bin
-	@$(LD) -m elf_i386 -T linker.ld -o /dev/null $(KOBJ) --no-warn-rwx-segments -M 2>/dev/null \
+	@$(LD) -m elf_i386 -T src/kernel/linker.ld -o /dev/null $(KOBJ) --no-warn-rwx-segments -M 2>/dev/null \
 	 | grep -E "^\.(text|rodata|data|bss)|_bss|_image_end" | head -20
 
 run: $(IMG)
@@ -128,23 +136,23 @@ run: $(IMG)
 	  -vga std -audiodev pa,id=sp -machine pcspk-audiodev=sp
 
 shot: $(IMG)
-	$(PYTHON) tools/shots.py $(IMG)
+	$(PYTHON) test/shots.py $(IMG)
 
 write: $(IMG)
-	tools/writefloppy.sh $(DEV)
+	tools/floppy/writefloppy.sh $(DEV)
 
 # Every image handed over gets its own number, its own archived copy, and
 # its own notes.  Nothing is bumped or built unless CHANGELOG.md says what
 # changed; the notes are stamped with the version only once the image exists.
 release:
-	@$(PYTHON) tools/changelog.py check && \
-	 v=$$($(PYTHON) tools/release.py $(PART)) && \
+	@$(PYTHON) tools/release/changelog.py check && \
+	 v=$$($(PYTHON) tools/release/release.py $(PART)) && \
 	 $(MAKE) --no-print-directory clean >/dev/null && \
 	 $(MAKE) --no-print-directory all && \
 	 mkdir -p releases && \
 	 cp $(IMG) releases/flopos-$$v.img && \
 	 { cp -f $(IMG).used releases/flopos-$$v.img.used 2>/dev/null || true; } && \
-	 $(PYTHON) tools/changelog.py stamp $$v releases/flopos-$$v.txt && \
+	 $(PYTHON) tools/release/changelog.py stamp $$v releases/flopos-$$v.txt && \
 	 echo "   released flopos-$$v.img, notes in releases/flopos-$$v.txt"
 
 clean:

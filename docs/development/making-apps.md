@@ -23,10 +23,10 @@ Apps need at least 20MB of memory, which the 430CDT (32MB) has.
 
 ## How an app is built
 
-Each folder under `apps/` is one app. `make` finds it, compiles every `.c`
+Each folder under `src/apps/` is one app. `make` finds it, compiles every `.c`
 file in it, and puts the result on the floppy:
 
-    apps/
+    src/apps/
       app.h          what an app can ask of FLOPOS (the only header it shares)
       app.ld         where an app sits in memory
       crt.c          the app's header, and memset / memcpy / memmove
@@ -35,7 +35,7 @@ file in it, and puts the result on the floppy:
         doc.c
         doc.h
 
-To make a new app called `hello`, create `apps/hello/hello.c` and run
+To make a new app called `hello`, create `src/apps/hello/hello.c` and run
 `make`. It becomes `HELLO.APP` on the floppy.
 
     #include "app.h"
@@ -147,7 +147,7 @@ so an app only reads and writes:
 - **`conn_check(on)`**: `conn_check(0)` lets the next secure connection through without the proof, for "go there anyway".
 
 One connection at a time. Anything above it is the app's own: browzer
-speaks HTTP and reads HTML itself, in `apps/browzer/`.
+speaks HTTP and reads HTML itself, in `src/apps/browzer/`.
 
 ### Added in version 3: sound
 
@@ -201,7 +201,7 @@ sentence to show.
 
 ## Libraries apps share
 
-Code more than one app could use lives in `apps/lib/<name>/` and is built
+Code more than one app could use lives in `src/apps/lib/<name>/` and is built
 into each app that asks for it in the Makefile:
 
     APPLIBS_browzer := audio bits dsp
@@ -246,7 +246,7 @@ upgrades by `writefloppy.sh` without anything more to do. That is where
 
 An app's own records (settings, a list like browzer's bookmarks) can
 instead be a file made at full size when the floppy is built
-(`tools/mkimage.py`), written in place with `file_write`, and added to the
-list in `tools/keepfiles.sh`.
+(`tools/build/mkimage.py`), written in place with `file_write`, and added to the
+list in `tools/floppy/keepfiles.sh`.
 
 [^1]: [techniques.md](../design/techniques.md)

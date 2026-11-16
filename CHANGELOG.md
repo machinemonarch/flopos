@@ -46,8 +46,11 @@ without it. Each version's notes are also written next to its image, as
   Ctrl-Shift-F5 switches the screen again from anywhere, no reboot needed.
 - In `network`, Tab goes round every setting and button.
 - Ctrl-C at the prompt drops what you were typing.
-- `tools/writefloppy.sh --dev` writes your own build instead of the newest
-  release.
+- The project's files are arranged by kind: the code in `src/`, what
+  builds and writes it in `tools/`, the tests in `test/`, and what a tool
+  made in a `gen/` folder beside the code it belongs to.
+- `tools/floppy/writefloppy.sh --dev` writes your own build instead of
+  the newest release.
 
 ## 1.43.2 — 2026-11-14
 
@@ -56,7 +59,7 @@ without it. Each version's notes are also written next to its image, as
   with credits for the MP3 tables and Mozilla's list of trusted
   authorities.
 
-- `tools/writefloppy.sh` says before writing that your files on the floppy
+- `tools/floppy/writefloppy.sh` says before writing that your files on the floppy
   are carried over, and that `--fresh` gives a clean disk. Before, it said
   everything on the disk would be gone, and then kept your files.
 

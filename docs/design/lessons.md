@@ -84,7 +84,7 @@ every pass of its loop, which a loop with nothing to do shouldn't.
 The kernel's own memory once grew past 0x70000, where the floppy
 and the video BIOS keep their buffers. Every disk read then wrote over the
 kernel's variables, and the first one to go was the keyboard's record of
-which keys are held. The machine believed Shift was down. `linker.ld` now
+which keys are held. The machine believed Shift was down. `src/kernel/linker.ld` now
 refuses to build a kernel that reaches that line.
 
 ## What the cassette taught us

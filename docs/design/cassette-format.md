@@ -1,8 +1,8 @@
 # The cassette format
 
 How maelcum[^1] turns files into sound on an ordinary audio cassette, and
-reads them back. The code is in `apps/lib/tape/` and
-`apps/maelcum/maelcum.c`.
+reads them back. The code is in `src/apps/lib/tape/` and
+`src/apps/maelcum/maelcum.c`.
 
 ## In short
 

@@ -20,7 +20,7 @@ its notes in `flopos-X.Y.Z.txt`. To build the current one yourself, run
 
 Write it with:
 
-    tools/writefloppy.sh
+    tools/floppy/writefloppy.sh
 
 The script:
 
@@ -38,7 +38,7 @@ The script:
    is empty, which takes about 16 seconds; with files in it, the whole
    floppy, a little over a minute.
 
-Other options: name the device yourself (`tools/writefloppy.sh /dev/sde`),
+Other options: name the device yourself (`tools/floppy/writefloppy.sh /dev/sde`),
 `-y` to skip the question, `--full` to write all 1.44MB, `--lowlevel` to
 low-level format a suspect disk first (slow), and `--dev` to write your own
 build (`dist/flopos.img`) instead of the newest release.
@@ -47,7 +47,7 @@ build (`dist/flopos.img`) instead of the newest release.
 make the floppy drive yours for good, run this once, then unplug the drive
 and plug it back in:
 
-    sudo cp tools/99-flopos-floppy.rules /etc/udev/rules.d/
+    sudo cp tools/floppy/99-flopos-floppy.rules /etc/udev/rules.d/
     sudo udevadm control --reload
 
 ## Booting

@@ -28,7 +28,7 @@ On a Linux PC:
 | `make run` | Boots it in QEMU in a window, with sound |
 | `make shot` | Boots it without a window and saves screenshots to `dist/shots/` |
 | `make size` | Where the kernel's bytes went |
-| `make write` | Writes it to a floppy (same as `tools/writefloppy.sh`) |
+| `make write` | Writes it to a floppy (same as `tools/floppy/writefloppy.sh`) |
 | `make release PART=minor` | Makes a numbered release (Releasing[^2]) |
 | `make clean` | Removes what was built |
 
@@ -36,40 +36,34 @@ On a Linux PC:
 
     make                      build dist/flopos.img
     make run                  boot it in QEMU
-    tools/writefloppy.sh      put it on a real floppy
+    tools/floppy/writefloppy.sh   put it on a real floppy
 
 
 ## What is in the project
 
-- **`boot/boot.S`**: The boot sector.
-- **`data/`**: What goes on the floppy beside the system: Saffran and Ozzy (`tools/mksplash.py`), the 119 authorities secure sites are checked against (`tools/mkroots.py`), and the wizard's words.
-- **`kernel/`**: The system: one file per job, each explaining itself at the top.
-- **`apps/`**: Programs that live on the floppy beside the system (see Making apps[^3]).
-- **`apps/lib/`**: Code apps share, built into each app that asks for it (`audio`: songs into samples).
-- **`linker.ld`**: Where the kernel sits in memory, with checks that it fits.
-- **`tools/mkimage.py`**: Builds the floppy image: a real FAT12 disk that also boots.
-- **`tools/mkfont.py`, `tools/fontwide.py`**: Generate the text faces from readable glyph art (`fontwide.py` holds the Romanian, Cyrillic, Hebrew and Yiddish letters), and `apps/app_glyphs.h` for the apps.
-- **`tools/mkkeymap.py`**: Generates the keyboard layouts (`kernel/keymaps.c`) from the keys written out row by row.
-- **`tools/mksplash.py`**: Turns a photograph into the boot picture.
-- **`tools/mkaactab.py`**: Makes `aactab.h`, the AAC codebooks, from the VisualOn AAC encoder's tables.
-- **`tools/mkroots.py`**: Turns a Linux PC's list of trusted authorities into `data/roots.dat`.
-- **`tools/writefloppy.sh`**: Writes the image to a real floppy, safely.
-- **`tools/99-flopos-floppy.rules`**: Lets you write floppies without a password.
-- **`tools/release.py`, `tools/changelog.py`**: Version numbers and release notes.
-- **`tools/shots.py`**: Screenshots from the emulator.
-- **`tools/wire.py`**: Talks to FLOPOS over the serial line and keeps a transcript.
-- **`tools/wiretest.py`, `tools/persisttest.py`**: Boot it in QEMU and check that the serial line works and that saved things survive a reboot. Like `shots.py`, they answer the wizard's riddle first ("a turnip").
+Every file has one home, by what it is:
+
+- **`src/`**: The code that runs on the laptop: `boot/` (the boot sector), `kernel/` (the system, one file per job, and `linker.ld`), `room/` (the script room's engine) and `apps/` (one folder per program, see Making apps[^3]).
+- **`src/apps/sdk/`**: What every app is built with: `app.h`, `crt.c`, `app.ld`.
+- **`src/apps/lib/`**: Code apps share, built into each app that asks for it (`audio`, `dsp`, `bits`, `tape`).
+- **`gen/`**: Beside the code it belongs to, what a tool made: the faces and keyboard layouts (`src/kernel/gen/`), the apps' glyphs (`src/apps/sdk/gen/`), the decoders' tables (`src/apps/lib/audio/gen/`). Never edited by hand; each file names the tool that made it.
+- **`data/`**: What goes on the floppy beside the system: Saffran and Ozzy, the 119 authorities secure sites are checked against, and the wizard's words.
+- **`tools/build/`**: What the build runs, and what makes `gen/` and `data/`: `mkimage.py` (the floppy image), `mkfont.py` and `fontwide.py` (the faces), `mkkeymap.py`, `mksplash.py`, `mkroots.py`, `mkaactab.py`, `mkmp3tab.py`.
+- **`tools/floppy/`**: Writing a real floppy: `writefloppy.sh`, `keepfiles.sh` (carries your files over), and the udev rule that lets you write without a password.
+- **`tools/release/`**: Version numbers and release notes.
+- **`tools/wizard/`**: Training the wizard (Training the wizard[^4]).
+- **`test/`**: Every test, one folder each, and the emulator helpers: `shots.py` (screenshots), `wire.py` (the serial line), `bench/` (a scripted QEMU run and its test site). See Testing[^1].
 - **`docs/`**: This documentation.
 - **`CHANGELOG.md`**: Every release and what changed.
-- **`releases/`**: Every released image and its notes (not in git).
+- **`dist/`**, **`releases/`**: What was built, and every released image (not in git).
 
 ## The floppy image
 
-`tools/mkimage.py` builds a genuine 1.44MB FAT12 floppy with `mtools`, so it
+`tools/build/mkimage.py` builds a genuine 1.44MB FAT12 floppy with `mtools`, so it
 can be read by DOS, Windows, Linux or a Mac. On it:
 
 - **`SAFFRAN.PIX`**: The boot picture, read first. In one unbroken run of sectors.
-- **`OZZY.PIX`**: Ozzy, shown on `bye` and `reboot`, made like Saffran's picture by `tools/mksplash.py`.
+- **`OZZY.PIX`**: Ozzy, shown on `bye` and `reboot`, made like Saffran's picture by `tools/build/mksplash.py`.
 - **`KERNEL.BIN`**: The system, read second. Also in one unbroken run, and both positions are written into the boot sector.
 - **`SCRIBE.APP`**: The word processor.
 - **`BROWZER.APP`**: The web browser.
@@ -102,3 +96,4 @@ no PC Card adapter. For the network, add one on QEMU's built-in network:
 [^1]: [Testing](testing.md)
 [^2]: [Releasing](releasing.md)
 [^3]: [Making apps](making-apps.md)
+[^4]: [Training the wizard](training-the-wizard.md)

@@ -44,13 +44,13 @@ only for teaching him again.
 - **`@`** in his lines stands for the word that was typed; FLOPOS will put
   the real word there.
 - **`speak.py`** does the sums exactly as the engine on FLOPOS does
-  (`kernel/wizsay.c`), from the same file. `enginetest.py` builds that
+  (`src/kernel/wizsay.c`), from the same file. `enginetest.py` builds that
   engine for this PC and compares the two, score by score.
 - **`check.py`** has him say 300 lines and measures them: that they end,
   that the words are real, that neighbouring words have met before (a
   rough test of grammar), that he doesn't repeat himself or stutter, and
   that he isn't reciting the books. It prints ok or FAILED.
-- **In the emulator:** `tools/bench/run.py dist/flopos.img OUT
+- **In the emulator:** `test/bench/run.py dist/flopos.img OUT
   'type:blorp\n=>\[wizard\]'`; he writes `[wizard] N pieces` on the serial
   wire for each answer.
 

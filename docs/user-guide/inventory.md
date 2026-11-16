@@ -64,14 +64,14 @@ Three things to know:
 - A move between folders, cut halfway, leaves the thing listed in both.
   Nothing is lost; drop one of them.
 
-This is tested on the PC (`tools/fstest/run.py`): thousands of random
+This is tested on the PC (`test/fstest/run.py`): thousands of random
 changes checked by the PC's own disk tools, and hundreds of simulated
 power cuts. On the laptop's real floppy drive, folders and documents
 have been made and kept; a power cut has not been tried there.
 
 ## New releases
 
-Writing a new release to the floppy (`tools/writefloppy.sh`) carries the
+Writing a new release to the floppy (`tools/floppy/writefloppy.sh`) carries the
 whole inventory across, with the journal, the settings and the
 bookmarks. Documents from releases before 1.31.0 (`WRITE1.MD` to
 `WRITE8.MD`) are moved into the inventory under the same names. If your
