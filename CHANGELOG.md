@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.44.0 — 2026-11-16
+
 ### FEATURES
 
 - browzer reads pages' styles: what a site hides stays hidden, with bold,
