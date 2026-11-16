@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """enginetest.py MODEL -- does FLOPOS's engine do the same sums as speak.py?
 
-Builds src/kernel/wizsay.c for this PC (into dist/), has both work through the
+Builds src/kernel/wizsay.c for this PC (into build/wizard/), has both work through the
 same lines piece by piece, and compares every score.  Prints ok or FAILED.
 """
 import os, subprocess, sys
@@ -11,7 +11,7 @@ sys.path.insert(0, here)
 from speak import Wizard, TOPK
 
 root = os.path.dirname(os.path.dirname(here))
-exe = os.path.join(root, "dist", "wiztest")
+exe = os.path.join(root, "build", "wizard", "wiztest")
 os.makedirs(os.path.dirname(exe), exist_ok=True)
 subprocess.run(["gcc", "-O2", "-o", exe, os.path.join(here, "enginetest.c")],
                check=True)

@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 
-OUT = "dist/shots"
+OUT = "build/shots"
 
 
 class Monitor:

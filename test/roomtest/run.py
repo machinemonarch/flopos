@@ -41,7 +41,7 @@ def run(img, cases, tmp, tag):
 
 def main():
     img = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "dist", "flopos.img")
-    r = subprocess.run(["make", "-s", "-C", ROOT, "dist/test/roomt.app", "dist/test/rogueroom.bin"], capture_output=True, text=True)
+    r = subprocess.run(["make", "-s", "-C", ROOT, "build/roomtest/roomt.app", "build/roomtest/rogueroom.bin"], capture_output=True, text=True)
     if r.returncode: print("FAILED  the test programs do not build\n" + r.stderr[-600:]); sys.exit(1)
     tmp = tempfile.mkdtemp(prefix="flopos-roomtest.")
     ok = True
@@ -49,9 +49,9 @@ def main():
         for tag, cases, room in (("real", REAL, None), ("rogue", ROGUE, "rogueroom.bin")):
             work = os.path.join(tmp, tag + ".img")
             shutil.copy(img, work)
-            subprocess.run(["mcopy", "-i", work, os.path.join(ROOT, "dist", "test", "roomt.app"), "::ROOMT.APP"], check=True)
+            subprocess.run(["mcopy", "-i", work, os.path.join(ROOT, "build", "roomtest", "roomt.app"), "::ROOMT.APP"], check=True)
             if room:
-                subprocess.run(["mcopy", "-o", "-i", work, os.path.join(ROOT, "dist", "test", room), "::ROOM.BIN"], check=True)
+                subprocess.run(["mcopy", "-o", "-i", work, os.path.join(ROOT, "build", "roomtest", room), "::ROOM.BIN"], check=True)
             lines, want = run(work, cases, tmp, tag)
             print("\n".join(lines))
             ok = ok and len(lines) == want and all(l.startswith("ok") for l in lines)

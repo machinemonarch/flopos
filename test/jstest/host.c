@@ -2,7 +2,7 @@
  * host.c -- the script engine (src/room/) run on the PC that builds FLOPOS.
  *
  *     test/jstest/run.sh              every test in test/jstest/tests
- *     dist/jstest FILE.js ...          one or more, showing what they print
+ *     build/jstest/jstest FILE.js ...          one or more, showing what they print
  *
  * A test prints what it checks with check(got, want, what); it passes if
  * it prints no FAIL and its last line is "done".  The engine here is the

@@ -1,4 +1,6 @@
-# Build output. Everything here is reproducible from source.
+# Build output, reproducible from source: build/ is everything compiled
+# (the tests' too), dist/ the finished floppy image.
+build/
 dist/
 
 # Released floppy images: 1.4MB each, and any of them can be rebuilt by

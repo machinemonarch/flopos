@@ -3,10 +3,10 @@
 
     test/fuzz/run.py [TARGET ...] [--runs N] [--seed S]
 
-Builds each target into dist/fuzz with the compiler's memory checker,
+Builds each target into build/fuzz with the compiler's memory checker,
 makes or finds its inputs, and gives it N damaged ones (20000 unless
 told).  Prints ok or FAILED for each; an input that broke something is
-kept in dist/fuzz/finds, and `dist/fuzz/TARGET --one FILE MODE` (the mode
+kept in build/fuzz/finds, and `build/fuzz/TARGET --one FILE MODE` (the mode
 is in the file's name) shows it again.
 
 Inputs: songs from ~/.cache/flopos-songs (test/audiotest/fetch.py),
@@ -16,7 +16,7 @@ ogg or flac will do; they are never kept here).  The rest are made.
 import argparse, os, random, struct, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OUT = os.path.join(ROOT, "dist", "fuzz")
+OUT = os.path.join(ROOT, "build", "fuzz")
 FINDS = os.path.join(OUT, "finds")
 HOME = os.path.expanduser("~/.cache")
 CC = ["gcc", "-O1", "-g", "-fno-omit-frame-pointer", "-fsanitize=address,undefined",

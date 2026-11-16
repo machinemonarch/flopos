@@ -28,13 +28,13 @@ CASES = [(0, r"\[rogue\] behaving"),
 
 def main():
     img = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "dist", "flopos.img")
-    r = subprocess.run(["make", "-s", "-C", ROOT, "dist/test/rogue.app"], capture_output=True, text=True)
+    r = subprocess.run(["make", "-s", "-C", ROOT, "build/walltest/rogue.app"], capture_output=True, text=True)
     if r.returncode: print("FAILED  the rogue app does not build\n" + r.stderr[-400:]); sys.exit(1)
     tmp = tempfile.mkdtemp(prefix="flopos-walltest.")
     try:
         work = os.path.join(tmp, "t.img")
         shutil.copy(img, work)
-        subprocess.run(["mcopy", "-i", work, os.path.join(ROOT, "dist", "test", "rogue.app"), "::ROGUE.APP"], check=True)
+        subprocess.run(["mcopy", "-i", work, os.path.join(ROOT, "build", "walltest", "rogue.app"), "::ROGUE.APP"], check=True)
         steps = []
         for n, want in CASES:
             steps.append("type:rogue %d\\n=>%s" % (n, want))

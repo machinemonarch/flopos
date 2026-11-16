@@ -3,8 +3,9 @@
 #
 #    make            build dist/flopos.img
 #    make run        boot it in QEMU with a window
-#    make shot       boot headless and grab PNG frames into dist/shots/
+#    make shot       boot headless and grab PNG frames into build/shots/
 #    make write DEV=/dev/sdX    write the image to a real floppy
+#    make wire       talk to the laptop over serial (logs/serial.log)
 # =============================================================================
 
 CC      := gcc
@@ -26,7 +27,10 @@ CFLAGS  := -m32 -std=gnu99 -ffreestanding -nostdlib -nostdinc \
 
 ASFLAGS := --32
 
-BUILD   := dist
+# Everything compiled goes in build/ (the tests' too, one folder per test);
+# dist/ holds only the finished floppy image.
+BUILD   := build
+DIST    := dist
 OBJDIR  := $(BUILD)/obj
 
 # The source is under src/: boot/, src/kernel/, src/room/ and src/apps/.  What a tool
@@ -41,7 +45,7 @@ KHDRS   := $(wildcard src/kernel/*.h src/kernel/gen/*.h)
 # start.o must come first: it owns physical 0x10000.
 KOBJ    := $(OBJDIR)/start.o $(OBJDIR)/isr.o $(OBJDIR)/bios.o $(COBJ)
 
-IMG     := $(BUILD)/flopos.img
+IMG     := $(DIST)/flopos.img
 
 # Apps: every folder under src/apps/ is one (but sdk/, what every app is
 # built with, and lib/, code they share), built into its own file and put
@@ -61,7 +65,7 @@ APPFLAGS_browzer := -m80387 -mhard-float
 APPLIBS_browzer := audio bits dsp
 APPLIBS_maelcum := tape
 
-.PHONY: all clean run shot write size release
+.PHONY: all clean run shot write wire size release
 all: $(IMG)
 
 $(OBJDIR):
@@ -110,20 +114,21 @@ $(BUILD)/room.bin: $(ROOMSRC) $(wildcard src/room/*.h) src/room/room.ld
 	@echo "   room.bin: $$(stat -c%s $@) bytes"
 
 # Test apps (test/walltest): built like any app, never put on the floppy.
-$(BUILD)/test/%.app: test/walltest/%.c $(SDK)/crt.c $(SDK)/app.h $(SDK)/app.ld
-	@mkdir -p $(BUILD)/test
+$(BUILD)/walltest/%.app: test/walltest/%.c $(SDK)/crt.c $(SDK)/app.h $(SDK)/app.ld
+	@mkdir -p $(@D)
 	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,$(SDK)/app.ld -Wl,--no-warn-rwx-segments -o $@ $(SDK)/crt.c $<
 
 # The script room's tests (test/roomtest): an app that drives it, and a
 # room that breaks the rules on purpose.  Never put on the floppy.
-$(BUILD)/test/roomt.app: test/roomtest/roomt.c $(SDK)/crt.c $(SDK)/app.h $(SDK)/app.ld src/room/room.h
-	@mkdir -p $(BUILD)/test
+$(BUILD)/roomtest/roomt.app: test/roomtest/roomt.c $(SDK)/crt.c $(SDK)/app.h $(SDK)/app.ld src/room/room.h
+	@mkdir -p $(@D)
 	$(CC) $(APPCFLAGS) -DAPP_NAME='"roomt"' -static -Wl,-T,$(SDK)/app.ld -Wl,--no-warn-rwx-segments -o $@ $(SDK)/crt.c $<
-$(BUILD)/test/rogueroom.bin: test/roomtest/rogueroom.c src/room/room.h src/room/room.ld
-	@mkdir -p $(BUILD)/test
+$(BUILD)/roomtest/rogueroom.bin: test/roomtest/rogueroom.c src/room/room.h src/room/room.ld
+	@mkdir -p $(@D)
 	$(CC) $(APPCFLAGS) -static -Wl,-T,src/room/room.ld -Wl,--no-warn-rwx-segments -o $@ $<
 
 $(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) $(BUILD)/room.bin data/saffran.pix data/ozzy.pix data/roots.dat data/wizard.wiz tools/build/mkimage.py README.md
+	@mkdir -p $(DIST)
 	$(PYTHON) tools/build/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 
 size: $(BUILD)/kernel.bin
@@ -141,6 +146,9 @@ shot: $(IMG)
 write: $(IMG)
 	tools/floppy/writefloppy.sh $(DEV)
 
+wire:
+	@$(PYTHON) tools/laptop/wire.py
+
 # Every image handed over gets its own number, its own archived copy, and
 # its own notes.  Nothing is bumped or built unless CHANGELOG.md says what
 # changed; the notes are stamped with the version only once the image exists.
@@ -156,4 +164,4 @@ release:
 	 echo "   released flopos-$$v.img, notes in releases/flopos-$$v.txt"
 
 clean:
-	rm -rf $(OBJDIR) $(BUILD)/apps $(BUILD)/*.bin $(BUILD)/*.img
+	rm -rf $(OBJDIR) $(BUILD)/apps $(BUILD)/*.bin $(IMG) $(IMG).used

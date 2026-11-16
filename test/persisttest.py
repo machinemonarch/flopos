@@ -6,9 +6,11 @@ line, shuts QEMU down, and then checks the result from outside with
 mtools -- because the OS claiming it saved something is not evidence.
 Then boots the same disk again to see whether it remembers.
 """
-import os, re, subprocess, sys, time
+import os, re, shutil, subprocess, sys, time
 
-img = "dist/test.img"
+img = "build/persisttest/test.img"
+os.makedirs(os.path.dirname(img), exist_ok=True)
+shutil.copyfile(sys.argv[1] if len(sys.argv) > 1 else "dist/flopos.img", img)
 
 
 def boot(seconds_before=22.0):

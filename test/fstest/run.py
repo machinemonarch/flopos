@@ -3,7 +3,7 @@
 
     test/fstest/run.py [IMAGE] [--ops N] [--cuts N] [--seed S]
 
-Builds src/kernel/fs.c for this PC (dist/fstest), then on a copy of the image
+Builds src/kernel/fs.c for this PC (build/fstest/fstest), then on a copy of the image
 (dist/flopos.img unless named):
 
   1. thousands of random makes, changes, moves and removals in the
@@ -19,7 +19,7 @@ Prints ok or FAILED, and the first thing that was wrong.
 import argparse, os, random, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BIN = os.path.join(ROOT, "dist", "fstest")
+BIN = os.path.join(ROOT, "build", "fstest", "fstest")
 NAMES = ["A", "NOTES.MD", "SONG.MOD", "LIST.TXT", "B", "OLD", "X1.MD", "LONGNAME.MD", "Z-9_~!.A", "DIR", "DEEP"]
 BAD = ["..", ".", "A/../B", "TOOLONGNAME.MD", "A+B", "X.TOOL", "a*b", "", "A/./B"]
 
