@@ -63,6 +63,8 @@
 #define ISR_PTX   0x02
 #define ISR_RST   0x80
 #define ISR_RDC   0x40
+#define ISR_OVW   0x10                     /* the receive ring ran over      */
+#define ISR_TXE   0x08
 
 /* How the sixteen kilobytes are split.  Six pages for sending, which is
  * four more than one frame needs, and the rest a ring for receiving. */
@@ -218,6 +220,35 @@ static int ne_send(const u8 *frame, int len)
     return 0;
 }
 
+/* The ring ran over: frames came faster than they were read -- a radio
+ * station still sending after its stream was stopped, say.  The DP8390
+ * then stops taking any frame at all until it is put right the way its
+ * datasheet gives: stop, wait, clear the byte counts, loop back, empty the
+ * ring, clear the flag, and send again whatever was going out.  Without
+ * it the card went deaf, and the next name looked up never got its
+ * answer. */
+static void ring_overflow(void)
+{
+    u8 cmd = rd(R_CMD);
+    int resend = 0;
+    wr(R_CMD, CMD_RD_ABORT | CMD_STOP);
+    delay_ms(2);                         /* 1.6 ms at least                 */
+    wr(R_RBCR0, 0);
+    wr(R_RBCR1, 0);
+    if (cmd & CMD_TXP) resend = !(rd(R_ISR) & (ISR_PTX | ISR_TXE));
+    wr(R_TCR, 0x02);                     /* loop back, while it is emptied  */
+    wr(R_CMD, CMD_RD_ABORT | CMD_START);
+    s_next = RX_START + 1;               /* everything in it, dropped       */
+    wr(R_BNRY, RX_START);
+    wr(R_CMD, CMD_PAGE1 | CMD_RD_ABORT | CMD_START);
+    wr(R_CURR, s_next);
+    wr(R_CMD, CMD_RD_ABORT | CMD_START);
+    wr(R_ISR, ISR_OVW);
+    wr(R_TCR, 0x00);
+    if (resend) wr(R_CMD, CMD_RD_ABORT | CMD_TXP | CMD_START);
+    serial_print("[ne2000] the ring ran over: emptied, listening again\n");
+}
+
 /* Each frame in the ring has four bytes in front of it: how it went, which
  * page the next one starts on, and how long it is counting those four. */
 static int ne_recv(u8 *frame, int max)
@@ -226,6 +257,7 @@ static int ne_recv(u8 *frame, int max)
     int len;
 
     if (!s_up) return 0;
+    if (rd(R_ISR) & ISR_OVW) ring_overflow();
 
     wr(R_CMD, CMD_PAGE1 | CMD_RD_ABORT | CMD_START);
     curr = rd(R_CURR);
