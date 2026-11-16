@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 9
+#define APP_API_VERSION 10
 #define APP_BASE        0x00C00000u      /* 12MB: two whole 4MB pages, the app's own */
 #define APP_MAX         0x00800000u      /* 8MB: code, data, buffers and the stack */
 #define APP_STACK       0x00040000u      /* the top 256KB: its stack, and a page the system fills in */
@@ -349,6 +349,17 @@ typedef struct {
     /* A letter's shape, for a program that makes a picture: five columns,
      * bit 0 at the top, eight rows.  0 if the font has no such letter. */
     int  (*glyph)(int ch, u8 cols[5]);
+    /* ---- version 10: the script room ---- */
+    /* A room of its own for a page's JavaScript (room.h): room_open loads
+     * it; room_task hands it a task and waits for the answer (its length,
+     * or -1 if the room had to be stopped, and room_why says why; it must
+     * then be opened again).  While it works, the room's requests come to
+     * door(buf, len, cap): the request is in buf, the answer goes there
+     * too, and door returns its length, or -1. */
+    int  (*room_open)(void);
+    int  (*room_task)(const u8 *task, u32 len, u8 *answer, u32 cap, u32 ms,
+                      int (*door)(u8 *buf, u32 len, u32 cap), u8 *door_buf, u32 door_cap);
+    const char *(*room_why)(void);
 } Api;
 
 #define CRYPT_CHACHA20_POLY1305 0        /* 256-bit key                     */

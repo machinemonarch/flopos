@@ -260,6 +260,7 @@ void isr_dispatch(Regs *r)
     /* After the timer's acknowledgement, with the interrupt's own work
      * done: the sound queue refilled, if an app has asked for that. */
     if (v == 32) audio_deferred();
+    if (v == 32) room_tick(r);           /* a script room past its time is stopped */
     cli();                                /* the sound's work may have let others in */
     if (--g_irq_depth == 0 && g_cpu_mhz) g_irq_cycles += tsc32() - c0;
 }

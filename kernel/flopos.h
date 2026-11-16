@@ -211,6 +211,12 @@ typedef struct {
     u32 useresp, ss;
 } Regs;
 
+/* --- room.c: the script room ---------------------------------------- */
+int  room_open(void);
+int  room_task(const u8 *task, u32 len, u8 *answer, u32 cap, u32 ms, u32 door_fn, u8 *door_buf, u32 door_cap);
+const char *room_why(void);
+void room_tick(Regs *r);
+
 /* --- wall.c: apps kept to their own memory ------------------------------- */
 void   wall_init(void);
 int    wall_on(void);
@@ -367,6 +373,9 @@ typedef struct {
     u8          cols, rows;          /* what fits in 320x200 from x0      */
     u8          x0;                  /* left margin                       */
     u8          shadow;              /* a drop shadow under every glyph    */
+    u8          sharp;               /* one pixel a pixel, even at 800x600 */
+    const u16  *lv;                  /* shaded letters, lh rows each, or 0 */
+    u8          lh;
     const char *name;
 } Face;
 
@@ -476,6 +485,7 @@ void   store_clock_set(u32 s);
 void   panel_init(void);
 int    panel_present(void);              /* is there a flat-panel chip?    */
 void   panel_tell(const char *when);        /* its registers, down the wire   */
+int    panel_wake(void);                 /* its off switches as they were while lit */
 int    panel_wide(void);
 void   panel_set_wide(int on);
 
@@ -514,6 +524,7 @@ extern void (*g_frame_fx)(u8 *canvas, int w, int h, u32 t);
 
 /* --- banana.c ---------------------------------------------------------- */
 void   banana_draw(u8 *dst, u32 t);
+void   banana_draw_big(u8 *dst, int w, int h, u32 t);
 
 /* --- vortex.c ---------------------------------------------------------- */
 void   vortex_run(const u8 *pal_to);
@@ -529,6 +540,7 @@ void   mood_set_deep(int on);
 int    mood_deep(void);
 void   mood_build_palette(u8 *out768);
 void   mood_draw(u8 *dst, u32 t);
+void   mood_draw_big(u8 *dst, int w, int h, u32 t);   /* straight onto the 800x600 canvas */
 
 /* --- line.c ------------------------------------------------------------ */
 #define LINE_MAX 120
@@ -712,6 +724,11 @@ void   sha256_init(Sha256 *c);
 void   sha256_update(Sha256 *c, const u8 *p, u32 n);
 void   sha256_final(Sha256 *c, u8 out[32]);
 void   sha256(const u8 *p, u32 n, u8 out[32]);
+typedef struct { u32 h[5]; u32 len; u8 buf[64]; int fill; } Sha1;
+void   sha1_init(Sha1 *c);
+void   sha1_update(Sha1 *c, const u8 *p, u32 n);
+void   sha1_final(Sha1 *c, u8 out[20]);
+void   sha1_waste(int n);                /* n compressions of nothing, for even timing */
 
 /* --- sha512.c: SHA-512 and SHA-384, for checking certificates ---------- */
 typedef struct { u64 h[8]; u32 len; u8 buf[128]; int fill, out; } Sha512;
@@ -759,6 +776,7 @@ int    x509_check_handshake(int scheme, const u8 *content, int clen, const u8 *s
 int    x509_check_handshake12(int scheme, const u8 *content, int clen, const u8 *sig, int slen);
 const char *tls_kex(void);              /* the key exchange, as words */
 int    ecdh_p256(const u8 secret[32], const u8 *peer, u8 shared[32], u8 pub[65]);
+int    ecdh(int curve, const u8 *secret, const u8 *peer, u8 *shared, u8 *pub);   /* CURVE_P256 or CURVE_P384 */
 const char *x509_who(void);              /* who vouched, after a good check */
 int    x509_roots(void);                 /* how many authorities are trusted */
 void   hmac_sha256(const u8 *key, u32 klen, const u8 *msg, u32 mlen, u8 out[32]);
@@ -796,6 +814,8 @@ void   aesgcm_seal(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
                    const u8 *pt, u32 len, u8 *ct, u8 tag[16]);
 int    aesgcm_open(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
                    const u8 *ct, u32 len, const u8 tag[16], u8 *pt);
+void   aes_cbc_encrypt(const u8 *key, int klen, const u8 iv[16], const u8 *in, u8 *out, u32 n);
+void   aes_cbc_decrypt(const u8 *key, int klen, const u8 iv[16], const u8 *in, u8 *out, u32 n);
 
 /* --- x25519.c ------------------------------------------------------------ */
 void   x25519(u8 out[32], const u8 scalar[32], const u8 point[32]);
@@ -874,6 +894,7 @@ int    vbe_has_lfb(const VbeMode *m);
 int    vga_go_big(void);
 void   vga_go_small(void);
 int    vga_redo_big(void);
+void   vga_redo_small(void);             /* 320x200 set again, as it was     */
 int    vga_is_big(void);
 void   vga_compose(void);
 void   vga_shrink(void);
@@ -1030,6 +1051,7 @@ extern volatile int g_hud_toggle;
 
 /* kbpick.c: Ctrl+Shift+F1, a window to choose the keyboard from. */
 extern volatile int g_kbpick_open;
+extern volatile int g_screen_again;      /* Ctrl+Shift+F5: switch the screen again */
 int    kbpick_takes_keys(void);
 void   kbpick_key(int ev);
 void   kbpick_frame(u8 *dst, u32 t);

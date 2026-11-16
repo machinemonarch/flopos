@@ -93,12 +93,29 @@ $(BUILD)/apps/%.app: $$(wildcard apps/%/*.c) $$(wildcard apps/%/*.h) \
 	      apps/crt.c $(wildcard apps/$*/*.c) $(foreach l,$(APPLIBS_$*),$(wildcard apps/lib/$(l)/*.c))
 	@echo "   $*.app: $$(stat -c%s $@) bytes"
 
+# The script room's engine (room/): its own program, linked to run in the
+# room's memory, never an app (there is no word that starts it).
+ROOMSRC := $(wildcard room/*.c)
+$(BUILD)/room.bin: $(ROOMSRC) $(wildcard room/*.h) room/room.ld
+	@mkdir -p $(BUILD)
+	$(CC) $(APPCFLAGS) -m80387 -mhard-float -Iroom -static -Wl,-T,room/room.ld -Wl,--no-warn-rwx-segments -o $@ $(ROOMSRC)
+	@echo "   room.bin: $$(stat -c%s $@) bytes"
+
 # Test apps (tools/walltest): built like any app, never put on the floppy.
 $(BUILD)/test/%.app: tools/walltest/%.c apps/crt.c apps/app.h apps/app.ld
 	@mkdir -p $(BUILD)/test
 	$(CC) $(APPCFLAGS) -DAPP_NAME='"$*"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $<
 
-$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) boot/saffran.pix boot/ozzy.pix boot/roots.dat boot/wizard.wiz tools/mkimage.py README.md
+# The script room's tests (tools/roomtest): an app that drives it, and a
+# room that breaks the rules on purpose.  Never put on the floppy.
+$(BUILD)/test/roomt.app: tools/roomtest/roomt.c apps/crt.c apps/app.h apps/app.ld room/room.h
+	@mkdir -p $(BUILD)/test
+	$(CC) $(APPCFLAGS) -DAPP_NAME='"roomt"' -static -Wl,-T,apps/app.ld -Wl,--no-warn-rwx-segments -o $@ apps/crt.c $<
+$(BUILD)/test/rogueroom.bin: tools/roomtest/rogueroom.c room/room.h room/room.ld
+	@mkdir -p $(BUILD)/test
+	$(CC) $(APPCFLAGS) -static -Wl,-T,room/room.ld -Wl,--no-warn-rwx-segments -o $@ $<
+
+$(IMG): $(BUILD)/boot.bin $(BUILD)/kernel.bin $(APPFILES) $(BUILD)/room.bin data/saffran.pix data/ozzy.pix data/roots.dat data/wizard.wiz tools/mkimage.py README.md
 	$(PYTHON) tools/mkimage.py $(BUILD)/boot.bin $(BUILD)/kernel.bin $@ $(APPFILES)
 
 size: $(BUILD)/kernel.bin

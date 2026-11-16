@@ -62,6 +62,16 @@ static u32 s_user_esp;                   /* where the app's stack was, last time
 static const char *s_killed;             /* why it was closed, if it was    */
 
 int wall_on(void) { return s_on; }
+u32 *wall_pdir(void) { return s_pd; }
+u32 *wall_esp0(void) { return &s_tss.esp0; }
+
+/* The script room (room.c) is a second wall beside the app's. */
+int  room_current(void);
+int  room_trap(Regs *r);
+void room_fault(Regs *r, const char *what);
+int  room_leave(void);
+void room_back(int was);
+void room_drop(void);
 u32 wall_scratch(void) { return C_SCRATCH; }
 
 static int in_app(u32 at, u32 len)
@@ -120,6 +130,7 @@ void wall_fault(Regs *r, const char *what)
 {
     static char why[96];
     u32 cr2;
+    if (room_current()) { room_fault(r, what); return; }
     __asm__ __volatile__("movl %%cr2, %0" : "=r"(cr2));
     serial_printf("[wall] app fault: %s at %x, reaching for %x, err %x\n", what, r->eip, cr2, r->err);
     if (r->vector == 14) fmt_str(why, sizeof why, "it reached outside its own memory");
@@ -135,8 +146,10 @@ u32 wall_call(u32 fn, u32 a0, u32 a1, u32 a2)
     u32 keep_esp0 = s_tss.esp0, keep_usp = s_user_esp, keep_up = s_up_kesp;
     u32 flags;
     u32 *st;
+    int room;
 
     if (!s_running) return 0;
+    room = room_leave();                 /* the app's memory is the app's again while it runs */
     usp -= 16;
     if (!in_app(usp - 4096, 4096 + 16) || !in_app(fn, 1)) wall_kill("it named a routine outside its own memory");
     st = (u32 *)usp;
@@ -144,6 +157,7 @@ u32 wall_call(u32 fn, u32 a0, u32 a1, u32 a2)
     __asm__ __volatile__("pushfl; popl %0" : "=r"(flags));
     r = wall_go(fn, usp, &s_up_kesp, &s_tss.esp0);
     s_tss.esp0 = keep_esp0; s_user_esp = keep_usp; s_up_kesp = keep_up;
+    room_back(room);
     if (flags & 0x200) sti(); else cli();
     return r;
 }
@@ -163,6 +177,7 @@ u32 g_wall_asks;                         /* requests from apps, counted (test bu
 
 int wall_trap(Regs *r)
 {
+    if (room_current()) return room_trap(r);   /* the room's doors are not the app's */
     s_user_esp = r->useresp;
     if (r->vector == 0x80) {
         g_wall_asks++;
@@ -220,6 +235,7 @@ int wall_run(u32 entry, int argc, char **argv)
 
     s_killed = 0; s_up_kesp = 0; s_user_esp = usp; s_running = 1;
     wall_go(entry, usp, &s_app_kesp, &s_tss.esp0);
+    room_drop();                         /* its script room goes with it   */
     s_running = 0;
     g_irq_depth = 0;                     /* it may have been closed from inside an interrupt */
     sti();
