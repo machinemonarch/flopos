@@ -1,7 +1,7 @@
 # FLOPOS
 FLOPOS is a cyber-psychedelic (cyberdelic) neurofunkadelic dreamscape built from scratch with Claude for the Toshiba Satellite Pro 430CDT. Tested on real hardware by me (a real mensch).
 
-##
+## What it runs on
 It runs on a late 90s laptop equipped with nothing but a 120 MHz Pentium CPU, 32 MB RAM, all of it booted from a 1.44 MB (MF2HD) floppy disk!  
 So far: No dedicated helper servers, services or proxies. All the magic happens on the laptop itself!
 
