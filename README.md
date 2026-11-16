@@ -1,8 +1,8 @@
 # FLOPOS
-FLOPOS s a cyber-psychedelic (cyberdelic) neurofunkadelic dreamscape built from scratch with Claude for the Toshiba Satellite Pro 430CDT. Tested on real hardware by me (a real mensch).
+FLOPOS is a cyber-psychedelic (cyberdelic) neurofunkadelic dreamscape built from scratch with Claude for the Toshiba Satellite Pro 430CDT. Tested on real hardware by me (a real mensch).
 
 ##
-Its runs on late 90s laptop equipped with nothing but a 120 MHz Pentium CPU, 32 MB RAM, all of it booted from a 1.44 MB (MF2HD) floppy disk!  
+It runs on a late 90s laptop equipped with nothing but a 120 MHz Pentium CPU, 32 MB RAM, all of it booted from a 1.44 MB (MF2HD) floppy disk!  
 So far: No dedicated helper servers, services or proxies. All the magic happens on the laptop itself!
 
 * It does not build on code from any GNU/Linux project.
@@ -13,7 +13,7 @@ So far: No dedicated helper servers, services or proxies. All the magic happens 
 TLDR: "It's this weird operating system that works on an old 1990s Toshiba Satellite Pro 430CDT laptop."
 
 ## Why
-It is an art project with the aim of bridging modern technology with old hardware. An attempt to push the hardwares (and Claudes) limits and see what cool things that can be achieved on a +30 year old retro laptop with the amazing tools of today.
+It is an art project with the aim of bridging modern technology with old hardware. An attempt to push the hardware's (and Claude's) limits and see what cool things that can be achieved on a +30 year old retro laptop with the amazing tools of today.
 
 ## DISCLAIMER
 It is in NO WAY intended as a daily-driver operating system. I've taken care to the best of my abilities (and expertise as a sysadmin and senior infrastructure engineer) to only implement things in such a way that I feel reduces unnecessary vulnerabilities and dangers. I've been careful to instruct Claude to design the project with as much safety in mind as possible. I've spent hours performing run-tests.  However, this project gives NO WARRANTIES AT ALL as to fitness of purpose and its code IS NOT thoroughly audited.
