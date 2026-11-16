@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Turn a photograph into boot/saffran.pix -- a 320x200, 256-colour boot screen.
+"""Turn a photograph into data/saffran.pix -- a 320x200, 256-colour boot screen.
 
-    tools/mksplash.py photo.jpg boot/saffran.pix
+    tools/mksplash.py photo.jpg data/saffran.pix
 
 The file is the palette (768 bytes, six bits per gun, as the VGA DAC wants
 it) and then the 64000 pixels.  The boot sector loads it off the floppy

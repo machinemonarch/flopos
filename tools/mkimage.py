@@ -52,7 +52,7 @@ MAGIC_KCNT = 0x66BB
 
 # Saffran: 768 bytes of palette, then 320x200 pixels.  Made from a photo
 # by tools/mksplash.py.
-SAFFRAN = "boot/saffran.pix"
+SAFFRAN = "data/saffran.pix"
 SAFFRAN_BYTES = 768 + 64000
 
 
@@ -120,14 +120,18 @@ def main():
         run("mcopy", "-i", out_path, readme, "::README.TXT")
 
     # The authorities secure sites are checked against (tools/mkroots.py).
-    run("mcopy", "-i", out_path, "boot/roots.dat", "::ROOTS.DAT")
+    run("mcopy", "-i", out_path, "data/roots.dat", "::ROOTS.DAT")
 
     # The wizard's way with words (tools/wizard), read once at boot.
-    run("mcopy", "-i", out_path, "boot/wizard.wiz", "::WIZARD.WIZ")
+    run("mcopy", "-i", out_path, "data/wizard.wiz", "::WIZARD.WIZ")
     # Ozzy, who sees the machine off on bye and reboot (kernel/arrive.c).
-    if os.path.getsize("boot/ozzy.pix") != SAFFRAN_BYTES:
-        sys.exit("boot/ozzy.pix should be %d bytes" % SAFFRAN_BYTES)
-    run("mcopy", "-i", out_path, "boot/ozzy.pix", "::OZZY.PIX")
+    if os.path.getsize("data/ozzy.pix") != SAFFRAN_BYTES:
+        sys.exit("data/ozzy.pix should be %d bytes" % SAFFRAN_BYTES)
+    run("mcopy", "-i", out_path, "data/ozzy.pix", "::OZZY.PIX")
+    # The script room's engine (room/), for browzer's JavaScript.
+    room = os.path.join(os.path.dirname(kern_path), "room.bin")
+    if os.path.exists(room):
+        run("mcopy", "-i", out_path, room, "::ROOM.BIN")
 
     # Apps, each its own file: SCRIBE.APP for `scribe`.  The kernel finds
     # them by name when they are asked for, so where they land is theirs.
@@ -149,6 +153,12 @@ def main():
     bpath = os.path.join(tmpdir, "BOOKMARK.TXT")
     open(bpath, "wb").write(b"\x1A" + b"\x00" * (BOOKMARK_BYTES - 1))
     run("mcopy", "-i", out_path, bpath, "::BOOKMARK.TXT")
+
+    # The sites browzer may run scripts on: none until one is allowed (j),
+    # a name a line, padded with spaces; written in place like the rest.
+    spath = os.path.join(tmpdir, "SITES.TXT")
+    open(spath, "wb").write(b" " * 2048)
+    run("mcopy", "-i", out_path, spath, "::SITES.TXT")
 
     img = bytearray(open(out_path, "rb").read())
 

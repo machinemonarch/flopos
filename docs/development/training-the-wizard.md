@@ -3,7 +3,7 @@
 The wizard answers every word FLOPOS doesn't know with a line of his own,
 from a tiny language model. His model is trained on a PC, not on the
 laptop; only the finished
-file, `boot/wizard.wiz`, goes on the floppy, as `WIZARD.WIZ`. It is kept
+file, `data/wizard.wiz`, goes on the floppy, as `WIZARD.WIZ`. It is kept
 in the repository, so building FLOPOS needs none of what follows; this is
 only for teaching him again.
 
@@ -14,7 +14,7 @@ only for teaching him again.
     tools/wizard/check.py  $W/wizard.bin $W/corpus
     tools/wizard/speak.py  $W/wizard.bin 10   # hear him
     tools/wizard/enginetest.py $W/wizard.bin  # FLOPOS's engine agrees?
-    cp $W/wizard.bin boot/wizard.wiz          # onto the next floppy
+    cp $W/wizard.bin data/wizard.wiz          # onto the next floppy
 
 - **What he reads.** Two public-domain books from Project Gutenberg,
   Shakespeare's complete works and the Jargon File 4.2.2, cut into single

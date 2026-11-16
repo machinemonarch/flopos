@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Make boot/roots.dat: the authorities FLOPOS trusts, small enough for a floppy.
+"""Make data/roots.dat: the authorities FLOPOS trusts, small enough for a floppy.
 
-    tools/mkroots.py [bundle.pem] [boot/roots.dat]
+    tools/mkroots.py [bundle.pem] [data/roots.dat]
 
 The bundle is a PEM file of root certificates -- by default the one Debian
 and Ubuntu install as /etc/ssl/certs/ca-certificates.crt, which is
@@ -63,7 +63,7 @@ def oid_ok(spki):
 
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else "/etc/ssl/certs/ca-certificates.crt"
-    out = sys.argv[2] if len(sys.argv) > 2 else "boot/roots.dat"
+    out = sys.argv[2] if len(sys.argv) > 2 else "data/roots.dat"
     text = open(src).read()
     ders = []
     for chunk in text.split("-----BEGIN CERTIFICATE-----")[1:]:

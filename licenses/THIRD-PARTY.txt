@@ -17,7 +17,7 @@ apps/lib/audio/mp3tab.h
     The MPEG audio standard's tables, taken from PDMP3
     (https://github.com/technosaurus/PDMP3), which is in the public domain.
 
-boot/roots.dat
+data/roots.dat
     The authorities secure websites are checked against, made by
     tools/mkroots.py from Mozilla's list of trusted root certificates
     (https://wiki.mozilla.org/CA), which Mozilla publishes under the

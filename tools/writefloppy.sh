@@ -10,6 +10,8 @@
 #                                        that is used
 #   tools/writefloppy.sh --fresh         do not carry documents, the journal
 #                                        and settings over from the disk
+#   tools/writefloppy.sh --dev           write your own build (dist/flopos.img)
+#                                        instead of the newest release
 #
 # Upgrading keeps what you wrote: documents, the journal and settings
 # already on the floppy are copied into the new image before it goes down.
@@ -64,6 +66,7 @@ while [ $# -gt 0 ]; do
         --full)        FULL=1 ;;
         --fresh)       FRESH=1 ;;
         -i|--image)    shift; IMAGE="${1:-}" ;;
+        --dev)         IMAGE="$ROOT/dist/flopos.img" ;;
         -h|--help)     sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         /dev/*)        DEVICE="$1" ;;
         *)             die "I don't understand '$1'. Try --help." ;;
@@ -88,6 +91,13 @@ escalate() {
 
 # --- the image ------------------------------------------------------------
 [ -f "$IMAGE" ] || die "No image at $IMAGE. Run 'make' first."
+# A build newer than the release about to be written: say so, before
+# anything is asked.
+if [ "$IMAGE" != "$ROOT/dist/flopos.img" ] && [ -f "$ROOT/dist/flopos.img" ] && [ "$ROOT/dist/flopos.img" -nt "$IMAGE" ]; then
+    note ""
+    note "NOTE: this writes the release $(basename "$IMAGE"). Your own build,"
+    note "      dist/flopos.img, is newer. To write that instead: --dev"
+fi
 
 img_size=$(stat -c%s "$IMAGE")
 [ "$img_size" -eq "$FLOPPY_BYTES" ] \
@@ -118,7 +128,7 @@ fi
 # editing this script is not a reason to tell you the disk is stale.
 root="$(cd "$(dirname "$IMAGE")/.." && pwd)"
 newer=""
-for d in boot kernel; do
+for d in boot data kernel; do
     if [ -d "$root/$d" ]; then
         found_newer=$(find "$root/$d" -type f -newer "$IMAGE" 2>/dev/null | head -1 || true)
         if [ -n "$found_newer" ]; then newer="$found_newer"; break; fi
