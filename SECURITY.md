@@ -34,9 +34,9 @@ a record, not as something to run.
 
 ## What is protected, and what is not
 
-- **The network.** Secure pages use TLS 1.3 (or TLS 1.2 in its modern
-  form) with post-quantum key exchange, and every site must prove who it
-  is. How
+- **The network.** Secure pages use TLS 1.3 with post-quantum key
+  exchange, or TLS 1.2 for older sites, limited to the ciphers Chrome
+  still offers. Every site must prove who it is. How
   private it is for the user[^1], and how it is built[^2].
 - **Programs.** Each app runs behind a wall: it can touch only its own
   memory and must ask the system for everything else[^3].
