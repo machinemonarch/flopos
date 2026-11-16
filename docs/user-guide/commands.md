@@ -46,9 +46,9 @@ struggle to understand instead.
 - **`sound` / `quiet`**: Music on or off.
 - **`whaaat`**: Pulls the screen through a hole in itself, turns it inside out, and drops you back somewhere colder. Say it again to come back up.
 - **`quirks`**: Lines of text sometimes misbehave on purpose. This holds them still, or lets them go again.
-- **`squint`**: Switches between the larger and the smaller text, for more room.
+- **`squint`**: Changes the size of the text: easy (100 columns, smooth, the default on the big screen), large (66), close (100) or fine (133).
 - **`keyboard`**: Which country's keys are printed on your keyboard: `keyboard de`. Alone, it says which is in use and lists the others (see Keyboards[^2]).
-- **`screen big` / `screen small`**: 800×600 with smooth text (the default), or the chunky 320×200 picture. `screen` alone says which is on.
+- **`screen big` / `screen small`**: 800×600 (the default), or the chunky 320×200 picture. `screen` alone says which is on.
 - **`wide`**: Only at 320×200: stretches the picture to fill the whole panel, or puts it back in its box.
 - **`goaway`**: Wipes the screen.
 
@@ -71,7 +71,7 @@ The journal is plain text, so you can read it on any computer: open
 - **`scribe`**: The word processor. `scribe letter` opens or starts `LETTER.MD`. See scribe[^4].
 - **`maelcum`**: Backup to an audio cassette, on one screen; also `maelcum save`, `maelcum load`. See maelcum[^5].
 - **`apps`**: Lists the programs on the floppy. Typing a program's name runs it.
-- **`browzer`**: A small web browser, with forms. An app on the floppy. See The network[^6].
+- **`browzer`**: A small web browser, with forms, styles, and scripts on the sites you allow. An app on the floppy. See browzer[^7].
 
 ## The network
 
@@ -88,6 +88,10 @@ More in The network[^6].
 - **`reboot`**: Starts the machine again.
 
 **Ctrl-Alt-Delete** restarts from anywhere, including the crash screen.
+
+**Ctrl-Shift-F5** switches the screen again, from anywhere. If the screen
+stays black at the start with the machine running behind it, press it:
+nothing needs to be seen to do so.
 
 ## The HUD
 
@@ -130,6 +134,7 @@ which is why it steps when an app opens and stays still while it runs.
 | Up / Down | Walk back through what you have typed |
 | Page Up / Page Down | Look back through what has scrolled away |
 | Esc | Abandon the line |
+| Ctrl-C | Abandon the line, leaving it on the screen marked `^C` |
 
 ## Keyboards
 
@@ -240,3 +245,4 @@ pretend tape: whatever is played is kept, and listening plays it back.
 [^4]: [scribe](scribe.md)
 [^5]: [maelcum](maelcum.md)
 [^6]: [The network](network.md)
+[^7]: [browzer](browzer.md)

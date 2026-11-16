@@ -28,7 +28,7 @@ was copied from any of them.
 | [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017) | RSA signatures, PKCS#1 and PSS | `rsa.c` |
 | [FIPS 186-5](https://csrc.nist.gov/pubs/fips/186-5/final) | ECDSA | `ecdsa.c` |
 | [SEC 2](https://www.secg.org/sec2-v2.pdf) | The P-256 and P-384 curves | `ecdsa.c` |
-| [Mozilla's CA program](https://wiki.mozilla.org/CA) | The trusted authorities | `boot/roots.dat` |
+| [Mozilla's CA program](https://wiki.mozilla.org/CA) | The trusted authorities | `data/roots.dat` |
 
 ### The network
 
@@ -133,6 +133,12 @@ repository, and no Toshiba code, firmware or text is in FLOPOS.
 |---|---|
 | [DuckDuckGo Lite](https://lite.duckduckgo.com/lite/) | Searching, when what is typed in the address line is not an address |
 | [Radio Browser](https://www.radio-browser.info/) | The stations on 72fm.com's country pages *(72fm: Max)* |
+
+## Inspiration for browzer
+
+Ideas only; browzer's code is written from scratch.
+
+- **[Chawan](https://sr.ht/~bptato/chawan/), a text-mode browser by bptato**: Laying tables out in columns on a grid of letters, every size rounded to whole cells. Also the push to make scripts and styles work on real pages.
 
 ## Inspiration for the wizard
 

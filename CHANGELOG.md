@@ -10,6 +10,44 @@ without it. Each version's notes are also written next to its image, as
   Cyrillic, Hebrew or accented letters, instead of garbled signs.
 - On the big screen D no longer looks like O: letters with a straight left
   side keep their square corners.
+- browzer reads pages' styles: what a site hides stays hidden, with bold,
+  italic, underline, colour, centring and indenting. Anything a page pins
+  over its content (pop-ups, cookie walls, newsletter boxes) is never drawn.
+- browzer runs JavaScript on sites you allow with j, in a walled room of its
+  own. Scripts are off everywhere else: "3 scripts, none of them run."
+- Smooth, shaded text on the big screen: 100 columns by 50 rows, drawn at
+  the screen's own pixels. `squint` also gives the large letters, the close
+  ones, and a fine size of 133 columns.
+- The moving background is drawn at 800x600 itself and dithered: no
+  blocks, no bands, and it drifts a pixel at a time.
+- A radio page's "Listen live" button plays, with or without scripts. Streams
+  a page names only in its data are listed at the top, by station name.
+- A "Listen live" or "Play" with no link, on a page that names a stream,
+  plays it. Links in headings look like links.
+- browzer's keys are yellow. Each bookmark is one link: its name, with
+  its address under it.
+- Secure sites that use only the P-384 curve work, as they do in Chrome and
+  Firefox: TLS 1.3 servers that ask for a second hello, and TLS 1.2 ones.
+- TLS 1.2 also speaks the two older ciphers Chrome still offers (AES in
+  CBC mode with SHA-1), last, for servers with nothing newer.
+- Sound files are asked for from their first byte, as browsers' players
+  ask, so servers that send recordings only that way play them.
+- browzer lays out tables as tables, in columns.
+- Scripts can use `async` and `await`, and the browser pieces pages
+  often stop on (AbortController, FormData, TextEncoder and more).
+- On an allowed site, libraries from jsDelivr, cdnjs, Google's and unpkg
+  are fetched too, so pages built on jQuery work. Reading jQuery takes
+  about three seconds on the laptop.
+- browzer finds on the page as `less` does: `/`, the words, Enter; `n`
+  and `N` for the next and the one before.
+- The black screen at the start: after the switch to 800x600 the panel's
+  own power and output settings are put back as they were while it was
+  lit, and looked at again a moment later. If it still happens,
+  Ctrl-Shift-F5 switches the screen again from anywhere, no reboot needed.
+- In `network`, Tab goes round every setting and button.
+- Ctrl-C at the prompt drops what you were typing.
+- `tools/writefloppy.sh --dev` writes your own build instead of the newest
+  release.
 
 ## 1.43.2 — 2026-11-14
 

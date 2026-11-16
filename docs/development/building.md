@@ -42,8 +42,7 @@ On a Linux PC:
 ## What is in the project
 
 - **`boot/boot.S`**: The boot sector
-- **`boot/saffran.pix`**: Saffran, the boot picture: palette and pixels, made by `tools/mksplash.py`
-- **`boot/roots.dat`**: The 119 authorities secure sites are checked against, made by `tools/mkroots.py`
+- **`data/`**: What goes on the floppy beside the system: Saffran and Ozzy (`tools/mksplash.py`), the 119 authorities secure sites are checked against (`tools/mkroots.py`), and the wizard's words
 - **`kernel/`**: The system: one file per job, each explaining itself at the top
 - **`apps/`**: Programs that live on the floppy beside the system (see Making apps[^3])
 - **`apps/lib/`**: Code apps share, built into each app that asks for it (`audio`: songs into samples)
@@ -53,7 +52,7 @@ On a Linux PC:
 - **`tools/mkkeymap.py`**: Generates the keyboard layouts (`kernel/keymaps.c`) from the keys written out row by row
 - **`tools/mksplash.py`**: Turns a photograph into the boot picture
 - **`tools/mkaactab.py`**: Makes `aactab.h`, the AAC codebooks, from the VisualOn AAC encoder's tables
-- **`tools/mkroots.py`**: Turns a Linux PC's list of trusted authorities into `boot/roots.dat`
+- **`tools/mkroots.py`**: Turns a Linux PC's list of trusted authorities into `data/roots.dat`
 - **`tools/writefloppy.sh`**: Writes the image to a real floppy, safely
 - **`tools/99-flopos-floppy.rules`**: Lets you write floppies without a password
 - **`tools/release.py`, `tools/changelog.py`**: Version numbers and release notes

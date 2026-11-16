@@ -107,7 +107,8 @@ files. It just also happens to boot.
 - [The inventory](docs/user-guide/inventory.md): your files and folders, and how safe they are
 - [scribe](docs/user-guide/scribe.md): the word processor
 - [maelcum](docs/user-guide/maelcum.md): your files on an audio cassette
-- [The network](docs/user-guide/network.md): the network menu, `ping`, the browzer web browser, and how private it is
+- [The network](docs/user-guide/network.md): the network menu, `ping`, and how private it is
+- [browzer](docs/user-guide/browzer.md): the web browser, music and radio, forms, and pages' styles and scripts
 
 **Working on it**
 - [Building](docs/development/building.md): tools, the project's files, the floppy image, the emulator

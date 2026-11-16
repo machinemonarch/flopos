@@ -39,8 +39,9 @@ The script:
    floppy, a little over a minute.
 
 Other options: name the device yourself (`tools/writefloppy.sh /dev/sde`),
-`-y` to skip the question, `--full` to write all 1.44MB, and `--lowlevel` to
-low-level format a suspect disk first (slow).
+`-y` to skip the question, `--full` to write all 1.44MB, `--lowlevel` to
+low-level format a suspect disk first (slow), and `--dev` to write your own
+build (`dist/flopos.img`) instead of the newest release.
 
 **No password, once set up.** Writing to a drive normally needs `sudo`. To
 make the floppy drive yours for good, run this once, then unplug the drive

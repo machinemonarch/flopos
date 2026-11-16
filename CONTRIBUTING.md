@@ -12,9 +12,11 @@ fork it and take it wherever you like.
 120MHz Pentium, 32MB of memory, an 800×600 screen. No outside machine
 does FLOPOS's own computing for it.
 
-**No JavaScript.** A JavaScript engine is large, and it is the main way web
-pages attack the computer reading them. browzer reads the web without one
-and shows each page's no-JavaScript version where the page has one.
+**JavaScript only where it is allowed, and walled off.** A JavaScript
+engine is large, and it is the main way web pages attack the computer
+reading them. So browzer runs none until a site is allowed, never runs
+another site's scripts, and runs the rest in a room of its own that can
+reach nothing but the page.
 
 **Ask before anything risky.** Features that open the machine up to the
 outside world are discussed before they are built.
