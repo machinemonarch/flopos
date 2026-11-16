@@ -55,7 +55,7 @@ without it. Each version's notes are also written next to its image, as
 - The documentation is less than half as long: how-tos kept, history
   and explanations the code already gives taken out.
 
-### BUGFIXES
+### BUG FIXES
 
 - The black screen at the start: after the switch to 800x600 the panel's
   own power and output settings are put back as they were while it was
