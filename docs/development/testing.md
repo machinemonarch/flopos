@@ -21,8 +21,8 @@ printer.
 
 holds the emulator to about the laptop's speed; `align=on` keeps its clock
 with the real one, or real-world radio arrives ten times too slowly.
-`net drop 10` makes FLOPOS drop every tenth incoming frame, as a real card
-might; `net drop 0` stops it.
+`ip drop 10` makes FLOPOS drop every tenth incoming frame, as a real card
+might; `ip drop 0` stops it.
 
 ## On this PC
 

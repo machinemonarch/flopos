@@ -1,7 +1,8 @@
 # Commands
 
 Type a word at `here>` and press Enter; capitals don't matter. `help`
-lists the everyday words. A word FLOPOS doesn't know goes into the
+lists the everyday words, and `help` after any word or program says a
+little about it: `ping help`, `browzer help`. A word FLOPOS doesn't know goes into the
 journal, and the wizard answers it with a line from his tiny language
 model: he knows no facts, only sentences to put your word into.
 

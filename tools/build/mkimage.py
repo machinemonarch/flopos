@@ -124,6 +124,8 @@ def main():
 
     # The wizard's way with words (tools/wizard), read once at boot.
     run("mcopy", "-i", out_path, "data/wizard.wiz", "::WIZARD.WIZ")
+    # What `WORD help` shows at the prompt (src/kernel/shell.c), plain text.
+    run("mcopy", "-i", out_path, "data/help.txt", "::HELP.TXT")
     # Ozzy, who sees the machine off on bye and reboot (src/kernel/arrive.c).
     if os.path.getsize("data/ozzy.pix") != SAFFRAN_BYTES:
         sys.exit("data/ozzy.pix should be %d bytes" % SAFFRAN_BYTES)

@@ -36,7 +36,7 @@ Every file has one home, by what it is:
 - **`src/apps/sdk/`**: What every app is built with: `app.h`, `crt.c`, `app.ld`.
 - **`src/apps/lib/`**: Code apps share (`audio`, `dsp`, `bits`, `tape`).
 - **`gen/`**: Beside the code it belongs to, what a tool made: faces and keyboard layouts (`src/kernel/gen/`), the apps' glyphs (`src/apps/sdk/gen/`), the decoders' tables (`src/apps/lib/audio/gen/`). Never edited by hand.
-- **`data/`**: What goes on the floppy beside the system: Saffran and Ozzy, the trusted authorities, the wizard's words.
+- **`data/`**: What goes on the floppy beside the system: Saffran and Ozzy, the trusted authorities, the wizard's words, and the help text.
 - **`tools/build/`**: What the build runs and what makes `gen/` and `data/`: `mkimage.py`, `mkfont.py` and `fontwide.py`, `mkkeymap.py`, `mksplash.py`, `mkroots.py`, `mkaactab.py`, `mkmp3tab.py`.
 - **`tools/floppy/`**: Writing a real floppy: `writefloppy.sh`, `keepfiles.sh` (carries your files over), and the udev rule.
 - **`tools/laptop/`**: `wire.py`, the serial line.
@@ -61,6 +61,7 @@ by any computer:
 - **`ROOTS.DAT`:** The trusted authorities.
 - **`JOURNAL.TXT`, `STATE.BIN`, `BOOKMARK.TXT`, `SITES.TXT`:** What FLOPOS remembers, made at full size to be written in place.
 - **`INVENTORY`:** The user's folder, empty in a new image.
+- **`HELP.TXT`:** What `WORD help` shows, from `data/help.txt`.
 - **`README.TXT`:** The project's README.
 
 Beside the image, `flopos.img.used` says which parts of the disk are in

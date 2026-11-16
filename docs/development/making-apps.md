@@ -8,7 +8,8 @@ the name is passed on: `scribe letter`. `apps` lists them.
 ## A new app
 
 Each folder under `src/apps/` (but `sdk/` and `lib/`) is one app. Make
-`src/apps/hello/hello.c` and run `make`; it becomes `HELLO.APP`:
+`src/apps/hello/hello.c` and run `make`; it becomes `HELLO.APP`. Give it
+an entry in `data/help.txt` for `hello help`:
 
     #include "app.h"
 

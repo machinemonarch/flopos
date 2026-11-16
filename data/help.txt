@@ -1,0 +1,161 @@
+FLOPOS help: what `WORD help` shows at the prompt, one entry per word.
+An entry starts with its words in brackets and runs to the next one.
+
+[whoami]
+whoami        who you are
+
+[look]
+look          what is around
+
+[here]
+here          where you are
+
+[mood]
+mood          the next colours for the background
+mood NAME     one of still, warm, deep, dusk, void
+  mood dusk
+
+[whaaat]
+whaaat        through the hole in the screen; again to come back
+
+[listen]
+listen        the next rhythm: jungle, breaks, drift, acid, temple, spiral
+
+[sound quiet]
+sound         music on
+quiet         music off
+
+[quirks]
+quirks        stop the text misbehaving, or let it again
+
+[squint]
+squint        the next text size: easy, large, close, fine
+
+[keyboard]
+keyboard        which layout is in use, and the others
+keyboard CODE   use another one
+  keyboard de
+  keyboard us
+Lost? Ctrl-Shift-F1 lists them all, from anywhere.
+
+[screen]
+screen          which size is on
+screen big      800x600
+screen small    320x200
+Ctrl-Shift-F5 switches the screen again, from anywhere.
+
+[wide]
+wide          at 320x200: fill the panel, or put it back
+
+[time]
+time          the time, the date, how long awake, the clock's battery
+
+[sys]
+sys           processor, speed, memory, screen, panel
+
+[goaway]
+goaway        wipe the screen
+
+[version]
+version       which FLOPOS this is
+
+[help]
+help          the everyday words
+WORD help     a few lines about one of them
+  ping help
+
+[remember]
+remember      write everything to the floppy now
+
+[journal]
+journal       what was written down, and the words not known
+
+[network]
+network       the connection: card, address, automatic or by hand
+  Tab goes round, Enter changes, Esc leaves.
+
+[apps]
+apps          the programs on the floppy; type a name to run one
+
+[ping]
+ping PLACE    ask a machine whether it is there, four times
+  ping example.com
+  ping 1.1.1.1
+
+[report]
+report        everything about this machine, down the serial line
+
+[wizard]
+wizard        lock the screen behind a riddle
+
+[bye]
+bye           write everything down and switch off
+
+[reboot]
+reboot        start the machine again
+
+[vesa]
+vesa          the video card's memory and screen modes
+
+[card]
+card          the two PC Card slots
+card raw      their bytes as well
+
+[net]
+net           switch the network card on and say what was found
+
+[dsp]
+dsp           a chime through the Sound Blaster, and its real rate
+
+[ip]
+ip                       address, mask, way out, name server
+ip ADDR MASK WAY         set them by hand
+ip dhcp                  ask the network again
+ip names ADDR [PORT]     another name server
+ip drop N                for testing: lose every Nth frame (0 stops)
+  ip 192.168.1.50 255.255.255.0 192.168.1.1
+
+[crypto]
+crypto        check the encryption against known answers, and time it
+
+[wire]
+wire          the serial line: its settings and traffic
+
+[speed]
+speed         where each frame's time goes
+
+[disk]
+disk          read the floppy's first sector back
+
+[frames]
+frames        draw the frame pieces
+
+[dump]
+dump ADDR [LEN]   the bytes at a place in memory, in hex
+  dump 7c00 40
+
+[browzer]
+browzer               the web, starting at your bookmarks
+browzer ADDRESS       go straight there; words search DuckDuckGo
+browzer fetch ADDRESS a page as text, here
+Inside: g go, / find, Tab next link, Enter follow, Backspace back,
+b bookmark, h bookmarks, j allow scripts, s stop music, Esc leave.
+
+[scribe]
+scribe              a new document
+scribe NAME         open or start NAME.MD in the inventory
+scribe FOLDER/NAME  the same, in a folder
+Inside: Ctrl-S save, Ctrl-O open, Ctrl-B/I/U styles,
+Ctrl-M the Markdown view, Esc leave.
+
+[maelcum]
+maelcum             backup to an audio cassette
+maelcum save [NAME] ready to write, everything or one file
+maelcum load [NAME] listening, everything or one file
+Inside: W write, R read, G tape sleeve, S stop, Esc leave.
+
+[inventory]
+inventory           your files and folders
+inventory FOLDER    start in a folder
+Inside: Enter open, W write, N new folder, R rename, M move, D drop,
+Esc leave.

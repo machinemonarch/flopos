@@ -196,6 +196,7 @@ static void cmd_help(void)
         term_newline();
     }
     say_dim(voice(V_HELP_FOOT));
+    say_dim("Put help after a word for more: ping help");
 }
 
 static void cmd_clear(void)
@@ -1536,6 +1537,69 @@ static int run_word(const char *name)
     return 0;
 }
 
+/* ---- WORD help ----------------------------------------------------------
+ * A few lines about one word, from HELP.TXT on the floppy (data/help.txt).
+ * An entry starts with its words in brackets, "[sound quiet]", and runs
+ * to the next one.  The text lives on the floppy rather than in here, so
+ * it costs the kernel only this, and any PC can read it too.  Read once,
+ * on the first ask, then kept. */
+#define HELP_MAX 16384u
+static char *s_help;
+static u32   s_help_len;
+
+/* Is `word` one of the bracketed words at the start of this line? */
+static int help_names(const char *l, u32 n, const char *word)
+{
+    u32 i = 1;
+    while (i < n && l[i] != ']') {
+        u32 j = 0;
+        while (i < n && l[i] == ' ') i++;
+        while (word[j] && i + j < n && lower((u8)l[i + j]) == lower((u8)word[j])) j++;
+        if (!word[j] && i + j < n && (l[i + j] == ' ' || l[i + j] == ']')) return 1;
+        while (i < n && l[i] != ' ' && l[i] != ']') i++;
+    }
+    return 0;
+}
+
+static int word_help(const char *word)
+{
+    u32 i = 0, blanks = 0;
+    int in = 0;
+
+    if (!s_help) {
+        FsFile f;
+        int got;
+        if (!fs_find("HELP.TXT", &f) || f.size == 0) return 0;
+        s_help = halloc(f.size < HELP_MAX ? f.size : HELP_MAX);
+        got = fs_read(&f, (u8 *)s_help, HELP_MAX);
+        if (got <= 0) { s_help_len = 0; return 0; }
+        s_help_len = (u32)got;
+    }
+    while (i < s_help_len) {
+        char buf[96];
+        u32 e = i, n, k;
+        while (e < s_help_len && s_help[e] != '\n') e++;
+        n = e - i;
+        if (n && s_help[i + n - 1] == '\r') n--;
+        if (n && s_help[i] == '[') {
+            if (in) break;                       /* the next entry: done      */
+            in = help_names(s_help + i, n, word);
+        } else if (in && n == 0) {
+            blanks++;                            /* only if more text follows */
+        } else if (in) {
+            while (blanks) { term_newline(); blanks--; }
+            if (n > sizeof buf - 1) n = sizeof buf - 1;
+            for (k = 0; k < n; k++) buf[k] = s_help[i + k];
+            buf[n] = 0;
+            term_colour(buf[0] == ' ' ? C_DIM : C_TEXT);
+            term_print(buf);
+            term_newline();
+        }
+        i = e + 1;
+    }
+    return in;
+}
+
 /* ---- the report -------------------------------------------------------
  * One word that asks the machine everything at once and says all of it
  * down the serial line, where I can read it, and almost nothing on the
@@ -1635,6 +1699,10 @@ void shell_submit(const char *line)
      * keystroke -- only the finished line. */
     if (serial_present() && serial_echo())
         serial_printf("%s> %s\n", s_place, s_rawline);
+
+    /* 0. "ping help": a few lines about a word, a program's included, if
+     * HELP.TXT has them.  Otherwise the word gets "help" as usual. */
+    if (s_argc == 2 && eq_ci(s_argv[1], "help") && word_help(s_argv[0])) goto tail;
 
     /* 1. One of the words it knows, with whatever arguments came along. */
     for (i = 0; i < n; i++) {

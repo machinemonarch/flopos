@@ -46,6 +46,9 @@ without it. Each version's notes are also written next to its image, as
   Ctrl-Shift-F5 switches the screen again from anywhere, no reboot needed.
 - In `network`, Tab goes round every setting and button.
 - Ctrl-C at the prompt drops what you were typing.
+- `help` after any word or program says a little about it: `ping help`,
+  `browzer help`. The text is `HELP.TXT` on the floppy, readable on any
+  computer.
 - The project's files are arranged by kind: the code in `src/`, what
   builds and writes it in `tools/`, the tests in `test/`, and what a tool
   made in a `gen/` folder beside the code it belongs to.

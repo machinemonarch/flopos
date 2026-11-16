@@ -34,7 +34,7 @@ It is also INCREDIBLY FUN to run and build! So I share it with the hope that som
 Everything is its own:
 - A boot sector
 - A protected-mode kernel
-- Drivers for the screen, keyboard, sound, floppy, serial line and network card.
+- Verified functionality of the screen, keyboard, sound, floppy, serial line and network card.
 - A network stack with TLS 1.3 and post-quantum key exchange. Yes, you read that right.
 - A Quirky shell: You start Right `here>`. (... Right now. Right here. Right now.) Oh, and there's a help menu! You can also type `[command] help` for examples.
   - If you type the wrong command, the wizard will guide you with his finite wisdom.
