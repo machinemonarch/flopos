@@ -503,7 +503,7 @@ assert len(five) == len(four), (len(five), len(four))
 # ---------------------------------------------------------------------------
 EASY_W, EASY_H = 7, 11
 EASY_BOLD = 2                                   # sub-pixels of extra stroke
-EASY_STEPS = (0.2, 0.45, 0.7)                   # coverage for a third, two thirds, all
+EASY_STEPS = (0.3, 0.5, 0.65)                   # coverage for a faint edge, a half-tone, ink
 
 def epx(b):
     h, w = len(b), len(b[0])
@@ -520,7 +520,8 @@ def epx(b):
             o[2*r][2*c] = e0; o[2*r][2*c+1] = e1; o[2*r+1][2*c] = e2; o[2*r+1][2*c+1] = e3
     return o
 
-def easy(cols):
+def easy_big(cols):
+    """A letter blown up 4x4 by EPX, its strokes made a little fuller."""
     w, h = CELL5
     b = epx(epx([[(cols[c] >> r) & 1 for c in range(w)] for r in range(h)]))
     H, W = len(b), len(b[0])
@@ -530,30 +531,85 @@ def easy(cols):
             if b[r][c]:
                 for k in range(1, EASY_BOLD + 1):
                     if c + k < W: nb[r][c + k] = 1
-    b = nb
+    return nb
+
+def easy_cover(b, dx, dy):
+    """How much of each pixel of the 7x11 box is ink, with the letter moved
+    dx, dy pixels (fractions allowed) inside it."""
+    H, W = len(b), len(b[0])
     sx, sy = float(W) / EASY_W, float(H) / EASY_H
+    out = []
+    for r in range(EASY_H):
+        row = []
+        for c in range(EASY_W):
+            x0, x1 = (c - dx) * sx, (c + 1 - dx) * sx
+            y0, y1 = (r - dy) * sy, (r + 1 - dy) * sy
+            tot = (x1 - x0) * (y1 - y0); cov = 0.0
+            yy = max(0, int(y0 // 1))
+            while yy < y1 and yy < H:
+                fy = min(y1, yy + 1) - max(y0, yy)
+                xx = max(0, int(x0 // 1))
+                while xx < x1 and xx < W:
+                    fx = min(x1, xx + 1) - max(x0, xx)
+                    if fx > 0 and fy > 0: cov += fx * fy * b[yy][xx]
+                    xx += 1
+                yy += 1
+            row.append(cov / tot)
+        out.append(row)
+    return out
+
+def easy_level(v):
+    return 3 if v >= EASY_STEPS[2] else 2 if v >= EASY_STEPS[1] else 1 if v >= EASY_STEPS[0] else 0
+
+def easy_grey(cov):
+    """What makes a letter look soft: pixels that are neither ink nor paper.
+    A half-tone counts for more than a faint edge."""
+    return sum((0, 1, 2, 0)[easy_level(v)] for row in cov for v in row)
+
+# Grid fitting.  Squeezing 20 sub-pixels into 7 pixels puts most upright
+# strokes across two pixels, both grey: the blur.  So each letter is moved
+# sideways by up to half a pixel, to where its strokes land most squarely
+# on whole pixels, as long as no ink leaves the box; and the whole face is
+# moved up or down by one amount, the same for every letter, so the line
+# they stand on stays straight.
+EASY_SHIFTS = (-0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5)
+
+def easy_fit(b, dy):
+    ink = sum(map(sum, easy_cover(b, 0.0, dy)))
+    best = None
+    for dx in sorted(EASY_SHIFTS, key=abs):     # the smallest move wins a tie
+        cov = easy_cover(b, dx, dy)
+        if sum(map(sum, cov)) < ink - 0.05: continue   # a stroke pushed out of the box
+        g = easy_grey(cov)
+        if best is None or g < best[0]: best = (g, cov)
+    return best
+
+def easy_rows_of(cov):
     rows = []
     for r in range(EASY_H):
         v16 = 0
         for c in range(EASY_W):
-            x0, x1, y0, y1 = c * sx, (c + 1) * sx, r * sy, (r + 1) * sy
-            tot = cov = 0.0
-            yy = int(y0)
-            while yy < y1 and yy < H:
-                fy = min(y1, yy + 1) - max(y0, yy)
-                xx = int(x0)
-                while xx < x1 and xx < W:
-                    fx = min(x1, xx + 1) - max(x0, xx)
-                    tot += fx * fy; cov += fx * fy * b[yy][xx]
-                    xx += 1
-                yy += 1
-            v = cov / tot if tot else 0
-            lv = 3 if v >= EASY_STEPS[2] else 2 if v >= EASY_STEPS[1] else 1 if v >= EASY_STEPS[0] else 0
-            v16 |= lv << (2 * c)
+            v16 |= easy_level(cov[r][c]) << (2 * c)
         rows.append(v16)
     return rows
 
-easy_rows = [(comment, easy(cols)) for comment, cols in five]
+easy_bigs = [easy_big(cols) for comment, cols in five]
+def easy_keeps(dy):
+    """Moving the face up or down must not push any letter's ink (the
+    rings and accents on capitals above all) out of the box."""
+    for big in easy_bigs:
+        if sum(map(sum, easy_cover(big, 0.0, dy))) < sum(map(sum, easy_cover(big, 0.0, 0.0))) - 0.05:
+            return False
+    return True
+
+EASY_DY = min([dy for dy in sorted(EASY_SHIFTS, key=abs) if easy_keeps(dy)],
+              key=lambda dy: sum(easy_fit(b, dy)[0] for b in easy_bigs))
+
+def easy(cols, i):
+    return easy_rows_of(easy_fit(easy_bigs[i], EASY_DY)[1])
+
+easy_rows = [(comment, easy(cols, i)) for i, (comment, cols) in enumerate(five)]
+print("easy face: fitted to the pixel grid, %.3f of a pixel %s" % (abs(EASY_DY), "up" if EASY_DY < 0 else "down"))
 
 total      = len(five)
 extra_base = 64

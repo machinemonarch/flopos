@@ -38,6 +38,8 @@ without it. Each version's notes are also written next to its image, as
   ones, and a fine size of 133 columns.
 - The moving background is drawn at 800x600 itself and dithered: no
   blocks, no bands, and it drifts a pixel at a time.
+- The big screen's letters are a little sharper: each is fitted to the
+  pixel grid, with fewer grey half-tones around its strokes.
 - `help` after any word or program says a little about it: `ping help`,
   `browzer help`. The text is `HELP.TXT` on the floppy, readable on any
   computer.

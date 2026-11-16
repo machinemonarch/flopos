@@ -96,6 +96,7 @@ for decades:
 | [NTP, RFC 5905](https://www.rfc-editor.org/rfc/rfc5905) | `ip.c`, `rtc.c`: setting the clock |
 | VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
+| [FreeType's notes on text rendering](https://freetype.org/freetype2/docs/hinting/text-rendering-general.html) | `mkfont.py`: fitting letters to the pixel grid, fewer half-tones |
 
 ## Toshiba's material (consulted, not included)
 

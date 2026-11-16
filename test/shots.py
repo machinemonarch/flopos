@@ -123,7 +123,7 @@ def main():
         "-machine", "pc",
         "-cpu", args.cpu,
         "-m", args.m,
-        "-drive", "file=%s,if=floppy,format=raw" % args.image,
+        "-drive", "file=%s,if=floppy,format=raw,snapshot=on" % args.image,
         "-boot", "a",
         "-vga", "std",
         "-display", "none",
