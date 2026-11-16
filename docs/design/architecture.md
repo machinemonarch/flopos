@@ -59,14 +59,14 @@ source files involved; every file opens with a comment explaining itself.
 
 ## Memory
 
-- **0x07C00**: The boot sector, while booting
+- **0x07C00**: The boot sector, while booting.
 - **0x10000**: The kernel. Its first 64KB holds the code that returns to 16-bit mode for the BIOS, and the build checks it stays there.
-- **0x70000**: The disk buffer: below 1MB, where the BIOS can reach it
-- **below 640KB**: The kernel's code, data and stack
+- **0x70000**: The disk buffer: below 1MB, where the BIOS can reach it.
+- **below 640KB**: The kernel's code, data and stack.
 - **0x100000 (1MB) and up**: The heap: screen buffers, lookup tables, network buffers. A simple allocator that only ever hands out more. Capped below 9MB.
-- **in the heap**: The wizard's model: about 1.4MB once its weights are spread out for use
-- **0xC00000 (12MB) to 20MB**: The app area, the only memory an app can touch (see Making apps[^2])
-- **0x7000000**: The video card's frame buffer, at 800×600
+- **in the heap**: The wizard's model: about 1.4MB once its weights are spread out for use.
+- **0xC00000 (12MB) to 20MB**: The app area, the only memory an app can touch (see Making apps[^2]).
+- **0x7000000**: The video card's frame buffer, at 800×600.
 
 Paging is on, with 4MB pages that map every address to itself; only the
 two pages of the app area are open to apps. It is switched off for the
@@ -150,16 +150,17 @@ that was the cause of every freeze (see hardware[^1]).
 
 `kernel/term.c` draws every character by hand onto the frame. It has:
 
-- a grid of cells with scrollback, and per-line "quirks" (the text effects
-  `quirks` switches off)
-- two text faces at each screen size (`squint` switches between them).
-  At 800×600 the letters are smoothed with the Scale2x method, worked out
-  once when the face is chosen.
-- a shadow under every glyph, so text stays readable over the moving
-  background
-- a **window layer** for menus and full-screen programs: cells with their
+- A grid of cells with scrollback, and per-line "quirks" (the text effects
+  `quirks` switches off).
+- Four text faces (`squint` goes round them). At 800×600 the default,
+  "easy", is the large letters 1.4 times the size and shaded; "large" and
+  "close" are smoothed with the Scale2x method; "fine" is the large letters
+  at the screen's own pixels.
+- A shadow under every glyph, so text stays readable over the moving
+  background.
+- A **window layer** for menus and full-screen programs: cells with their
   own colours, bold (drawn twice, a pixel apart), italic (each row of the
-  letter shifted) and underline
+  letter shifted) and underline.
 
 `kernel/line.c` is the line editor at the prompt; `kernel/shell.c` is the
 prompt, the tokeniser and the command table; `kernel/voice.c` is every
@@ -255,13 +256,13 @@ write there first.
 
 Each layer is its own file:
 
-- **PC Card** (`pcic.c`): Powers the slots, reads each card's description, maps its registers into I/O space
+- **PC Card** (`pcic.c`): Powers the slots, reads each card's description, maps its registers into I/O space.
 - **Cards** (`el3.c`, `ne2000.c`, `net.c`): The 3Com 3C589, the emulator's NE2000, and a common interface for both. No card interrupts: the timer empties the card into a 48-frame queue a thousand times a second, so nothing is lost while FLOPOS is busy drawing or decoding.
-- **Addresses** (`ip.c`): ARP (finding the hardware behind an address), IPv4, ICMP (ping), UDP, DHCP (being given an address), DNS (names)
+- **Addresses** (`ip.c`): ARP (finding the hardware behind an address), IPv4, ICMP (ping), UDP, DHCP (being given an address), DNS (names).
 - **Conversations** (`tcp.c`): TCP: ordered, reliable, retransmitted. A window of sixteen segments; pieces that come out of turn are kept, and every answer says which pieces have come (SACK), so a lost one costs one resend.
-- **Connections** (`conn.c`): One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close
-- **Secure web** (`tls.c`): TLS 1.3, and 1.2 in its AEAD-only form, client side
-- **Programs** (`netui.c`): The network menu
+- **Connections** (`conn.c`): One connection for apps: lookup, TCP, and for a secure one TLS with the certificate check, behind open, read, write, close.
+- **Secure web** (`tls.c`): TLS 1.3, and 1.2 (its AEAD ciphers and Chrome's two CBC ones), client side.
+- **Programs** (`netui.c`): The network menu.
 - **Web** (`apps/browzer/`): BROWZER.APP: HTTP/1.0 GET and POST, redirects, turning HTML into wrapped text with links and form fields (`web.c`), addresses (`url.c`), and the browser itself (`browzer.c`).
 
 ## Encryption

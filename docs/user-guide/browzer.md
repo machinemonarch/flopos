@@ -35,8 +35,8 @@ text and more columns, leave browzer and type `squint`.
 
 Links to sound play through the Sound Blaster:
 
-- **mp3**, **AAC** and AAC+, **Ogg Vorbis**, **FLAC** and **wav**.
-- **Tracker songs**: mod, xm, s3m and it, such as those on modarchive.org.[^1]
+- **Mp3**, **AAC** and AAC+, **Ogg Vorbis**, **FLAC** and **wav**.
+- **Tracker songs**: Mod, xm, s3m and it, such as those on modarchive.org.[^1]
 - **Radio**: Shoutcast and Icecast stations, and their m3u and pls playlists.
 
 A file under 2 MB plays in the background while you browse; **s** stops it.

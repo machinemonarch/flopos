@@ -18,20 +18,20 @@ vectors, before it went into FLOPOS.
 
 What the parts the emulator can't stand in for are tested with:
 
-- **The laptop:** a Toshiba Satellite Pro 430CDT, or a machine of its age
+- **The laptop:** A Toshiba Satellite Pro 430CDT, or a machine of its age
   with a Pentium and a Sound Blaster compatible sound chip.
 - **Floppies:** 1.44MB (HD) diskettes, a USB floppy drive on the PC to
   write them, and the laptop's own external floppy drive to boot them.
-- **A serial cable:** a null-modem cable and a USB serial adapter on the
+- **A serial cable:** A null-modem cable and a USB serial adapter on the
   PC, for `report` and for watching everything FLOPOS prints
   (`picocom -b 115200`).
-- **The network:** the 3Com 3C589D PC Card with its cable adapter, and a
+- **The network:** The 3Com 3C589D PC Card with its cable adapter, and a
   network cable to a router.
-- **Cassettes:** a cassette data recorder or any tape recorder with a
+- **Cassettes:** A cassette data recorder or any tape recorder with a
   volume knob, ordinary audio cassettes, and two audio cables: one from
   the laptop's headphone socket to the recorder's input, one from the
   recorder's output to the laptop's line-in (or its microphone socket).
-- **Paper:** any printer, for maelcum's tape sleeve.
+- **Paper:** Any printer, for maelcum's tape sleeve.
 - **A phone camera,** for photos of the screen when something goes wrong
   before the serial line is up.
 

@@ -100,15 +100,15 @@ It's dangerous out there. All cool cyberpunks need one.
 **Ctrl-Shift-F10**, from anywhere, opens a small window in the top right
 corner, over whatever is on the screen:
 
-- bars that move with whatever sound is playing
-- the battery, as the laptop's power management reports it
-- **'Thunking**: how busy the processor is
-- **'Membering:** how much of the memory is in use
-- a brain, turning (two folded halves with the cleft between them, the
+- Bars that move with whatever sound is playing.
+- The battery, as the laptop's power management reports it.
+- **'Thunking**: How busy the processor is.
+- **'Membering:** How much of the memory is in use.
+- A brain, turning (two folded halves with the cleft between them, the
   cerebellum and the stem), coloured by the two together: blue while the machine
   is idle, then green, yellow and orange, and red when it works as hard
-  as it can
-- a command line of its own, which takes the same commands as `here>`
+  as it can.
+- A command line of its own, which takes the same commands as `here>`.
 
 While it is open its command line has the keys. **Esc** gives them back to
 whatever had them, and leaves it showing; **Ctrl-Shift-F10** again closes

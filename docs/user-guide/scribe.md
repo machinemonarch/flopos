@@ -96,12 +96,12 @@ In the Markdown view:
 
 The marks FLOPOS understands:
 
-- **`% ` at the start of a line**: Title
-- **`# `, `## `, `### `, `#### ` at the start of a line**: Heading 1 to 4
+- **`% ` at the start of a line**: Title.
+- **`# `, `## `, `### `, `#### ` at the start of a line**: Heading 1 to 4.
 - **`**text**`**: Bold
 - **`*text*`**: Italic
-- **`<u>text</u>`**: Underline (Markdown has none of its own; this is the HTML way, which most Markdown tools show)
-- **`\*`, `\<`, `\\`**: A real star, angle bracket or backslash rather than a mark
+- **`<u>text</u>`**: Underline (Markdown has none of its own; this is the HTML way, which most Markdown tools show).
+- **`\*`, `\<`, `\\`**: A real star, angle bracket or backslash rather than a mark.
 
 Each line is one paragraph.
 

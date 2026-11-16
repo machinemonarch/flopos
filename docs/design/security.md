@@ -12,19 +12,19 @@ trusted against the test answers published with them: the worked
 examples in the RFCs and FIPS documents themselves, and NIST's test
 vectors for ML-KEM. `crypto` runs the checks again on the machine itself.
 
-- **`sha256.c`**: SHA-256, HMAC, HKDF: the hashing every TLS 1.3 key is derived with
+- **`sha256.c`**: SHA-256, HMAC, HKDF: the hashing every TLS 1.3 key is derived with.
 - **`chacha.c`**: ChaCha20-Poly1305 encryption
 - **`aes.c`**: AES-128-GCM encryption
-- **`x25519.c`**: X25519 key agreement
-- **`sha3.c`**: SHA-3 and SHAKE, which ML-KEM is built on
-- **`mlkem.c`**: ML-KEM-768, the post-quantum key agreement
-- **`random.c`**: Random numbers: timing jitter between the timer and the processor's cycle counter, stirred into a SHA-256 pool
-- **`sha512.c`**: SHA-512 and SHA-384, which many certificates are signed with
-- **`bignum.c`**: Arithmetic modulo a big number (up to 4096 bits), Montgomery's way, for the signature checks
-- **`rsa.c`**: RSA signature checks: PKCS#1 v1.5 (certificates) and PSS (the TLS 1.3 handshake)
-- **`ecdsa.c`**: ECDSA signature checks, and ECDH key agreement, on P-256 and P-384, in Jacobian coordinates
-- **`x509.c`**: Reading certificates (DER) and checking a site's chain: names, dates, signatures, which authorities may vouch, up to `ROOTS.DAT`
-- **`selftest.c`**: `crypto`: every one of the above checked on the machine itself
+- **`x25519.c`**: X25519 key agreement.
+- **`sha3.c`**: SHA-3 and SHAKE, which ML-KEM is built on.
+- **`mlkem.c`**: ML-KEM-768, the post-quantum key agreement.
+- **`random.c`**: Random numbers: timing jitter between the timer and the processor's cycle counter, stirred into a SHA-256 pool.
+- **`sha512.c`**: SHA-512 and SHA-384, which many certificates are signed with.
+- **`bignum.c`**: Arithmetic modulo a big number (up to 4096 bits), Montgomery's way, for the signature checks.
+- **`rsa.c`**: RSA signature checks: PKCS#1 v1.5 (certificates) and PSS (the TLS 1.3 handshake).
+- **`ecdsa.c`**: ECDSA signature checks, and ECDH key agreement, on P-256 and P-384, in Jacobian coordinates.
+- **`x509.c`**: Reading certificates (DER) and checking a site's chain: names, dates, signatures, which authorities may vouch, up to `ROOTS.DAT`.
+- **`selftest.c`**: `crypto`: every one of the above checked on the machine itself.
 
 A TLS connection offers both the hybrid post-quantum key (X25519MLKEM768:
 the ML-KEM secret and the X25519 secret, joined) and plain X25519, and
@@ -131,32 +131,33 @@ Browser directory (1.26, whose every string is held to the size of its
 buffer), and in the wider characters of 1.42. All of the below still
 holds.
 
-- **Scripts (not yet released):** run only on sites allowed with `j`, in
+- **Scripts (not yet released):** Run only on sites allowed with `j`, in
   the script room: 4 MB the processor walls off, with no network, files
   or cookies. Every request goes through one door, which browzer checks
   (`apps/browzer/script.c`); the kernel stops a room that faults or runs
   past its time. Other sites' scripts are never fetched, except libraries
   from four public library hosts over https. The fuzzer plays a room that
   sends crafted requests, cloning included.
-- **Running out of memory:** an attack has nothing to use up. Every buffer
+- **Running out of memory:** An attack has nothing to use up. Every buffer
   is a fixed size, set up once, and never freed.
-- **Network parsing:** every layer checks its lengths before reading.
+- **Network parsing:** Every layer checks its lengths before reading.
   That covers the network card, ARP, DHCP, DNS, ping, TCP, TLS records,
   certificates, HTTP headers (capped at 2 KB) and redirects (at most 5).
 - **HTTPS:** TLS 1.3, with post-quantum key exchange and full certificate
-  checks; and since 1.25, TLS 1.2 in its AEAD-only form. What 1.2 adds
+  checks; and since 1.25, TLS 1.2: its AEAD ciphers, and now the two CBC
+  ones Chrome still offers, tried last. What 1.2 adds
   was weighed before it was written:
-  - **New code that reads what a server sends:** its ServerKeyExchange
+  - **New code that reads what a server sends:** Its ServerKeyExchange
     (curve, point, signature), checked against the message's length at
     every step. A P-256 point is checked to be on the curve, and an X25519
     result of all zeros is refused.
-  - **A second hello:** a TLS 1.3 server that wants P-256 or
+  - **A second hello:** A TLS 1.3 server that wants P-256 or
     P-384 says so in a HelloRetryRequest. Its suite, group and cookie (at
     most 256 bytes) are checked, it may ask only once, and its answer must
     use the curve it asked for.
-  - **Downgrades:** a 1.3 server's "DOWNGRD" mark is refused, so 1.2 is
+  - **Downgrades:** A 1.3 server's "DOWNGRD" mark is refused, so 1.2 is
     used only with servers that really have nothing newer.
-  - **CBC, as far as Chrome goes and no further:** the
+  - **CBC, as far as Chrome goes and no further:** The
     two ECDHE-RSA ciphers with AES-128 or AES-256 in CBC mode and SHA-1
     checks, offered last. CBC's known weakness is the padding oracle: a
     server's way of answering bad padding and a bad check differently, or
@@ -167,18 +168,18 @@ holds.
   - **Left out on purpose:** RSA key exchange (no forward secrecy), CBC
     with ECDSA, 3DES and RC4, renegotiation, compression and session
     resumption, the parts of 1.2 the known attacks went through.
-  - **Weaker than 1.3 in one way:** without the extended master secret
+  - **Weaker than 1.3 in one way:** Without the extended master secret
     (an old server), the keys aren't bound to the whole handshake. That is
     what the triple-handshake attack needs, together with resumption or
     renegotiation, and FLOPOS does neither.
   - Tested against OpenSSL with RSA PKCS#1, RSA-PSS and ECDSA signatures,
     both ciphers, both curves, and without the extended master secret.
-- **The mp3 decoder and the MOD/XM player:** sizes read from the file are
+- **The mp3 decoder and the MOD/XM player:** Sizes read from the file are
   clamped.
-- **TCP's out-of-order pieces (1.22):** a piece is kept only inside the
+- **TCP's out-of-order pieces (1.22):** A piece is kept only inside the
   space the window offered, and at most eight are tracked, so nothing a
   server sends can write past the receive buffer.
-- **The table decoders (1.22):** a bit reader never moves past the end of
+- **The table decoders (1.22):** A bit reader never moves past the end of
   its padded buffer, and a codebook that is not a prefix code, or has
   codes too long for two tables, is refused when it is built.
 

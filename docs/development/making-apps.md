@@ -99,14 +99,14 @@ for an older version keeps working.
 
 **A window**, in character cells, drawn over the terminal:
 
-- **`win_open(w, h)`**: Open a window of that size (or the largest that fits)
-- **`win_close()`**: Close it
-- **`win_width()`, `win_height()`**: Its size
-- **`win_put(x, y, ch, fg, bg, attr)`**: One character, with colours and `AT_BOLD`, `AT_ITALIC`, `AT_UNDERLINE`
+- **`win_open(w, h)`**: Open a window of that size (or the largest that fits).
+- **`win_close()`**: Close it.
+- **`win_width()`, `win_height()`**: Its size.
+- **`win_put(x, y, ch, fg, bg, attr)`**: One character, with colours and `AT_BOLD`, `AT_ITALIC`, `AT_UNDERLINE`.
 - **`win_text(x, y, text, fg, bg)`**: A string; returns where it ended. It never draws on the frame's side columns: what does not fit is left out.
-- **`win_band(y, x0, x1, bg)`**: Colour part of a row
+- **`win_band(y, x0, x1, bg)`**: Colour part of a row.
 - **`win_frame(title, fg)`**: A frame around the window, with a title and the FLOPOS version after it. A program that draws its own title puts `os_version()` after its name.
-- **`screen_cols()`, `screen_rows()`**: How big the whole screen is in characters
+- **`screen_cols()`, `screen_rows()`**: How big the whole screen is in characters.
 
 **The terminal**, for apps that only print: `print(text)`, `newline()`,
 `colour(c)`.
@@ -119,20 +119,20 @@ for an older version keeps working.
 
 **Files on the floppy**:
 
-- **`file_find(name, &f)`**: Find a file by its DOS name (`WRITE1.MD`)
-- **`file_read(&f, buf, max)`**: Read it
+- **`file_find(name, &f)`**: Find a file by its DOS name (`WRITE1.MD`).
+- **`file_read(&f, buf, max)`**: Read it.
 - **`file_write(&f, buf)`**: Write it **in place**: exactly as long as the file already is. Files can't grow, shrink, be made or be deleted.
-- **`file_each(fn, ctx)`**: Call `fn` for every file on the floppy
+- **`file_each(fn, ctx)`**: Call `fn` for every file on the floppy.
 
 **Text**: `format(out, cap, fmt, ...)`, a small `printf` into a buffer
 supporting `%s`, `%u`, `%d`, `%x` and `%c`, with widths and zero padding like `%02u`.
 
 ### Added in version 2
 
-- **`os_version()`**: Which FLOPOS this is, as text
-- **`putc(c)`**: One character to the terminal
-- **`plain(on)`**: Stop the terminal's line quirks while an app prints something that has to stay readable
-- **`wire(text)`**: Send text down the serial cable, if there is one
+- **`os_version()`**: Which FLOPOS this is, as text.
+- **`putc(c)`**: One character to the terminal.
+- **`plain(on)`**: Stop the terminal's line quirks while an app prints something that has to stay readable.
+- **`wire(text)`**: Send text down the serial cable, if there is one.
 
 **The network.** The system does everything below the conversation itself,
 so an app only reads and writes:
@@ -140,11 +140,11 @@ so an app only reads and writes:
 - **`net_online()`**: Brings the network card up and finds an address if it has to. 0 if there is no network.
 - **`conn_open(host, port, secure, note)`**: Looks the host up, connects, and if `secure`, agrees on keys with TLS 1.3 (or 1.2, for a server with nothing newer) and makes the server prove who it is. `note` is told how it is going ("agreeing on a key..."). 0 on failure.
 - **`conn_write(data, n)`**: Send
-- **`conn_read(buf, n, wait_ms)`**: Receive: the number of bytes, 0 when the other end has finished, -1 when it went quiet for `wait_ms`, -2 when it broke
-- **`conn_close()`**: Hang up
-- **`conn_why()`**: After a failure, a whole sentence saying why ("It could not prove it is example.com: its certificate ran out on 2026-01-27.")
-- **`conn_info(&ci)`**: Whether it was secure, post-quantum, checked, who vouched for it, and the cipher
-- **`conn_check(on)`**: `conn_check(0)` lets the next secure connection through without the proof, for "go there anyway"
+- **`conn_read(buf, n, wait_ms)`**: Receive: the number of bytes, 0 when the other end has finished, -1 when it went quiet for `wait_ms`, -2 when it broke.
+- **`conn_close()`**: Hang up.
+- **`conn_why()`**: After a failure, a whole sentence saying why ("It could not prove it is example.com: its certificate ran out on 2026-01-27.").
+- **`conn_info(&ci)`**: Whether it was secure, post-quantum, checked, who vouched for it, and the cipher.
+- **`conn_check(on)`**: `conn_check(0)` lets the next secure connection through without the proof, for "go there anyway".
 
 One connection at a time. Anything above it is the app's own: browzer
 speaks HTTP and reads HTML itself, in `apps/browzer/`.
@@ -153,9 +153,9 @@ speaks HTTP and reads HTML itself, in `apps/browzer/`.
 
 - **`audio_open(rate)`**: Start the Sound Blaster playing 8-bit unsigned mono samples. Returns the rate it got (22050 asked for gives 22222), or 0 if there is no card that plays samples. The FM music steps aside.
 - **`audio_write(p, n)`**: Queue samples. Takes what fits and returns how many that was. The queue holds about six seconds.
-- **`audio_space()`**: How many samples would fit now
-- **`audio_queued()`**: How many are still waiting to be played
-- **`audio_close()`**: Stop, and let the FM music back
+- **`audio_space()`**: How many samples would fit now.
+- **`audio_queued()`**: How many are still waiting to be played.
+- **`audio_close()`**: Stop, and let the FM music back.
 
 ### Added in version 4: refilling at interrupt time
 
@@ -186,13 +186,13 @@ fails returns 0 (or -1 where it returns a count) and `inv_why()` is a
 sentence to show.
 
 - **`inv_list(dir, fn, ctx)`**: Calls `fn(item, ctx)` for each thing in a folder; returns how many. `fn` must not call the inventory.
-- **`inv_stat(path, &item)`**: Is it there, and what is it: name, folder or not, size, date
-- **`inv_read(path, buf, max)`**: A file's bytes; how many, or -1
-- **`inv_write(path, buf, n)`**: Make the file, or replace it, at exactly `n` bytes
-- **`inv_mkdir(path)`**: A new folder
-- **`inv_remove(path)`**: A file, or an empty folder
-- **`inv_move(from, to)`**: Rename, move to another folder, or both
-- **`inv_room()`**: Bytes free on the floppy
+- **`inv_stat(path, &item)`**: Is it there, and what is it: name, folder or not, size, date.
+- **`inv_read(path, buf, max)`**: A file's bytes; how many, or -1.
+- **`inv_write(path, buf, n)`**: Make the file, or replace it, at exactly `n` bytes.
+- **`inv_mkdir(path)`**: A new folder.
+- **`inv_remove(path)`**: A file, or an empty folder.
+- **`inv_move(from, to)`**: Rename, move to another folder, or both.
+- **`inv_room()`**: Bytes free on the floppy.
 - **`clock(out)`**: The date and time into six bytes: year less 2000, month, day, hour, minute, second. 0 if the clock cannot be read.
 - **`glyph(ch, cols)`**: A letter's shape in the system's face, for a program that makes a picture: five columns, bit 0 at the top, eight rows.
 - **`win_ember(on)`**: Frames in red, gold and green instead of neon, and keys in yellow instead of pink, until the app leaves. Fixed colours to go with it: `A_CREAM`, `A_OLIVE`, `A_GOLD`, `A_EMBER`, `A_GREEN_D`, and `A_ON` (green), `A_RED`. `A_NEON` to `A_NEON + A_NEON_N - 1` are the frame's sixteen turning colours: text drawn in them shimmers with nothing redrawn.

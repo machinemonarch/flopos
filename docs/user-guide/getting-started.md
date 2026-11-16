@@ -2,7 +2,7 @@
 
 ## What you need
 
-- **The laptop**: a Toshiba Satellite Pro 430CDT, or any old PC close
+- **The laptop**: A Toshiba Satellite Pro 430CDT, or any old PC close
   enough to it. FLOPOS also runs in the QEMU emulator (see
   Building[^1]).
 - **A 1.44MB floppy disk** (2HD).

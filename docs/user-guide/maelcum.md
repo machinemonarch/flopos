@@ -47,16 +47,16 @@ the one that is not is grey.
 
 **Write Options**
 
-- **<kbd>J</kbd>**: The job, from a list: **Standard Backup** (everything of yours on this floppy) or **Pick & Mix** (only what you tick, after <kbd>W</kbd>)
+- **<kbd>J</kbd>**: The job, from a list: **Standard Backup** (everything of yours on this floppy) or **Pick & Mix** (only what you tick, after <kbd>W</kbd>).
 - **<kbd>C</kbd>**: Compress (LZSS): on or off. A file is sent packed when that is shorter.
 - **<kbd>F</kbd>**: Speed: normal or fast. Fast takes half the tape and is easier to spoil: it wants a good recorder and tape. Reading needs no telling; it hears which.
 - **<kbd>V</kbd>**: Verify after writing: on or off. On, the tape is read back straight after it is written.
 - **<kbd>E</kbd>**: Encrypt: on or off (off to begin with). See below.
-- **<kbd>K</kbd>**: The cipher, from a list of three
+- **<kbd>K</kbd>**: The cipher, from a list of three.
 
 **Read Options**
 
-- **<kbd>Tab</kbd>**: Which socket listens: line-in or microphone
+- **<kbd>Tab</kbd>**: Which socket listens: line-in or microphone.
 - **<kbd>D</kbd>**: Restore into, from a list: **a folder named by the date**, DDMMYYYY (the first choice), where each file came from, the top of the inventory, any folder, or a folder you name, which is made at once at the top of the inventory.
 
 The cassette's wheels turn while a tape is written or read, and beside it
@@ -245,11 +245,11 @@ listening. A name after either keeps to that file.
 Nobody has measured the right levels on a real recorder yet, so these are
 starting points:
 
-- **Writing:** the laptop's volume wheel at about half. A MIC socket wants
+- **Writing:** The laptop's volume wheel at about half. A MIC socket wants
   a weak signal, and a headphone socket turned right up can distort the
   tones. A data recorder with automatic level sets its own recording
   level.
-- **Reading:** start the recorder's volume at about a third, press
+- **Reading:** Start the recorder's volume at about a third, press
   <kbd>R</kbd> and play, then turn it up until the green bar sits half to
   three-quarters full and the line under it says "a tape's tones". Too
   loud is worse than too quiet. If the recorder has a tone (treble) knob,

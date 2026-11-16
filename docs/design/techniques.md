@@ -19,9 +19,9 @@ second, roughly this laptop's speed on this kind of code
 (how[^1]).
 
 While sound plays, FLOPOS reports to the serial cable every ten seconds:
-- what share of the machine decoding took
-- how many frames the screen drew
-- how many seconds of music are in hand
+- What share of the machine decoding took.
+- How many frames the screen drew.
+- How many seconds of music are in hand.
 
 Every change below was judged by those three numbers.
 
@@ -36,11 +36,11 @@ may be drawing, or waiting on the network, for longer than the sound card's
 queue lasts. So, as the Mac's Sound Manager did with its double-buffer
 callbacks, the app hands the system a refill routine. The timer calls it
 whenever the queue has room:
-- after acknowledging the interrupt
-- with interrupts back on, so the clock, keys and network carry on
-- never inside itself
-- with the floating-point unit's state saved around it, since decoders
-  use it and so might whatever was interrupted
+- After acknowledging the interrupt.
+- With interrupts back on, so the clock, keys and network carry on.
+- Never inside itself.
+- With the floating-point unit's state saved around it, since decoders
+  use it and so might whatever was interrupted.
 
 It works in slices of at most 4 ms, so no frame of the screen waits on it
 for long. browzer's routine decodes every format: mp3, AAC, Vorbis, FLAC,
@@ -68,11 +68,11 @@ through the same memory a piece at a time, so it never runs out.
   the next nine bits, so a codeword costs one lookup, or two, instead of a
   branch per bit. The same tables serve high-first codes (mp3, AAC, one
   day JPEG) and low-first ones (Vorbis, one day gzip and PNG).
-- **mp3's synthesis as a fast cosine transform** (`dsp_dct2`, B. G. Lee,
+- **Mp3's synthesis as a fast cosine transform** (`dsp_dct2`, B. G. Lee,
   1984). The 64-by-32 multiplication it did 689 times a second is one
   32-point DCT laid out by its symmetries: 80 multiplications instead of
   2048, and no 8 KB table to thrash the Pentium's 8 KB data cache.
-- **mp3's 36-point inverse MDCT as an 18-point DCT-IV**, read out by its
+- **Mp3's 36-point inverse MDCT as an 18-point DCT-IV**, read out by its
   symmetries: half the multiplications.
 - **Silence skipped.** At radio bitrates mp3's upper subbands hold
   nothing, and transforming zeros gives zeros. AAC skips zero coefficients
@@ -148,12 +148,12 @@ less error where the ear listens hardest.
 The moving background took 21.5 ms of every frame on the slowed emulator.
 Inside browzer, it was drawn and enlarged, then completely covered by
 browzer's window. Now:
-- when a window with paper covers the whole screen, nothing under it is
-  drawn
-- the window is redrawn only where a cell differs from how it was drawn
-  last time
-- only the rows that changed are sent to the card, and nothing at all if
-  nothing changed
+- When a window with paper covers the whole screen, nothing under it is
+  drawn.
+- The window is redrawn only where a cell differs from how it was drawn
+  last time.
+- Only the rows that changed are sent to the card, and nothing at all if
+  nothing changed.
 
 The picture is the same to the pixel.
 

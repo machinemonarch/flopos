@@ -50,11 +50,11 @@ CHANGELOG.md[^2].
 
 ## Where to start
 
-- [Building](docs/development/building.md): building the image and running it in the emulator
-- [Testing](docs/development/testing.md): the tests, and the tools in `tools/` that run them
-- [Making apps](docs/development/making-apps.md): programs that live on the floppy beside the system
-- [Releasing](docs/development/releasing.md): version numbers, the changelog, and making a release
-- [Architecture](docs/design/architecture.md): how the system works inside
+- [Building](docs/development/building.md): Building the image and running it in the emulator.
+- [Testing](docs/development/testing.md): The tests, and the tools in `tools/` that run them.
+- [Making apps](docs/development/making-apps.md): Programs that live on the floppy beside the system.
+- [Releasing](docs/development/releasing.md): Version numbers, the changelog, and making a release.
+- [Architecture](docs/design/architecture.md): How the system works inside.
 
 Security problems: see SECURITY.md[^3].
 

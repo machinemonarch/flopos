@@ -59,13 +59,13 @@ for decades:
 - **The BIOS calls**: `INT 10h` (video), `INT 13h` (disk) and `INT 15h`
   (memory size, APM power), and the BIOS data area. Catalogued in
   Ralf Brown's Interrupt List[^1].
-- **VESA BIOS Extension (VBE) Core Functions, version 2.0**: the 800×600
+- **VESA BIOS Extension (VBE) Core Functions, version 2.0**: The 800×600
   mode and the flat frame buffer (`vbe.c`, `vga.c`).
 - **Intel 8259A** interrupt controller, **Intel 8254** timer, **8042**
   keyboard controller and the A20 gate, **16550** serial chip, **MC146818**
   CMOS clock, **VGA** registers, **Yamaha YM3812 (OPL2)** FM sound.
   The OSDev wiki[^2] covers all of these well.
-- **APM BIOS Interface Specification 1.2**: switching the power off
+- **APM BIOS Interface Specification 1.2**: Switching the power off
   (`cpu.c`).
 
 ## The laptop's own parts
@@ -101,10 +101,10 @@ for decades:
 
 Material on the Satellite Pro 430CDT:
 
-- two Toshiba Atlas support CDs, from 1995 and 1997
-- a collection of Toshiba's drivers for the Satellite Pro 430 and 435
-- Toshiba's specification sheets for the 430CDT
-- photographs of the machine
+- Two Toshiba Atlas support CDs, from 1995 and 1997.
+- A collection of Toshiba's drivers for the Satellite Pro 430 and 435.
+- Toshiba's specification sheets for the 430CDT.
+- Photographs of the machine.
 
 They were read for **facts only**: which chips are in the machine, which
 ports they sit on, that the serial port is 16550 compatible, and how the

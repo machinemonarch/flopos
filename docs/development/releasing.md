@@ -4,8 +4,8 @@
 
 `MAJOR.MINOR.PATCH`, kept in `VERSION`:
 
-- **minor** (1.10.0 → 1.11.0) for new things
-- **patch** (1.10.0 → 1.10.1) for fixes
+- **Minor** (1.10.0 → 1.11.0) for new things.
+- **Patch** (1.10.0 → 1.10.1) for fixes.
 
 `version` says which one is running.
 

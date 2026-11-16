@@ -25,12 +25,12 @@ The other card in the laptop, a LASAT Credit 560 modem, is recognised by
 
 A window showing:
 
-- the **card** and its **link**: whether a cable is connected
-- the **setting**: *automatic, from the network* (DHCP) or *by hand*
-- **address**, **mask**, **way out** (the gateway, the router to the rest
+- The **card** and its **link**: whether a cable is connected.
+- The **setting**: *automatic, from the network* (DHCP) or *by hand*.
+- **Address**, **mask**, **way out** (the gateway, the router to the rest
   of the internet) and **names** (the name server that turns
-  `example.com` into an address)
-- **apply**, **ask again** and **close**
+  `example.com` into an address).
+- **Apply**, **ask again** and **close**.
 
 ![The network menu, in the emulator: the address came from the network](../images/network.png)
 
@@ -55,7 +55,7 @@ Secure pages (`https://`) use **TLS 1.3**, the current version of the
 protocol that puts the padlock in a browser, or **TLS 1.2** for a site that
 has nothing newer.
 
-- **TLS 1.2 no older than Chrome's**: the same ciphers as TLS 1.3, and a
+- **TLS 1.2 no older than Chrome's**: The same ciphers as TLS 1.3, and a
   new key for every connection (X25519, or P-256 or P-384 for older servers),
   signed by the site. For servers with nothing newer, the two older ciphers
   Chrome still offers (AES in CBC mode, checked with SHA-1), tried last.
@@ -92,12 +92,12 @@ has nothing newer.
 
 FLOPOS refuses the page and says why:
 
-- **its certificate is for a different site**: the certificate names some other site
-- **its certificate ran out on 2026-01-27 / is not valid until …**: out of date, or the laptop's clock is wrong
-- **nobody this machine trusts vouches for it**: a self-made certificate, an unknown authority, or a site that forgot to send its authority's certificate
-- **a signature in its certificate chain does not check out**: something in the chain was altered
-- **it could not prove the certificate is its own**: it showed a certificate but couldn't sign with its key
-- **this laptop's clock says 1995 …**: the clock is wrong, so nothing can be dated; see below
+- **its certificate is for a different site**: The certificate names some other site.
+- **its certificate ran out on 2026-01-27 / is not valid until …**: Out of date, or the laptop's clock is wrong.
+- **nobody this machine trusts vouches for it**: A self-made certificate, an unknown authority, or a site that forgot to send its authority's certificate.
+- **a signature in its certificate chain does not check out**: Something in the chain was altered.
+- **it could not prove the certificate is its own**: It showed a certificate but couldn't sign with its key.
+- **this laptop's clock says 1995 …**: The clock is wrong, so nothing can be dated; see below.
 
 **The clock.** Certificates are only good between two dates, so the laptop
 has to know roughly what day it is, and its clock battery may long since
