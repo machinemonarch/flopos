@@ -274,20 +274,23 @@ void mood_apply_palette(int fade_steps)
 }
 
 /* ---- the field ------------------------------------------------------- */
-static int field(const Mood *m, int x, int y, int ph)
+/* The field at one grid point, as a palette index with eight bits of
+ * fraction: the big screen dithers between neighbouring shades, and the
+ * fraction is what lets a gradient and its drift be smooth there. */
+static int field8(const Mood *m, int x, int y, int ph)
 {
     int v, idx;
 
     switch (m->style) {
     case 1:                              /* slow horizontal bands          */
         v = SIN(y * 30 + ph + (SIN(x * 11 + (ph >> 2)) >> 4));
-        idx = ((v + 4096) * 62) >> 13;
+        idx = ((v + 4096) * 62) >> 5;
         break;
 
     case 2: {                            /* rings breathing outward        */
         int r = s_rad[y * MSTRIDE + x] >> 4;
         v = SIN(r * 24 - ph * 2) + SIN(r * 9 + ph);
-        idx = ((v + 8192) * 31) >> 13;
+        idx = ((v + 8192) * 31) >> 5;
         break;
     }
 
@@ -297,21 +300,23 @@ static int field(const Mood *m, int x, int y, int ph)
         v = SIN(y * 7 + ph / 4)
           + SIN(x * 4 - ph / 6)
           + SIN((x + y) * 3 + ph / 8);
-        idx = ((v + 12288) * 21) >> 13;
+        idx = ((v + 12288) * 21) >> 5;
         break;
 
     default:                             /* summed sines                   */
         v = SIN(x * 13 + ph)
           + SIN(y * 21 - ph)
           + SIN((x + y) * 9 + (ph >> 1));
-        idx = ((v + 12288) * 21) >> 13;
+        idx = ((v + 12288) * 21) >> 5;
         break;
     }
 
     if (idx < 0) idx = 0;
-    if (idx > PAL_MOOD_N - 1) idx = PAL_MOOD_N - 1;
-    return PAL_MOOD + idx;
+    if (idx > ((PAL_MOOD_N - 1) << 8)) idx = (PAL_MOOD_N - 1) << 8;
+    return (PAL_MOOD << 8) + idx;
 }
+
+static int field(const Mood *m, int x, int y, int ph) { return field8(m, x, y, ph) >> 8; }
 
 /* One row of the field, evaluated at 81 points and stretched smoothly
  * across all 320 pixels.  Interpolating costs a few adds per pixel where
@@ -384,5 +389,116 @@ void mood_draw(u8 *dst, u32 t)
         if (s_dust[i].y < 0) s_dust[i].y += SCR_H;
         if (s_dust[i].y >= SCR_H) s_dust[i].y -= SCR_H;
         dst[s_dust[i].y * SCR_W + s_dust[i].x] = s_dust[i].c;
+    }
+}
+
+/* ---- the big screen ------------------------------------------------------
+ * At 800x600 the background is drawn straight onto the big canvas rather
+ * than drawn small and stretched two and a half times, which made blocks
+ * and, as it drifted, steps.  The same 81x51 points of the field, each
+ * with a fraction, are interpolated across the whole screen, and each
+ * pixel is nudged by a 4x4 ordered dither before it is cut to a palette
+ * index.  The dither reaches across one step of brightness the card can
+ * actually show -- the ramp has 47 entries but only about twenty distinct
+ * levels -- so neighbouring levels mix into a gradient with no bands, and
+ * a band edge that drifts moves by a pixel at a time instead of jumping.
+ * About the same work per pixel as stretching did. */
+static int *s_sa, *s_sb, *s_line;        /* from the heap, with s_bg: the kernel's own memory is full */
+
+static void field_samples(const Mood *m, int sy, int ph, int lift8, int lo, int hi, int *out)
+{
+    int i;
+    for (i = 0; i <= MW; i++) {
+        int v = field8(m, i, sy, ph) + lift8;
+        out[i] = v < lo ? lo : v > hi ? hi : v;
+    }
+}
+
+static u8  *s_bg;                        /* the big background, kept between frames */
+static int  s_bg_half;                   /* which half is worked out next  */
+static int *s_lv;                        /* one row's values, before the dither: 400 */
+
+void mood_draw_big(u8 *dst, int W, int H, u32 t)
+{
+    static const u8 bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
+    const Mood *m = &s_moods[s_which];
+    static int ph, lift8;                 /* one moment for both halves      */
+    int levels = s_deep ? 15 : m->ceiling;
+    int amp = ((PAL_MOOD_N - 1) << 8) / (levels > 0 ? levels : 1);
+    int hw = W / 2, hh = H / 2;                           /* worked out at half size */
+    int lo, hi, cw = hw / MW, ch = hh / MH, sy, sy0, sy1, py, i, k, x;
+    int off[4][4];
+    int rcw, rch;
+    int *sa, *sb, *swap;
+
+    if (cw < 1 || ch < 1 || (W & 7) || hw > 400) return;
+    if (!s_bg) {
+        s_bg = (u8 *)halloc((usize)(W * H));
+        memset8(s_bg, PAL_MOOD, (usize)(W * H));
+        s_sa = (int *)halloc(3 * (MW + 1) * sizeof(int) + 400 * sizeof(int));
+        s_sb = s_sa + MW + 1;
+        s_line = s_sb + MW + 1;
+        s_lv = s_line + MW + 1;
+    }
+    sa = s_sa; sb = s_sb;
+    if (amp > 3 * 256) amp = 3 * 256;
+    for (i = 0; i < 4; i++)
+        for (k = 0; k < 4; k++) off[i][k] = ((bayer[i][k] * 16 + 8 - 128) * amp) >> 8;
+    lo = (PAL_MOOD << 8) + amp / 2;
+    hi = ((PAL_MOOD + PAL_MOOD_N) << 8) - 1 - amp / 2;
+    rcw = 65536 / cw;
+    rch = 65536 / ch;
+
+    /* Half the rows a frame, top then bottom: the field drifts slowly
+     * enough that each half being a frame apart never shows, and it halves
+     * the work.  Each value is a 2x2 block -- two pixels in one store and
+     * the row copied down -- too fine to see at 800x600 once dithered. */
+    if (!s_bg_half) {                     /* the top half: a new moment     */
+        ph = (int)(t >> (s_deep ? 6 : 4));
+        lift8 = (g_beat << 8) >> (s_deep ? 7 : 5);
+    }
+    sy0 = s_bg_half ? MH / 2 : 0;
+    sy1 = s_bg_half ? MH : MH / 2;
+    s_bg_half = !s_bg_half;
+    field_samples(m, sy0, ph, lift8, lo, hi, sa);
+    for (sy = sy0; sy < sy1; sy++) {
+        field_samples(m, sy + 1, ph, lift8, lo, hi, sb);
+        for (py = 0; py < ch; py++) {
+            int y = sy * ch + py;
+            int wy = py * rch;                            /* 0..65535 */
+            const int *o = off[y & 3];
+            u32 *row = (u32 *)(s_bg + 2 * y * W);
+            int o0 = o[0], o1 = o[1], o2 = o[2], o3 = o[3];
+            for (i = 0; i <= MW; i++) s_line[i] = sa[i] + (((sb[i] - sa[i]) * wy) >> 16);
+            for (i = 0, x = 0; i < MW; i++) {             /* the values, straight lines between points */
+                int v = s_line[i];
+                int dv = ((s_line[i + 1] - v) * rcw) >> 16;
+                for (k = 0; k < cw; k++, v += dv) s_lv[x++] = v;
+            }
+            for (x = 0; x < hw; x += 4) {                 /* then the dither, four at a time */
+                u32 a = (u32)((s_lv[x] + o0) >> 8) & 0xFF, b = (u32)((s_lv[x + 1] + o1) >> 8) & 0xFF;
+                u32 c = (u32)((s_lv[x + 2] + o2) >> 8) & 0xFF, d = (u32)((s_lv[x + 3] + o3) >> 8) & 0xFF;
+                row[x >> 1]       = (a | (b << 16)) * 0x101u;
+                row[(x >> 1) + 1] = (c | (d << 16)) * 0x101u;
+            }
+            memcpy32((u8 *)row + W, row, (u32)W / 4);
+        }
+        swap = sa; sa = sb; sb = swap;
+    }
+    memcpy32(dst, s_bg, (u32)(W * H) / 4);
+
+    if (m->style != 3) return;
+    for (i = 0; i < DUST_N; i++) {                        /* dust: a speck, two pixels across */
+        int x = s_dust[i].x * W / SCR_W, y = s_dust[i].y * H / SCR_H;
+        s_dust[i].x = (s16)(s_dust[i].x + s_dust[i].vx);
+        s_dust[i].y = (s16)(s_dust[i].y + s_dust[i].vy);
+        if (s_dust[i].x < 0) s_dust[i].x += SCR_W;
+        if (s_dust[i].x >= SCR_W) s_dust[i].x -= SCR_W;
+        if (s_dust[i].y < 0) s_dust[i].y += SCR_H;
+        if (s_dust[i].y >= SCR_H) s_dust[i].y -= SCR_H;
+        if (x >= 0 && x + 1 < W && y >= 0 && y + 1 < H) {
+            dst[y * W + x] = dst[y * W + x + 1] = s_dust[i].c;
+            dst[(y + 1) * W + x] = dst[(y + 1) * W + x + 1] = s_dust[i].c;
+        }
     }
 }

@@ -88,21 +88,65 @@ static void commit_line(void)
     term_newline();
 }
 
+/* Ctrl+C: what was typed stays on the screen, marked ^C, and is not done
+ * or kept in the history; a fresh prompt follows. */
+static void drop_line(void)
+{
+    term_scroll_home();
+    term_input_line(s_input_col, line_text(), line_caret(), C_TEXT);
+    term_colour(C_DIM);
+    term_print("^C");
+    term_newline();
+    line_reset();
+    shell_prompt();
+    after_prompt();
+}
+
 void (*g_frame_fx)(u8 *canvas, int w, int h, u32 t);
+
+/* Ctrl+Shift+F5, from anywhere: the screen switched again, for the start
+ * where the panel stayed black with everything running behind it.  It
+ * works blind -- nothing needs to be seen to press it.  And once, a moment
+ * after the start, the panel's off switches are looked at again, in case
+ * its power came up late and wrong. */
+volatile int g_screen_again;
+static u32 s_wake_check;                 /* ms_now() to look again at, or 0 */
+
+static void screen_again(void)
+{
+    int was_big = vga_is_big();
+    serial_print("[vga] Ctrl+Shift+F5: the screen switched again\n");
+    if (was_big) {
+        if (!vga_redo_big()) term_set_face(1);   /* 800x600 would not come back: 320x200 */
+    } else vga_redo_small();
+    term_refresh();
+}
 
 static void draw_frame_now(u32 t)
 {
     u32 a, b;
+    int covered;
 
-    int covered = term_win_covers();
+    if (g_screen_again) { g_screen_again = 0; screen_again(); }
+    if (s_wake_check && (s32)(ms_now() - s_wake_check) >= 0) {
+        s_wake_check = 0;
+        if (panel_wake()) term_refresh();
+    }
+    covered = term_win_covers();
 
     /* Under a window that covers the whole screen nothing can be seen,
      * so nothing is drawn there; see term.c. */
     a = perf_clock();
     if (!covered) {
-        mood_draw(g_back, t);
-        banana_draw(g_back, t);          /* over the background, always    */
-        vga_compose();                   /* and blown up, if we are big    */
+        if (vga_is_big()) {                 /* drawn at the big screen's own pixels */
+            mood_draw_big(vga_canvas(), vga_width(), vga_height(), t);
+            banana_draw_big(vga_canvas(), vga_width(), vga_height(), t);
+            vga_keep_composed();
+        } else {
+            mood_draw(g_back, t);
+            banana_draw(g_back, t);          /* over the background, always    */
+            vga_compose();                   /* and blown up, if we are big    */
+        }
     } else
         vga_keep_composed();
     b = perf_clock(); perf_add(PERF_ROOM, b - a); a = b;
@@ -310,7 +354,7 @@ void kmain(void)
             serial_print("[vga] shift held: staying at 320x200\n");
         } else {
             boot_step("Begging the glass for 480,000 lights...");
-            if (vga_go_big()) { term_set_face(0); boot_result("800x600"); }
+            if (vga_go_big()) { term_set_face(3); boot_result("800x600"); s_wake_check = ms_now() + 1500; }
             else              boot_result("it said no");
         }
     }
@@ -345,7 +389,9 @@ void kmain(void)
         {
             int sc;
             while ((sc = serial_getc()) >= 0) {
-                if (line_inject(sc)) {
+                int r = line_inject(sc);
+                if (r == 2) { drop_line(); continue; }
+                if (r) {
                     term_scroll_home();
                     commit_line();
                     shell_submit(line_text());
@@ -366,7 +412,9 @@ void kmain(void)
              * bottom so what you type is where you can see it. */
             term_scroll_home();
 
-            if (line_key(ev)) {           /* Enter: the line is finished    */
+            int r = line_key(ev);
+            if (r == 2) { drop_line(); continue; }
+            if (r) {                      /* Enter: the line is finished    */
                 term_scroll_home();
                 commit_line();
                 shell_submit(line_text());

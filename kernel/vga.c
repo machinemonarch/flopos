@@ -262,6 +262,7 @@ int vga_go_big(void)
         outb(0x3C0, 0x20);
     }
     delay_ms(400);
+    panel_wake();                        /* and the panel's own off switches */
     panel_tell("after 800x600");
 
     vga_set_palette(s_current);          /* the mode change cleared it     */
@@ -290,6 +291,18 @@ void vga_go_small(void)
  * machine running, the picture going out, nothing to see -- asking for
  * 800x600 again is the cure, and this is what `screen big` does when the
  * screen already thinks it is big. */
+/* 320x200 set again, stretched as it was: Ctrl+Shift+F5 on the small
+ * screen. */
+void vga_redo_small(void)
+{
+    if (s_hi) return;
+    bios_int(0x10, 0x0013, 0, 0, 0, 0, 0);
+    if (panel_present()) panel_set_wide(panel_wide());
+    panel_wake();
+    s_retrace_ok = 1;
+    vga_set_palette(s_current);
+}
+
 int vga_redo_big(void)
 {
     vga_go_small();

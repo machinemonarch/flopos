@@ -25,7 +25,7 @@
 #define SCROLLBACK 200
 /* Wide enough for the densest face on the biggest screen, since the grid
  * is allocated once and the screen can change under it. */
-#define STRIDE     100
+#define STRIDE     134
 
 typedef struct {
     u16 ch;                              /* a character, wide ones too     */
@@ -93,13 +93,67 @@ static void build_big(void)
     s_big_for = (int)(s_face - &g_faces[0]);
 }
 
+/* The sharp face's glyphs with their shading worked out, built once.
+ * Each row is two bits a column, up to eight columns: 3 ink, 2 a stroke's
+ * half-bright filling, 1 a diagonal's softened step, 0 nothing.
+ *
+ * At the screen's own pixels a stroke is one pixel thin and a diagonal
+ * is a staircase.  The pixel to the right of each stroke gets the same
+ * colour at half brightness -- unless it would fill a one-pixel gap
+ * (m, w), which must stay open.  Where two pixels touch only at a corner,
+ * the two empty corners between them get it dimmer still, which rounds
+ * the step off.  Nothing is drawn outside the cell. */
+static u16 (*s_fine)[8];                 /* FONT_GLYPHS of them, from the heap: the kernel's own memory is full */
+static int s_fine_for = -1;
+
+static void build_fine(void)
+{
+    const Face *f = s_face;
+    int w = f->w, h = f->h, g, col, row;
+    u8 lv[8][8];
+    if (h > 8 || f->adv > 8) return;
+    if (!s_fine) s_fine = (u16 (*)[8])halloc(FONT_GLYPHS * 8 * sizeof(u16));
+    for (g = 0; g < FONT_GLYPHS; g++) {
+        const u8 *src = f->glyphs + g * w;
+#define ON(cx, cy) ((cx) >= 0 && (cx) < w && (cy) >= 0 && (cy) < h && ((src[cx] >> (cy)) & 1))
+        for (row = 0; row < 8; row++) for (col = 0; col < 8; col++) lv[row][col] = 0;
+        for (col = 0; col < w; col++)
+            for (row = 0; row < h; row++)
+                if (ON(col, row)) lv[row][col] = 3;
+        for (col = 0; col < w; col++)
+            for (row = 0; row < h; row++)
+                if (ON(col, row) && !ON(col + 1, row) && !ON(col + 2, row) && col + 1 < f->adv)
+                    lv[row][col + 1] = 2;
+        for (col = 0; col + 1 < w; col++)
+            for (row = 0; row + 1 < h; row++) {
+                int a = ON(col, row), b = ON(col + 1, row), c = ON(col, row + 1), d = ON(col + 1, row + 1);
+                if (a && d && !b && !c) {                 /* a step down to the right */
+                    if (lv[row][col + 1] < 1) lv[row][col + 1] = 1;
+                    if (lv[row + 1][col] < 1) lv[row + 1][col] = 1;
+                }
+                if (b && c && !a && !d) {                 /* a step down to the left  */
+                    if (lv[row][col] < 1) lv[row][col] = 1;
+                    if (lv[row + 1][col + 1] < 1) lv[row + 1][col + 1] = 1;
+                }
+            }
+#undef ON
+        for (row = 0; row < 8; row++) {
+            u16 v = 0;
+            for (col = 7; col >= 0; col--) v = (u16)((v << 2) | lv[row][col]);
+            s_fine[g][row] = v;
+        }
+    }
+    s_fine_for = (int)(s_face - &g_faces[0]);
+}
+
 static void geometry(void)
 {
     s_pitch = vga_pitch();
     s_vw    = vga_width();
     s_vh    = vga_height();
-    s_scale = vga_scale();
+    s_scale = s_face->sharp ? 1 : vga_scale();
     if (s_scale > 1 && s_big_for != (int)(s_face - &g_faces[0])) build_big();
+    if (s_face->sharp && s_fine_for != (int)(s_face - &g_faces[0])) build_fine();
 }
 
 static int cols_now(void)
@@ -661,6 +715,31 @@ static void blit_cell(u8 *dst, int x, int y, int ch, u8 colour)
     if (m & FR_DOWN)  vrun(dst, mx, my, y + h - 1, colour);
 }
 
+/* A text colour at about half its brightness: the same ramp, further
+ * down.  0 for colours that are not on a ramp (keys, the fixed ones). */
+static u8 soft_of(u8 c, int twentieths)
+{
+    static const u8 ramp[][2] = { { PAL_TEXT, PAL_TEXT_N }, { PAL_BRIGHT, PAL_BRIGHT_N },
+                                  { PAL_ACCENT, PAL_ACCENT_N }, { PAL_GREY, PAL_GREY_N } };
+    unsigned i;
+    for (i = 0; i < sizeof ramp / sizeof *ramp; i++)
+        if (c >= ramp[i][0] && c < ramp[i][0] + ramp[i][1])
+            return (u8)(ramp[i][0] + (c - ramp[i][0]) * twentieths / 20);
+    return 0;
+}
+
+/* A shaded face's letter: its rows (two bits a pixel) and how many. */
+static const u16 *shaded(int c, int *rows)
+{
+    const Face *f = s_face;
+    if (f->lv) { *rows = f->lh; return f->lv + glyph_index(c) * f->lh; }
+    if (f->sharp && s_fine_for == (int)(f - &g_faces[0])) { *rows = f->h; return s_fine[glyph_index(c)]; }
+    return 0;
+}
+
+/* The ink's width and height on the screen. */
+static int ink_w(void) { return s_face->lv ? s_face->adv - 1 : s_face->w * s_scale; }
+
 static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
 {
     const Face *f = s_face;
@@ -681,6 +760,30 @@ static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
         return;
     }
 
+    {
+        /* Three brightnesses: the ink, the half-bright pixels that fill
+         * out a stroke, the dimmer ones that round off a curve. */
+        int lh;
+        const u16 *g = shaded(c, &lh);
+        u8 shade[4];
+        int row;
+        if (!g) goto plain;
+        shade[0] = 0;
+        shade[3] = colour;
+        shade[2] = soft_of(colour, 12);
+        shade[1] = soft_of(colour, 7);
+        for (row = 0; row < lh; row++) {
+            u16 lv = g[row];
+            u8 *q = p + row * s_pitch;
+            for (col = 0; lv; col++, lv >>= 2) {
+                u8 v = shade[lv & 3];
+                if (v && x + col < s_vw) q[col] = v;
+            }
+        }
+        return;
+    }
+
+plain:
     {
         const u8 *g = f->glyphs + glyph_index(c) * f->w;
         for (col = 0; col < f->w; col++) {
@@ -707,8 +810,8 @@ static void blit_glyph(u8 *dst, int x, int y, int c, u8 colour)
  * background as well as their own colour, so a highlighted row is just a
  * row of cells with a lighter background.
  */
-#define WIN_W 100
-#define WIN_H 50
+#define WIN_W 134
+#define WIN_H 67
 /* Taken from the heap in term_init, as are the copies below: together they
  * are too big to sit in the kernel's own memory under 0x70000. */
 static u16 (*s_win_ch)[WIN_W];
@@ -900,6 +1003,34 @@ static void blit_styled(u8 *dst, int x, int y, int c, u8 colour, u8 attr)
 
     if (!(attr & (ATTR_BOLD | ATTR_ITALIC))) { blit_glyph(dst, x, y, c, colour); return; }
 
+    {
+        /* A shaded letter: each row's shades, made one pixel wider for
+         * bold (the brighter of the two wins) and slid right for italic. */
+        int lh;
+        const u16 *g = shaded(c, &lh);
+        if (g) {
+            u8 shade[4], lv[12];
+            shade[0] = 0; shade[3] = colour;
+            shade[2] = soft_of(colour, 12); shade[1] = soft_of(colour, 7);
+            for (row = 0; row < lh; row++) {
+                int k, sh = (attr & ATTR_ITALIC) ? (row < lh / 3 ? 2 : row < 2 * lh / 3 ? 1 : 0) : 0;
+                u16 v = g[row];
+                for (k = 0; k < 12; k++) lv[k] = 0;
+                for (k = 0; k < 8; k++, v >>= 2) {
+                    u8 l = (u8)(v & 3);
+                    if (l > lv[k]) lv[k] = l;
+                    if ((attr & ATTR_BOLD) && l > lv[k + 1]) lv[k + 1] = l;
+                }
+                for (k = 0; k < 10; k++) {
+                    int px = x + k + sh, py = y + row;
+                    u8 o = shade[lv[k]];
+                    if (o && px >= 0 && px < s_vw && py >= 0 && py < s_vh) dst[py * s_pitch + px] = o;
+                }
+            }
+            return;
+        }
+    }
+
     for (col = 0; col < cols; col++) {
         u32 bits = s_scale > 1 ? s_big[glyph_index(c)][col]
                                : f->glyphs[glyph_index(c) * f->w + col];
@@ -1087,7 +1218,7 @@ void term_render(u8 *dst, u32 t)
         int i;
 
         for (i = 0; i < f->pitch * s_scale - s_scale; i++)
-            memset8(dst + (y + i) * s_pitch + x, col, f->w * s_scale);
+            memset8(dst + (y + i) * s_pitch + x, col, (usize)ink_w());
         if (ch != ' ' && ch != 0) blit_glyph(dst, x, y, ch, 0);
     }
 

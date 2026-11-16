@@ -53,6 +53,7 @@ static const u8 s_regs[] = {
 static const u8 s_wide[NREGS] = { 0x3F, 0x07, 0x1F, 0x40, 0x3F };
 
 static u8 s_saved[NREGS];
+static u8 s_lit[16];                     /* FR00-FR0F while the glass was lit */
 static int s_present;
 static int s_on;
 
@@ -87,6 +88,32 @@ void panel_init(void)
 
     s_present = !all_ff;
     s_on = 0;
+    /* At this moment the panel is known to be lit -- Saffran is on it --
+     * so what its power and output registers hold now is what "on" looks
+     * like.  panel_wake() compares against it. */
+    if (s_present) for (i = 0; i < 16; i++) s_lit[i] = fp_read((u8)i);
+}
+
+/* After a mode switch: the panel's own two ways of going dark, put back
+ * as they were while it was lit.  FR01 picks where the picture goes (the
+ * panel, an outside monitor, or both) and FR05 can power the panel down;
+ * a video BIOS that leaves either wrong leaves the machine running behind
+ * a black screen, which is exactly what was seen.  Returns 1 if anything
+ * had to be put right. */
+int panel_wake(void)
+{
+    static const u8 regs[] = { 0x01, 0x05 };
+    int i, fixed = 0;
+    if (!s_present) return 0;
+    for (i = 0; i < (int)sizeof regs; i++) {
+        u8 now = fp_read(regs[i]), want = s_lit[regs[i]];
+        if (now != want) {
+            serial_printf("[panel] FR%x was %x, lit it is %x: put back\n", (u32)regs[i], (u32)now, (u32)want);
+            fp_write(regs[i], want);
+            fixed = 1;
+        }
+    }
+    return fixed;
 }
 
 int panel_present(void) { return s_present; }
@@ -101,6 +128,18 @@ void panel_tell(const char *when)
     serial_printf("[panel] %s: FR00-0F", when);
     for (i = 0; i < 16; i++) serial_printf(" %x", (u32)fp_read((u8)i));
     serial_printf("; FR40 %x FR48 %x\n", (u32)fp_read(FR_PANEL_FORMAT), (u32)fp_read(FR_STRETCH));
+    /* All of the chip, read only, for a black start to be told from a lit
+     * one wherever the difference is: the flat-panel registers, and the
+     * extension registers (memory, clocks, the panel's timing) behind
+     * 0x3D6/0x3D7. */
+    serial_printf("[panel] %s: FR", when);
+    for (i = 0; i < 0x80; i++) serial_printf("%s%x", i % 16 ? " " : (i ? " | " : " "), (u32)fp_read((u8)i));
+    serial_printf("\n[panel] %s: XR", when);
+    for (i = 0; i < 0x100; i++) {
+        outb(0x3D6, (u8)i); io_wait();
+        serial_printf("%s%x", i % 16 ? " " : (i ? " | " : " "), (u32)inb(0x3D7));
+    }
+    serial_printf("\n");
 }
 int panel_wide(void)    { return s_on; }
 

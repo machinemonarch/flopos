@@ -138,9 +138,15 @@ static int net_ready_here(int chatty);
 static void screen_now(void)
 {
     u32 t = ms_now();
-    mood_draw(g_back, t);
-    banana_draw(g_back, t);
-    vga_compose();
+    if (vga_is_big()) {                 /* drawn at the big screen's own pixels */
+        mood_draw_big(vga_canvas(), vga_width(), vga_height(), t);
+        banana_draw_big(vga_canvas(), vga_width(), vga_height(), t);
+        vga_keep_composed();
+    } else {
+        mood_draw(g_back, t);
+        banana_draw(g_back, t);
+        vga_compose();
+    }
     term_render(vga_canvas(), t);
     vga_present();
 }
@@ -786,7 +792,7 @@ static void cmd_screen(void)
     /* Asked for big while big: do the switch again.  It is the cure for a
      * panel that came up black, and costs nothing when it did not. */
     if (want_big && vga_is_big() && s_argc >= 2) {
-        if (vga_redo_big()) term_set_face(0);
+        if (vga_redo_big()) term_set_face(3);
         else term_set_face(1);
         screen_say();
         return;
@@ -807,7 +813,7 @@ static void cmd_screen(void)
         say_dim("Try vesa to see what it does offer.");
         return;
     }
-    term_set_face(0);
+    term_set_face(3);
     screen_say();
 }
 
@@ -1241,16 +1247,19 @@ static void cmd_net(void)
 
 
 /* The grid is a matter of eyesight and of what is being built, so it is a
- * command rather than a build-time decision.  Cycles, because there are
- * only two and there will be more. */
+ * command rather than a build-time decision.  Cycles.  The fine face is
+ * the large one at the screen's own pixels, which only means anything on
+ * the big screen, so the small screen skips it. */
 static void cmd_squint(void)
 {
-    int n = term_set_face(term_face_index() + 1 >= FACE_COUNT
-                          ? 0 : term_face_index() + 1);
+    int n = term_face_index() + 1;
+    if (n >= FACE_COUNT || (n >= 2 && !vga_is_big())) n = 0;     /* fine and easy are for the big screen */
+    n = term_set_face(n);
     term_colour(C_ACCENT);
     term_printf("%u by %u now.", term_cols(), term_rows());
     term_newline();
-    say_dim(n == 0 ? "Easier on the eyes." : "More room to build in.");
+    say_dim(n == 0 ? "Easier on the eyes." : n == 1 ? "More room to build in." :
+            n == 2 ? "The most room, in the smallest letters." : "Smooth letters, and room enough.");
 }
 
 /* A test card.  Everything a text interface is made of, at whatever size

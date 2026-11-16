@@ -492,6 +492,69 @@ five = build(G5, EXTRA5, CELL5)
 four = build(G4, EXTRA4, CELL4)
 assert len(five) == len(four), (len(five), len(four))
 
+# ---------------------------------------------------------------------------
+# The "easy" face: the large face's letters again, about 1.4 times the size,
+# shaded.  Each is blown up four times over with EPX (which rounds the
+# steps of a diagonal rather than making bigger stairs), its strokes made
+# a little fuller, and then each pixel of a 7x11 box takes how much of it is
+# ink: none, a third, two thirds, or all.  The screen draws those as the
+# text's colour at three brightnesses.  Nothing about a letter is drawn by
+# hand twice: change the art above and this follows.
+# ---------------------------------------------------------------------------
+EASY_W, EASY_H = 7, 11
+EASY_BOLD = 2                                   # sub-pixels of extra stroke
+EASY_STEPS = (0.2, 0.45, 0.7)                   # coverage for a third, two thirds, all
+
+def epx(b):
+    h, w = len(b), len(b[0])
+    on = lambda c, r: b[r][c] if 0 <= c < w and 0 <= r < h else 0
+    o = [[0] * (w * 2) for _ in range(h * 2)]
+    for r in range(h):
+        for c in range(w):
+            p = on(c, r); a = on(c, r - 1); bb = on(c + 1, r); cc = on(c - 1, r); d = on(c, r + 1)
+            e0 = e1 = e2 = e3 = p
+            if c > 0 and cc == a and cc != d and a != bb: e0 = a
+            if a == bb and a != cc and bb != d: e1 = bb
+            if c > 0 and d == cc and d != bb and cc != a: e2 = cc
+            if bb == d and bb != a and d != cc: e3 = d
+            o[2*r][2*c] = e0; o[2*r][2*c+1] = e1; o[2*r+1][2*c] = e2; o[2*r+1][2*c+1] = e3
+    return o
+
+def easy(cols):
+    w, h = CELL5
+    b = epx(epx([[(cols[c] >> r) & 1 for c in range(w)] for r in range(h)]))
+    H, W = len(b), len(b[0])
+    nb = [row[:] for row in b]
+    for r in range(H):
+        for c in range(W):
+            if b[r][c]:
+                for k in range(1, EASY_BOLD + 1):
+                    if c + k < W: nb[r][c + k] = 1
+    b = nb
+    sx, sy = float(W) / EASY_W, float(H) / EASY_H
+    rows = []
+    for r in range(EASY_H):
+        v16 = 0
+        for c in range(EASY_W):
+            x0, x1, y0, y1 = c * sx, (c + 1) * sx, r * sy, (r + 1) * sy
+            tot = cov = 0.0
+            yy = int(y0)
+            while yy < y1 and yy < H:
+                fy = min(y1, yy + 1) - max(y0, yy)
+                xx = int(x0)
+                while xx < x1 and xx < W:
+                    fx = min(x1, xx + 1) - max(x0, xx)
+                    tot += fx * fy; cov += fx * fy * b[yy][xx]
+                    xx += 1
+                yy += 1
+            v = cov / tot if tot else 0
+            lv = 3 if v >= EASY_STEPS[2] else 2 if v >= EASY_STEPS[1] else 1 if v >= EASY_STEPS[0] else 0
+            v16 |= lv << (2 * c)
+        rows.append(v16)
+    return rows
+
+easy_rows = [(comment, easy(cols)) for comment, cols in five]
+
 total      = len(five)
 extra_base = 64
 lower_base = 64 + len(EXTRA5)
@@ -534,12 +597,25 @@ lines += table("g_font5x8", CELL5, five)
 lines.append("")
 lines += table("g_font4x6", CELL4, four)
 lines.append("")
+lines.append("/* The easy face: %dx%d, two bits a pixel (bit pair n is column n): 0 none," % (EASY_W, EASY_H))
+lines.append(" * 1 a third, 2 two thirds, 3 the text's own colour. */")
+lines.append("const u16 g_font_easy[FONT_GLYPHS][%d] = {" % EASY_H)
+for n, (comment, rws) in enumerate(easy_rows):
+    lines.append("    { %s },  /* %3d  %s */" % (", ".join("0x%04X" % v for v in rws), n, comment))
+lines.append("};")
+lines.append("")
 lines.append("""/* The faces as the terminal sees them.  adv and pitch are the cell, which
  * is one pixel wider and (for the large face) the same height as the ink;
- * cols and rows are what then fits in 320x200 starting at x0. */
+ * cols and rows are what then fits in 320x200 starting at x0.  fine is the
+ * large face again, drawn at the screen's own pixel size even at 800x600
+ * (sharp), with a row of air between lines: 133 columns by 66 rows.  easy
+ * is the large face's letters made 7x11 and shaded (lv, lh rows a letter),
+ * in an 8x12 cell: 100 columns by 50 rows at 800x600. */
 const Face g_faces[FACE_COUNT] = {
-    { (const u8 *)g_font5x8, 5, 8, 6, 8, 53, 25, 1, 1, "roomy"  },
-    { (const u8 *)g_font4x6, 4, 6, 4, 6, 80, 33, 0, 1, "close"  },
+    { (const u8 *)g_font5x8, 5, 8, 6, 8, 53, 25, 1, 1, 0, 0, 0, "roomy"  },
+    { (const u8 *)g_font4x6, 4, 6, 4, 6, 80, 33, 0, 1, 0, 0, 0, "close"  },
+    { (const u8 *)g_font5x8, 5, 8, 6, 9, 53, 22, 1, 1, 1, 0, 0, "fine"   },
+    { (const u8 *)g_font5x8, 5, 8, 8, 12, 40, 16, 1, 1, 1, (const u16 *)g_font_easy, 11, "easy" },
 };""")
 lines.append("")
 slot = [0] * 96
@@ -616,7 +692,7 @@ hdr = ["""/* ===================================================================
 #define FONTMAP_H
 
 #define FONT_GLYPHS   %d
-#define FACE_COUNT    2
+#define FACE_COUNT    4
 
 /* The widest and tallest cell any face uses, for buffers sized once. */
 #define GLYPH_W       %d

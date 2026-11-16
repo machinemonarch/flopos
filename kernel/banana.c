@@ -93,9 +93,10 @@ static void build(void)
     s_built = 1;
 }
 
-void banana_draw(u8 *dst, u32 t)
+/* The corners on a screen W x H (320x200 or 800x600), placed at that
+ * screen's own precision so a big one turns a pixel at a time. */
+static void project(u32 t, int *px, int *py, int *pz, int W, int H)
 {
-    int px[NV], py[NV], pz[NV];
     int ay, ax, i;
     int cx = BOX_X + BOX_W / 2;
     int cy = BOX_Y + BOX_H / 2;
@@ -125,11 +126,27 @@ void banana_draw(u8 *dst, u32 t)
 
         d = z2 + DIST;
         if (d < 40) d = 40;
-        px[i] = cx + (x1 * FOCAL) / d;
-        py[i] = cy + (y2 * FOCAL) / d;
+        px[i] = cx * W / SCR_W + (x1 * FOCAL * W) / (d * SCR_W);
+        py[i] = cy * H / SCR_H + (y2 * FOCAL * H) / (d * SCR_H);
         pz[i] = z2;
     }
+}
 
+/* How bright an edge is: nearer, brighter. */
+static u8 edge_colour(const int *pz, int a, int b)
+{
+    int zz = (pz[a] + pz[b]) / 2;
+    int lvl = (PAL_BANANA_N - 1) - ((zz + 120) * (PAL_BANANA_N - 1)) / 240;
+    if (lvl < 1) lvl = 1;
+    if (lvl > PAL_BANANA_N - 1) lvl = PAL_BANANA_N - 1;
+    return (u8)(PAL_BANANA + lvl);
+}
+
+void banana_draw(u8 *dst, u32 t)
+{
+    int px[NV], py[NV], pz[NV], i;
+    if (!s_built) build();
+    project(t, px, py, pz, SCR_W, SCR_H);
     for (i = 0; i < s_ne; i++) {
         int a = s_e0[i], b = s_e1[i];
         /* Nearer edges brighter: it is the only depth cue a wireframe
@@ -142,5 +159,45 @@ void banana_draw(u8 *dst, u32 t)
         draw_line_clipped(dst, px[a], py[a], px[b], py[b],
                           (u8)(PAL_BANANA + lvl),
                           BOX_X, BOX_Y, BOX_W, BOX_H);
+    }
+}
+
+/* At 800x600: the same banana, its corners placed two and a half times
+ * further apart and its edges drawn at the screen's own pixels with a pen
+ * two pixels across, instead of drawn small and stretched into blocks. */
+static void line_big(u8 *dst, int W, int H, int x0, int y0, int x1, int y1, u8 colour,
+                     int bx, int by, int bw, int bh)
+{
+    int dx = x1 - x0, dy = y1 - y0;
+    int sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+    int err, n;
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    err = dx - dy;
+    n = (dx > dy ? dx : dy) + 1;
+    if (n > 2048) return;
+    while (n--) {
+        if (x0 >= bx && x0 + 1 < bx + bw && y0 >= by && y0 + 1 < by + bh &&
+            x0 >= 0 && x0 + 1 < W && y0 >= 0 && y0 + 1 < H) {
+            u8 *p = dst + y0 * W + x0;
+            p[0] = p[1] = p[W] = p[W + 1] = colour;
+        }
+        {
+            int e2 = err * 2;
+            if (e2 > -dy) { err -= dy; x0 += sx; }
+            if (e2 <  dx) { err += dx; y0 += sy; }
+        }
+    }
+}
+
+void banana_draw_big(u8 *dst, int W, int H, u32 t)
+{
+    int px[NV], py[NV], pz[NV], i;
+    if (!s_built) build();
+    project(t, px, py, pz, W, H);
+    for (i = 0; i < s_ne; i++) {
+        int a = s_e0[i], b = s_e1[i];
+        line_big(dst, W, H, px[a], py[a], px[b], py[b], edge_colour(pz, a, b),
+                 BOX_X * W / SCR_W, BOX_Y * H / SCR_H, BOX_W * W / SCR_W, BOX_H * H / SCR_H);
     }
 }

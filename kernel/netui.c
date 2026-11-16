@@ -128,8 +128,8 @@ static void draw(void)
 
     if (s_status[0]) term_win_text(3, 13, s_status, s_status_col, pp);
 
-    term_win_text(3, H - 3, s_edit >= 0 ? "type the address, \1enter\1 to keep it, \1esc\1 to undo"
-                                        : "\1up down\1 move   \1enter\1 change   \1esc\1 leave",
+    term_win_text(3, H - 3, s_edit >= 0 ? "type it, \1enter\1 keeps it, \1esc\1 undoes"
+                                        : "\1tab\1 move   \1enter\1 change   \1esc\1 leave",
                   C_DIM, pp);
 }
 
@@ -221,16 +221,21 @@ void netui_run(void)
         if (k < 0) { main_pump(0); continue; }
 
         if (s_edit >= 0) {
-            if (k == UK_ENTER) {
+            if (k == UK_ENTER || k == UK_TAB || k == UK_BTAB) {      /* keep it; Tab moves on too */
                 u32 a;
                 s_buf[s_len] = 0;
                 if (s_len && !ip_parse(s_buf, &a)) {
                     status("Four numbers and three dots, please.", C_ACCENT);
                     continue;
                 }
-                for (k = 0; k <= s_len; k++) s_field[s_edit][k] = s_buf[k];
+                {
+                    int i;
+                    for (i = 0; i <= s_len; i++) s_field[s_edit][i] = s_buf[i];
+                }
                 s_edit = -1;
                 s_status[0] = 0;
+                if (k == UK_TAB) s_sel = (s_sel + 1) % NSEL;
+                if (k == UK_BTAB) s_sel = (s_sel + NSEL - 1) % NSEL;
             } else if (k == UK_ESC) {
                 s_edit = -1;
             } else if (k == UK_BKSP) {
@@ -246,12 +251,16 @@ void netui_run(void)
         case UK_ESC:
             term_win_close();
             return;
+        case UK_TAB:                     /* every row and button, round and round */
+            s_sel = (s_sel + 1) % NSEL;
+            break;
         case UK_BTAB:
+            s_sel = (s_sel + NSEL - 1) % NSEL;
+            break;
         case UK_UP:
             if (s_sel >= B_APPLY) s_sel = R_DNS;
             else if (s_sel > 0) s_sel--;
             break;
-        case UK_TAB:
         case UK_DOWN:
             if (s_sel < R_DNS) s_sel++;
             else if (s_sel == R_DNS) s_sel = B_APPLY;

@@ -7,7 +7,7 @@
 #define FONTMAP_H
 
 #define FONT_GLYPHS   259
-#define FACE_COUNT    2
+#define FACE_COUNT    4
 
 /* The widest and tallest cell any face uses, for buffers sized once. */
 #define GLYPH_W       5

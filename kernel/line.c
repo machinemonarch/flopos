@@ -120,6 +120,7 @@ int line_inject(int c)
         if (s_caret > 0) { s_caret--; erase_at(s_caret); }
         return 0;
     }
+    if (c == 0x03) return 2;             /* ^C: the caller drops the line  */
     if (c == 0x15) {                     /* ^U                             */
         s_len = s_caret = 0;
         s_code[0] = 0;
@@ -192,6 +193,7 @@ int line_key(int event)
         /* By the letter on the key, so ^A is where the A is on a French
          * board too. */
         switch (keymap_key(event & ~KEV_CTRL) | 0x20) {
+        case 'c': return 2;              /* the caller shows it, with ^C, and drops it */
         case 'u': s_len = s_caret = 0; s_code[0] = 0; return 0;
         case 'a': s_caret = 0; return 0;
         case 'e': s_caret = s_len; return 0;
