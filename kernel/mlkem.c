@@ -187,11 +187,13 @@ static u16 decompress(u32 y, int d)
 }
 
 /* ---- the public-key scheme underneath ------------------------------------ */
-static Poly s_a[K][K];                   /* the matrix, NTT form           */
+static Poly (*s_a)[K];                   /* the matrix, NTT form: K x K, from the heap
+                                          * (the kernel's own memory is full) */
 
 static void make_matrix(const u8 rho[32])
 {
     int i, j;
+    if (!s_a) s_a = (Poly (*)[K])halloc(K * K * sizeof(Poly));
     for (i = 0; i < K; i++)
         for (j = 0; j < K; j++)
             sample_ntt(s_a[i][j], rho, (u8)j, (u8)i);

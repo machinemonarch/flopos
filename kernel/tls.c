@@ -61,25 +61,45 @@
 #define HS_CERT_VERIFY    15
 #define HS_FINISHED       20
 
-typedef struct { u8 key[32], iv[12]; u32 seq; } Dir;
+typedef struct { u8 key[32], iv[12], mac[20]; u32 seq; } Dir;
 
 #define SUITE_CHACHA 0x1303
 #define SUITE_AES128 0x1301
 #define GROUP_X25519 0x001d
 #define GROUP_P256   0x0017
+#define GROUP_P384   0x0018
 #define S12_CHACHA_EC  0xCCA9            /* TLS 1.2: ECDHE, then the cipher */
 #define S12_CHACHA_RSA 0xCCA8
 #define S12_AES_EC     0xC02B
 #define S12_AES_RSA    0xC02F
+/* The two older TLS 1.2 ciphers Chrome still offers, last, for servers with
+ * nothing newer: ECDHE-RSA, AES in CBC mode, SHA-1 checks.  Nothing older
+ * (no RSA key exchange, no ECDSA-CBC, no 3DES, no RC4). */
+#define S12_CBC128     0xC013
+#define S12_CBC256     0xC014
 #define GROUP_HYBRID 0x11ec              /* X25519MLKEM768                  */
 
 static u32 s_suite, s_group;
 static int s_offer_pq = 1;               /* offer the hybrid at all        */
 static int s_pq_broke;                   /* it was chosen, and then failed  */
 static int s_v12, s_ems, s_p256;         /* TLS 1.2; its extended master secret; P-256 */
+/* When a TLS 1.3 server wants a curve we sent no share for (P-256 or
+ * P-384), it says so in a HelloRetryRequest and we say hello again with
+ * that share alone, and its cookie if it gave one (RFC 8446, 4.1.4). */
+static u32 s_retry_group;
+static u8  s_cookie[256];
+static int s_cookie_len;
+static u8  s_ec_secret[48], s_ec_pub[97], s_ec_peer[97];
+static const u8 s_hrr[32] = {
+    0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C, 0x02,
+    0x1E, 0x65, 0xB8, 0x91, 0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E,
+    0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C };
+static int ec_bytes(u32 g) { return g == GROUP_P384 ? 48 : 32; }
 static u8  s_srv_random[32];
 
 static int aes(void) { return s_suite == SUITE_AES128 || s_suite == S12_AES_EC || s_suite == S12_AES_RSA; }
+static int cbc(void) { return s_suite == S12_CBC128 || s_suite == S12_CBC256; }
+static int cbc_klen(void) { return s_suite == S12_CBC256 ? 32 : 16; }
 
 void tls_offer_pq(int on) { s_offer_pq = on; }
 int  tls_pq_broke(void)   { return s_pq_broke; }
@@ -110,12 +130,15 @@ const char *tls_why(void) { return s_why; }
 int tls_post_quantum(void) { return s_group == GROUP_HYBRID; }
 const char *tls_kex(void)
 {
-    if (s_v12) return s_p256 ? (s_ems ? "P-256" : "P-256, no extended master secret")
+    if (s_v12) return s_p256 == 2 ? (s_ems ? "P-384" : "P-384, no extended master secret")
+                    : s_p256 ? (s_ems ? "P-256" : "P-256, no extended master secret")
                              : (s_ems ? "X25519" : "X25519, no extended master secret");
-    return s_group == GROUP_HYBRID ? "X25519MLKEM768 (post-quantum)" : "X25519";
+    return s_group == GROUP_HYBRID ? "X25519MLKEM768 (post-quantum)"
+         : s_group == GROUP_P384 ? "P-384" : s_group == GROUP_P256 ? "P-256" : "X25519";
 }
 const char *tls_cipher(void)
 {
+    if (s_v12 && cbc()) return s_suite == S12_CBC256 ? "AES-256-CBC with SHA-1, TLS 1.2" : "AES-128-CBC with SHA-1, TLS 1.2";
     if (s_v12) return aes() ? "AES-128-GCM, TLS 1.2" : "ChaCha20-Poly1305, TLS 1.2";
     return aes() ? "AES-128-GCM" : "ChaCha20-Poly1305";
 }
@@ -235,11 +258,57 @@ static void aad12(u8 aad[13], u32 seq, u8 type, int n)
 /* TLS 1.2: the record's own type is the real one, nothing hidden inside.
  * AES-GCM carries eight bytes of its nonce in front; ChaCha20 makes it
  * from the sequence number, as 1.3 does. */
+/* A CBC record's check, HMAC-SHA-1 over the sequence number, the record's
+ * header and its text. */
+static void mac12(const u8 key[20], const u8 hdr[13], const u8 *data, int len, u8 out[20])
+{
+    u8 k[64];
+    Sha1 c;
+    int i;
+    for (i = 0; i < 64; i++) k[i] = (u8)((i < 20 ? key[i] : 0) ^ 0x36);
+    sha1_init(&c); sha1_update(&c, k, 64); sha1_update(&c, hdr, 13); sha1_update(&c, data, (u32)len); sha1_final(&c, out);
+    for (i = 0; i < 64; i++) k[i] = (u8)((i < 20 ? key[i] : 0) ^ 0x5c);
+    sha1_init(&c); sha1_update(&c, k, 64); sha1_update(&c, out, 20); sha1_final(&c, out);
+}
+
+/* SHA-1 compressions for the inner hash of a check over len bytes. */
+static int mac_blocks(int len) { return (64 + 13 + len + 9 + 63) / 64; }
+
+/* A CBC record: a fresh IV, then the text, its check and padding, sealed.
+ * The padding and the check are looked at the same way whatever they hold
+ * -- every padding byte the record could have, and as many SHA-1 blocks as
+ * the longest text it could hold -- so how long the answer takes says
+ * nothing about which was wrong (the "Lucky 13" attack on CBC). */
+static int open_cbc(int len, int *plen)
+{
+    int n = len - 16, i, pad, bad, L;
+    u8 want[20], aad[13], diff = 0;
+    if (len < 16 + 32 || (n & 15)) return 0;
+    aes_cbc_decrypt(s_rd.key, cbc_klen(), s_rec + 5, s_rec + 5 + 16, s_plain, (u32)n);
+    pad = s_plain[n - 1];
+    bad = pad + 1 + 20 > n;
+    if (bad) pad = 0;
+    for (i = 0; i < 256 && i < n; i++) {
+        u8 in_pad = (u8)(0u - (u32)(i <= pad));
+        diff |= (u8)(in_pad & (s_plain[n - 1 - i] ^ (u8)pad));
+    }
+    L = n - 1 - pad - 20;
+    aad12(aad, s_rd.seq, s_rec[0], L);
+    mac12(s_rd.mac, aad, s_plain, L, want);
+    sha1_waste(mac_blocks(n - 21) - mac_blocks(L));
+    for (i = 0; i < 20; i++) diff |= (u8)(want[i] ^ s_plain[L + i]);
+    if (diff || bad) return 0;
+    s_rd.seq++;
+    *plen = L;
+    return s_rec[0] ? s_rec[0] : -1;
+}
+
 static int open12(int len, int *plen)
 {
     u8 nonce[12], aad[13];
     const u8 *ct = s_rec + 5;
     int n = len - 16, i;
+    if (cbc()) return open_cbc(len, plen);
     if (aes()) {
         if (len < 8 + 16) return 0;
         for (i = 0; i < 4; i++) nonce[i] = s_rd.iv[i];
@@ -285,8 +354,23 @@ static int send_record(u8 type, const u8 *data, int len)
     int i;
 
     if (len > 16384) return 0;
-    if (!out) out = (u8 *)halloc(16384 + 64);
+    if (!out) out = (u8 *)halloc(16384 + 128);
     if (!out) return 0;
+    if (s_v12 && cbc()) {
+        u8 aad[13];
+        int body = len + 20, pad = 15 - (body % 16), total, k;
+        out[0] = type; out[1] = 3; out[2] = 3;
+        rand_bytes(out + 5, 16);                       /* the IV, fresh each time */
+        for (i = 0; i < len; i++) out[21 + i] = data[i];
+        aad12(aad, s_wr.seq, type, len);
+        mac12(s_wr.mac, aad, out + 21, len, out + 21 + len);
+        for (k = 0; k <= pad; k++) out[21 + body + k] = (u8)pad;
+        total = body + pad + 1;
+        aes_cbc_encrypt(s_wr.key, cbc_klen(), out + 5, out + 21, out + 21, (u32)total);
+        put16(out + 3, (u32)(16 + total));
+        s_wr.seq++;
+        return tcp_write(out, 5 + 16 + total) == 5 + 16 + total;
+    }
     if (s_v12) {
         u8 aad[13];
         int pre = aes() ? 8 : 0;
@@ -350,13 +434,15 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
     for (i = 0; i < 32; i++) m[n++] = random[i];
     m[n++] = 32;                         /* a session id, for middleboxes  */
     for (i = 0; i < 32; i++) m[n++] = session[i];
-    put16(m + n, 12); n += 2;
+    put16(m + n, 16); n += 2;
     put16(m + n, SUITE_CHACHA); n += 2;  /* the fast one here, first       */
     put16(m + n, SUITE_AES128); n += 2;  /* the one every server has       */
     put16(m + n, S12_CHACHA_EC); n += 2; /* and the same two in TLS 1.2    */
     put16(m + n, S12_CHACHA_RSA); n += 2;
     put16(m + n, S12_AES_EC); n += 2;
     put16(m + n, S12_AES_RSA); n += 2;
+    put16(m + n, S12_CBC128); n += 2;    /* and, last, Chrome's two older ones */
+    put16(m + n, S12_CBC256); n += 2;
     m[n++] = 1; m[n++] = 0;              /* no compression                 */
 
     ext_at = n; n += 2;
@@ -378,12 +464,21 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
     }
 
     /* supported_groups: the post-quantum hybrid, then plain x25519, and
-     * P-256 for TLS 1.2 servers that have neither. */
-    put16(m + n, 0x000a); n += 2; put16(m + n, s_offer_pq ? 8 : 6); n += 2;
-    put16(m + n, s_offer_pq ? 6 : 4); n += 2;
+     * P-256 and P-384 for servers that have neither -- the same four as
+     * Chrome and Firefox. */
+    put16(m + n, 0x000a); n += 2; put16(m + n, s_offer_pq ? 10 : 8); n += 2;
+    put16(m + n, s_offer_pq ? 8 : 6); n += 2;
     if (s_offer_pq) { put16(m + n, GROUP_HYBRID); n += 2; }
     put16(m + n, GROUP_X25519); n += 2;
     put16(m + n, GROUP_P256); n += 2;
+    put16(m + n, GROUP_P384); n += 2;
+
+    /* cookie: what a server that asked us to say hello again gave us. */
+    if (s_cookie_len) {
+        put16(m + n, 0x002c); n += 2; put16(m + n, (u32)(s_cookie_len + 2)); n += 2;
+        put16(m + n, (u32)s_cookie_len); n += 2;
+        for (i = 0; i < s_cookie_len; i++) m[n++] = s_cookie[i];
+    }
 
     /* For TLS 1.2: points sent whole; the extended master secret; and an
      * empty renegotiation_info, which says we will never renegotiate. */
@@ -410,7 +505,13 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
 
     /* key_share: our half of the secret, both ways.  The hybrid share is
      * the ML-KEM encapsulation key followed by the X25519 public key. */
-    {
+    if (s_retry_group) {
+        int pl = 1 + 2 * ec_bytes(s_retry_group);
+        put16(m + n, 0x0033); n += 2; put16(m + n, (u32)(4 + pl + 2)); n += 2;
+        put16(m + n, (u32)(4 + pl)); n += 2;
+        put16(m + n, s_retry_group); n += 2; put16(m + n, (u32)pl); n += 2;
+        for (i = 0; i < pl; i++) m[n++] = s_ec_pub[i];
+    } else {
         int share = (s_offer_pq ? 4 + MLKEM_EK + 32 : 0) + 4 + 32;
         put16(m + n, 0x0033); n += 2; put16(m + n, (u32)(share + 2)); n += 2;
         put16(m + n, (u32)share); n += 2;
@@ -446,7 +547,7 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
     int p, end, sid, got_ver = 0, got_key = 0;
 
     if (len < 38) { why("its hello was too short"); return 0; }
-    if (same(b + 2, hrr, 32)) { why("it wanted a key exchange we do not do"); return 0; }
+    if (same(b + 2, hrr, 32)) { why("it asked twice for another key exchange"); return 0; }
     for (p = 0; p < 32; p++) s_srv_random[p] = b[2 + p];
     p = 34;
     sid = b[p++];
@@ -473,6 +574,14 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
             s_group = GROUP_X25519;
             got_key = 1;
         }
+        /* After a retry: the curve point it asked for. */
+        if (type == 0x0033 && s_retry_group && get16(e) == s_retry_group &&
+            elen == 4 + 1 + 2 * (u32)ec_bytes(s_retry_group) && get16(e + 2) == elen - 4) {
+            u32 i;
+            for (i = 0; i < elen - 4; i++) s_ec_peer[i] = e[4 + i];
+            s_group = s_retry_group;
+            got_key = 1;
+        }
         /* The hybrid: the ML-KEM ciphertext, then the X25519 public key. */
         if (type == 0x0033 && elen == 4 + MLKEM_CT + 32 && get16(e) == GROUP_HYBRID &&
             get16(e + 2) == MLKEM_CT + 32) {
@@ -493,7 +602,8 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
             serial_printf("[tls] a downgrade to TLS 1.2 was refused\n");
             return 0;
         }
-        if (s_suite != S12_CHACHA_EC && s_suite != S12_CHACHA_RSA && s_suite != S12_AES_EC && s_suite != S12_AES_RSA) {
+        if (s_suite != S12_CHACHA_EC && s_suite != S12_CHACHA_RSA && s_suite != S12_AES_EC && s_suite != S12_AES_RSA &&
+            !cbc()) {
             why("it chose a cipher we did not offer");
             return 0;
         }
@@ -670,7 +780,8 @@ static int send_plain(const u8 *msg, int n)
  * key exchange, and both sides' Finished. */
 static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret[32])
 {
-    u8 spoint[65], content[64 + 4 + 65], cke[4 + 1 + 65], pms[32], master[48], kb[88];
+    u8 spoint[97], content[64 + 4 + 97], cke[4 + 1 + 97], pms[48], master[48], kb[2 * 20 + 2 * 32];
+    int pmslen = 32;
     u8 seed[64], h[32], fin[4 + 12], want[12];
     int mt, ml, i, done = 0, have_cert = 0, ske = 0, asked_cert = 0, curve = 0, plen = 0, n;
     const u8 *body;
@@ -692,7 +803,8 @@ static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret
             if (ml < 4 || body[0] != 3) { why("it offered a key exchange we do not do"); return 0; }
             curve = (int)get16(body + 1);
             plen = body[3];
-            if (!((curve == GROUP_X25519 && plen == 32) || (curve == GROUP_P256 && plen == 65)) || 4 + plen + 4 > ml) {
+            if (!((curve == GROUP_X25519 && plen == 32) || (curve == GROUP_P256 && plen == 65) ||
+                  (curve == GROUP_P384 && plen == 97)) || 4 + plen + 4 > ml) {
                 why("it offered a key exchange we do not do");
                 return 0;
             }
@@ -737,6 +849,14 @@ static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret
         for (i = 0; i < 32; i++) z |= pms[i];
         if (!z) { why("its key exchange was not a real one"); return 0; }
         n = 4 + 33;
+    } else if (curve == GROUP_P384) {
+        cke[3] = 98; cke[4] = 97;
+        if (s_note) s_note("working out a P-384 secret...");
+        s_p256 = 2;
+        rand_bytes(s_ec_secret, 48);
+        if (!ecdh(CURVE_P384, s_ec_secret, spoint, pms, cke + 5)) { why("its key exchange was not on the curve"); return 0; }
+        pmslen = 48;
+        n = 4 + 98;
     } else {
         cke[3] = 66; cke[4] = 65;
         if (s_note) s_note("working out a P-256 secret...");
@@ -748,13 +868,19 @@ static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret
 
     if (s_ems) {
         transcript_now(h);
-        prf(pms, 32, "extended master secret", h, 32, master, 48);
+        prf(pms, pmslen, "extended master secret", h, 32, master, 48);
     } else {
         for (i = 0; i < 32; i++) { seed[i] = cli_random[i]; seed[32 + i] = s_srv_random[i]; }
-        prf(pms, 32, "master secret", seed, 64, master, 48);
+        prf(pms, pmslen, "master secret", seed, 64, master, 48);
     }
     for (i = 0; i < 32; i++) { seed[i] = s_srv_random[i]; seed[32 + i] = cli_random[i]; }
-    {
+    if (cbc()) {                         /* check keys, then cipher keys; the IVs travel with each record */
+        int kl = cbc_klen();
+        prf(master, 48, "key expansion", seed, 64, kb, 2 * (20 + kl));
+        for (i = 0; i < 20; i++) { s_wr.mac[i] = kb[i]; s_rd.mac[i] = kb[20 + i]; }
+        for (i = 0; i < kl; i++) { s_wr.key[i] = kb[40 + i]; s_rd.key[i] = kb[40 + kl + i]; }
+        s_wr.seq = s_rd.seq = 0;
+    } else {
         int kl = aes() ? 16 : 32, il = aes() ? 4 : 12;
         prf(master, 48, "key expansion", seed, 64, kb, 2 * (kl + il));
         for (i = 0; i < kl; i++) { s_wr.key[i] = kb[i]; s_rd.key[i] = kb[kl + i]; }
@@ -802,6 +928,62 @@ static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret
     return 1;
 }
 
+/* The server answered with a HelloRetryRequest: it wants a share on a
+ * curve we listed but sent none for.  Its suite must be one we offered;
+ * the transcript starts again from a hash of our first hello; then the
+ * same hello again, with that share alone, and its cookie. */
+static int hello_again(const char *host, const u8 random[32], const u8 session[32], const u8 pub[32], int ml)
+{
+    const u8 *b = s_rec + 9;
+    int p, end, sid, i;
+    u32 group = 0, ver = 0, suite;
+    u8 h1[32], head[4];
+    Sha256 c;
+
+    if (s_retry_group) { why("it asked twice for another key exchange"); return 0; }
+    p = 34;
+    sid = b[p++];
+    p += sid;
+    if (p + 5 > ml) { why("its request for another hello did not add up"); return 0; }
+    suite = get16(b + p);
+    p += 3;
+    end = p + 2 + (int)get16(b + p);
+    p += 2;
+    if (end > ml) { why("its request for another hello did not add up"); return 0; }
+    while (p + 4 <= end) {
+        u32 type = get16(b + p), elen = get16(b + p + 2);
+        const u8 *e = b + p + 4;
+        if (p + 4 + (int)elen > end) break;
+        if (type == 0x002b && elen == 2) ver = get16(e);
+        if (type == 0x0033 && elen == 2) group = get16(e);
+        if (type == 0x002c && elen >= 2 && get16(e) == elen - 2) {
+            if (elen - 2 > sizeof s_cookie) { why("its cookie was too big for us"); return 0; }
+            for (i = 0; i < (int)elen - 2; i++) s_cookie[i] = e[2 + i];
+            s_cookie_len = (int)elen - 2;
+        }
+        p += 4 + (int)elen;
+    }
+    if (ver != 0x0304 || (suite != SUITE_CHACHA && suite != SUITE_AES128)) { why("its request for another hello was not one we can answer"); return 0; }
+    if (group != GROUP_P256 && group != GROUP_P384) { why("it wanted a key exchange we do not do"); return 0; }
+
+    /* The transcript: message_hash(our first hello), then this request. */
+    c = s_transcript;
+    sha256_final(&c, h1);
+    sha256_init(&s_transcript);
+    head[0] = 254; head[1] = 0; head[2] = 0; head[3] = 32;
+    sha256_update(&s_transcript, head, 4);
+    sha256_update(&s_transcript, h1, 32);
+    sha256_update(&s_transcript, s_rec + 5, (u32)(ml + 4));
+
+    if (s_note) s_note(group == GROUP_P384 ? "working out a P-384 key..." : "working out a P-256 key...");
+    s_retry_group = group;
+    rand_bytes(s_ec_secret, 48);
+    if (!ecdh(group == GROUP_P384 ? CURVE_P384 : CURVE_P256, s_ec_secret, 0, 0, s_ec_pub)) { why("could not make a key"); return 0; }
+    if (!client_hello(host, random, session, pub, s_mlkem_ek)) { why("could not send our hello"); return 0; }
+    serial_printf("[tls] it asked for %s: said hello again\n", group == GROUP_P384 ? "P-384" : "P-256");
+    return 1;
+}
+
 int tls_connect(const char *host)
 {
     u8 secret[32], pub[32], random[32], session[32], server_pub[32];
@@ -841,6 +1023,8 @@ int tls_connect(const char *host)
     s_v12 = 0;
     s_ems = 0;
     s_p256 = 0;
+    s_retry_group = 0;
+    s_cookie_len = 0;
 
     sha256_init(&s_transcript);
     if (!client_hello(host, random, session, pub, s_mlkem_ek)) { why("could not send our hello"); return 0; }
@@ -859,7 +1043,23 @@ int tls_connect(const char *host)
     }
     ml = (int)get24(s_rec + 6);
     if (ml + 4 > len) { why("its hello was cut short"); return 0; }
+    if (ml >= 38 && same(s_rec + 11, s_hrr, 32)) {
+        if (!hello_again(host, random, session, pub, ml)) return 0;
+        for (;;) {
+            if (!read_record(&type, &len)) return 0;
+            if (type == CT_CCS) continue;
+            if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+            if (type != CT_HANDSHAKE || len < 4 || s_rec[5] != HS_SERVER_HELLO) {
+                why("its second answer was not a hello");
+                return 0;
+            }
+            break;
+        }
+        ml = (int)get24(s_rec + 6);
+        if (ml + 4 > len) { why("its hello was cut short"); return 0; }
+    }
     if (!server_hello(s_rec + 9, ml, server_pub)) return 0;
+    if (s_retry_group && s_group != s_retry_group) { why("it did not use the key exchange it asked for"); return 0; }
     sha256_update(&s_transcript, s_rec + 5, (u32)(ml + 4));
     if (s_v12) {
         /* What else came in the same record -- its certificates, often --
@@ -874,6 +1074,11 @@ int tls_connect(const char *host)
     if (s_group == GROUP_HYBRID) {
         mlkem_decaps(s_mlkem_dk, s_mlkem_ct, shared);
         x25519(shared + 32, secret, server_pub);
+    } else if (s_group == GROUP_P256 || s_group == GROUP_P384) {
+        if (!ecdh(s_group == GROUP_P384 ? CURVE_P384 : CURVE_P256, s_ec_secret, s_ec_peer, shared, 0)) {
+            why("its key exchange was not on the curve");
+            return 0;
+        }
     } else {
         x25519(shared, secret, server_pub);
     }
@@ -881,7 +1086,7 @@ int tls_connect(const char *host)
     sha256(0, 0, h_empty);
     hkdf_extract(0, 0, zero, 32, early);
     expand_label(early, "derived", h_empty, 32, derived, 32);
-    hkdf_extract(derived, 32, shared, s_group == GROUP_HYBRID ? 64 : 32, hs_secret);
+    hkdf_extract(derived, 32, shared, s_group == GROUP_HYBRID ? 64 : s_group == GROUP_P384 ? 48 : 32, hs_secret);
     derive(hs_secret, "c hs traffic", cli_hs);
     derive(hs_secret, "s hs traffic", srv_hs);
     set_keys(&s_rd, srv_hs);

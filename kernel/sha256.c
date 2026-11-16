@@ -182,3 +182,68 @@ void hkdf_expand(const u8 prk[32], const u8 *info, u32 ilen, u8 *out, u32 olen)
         for (i = 0; i < 32 && done < olen; i++) out[done++] = t[i];
     }
 }
+
+/* ---- SHA-1 (FIPS 180-4), for the message checks of the two TLS 1.2 CBC
+ * ciphers browzer still speaks, as Chrome does.  Never for signatures or
+ * certificates: those refuse SHA-1. */
+static u32 rol(u32 x, int n) { return (x << n) | (x >> (32 - n)); }
+
+static void sha1_block(u32 h[5], const u8 *p)
+{
+    u32 w[80], a, b, c, d, e, f, k, t;
+    int i;
+    for (i = 0; i < 16; i++) w[i] = ((u32)p[4 * i] << 24) | ((u32)p[4 * i + 1] << 16) | ((u32)p[4 * i + 2] << 8) | p[4 * i + 3];
+    for (i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    a = h[0]; b = h[1]; c = h[2]; d = h[3]; e = h[4];
+    for (i = 0; i < 80; i++) {
+        if (i < 20)      { f = (b & c) | (~b & d);          k = 0x5A827999u; }
+        else if (i < 40) { f = b ^ c ^ d;                    k = 0x6ED9EBA1u; }
+        else if (i < 60) { f = (b & c) | (b & d) | (c & d);  k = 0x8F1BBCDCu; }
+        else             { f = b ^ c ^ d;                    k = 0xCA62C1D6u; }
+        t = rol(a, 5) + f + e + k + w[i];
+        e = d; d = c; c = rol(b, 30); b = a; a = t;
+    }
+    h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e;
+}
+
+void sha1_init(Sha1 *c)
+{
+    c->h[0] = 0x67452301u; c->h[1] = 0xEFCDAB89u; c->h[2] = 0x98BADCFEu;
+    c->h[3] = 0x10325476u; c->h[4] = 0xC3D2E1F0u;
+    c->len = 0; c->fill = 0;
+}
+
+void sha1_update(Sha1 *c, const u8 *p, u32 n)
+{
+    c->len += n;
+    while (n--) {
+        c->buf[c->fill++] = *p++;
+        if (c->fill == 64) { sha1_block(c->h, c->buf); c->fill = 0; }
+    }
+}
+
+void sha1_final(Sha1 *c, u8 out[20])
+{
+    u32 bits = c->len * 8;
+    int i;
+    c->buf[c->fill++] = 0x80;
+    if (c->fill > 56) { while (c->fill < 64) c->buf[c->fill++] = 0; sha1_block(c->h, c->buf); c->fill = 0; }
+    while (c->fill < 56) c->buf[c->fill++] = 0;
+    c->buf[56] = c->buf[57] = c->buf[58] = 0;
+    c->buf[59] = (u8)(c->len >> 29);
+    c->buf[60] = (u8)(bits >> 24); c->buf[61] = (u8)(bits >> 16); c->buf[62] = (u8)(bits >> 8); c->buf[63] = (u8)bits;
+    sha1_block(c->h, c->buf);
+    for (i = 0; i < 5; i++) {
+        out[4 * i] = (u8)(c->h[i] >> 24); out[4 * i + 1] = (u8)(c->h[i] >> 16);
+        out[4 * i + 2] = (u8)(c->h[i] >> 8); out[4 * i + 3] = (u8)c->h[i];
+    }
+}
+
+/* Work for nothing: n more compressions, so a short message takes as long
+ * as a long one (see tls.c, on checking a CBC record). */
+void sha1_waste(int n)
+{
+    static u8 junk[64];
+    u32 h[5] = { 0, 0, 0, 0, 0 };
+    while (n-- > 0) sha1_block(h, junk);
+}

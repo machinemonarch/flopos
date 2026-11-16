@@ -206,3 +206,79 @@ void aes256gcm_seal(const u8 key[32], const u8 iv[12], const u8 *aad, u32 alen,
 int aes256gcm_open(const u8 key[32], const u8 iv[12], const u8 *aad, u32 alen,
                    const u8 *ct, u32 len, const u8 tag[16], u8 *pt)
 { return open(key, 32, iv, aad, alen, ct, len, tag, pt); }
+
+/* ---- CBC, for the TLS 1.2 ciphers that still use it ---------------------
+ * Chrome still offers two of them (ECDHE-RSA with AES-128 or AES-256 and
+ * SHA-1), for servers with nothing newer, and so does browzer.  CBC needs
+ * the cipher run backwards, which GCM never does: the inverse S-box (built
+ * from the forward one) and InvMixColumns. */
+static u8 s_inv[256];
+static int s_inv_ready;
+
+static u8 gmul(u8 a, u8 b)
+{
+    u8 p = 0;
+    while (b) {
+        if (b & 1) p ^= a;
+        a = xtime(a);
+        b >>= 1;
+    }
+    return p;
+}
+
+static void decrypt_block(const AesKey *K, const u8 in[16], u8 out[16])
+{
+    const u8 *rk = K->rk;
+    u8 s[16], t[16];
+    int r, i, c, nr = K->nr;
+
+    if (!s_inv_ready) { for (i = 0; i < 256; i++) s_inv[s_sbox[i]] = (u8)i; s_inv_ready = 1; }
+    for (i = 0; i < 16; i++) s[i] = in[i] ^ rk[nr * 16 + i];
+    for (r = nr - 1; r >= 0; r--) {
+        /* InvShiftRows and InvSubBytes together: row i moves right by i. */
+        for (c = 0; c < 4; c++)
+            for (i = 0; i < 4; i++)
+                t[c * 4 + i] = s_inv[s[((c - i + 4) % 4) * 4 + i]];
+        for (i = 0; i < 16; i++) t[i] ^= rk[r * 16 + i];
+        if (r > 0) {
+            for (c = 0; c < 4; c++) {        /* InvMixColumns               */
+                u8 *col = t + c * 4, a0 = col[0], a1 = col[1], a2 = col[2], a3 = col[3];
+                col[0] = (u8)(gmul(a0, 14) ^ gmul(a1, 11) ^ gmul(a2, 13) ^ gmul(a3, 9));
+                col[1] = (u8)(gmul(a0, 9) ^ gmul(a1, 14) ^ gmul(a2, 11) ^ gmul(a3, 13));
+                col[2] = (u8)(gmul(a0, 13) ^ gmul(a1, 9) ^ gmul(a2, 14) ^ gmul(a3, 11));
+                col[3] = (u8)(gmul(a0, 11) ^ gmul(a1, 13) ^ gmul(a2, 9) ^ gmul(a3, 14));
+            }
+        }
+        for (i = 0; i < 16; i++) s[i] = t[i];
+    }
+    for (i = 0; i < 16; i++) out[i] = s[i];
+}
+
+/* n a multiple of 16; in and out may be the same place. */
+void aes_cbc_encrypt(const u8 *key, int klen, const u8 iv[16], const u8 *in, u8 *out, u32 n)
+{
+    AesKey K;
+    u8 x[16];
+    const u8 *prev = iv;
+    u32 i, j;
+    expand(key, klen, &K);
+    for (i = 0; i + 16 <= n; i += 16) {
+        for (j = 0; j < 16; j++) x[j] = in[i + j] ^ prev[j];
+        encrypt_block(&K, x, out + i);
+        prev = out + i;
+    }
+}
+
+void aes_cbc_decrypt(const u8 *key, int klen, const u8 iv[16], const u8 *in, u8 *out, u32 n)
+{
+    AesKey K;
+    u8 prev[16], cur[16], x[16];
+    u32 i, j;
+    expand(key, klen, &K);
+    for (j = 0; j < 16; j++) prev[j] = iv[j];
+    for (i = 0; i + 16 <= n; i += 16) {
+        for (j = 0; j < 16; j++) cur[j] = in[i + j];
+        decrypt_block(&K, cur, x);
+        for (j = 0; j < 16; j++) { out[i + j] = x[j] ^ prev[j]; prev[j] = cur[j]; }
+    }
+}
