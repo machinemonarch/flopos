@@ -39,6 +39,8 @@ static volatile u32 s_head, s_tail;      /* apps write at head, the timer reads 
 static volatile u32 s_fill;              /* where in s_dma the timer writes next */
 static volatile int s_on;                /* 1 playing, 2 listening         */
 static u32 s_rate;
+static const u8 *s_hit;                  /* gibson's last hit, and where it went */
+static u32 s_hit_at, s_hit_n;
 static void (*volatile s_feeder)(void);  /* an app's refill routine        */
 static volatile int s_feeding;
 static int s_source;                     /* listening to: 1 line-in, 0 the microphone */
@@ -150,17 +152,29 @@ static u32 dma_pos(void)
 
 /* gibson's key hit (sound.c), added in right where the card is about to
  * read, a few milliseconds ahead, rather than at the end of what is already
- * queued, which is most of a second away.  From the timer. */
-void audio_hit(const u8 *p, u32 n)
+ * queued, which is most of a second away.  A new key first takes back what
+ * the last hit has not yet played, so each key cuts the one before off and
+ * starts afresh.  From the timer. */
+static void hit_add(u32 from, u32 to, int sign)
 {
-    u32 at, i;
-    if (s_on != 1 || n > DMA_LEN / 2) return;
-    at = dma_pos() + GUARD;
-    for (i = 0; i < n; i++) {
-        u8 *d = &s_dma[(at + i) % DMA_LEN];
-        int x = (int)*d + p[i] - 128;
+    for (; from < to; from++) {
+        u8 *d = &s_dma[(s_hit_at + from) % DMA_LEN];
+        int x = (int)*d + sign * ((int)s_hit[from] - 128);
         *d = (u8)(x < 0 ? 0 : x > 255 ? 255 : x);
     }
+}
+
+void audio_hit(const u8 *p, u32 n)
+{
+    u32 at, done;
+    if (s_on != 1 || n > DMA_LEN / 2) return;
+    at = (dma_pos() + GUARD) % DMA_LEN;
+    if (s_hit) {                                  /* the last hit's unplayed rest */
+        done = (at + DMA_LEN - s_hit_at) % DMA_LEN;
+        if (done < s_hit_n) hit_add(done, s_hit_n, -1);
+    }
+    s_hit = p; s_hit_at = at; s_hit_n = n;
+    hit_add(0, n, 1);
 }
 
 /* From the timer: fill what the card has just played. */
@@ -219,6 +233,7 @@ static u32 get_ready(int rate)
 
     for (i = 0; i < DMA_LEN; i++) s_dma[i] = 0x80;
     s_head = s_tail = 0;
+    s_hit = 0;                                   /* no hit to take back in a fresh buffer */
     s_fill = 0;
 
     snd_fx_begin();                              /* the FM music steps aside */

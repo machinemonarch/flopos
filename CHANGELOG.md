@@ -13,7 +13,8 @@ without it. Each version's notes are also written next to its image, as
 ### BUG FIXES
 
 - `gibson`'s sound comes the moment a key is pressed, not most of a
-  second later.
+  second later, and each key cuts the last one's sound off instead of
+  piling on top of it.
 
 ### SECURITY FIXES
 
