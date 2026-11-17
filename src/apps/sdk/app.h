@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 10
+#define APP_API_VERSION 11
 #define APP_BASE        0x00C00000u      /* 12MB: two whole 4MB pages, the app's own */
 #define APP_MAX         0x00800000u      /* 8MB: code, data, buffers and the stack */
 #define APP_STACK       0x00040000u      /* the top 256KB: its stack, and a page the system fills in */
@@ -360,6 +360,12 @@ typedef struct {
     int  (*room_task)(const u8 *task, u32 len, u8 *answer, u32 cap, u32 ms,
                       int (*door)(u8 *buf, u32 len, u32 cap), u8 *door_buf, u32 door_cap);
     const char *(*room_why)(void);
+
+    /* ---- version 11: the sound to itself ---- */
+    /* hush(1): no background music while this app runs; hush(3): no key
+     * sounds either, for sound that must not be disturbed (a tape being
+     * written or read).  hush(0) lets them back; leaving the app does too. */
+    void (*hush)(int on);
 } Api;
 
 #define CRYPT_CHACHA20_POLY1305 0        /* 256-bit key                     */

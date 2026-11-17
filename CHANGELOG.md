@@ -8,13 +8,17 @@ without it. Each version's notes are also written next to its image, as
 
 ### FEATURES
 
-- None yet.
+- While maelcum is open the background music is silent, and while it
+  writes or reads a tape the key sounds are too. Apps can ask for that
+  quiet (`hush` in the app interface).
 
 ### BUG FIXES
 
 - `gibson`'s sound comes the moment a key is pressed, not most of a
   second later, and each key cuts the last one's sound off instead of
   piling on top of it.
+- `gibson off` (or `on`) while browzer plays music no longer stops the
+  music for good.
 
 ### SECURITY FIXES
 

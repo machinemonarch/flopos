@@ -44,6 +44,7 @@ void timer_irq(void)
 {
     static u32 sub;
     net_tick();
+    snd_key();                           /* gibson: at once, not on the next tick */
     if (++sub < IRQ_HZ / TICK_HZ) return;
     sub = 0;
     g_ticks++;

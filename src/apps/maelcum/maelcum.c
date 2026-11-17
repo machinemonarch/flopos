@@ -98,6 +98,16 @@ static int  W, H;                        /* the screen, in characters      */
 /* The settings. */
 static int s_job;                        /* 0 Standard Backup, 1 Pick & Mix */
 static int s_packing = 1, s_fast, s_verify, s_line = 1;
+
+/* The card for a job: from here until card_done no key sounds either
+ * (hush 3: music and keys), since a key's sound in the tape would spoil
+ * it.  Between jobs only the music stays off (hush 1). */
+static int card_take(int listen)
+{
+    A->hush(3);
+    return listen ? A->audio_listen(TAPE_RATE, s_line) : A->audio_open(TAPE_RATE);
+}
+static void card_done(void) { A->audio_close(); A->hush(1); }
 static int s_dest = -2;                  /* restore into: -2 a folder named by the date, -1 where each came from, or a folder */
 static int s_auto = -1;                  /* that new folder, once this read has made it */
 static int s_menu, s_pick;               /* a list is open (1 the jobs, 2 the ciphers), and the line it is on */
@@ -445,7 +455,7 @@ static void tune(int sad)
     const short (*notes)[2] = sad ? low : merry;
     u32 phase = 0;
     int i, n, k, count = sad ? (int)(sizeof low / sizeof low[0]) : (int)(sizeof merry / sizeof merry[0]);
-    int rate = A->audio_open(TAPE_RATE);
+    int rate = card_take(0);
     if (!rate) return;
     for (i = 0; i < count; i++) {
         int hz = notes[i][0], total = rate / 1000 * notes[i][1] + rate % 1000 * notes[i][1] / 1000, at = 0;
@@ -470,7 +480,7 @@ static void tune(int sad)
         u32 t0 = A->ms();
         while (A->ms() - t0 < 1300) A->pump(0);
     }
-    A->audio_close();
+    card_done();
 }
 
 /* ---- writing ------------------------------------------------------------------ */
@@ -587,7 +597,7 @@ static void write_arm(void)
 
 static void write_go(void)
 {
-    if (!A->audio_open(TAPE_RATE)) { s_mode = M_IDLE; say("No sound card that plays answers.", A_RED); return; }
+    if (!card_take(0)) { s_mode = M_IDLE; say("No sound card that plays answers.", A_RED); return; }
     s_at = s_stage = s_ord = 0;
     tape_tx_begin(&s_tx, s_fast);
     s_sent = 0; s_last = 0;
@@ -612,7 +622,7 @@ static void write_step(void)
     }
     if (s_last == 1 && A->audio_queued() == 0) { s_last = 2; s_ended = now; }
     else if (s_last == 2 && now - s_ended > 1200) {      /* the card's own loop has emptied too */
-        A->audio_close();
+        card_done();
         wire("saved", "files", (u32)s_count, s_bytes);
         s_mode = M_WROTE;
         if (s_verify) read_go(1);                /* not done yet: the tune waits for the check */
@@ -808,7 +818,7 @@ static void read_go(int verifying)
     }
     s_set = -1; s_others = 0;
     for (i = 0; i < 256; i++) s_seen[i] = 0;
-    if (!A->audio_listen(TAPE_RATE, s_line)) { s_mode = M_IDLE; say("No sound card that can listen answers.", A_RED); return; }
+    if (!card_take(1)) { s_mode = M_IDLE; say("No sound card that can listen answers.", A_RED); return; }
     tape_rx_begin(&s_rx, heard, 0);
     s_cur = -1; s_bad_was = 0;
     s_quiet_since = A->ms();
@@ -825,7 +835,7 @@ static void read_end(int stopped)
 {
     static char sum[64];
     int i, same = 0, diff = 0, part = 0, whole, song = -1;
-    A->audio_close();
+    card_done();
     forget_key();
     if (s_locked || s_wrong) {                   /* nothing about the tape's quality */
         s_mode = M_RESULT;
@@ -1544,6 +1554,9 @@ int app_main(const Api *api, int argc, char **argv)
     int key, mods, i, a, start = 0;
 
     A = api;
+    /* No background music while maelcum runs; and while a tape is being
+     * written or read, no key sounds either (card_take, card_done). */
+    A->hush(1);
     if (argc >= 2) {
         if (same_word(argv[1], "save")) start = 1;
         else if (same_word(argv[1], "load")) start = 2;
@@ -1608,7 +1621,7 @@ int app_main(const Api *api, int argc, char **argv)
         }
         if (s_mode == M_WRITE) {
             if (key == 'S' || key == K_ESC) {
-                A->audio_close();
+                card_done();
                 forget_key();
                 s_mode = M_IDLE;
                 say("Stopped. The tape holds only part of it.", A_RED);
@@ -1620,8 +1633,8 @@ int app_main(const Api *api, int argc, char **argv)
             if (key == 'S' || key == K_ESC) read_end(1);
             else if (key == K_TAB) {
                 s_line = !s_line;
-                A->audio_close();
-                if (!A->audio_listen(TAPE_RATE, s_line)) { s_mode = M_IDLE; say("No sound card that can listen answers.", A_RED); }
+                A->audio_close();               /* still hushed: straight on to listening */
+                if (!card_take(1)) { s_mode = M_IDLE; say("No sound card that can listen answers.", A_RED); }
                 else { tape_rx_begin(&s_rx, heard, 0); s_cur = -1; s_bad_was = 0; s_quiet_since = now; }
             }
             continue;

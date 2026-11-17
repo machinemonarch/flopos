@@ -570,18 +570,34 @@ int snd_gibson(int on)
         s_gib = halloc(f.size);
         s_gib_n = fs_read(&f, s_gib, f.size) > 0 ? f.size : 0;
     }
-    s_tw = (u8)(on && s_gib_n && audio_open(22050));
-    if (!s_tw) audio_close();
+    s_tw = 0;                            /* first, so closing never reopens */
+    if (!on || !s_gib_n) { audio_gibson(0); return 0; }
+    s_tw = 1;
+    if (!audio_gibson(1)) s_tw = 0;
     return s_tw;
+}
+
+/* An app that wants quiet (maelcum): bit 1 stops the music, bit 2 the key
+ * sounds, until it says otherwise or leaves. */
+u8 g_hush;
+void snd_hush(int on)
+{
+    g_hush = (u8)on;
+    if (g_hush & 1) snd_silence();
+}
+
+/* From the timer, every millisecond: a key the keyboard left, played. */
+void snd_key(void)
+{
+    if (g_tw_key) {
+        if (s_tw && !(g_hush & 2)) audio_hit(s_gib, s_gib_n);
+        g_tw_key = 0;
+    }
 }
 
 void snd_tick(void)
 {
-    if (g_tw_key) {
-        if (s_tw) audio_hit(s_gib, s_gib_n);
-        g_tw_key = 0;
-    }
-    if (s_sweeping) return;
+    if (s_sweeping || (g_hush & 1)) return;
 
     const Pattern *p = &s_pats[s_pat];
     int step_len, idx, bass, lead, voice;

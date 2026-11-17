@@ -66,7 +66,7 @@ static int s_nooo;
 static u32 s_last_seq;                   /* the piece that came most recently */
 static int s_sack_ok;                    /* they said they understand SACK   */
 
-static u8  s_tx[TX_SIZE];                /* from s_snd_una onwards         */
+static u8 *s_tx;                         /* TX_SIZE, from s_snd_una onwards (on the heap) */
 static int s_tx_len;                     /* sent-unacked plus unsent       */
 
 static u32 s_rtx_at, s_rto;
@@ -379,6 +379,7 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
 
     if (s_state != CLOSED) tcp_close();
     if (!s_rx) s_rx = (u8 *)halloc(RX_SIZE);
+    if (!s_tx) s_tx = (u8 *)halloc(TX_SIZE);
 
     /* Where the numbering starts and which port is ours come from the
      * random pool, so nobody out of sight can work them out. */

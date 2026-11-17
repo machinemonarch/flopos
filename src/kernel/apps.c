@@ -172,6 +172,8 @@ static const Api s_api = {
     api_clock, api_glyph,
     /* version 10 */
     room_open, api_room_task, room_why,
+    /* version 11 */
+    snd_hush,
 };
 
 /* ---- behind the wall (wall.c): one request from an app, checked -----------
@@ -334,6 +336,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     case 59: BUF(0, a[1]); BUF(2, a[3]); FN(5); BUF(6, a[7]);
              r = (u32)room_task((const u8 *)a[0], a[1], (u8 *)a[2], a[3], a[4], a[5], (u8 *)a[6], a[7]); break;
     case 60: r = wall_string(2, room_why()); break;
+    case 61: k->hush((int)a[0]); break;
     default: return 0;
     }
 #undef STR
@@ -342,7 +345,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     *result = r;
     return 1;
 }
-_Static_assert((sizeof(Api) - 4) / 4 == 61, "a function was added to the table: give it a case in app_ask");
+_Static_assert((sizeof(Api) - 4) / 4 == 62, "a function was added to the table: give it a case in app_ask");
 
 static int memory_for_apps(void)
 {
@@ -449,6 +452,7 @@ static int run_one(const char *word, int argc, char **argv)
     else           r = ((AppMain)h->entry)(&s_api, argc, argv);
     s_app_bytes = 0;
     mood_ember(0);                       /* frames back to neon, keys to pink */
+    snd_hush(0);                         /* the music and key sounds may play again */
     audio_feeder(0);                     /* its memory is no longer its own */
     audio_close();
     term_win_close();

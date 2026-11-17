@@ -48,6 +48,6 @@ might; `ip drop 0` stops it.
 
 maelcum is tried in a test build (`make EXTRA_CFLAGS=-DFLOPOS_TEST`), whose
 sound driver plays back what it recorded: with `run.py`,
-`type:maelcum save\n`, `key:ret=>\[tape\] saved files 3`, `key:esc`,
+`type:maelcum save\n`, `key:ret=>\[tape\] saved files 3`, `key:esc`, `key:esc`,
 `type:maelcum load\n=>\[tape\] same STATE.BIN`. Delete the bench's large
 `sound.wav` after.

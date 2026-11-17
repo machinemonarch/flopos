@@ -40,7 +40,8 @@ static volatile u32 s_fill;              /* where in s_dma the timer writes next
 static volatile int s_on;                /* 1 playing, 2 listening         */
 static u32 s_rate;
 static const u8 *s_hit;                  /* gibson's last hit, and where it went */
-static u32 s_hit_at, s_hit_n;
+static u32 s_hit_at, s_hit_n, s_hit_t;
+static u8  s_gib_card, s_opening;       /* the card is gibson's own; a reopen under way */
 static void (*volatile s_feeder)(void);  /* an app's refill routine        */
 static volatile int s_feeding;
 static int s_source;                     /* listening to: 1 line-in, 0 the microphone */
@@ -150,11 +151,17 @@ static u32 dma_pos(void)
     return b < DMA_LEN ? b : 0;
 }
 
-/* gibson's key hit (sound.c), added in right where the card is about to
- * read, a few milliseconds ahead, rather than at the end of what is already
- * queued, which is most of a second away.  A new key first takes back what
- * the last hit has not yet played, so each key cuts the one before off and
- * starts afresh.  From the timer. */
+/* gibson's key hit (sound.c), from the timer, at most a millisecond after
+ * the key.  It goes in right where the card is about to read, HIT_LEAD
+ * samples ahead (the loop below outruns the card many times over), not at
+ * the end of what is queued, which is most of a second away.  A new key
+ * first takes back what the last hit has not yet played, so each key cuts
+ * the one before off.  It plays on gibson's own card, or over an app's
+ * music (an app with a refill routine); never into sound an app writes
+ * itself, and never while an app has asked for quiet (snd_hush), as
+ * maelcum does while a tape runs. */
+#define HIT_LEAD 16
+
 static void hit_add(u32 from, u32 to, int sign)
 {
     for (; from < to; from++) {
@@ -166,15 +173,28 @@ static void hit_add(u32 from, u32 to, int sign)
 
 void audio_hit(const u8 *p, u32 n)
 {
-    u32 at, done;
-    if (s_on != 1 || n > DMA_LEN / 2) return;
-    at = (dma_pos() + GUARD) % DMA_LEN;
-    if (s_hit) {                                  /* the last hit's unplayed rest */
-        done = (at + DMA_LEN - s_hit_at) % DMA_LEN;
+    u32 at;
+    if (s_on != 1 || n > DMA_LEN / 2 || !(s_gib_card || s_feeder)) return;
+    at = (dma_pos() + HIT_LEAD) % DMA_LEN;
+    /* the last hit's unplayed rest; after 300 ms it has surely played, and
+     * the buffer (most of a second round) must not be mistaken for it */
+    if (s_hit && ms_now() - s_hit_t < 300) {
+        u32 done = (at + DMA_LEN - s_hit_at) % DMA_LEN;
         if (done < s_hit_n) hit_add(done, s_hit_n, -1);
     }
-    s_hit = p; s_hit_at = at; s_hit_n = n;
+    s_hit = p; s_hit_at = at; s_hit_n = n; s_hit_t = ms_now();
     hit_add(0, n, 1);
+}
+
+/* gibson wants the card (1) or is done with it (0).  It never takes the
+ * card from an app, and closes only a card it opened itself. */
+int audio_gibson(int want)
+{
+    if (!want) { if (s_gib_card) audio_close(); return 0; }
+    if (s_on == 1) return 1;                     /* playing already          */
+    if (s_on || !audio_open(22050)) return 0;    /* listening, or no card    */
+    s_gib_card = 1;
+    return 1;
 }
 
 /* From the timer: fill what the card has just played. */
@@ -260,7 +280,10 @@ int audio_open(int rate)
     u32 tc;
 
     if (!audio_probe()) return 0;
+    s_opening = 1;
     if (s_on) audio_close();
+    s_opening = 0;
+    s_gib_card = 0;
     tc = get_ready(rate);
     if (!tc) return 0;
     dsp_w(0xD1);                                 /* speaker on             */
@@ -289,7 +312,10 @@ int audio_listen(int rate, int source)
     u32 tc;
 
     if (!audio_probe()) return 0;
+    s_opening = 1;
     if (s_on) audio_close();
+    s_opening = 0;
+    s_gib_card = 0;
     tc = get_ready(rate);
     if (!tc) return 0;
     dsp_w(0xD3);                                 /* its own player: quiet  */
@@ -399,16 +425,20 @@ void audio_close(void)
 {
     int was = s_on;
     s_feeder = 0;
-    if (!s_on) return;
-    s_on = 0;
-    dsp_w(0xD0);                                 /* pause                  */
-    dsp_w(0xDA);                                 /* and leave auto-init    */
-    dsp_w(0xD3);                                 /* speaker off            */
-    if (was == 2) mix(s_source ? 0x2E : 0x0A, 0x00);   /* the socket: out of the loudspeaker again */
-    outb(0x0A, 0x05);                            /* mask channel 1         */
-    dsp_reset(s_base);
-    s_head = s_tail = 0;
-    snd_fx_end();
+    s_gib_card = 0;
+    if (s_on) {
+        s_on = 0;
+        dsp_w(0xD0);                             /* pause                  */
+        dsp_w(0xDA);                             /* and leave auto-init    */
+        dsp_w(0xD3);                             /* speaker off            */
+        if (was == 2) mix(s_source ? 0x2E : 0x0A, 0x00);   /* the socket: out of the loudspeaker again */
+        outb(0x0A, 0x05);                        /* mask channel 1         */
+        dsp_reset(s_base);
+        s_head = s_tail = 0;
+        snd_fx_end();
+    }
+    /* An app has let go of the card: if gibson is on, it takes it back. */
+    if (!s_opening && snd_gibson(-1)) audio_gibson(1);
 }
 
 /* `dsp`: is it there, and does it take samples at the rate it says?  Plays

@@ -656,7 +656,10 @@ void   snd_fx_bell(int hz);              /* a bell, struck and left to ring */
 void   snd_fx_end(void);
 int    snd_gibson(int on);           /* key sounds: 1 on, 0 off, -1 asks */
 extern volatile u8 g_tw_key;
-void   audio_hit(const u8 *p, u32 n);          /* kbd.c leaves a key for the timer */
+void   audio_hit(const u8 *p, u32 n);
+int    audio_gibson(int want);       /* the card for gibson, or done with it */
+void   snd_key(void);
+void   snd_hush(int on);             /* an app has the sound to itself (1) or not */                /* from the timer: play a key left by kbd.c */          /* kbd.c leaves a key for the timer */
 extern volatile u8  g_beat;
 extern volatile u8  g_bar;
 extern volatile u32 g_step;
