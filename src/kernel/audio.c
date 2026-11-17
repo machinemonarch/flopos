@@ -42,6 +42,7 @@ static u32 s_rate;
 static const u8 *s_hit;                  /* gibson's last hit, and where it went */
 static u32 s_hit_at, s_hit_n, s_hit_t;
 static u8  s_gib_card, s_opening;       /* the card is gibson's own; a reopen under way */
+static u8  s_gib_opening;                /* gibson is opening it: the music plays on */
 static void (*volatile s_feeder)(void);  /* an app's refill routine        */
 static volatile int s_feeding;
 static int s_source;                     /* listening to: 1 line-in, 0 the microphone */
@@ -192,7 +193,11 @@ int audio_gibson(int want)
 {
     if (!want) { if (s_gib_card) audio_close(); return 0; }
     if (s_on == 1) return 1;                     /* playing already          */
-    if (s_on || !audio_open(22050)) return 0;    /* listening, or no card    */
+    if (s_on) return 0;                          /* listening to a tape      */
+    s_gib_opening = 1;
+    want = audio_open(22050);
+    s_gib_opening = 0;
+    if (!want) return 0;                         /* no card                  */
     s_gib_card = 1;
     return 1;
 }
@@ -256,7 +261,7 @@ static u32 get_ready(int rate)
     s_hit = 0;                                   /* no hit to take back in a fresh buffer */
     s_fill = 0;
 
-    snd_fx_begin();                              /* the FM music steps aside */
+    if (!s_gib_opening) snd_fx_begin();          /* the FM music steps aside (not for gibson) */
     dsp_reset(s_base);
     return tc;
 }
@@ -423,7 +428,7 @@ int audio_write(const u8 *p, int n)
 
 void audio_close(void)
 {
-    int was = s_on;
+    int was = s_on, gib = s_gib_card;
     s_feeder = 0;
     s_gib_card = 0;
     if (s_on) {
@@ -435,7 +440,7 @@ void audio_close(void)
         outb(0x0A, 0x05);                        /* mask channel 1         */
         dsp_reset(s_base);
         s_head = s_tail = 0;
-        snd_fx_end();
+        if (!gib) snd_fx_end();                  /* gibson never stopped the music */
     }
     /* An app has let go of the card: if gibson is on, it takes it back. */
     if (!s_opening && snd_gibson(-1)) audio_gibson(1);

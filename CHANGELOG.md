@@ -19,6 +19,8 @@ without it. Each version's notes are also written next to its image, as
   piling on top of it.
 - `gibson off` (or `on`) while browzer plays music no longer stops the
   music for good.
+- `gibson on` leaves the background music playing: the key sounds and
+  the music play together.
 
 ### SECURITY FIXES
 
