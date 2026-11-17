@@ -148,10 +148,20 @@ static u32 dma_pos(void)
     return b < DMA_LEN ? b : 0;
 }
 
-/* gibson's key hit, mixed into whatever is playing (sound.c). */
-static const u8 *s_hit;
-static u32 s_hit_n, s_hit_at;
-void audio_hit(const u8 *p, u32 n) { s_hit_at = 0; s_hit_n = n; s_hit = p; }
+/* gibson's key hit (sound.c), added in right where the card is about to
+ * read, a few milliseconds ahead, rather than at the end of what is already
+ * queued, which is most of a second away.  From the timer. */
+void audio_hit(const u8 *p, u32 n)
+{
+    u32 at, i;
+    if (s_on != 1 || n > DMA_LEN / 2) return;
+    at = dma_pos() + GUARD;
+    for (i = 0; i < n; i++) {
+        u8 *d = &s_dma[(at + i) % DMA_LEN];
+        int x = (int)*d + p[i] - 128;
+        *d = (u8)(x < 0 ? 0 : x > 255 ? 255 : x);
+    }
+}
 
 /* From the timer: fill what the card has just played. */
 void audio_tick(void)
@@ -177,7 +187,6 @@ void audio_tick(void)
     while (s_fill != upto) {
         u8 v = 0x80;
         if (s_tail != s_head) { v = s_ring[s_tail]; s_tail = (s_tail + 1) % RING_LEN; }
-        if (s_hit_at < s_hit_n) { int x = (int)v + s_hit[s_hit_at++] - 128; v = (u8)(x < 0 ? 0 : x > 255 ? 255 : x); }
         s_dma[s_fill] = v;
         s_fill = (s_fill + 1) % DMA_LEN;
     }

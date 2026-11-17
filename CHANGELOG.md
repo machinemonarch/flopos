@@ -6,6 +6,19 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+### FEATURES
+
+- None yet.
+
+### BUG FIXES
+
+- `gibson`'s sound comes the moment a key is pressed, not most of a
+  second later.
+
+### SECURITY FIXES
+
+- None in this release.
+
 ## 1.44.0 — 2026-11-16
 
 ### FEATURES
