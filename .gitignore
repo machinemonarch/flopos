@@ -1,7 +1,7 @@
 # Build output, reproducible from source: build/ is everything compiled
 # (the tests' too), dist/ the finished floppy image.
-build/
-dist/
+/build/
+/dist/
 
 # Released floppy images: 1.4MB each, and any of them can be rebuilt by
 # checking out the matching commit and running `make`.
