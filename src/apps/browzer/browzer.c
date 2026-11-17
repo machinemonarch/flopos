@@ -1727,6 +1727,7 @@ int app_main(const Api *api, int argc, char **argv)
 
     A = api;
     __asm__ __volatile__("fninit");      /* the songs use the FPU; nothing else here does */
+    A->win_ember(2);                     /* frames in ice: cyan, teal, blue, a glint of silver */
     /* `browzer fetch address`: the page read out into the terminal, not
      * shown in a window. */
     if (argc >= 2 && argv[1][0] == 'f' && argv[1][1] == 'e' && argv[1][2] == 't' &&

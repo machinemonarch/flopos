@@ -290,8 +290,17 @@ int wizsay(const char *typed)
     if (!W.ok) return 0;
     wiz_begin();
     s_wn = 0;
+    g_ctrl_c = 0;
     term_colour(C_ACCENT);
     for (;;) {
+        if (g_ctrl_c) {                  /* Ctrl-C: he stops mid-line */
+            word_out();
+            term_print(" ^C");
+            while (kbd_event() >= 0) { }     /* and the keys typed meanwhile go */
+            g_ctrl_c = 0;
+            said = 1;
+            break;
+        }
         const float *z = wiz_next(id, breathe);
         const u8 *p;
         u32 r;

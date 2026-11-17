@@ -128,6 +128,8 @@ def main():
     run("mcopy", "-i", out_path, "data/help.txt", "::HELP.TXT")
     # gibson's key hit (tools/build/mkgibson.py), 8-bit at 22050 a second.
     run("mcopy", "-i", out_path, "data/gibson.raw", "::GIBSON.RAW")
+    run("mcopy", "-i", out_path, "data/hudon.raw", "::HUDON.RAW")
+    run("mcopy", "-i", out_path, "data/hudoff.raw", "::HUDOFF.RAW")
     # Ozzy, who sees the machine off on bye and reboot (src/kernel/arrive.c).
     if os.path.getsize("data/ozzy.pix") != SAFFRAN_BYTES:
         sys.exit("data/ozzy.pix should be %d bytes" % SAFFRAN_BYTES)

@@ -143,9 +143,10 @@ void kbd_irq(void)
     }
 
     if (!s_down[code]) {                 /* drop the hardware auto-repeat  */
-        if (code == 0x44 && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_hud_toggle = 1; return; }
+        if (code == 0x44 && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_hud_toggle = 1; g_chime = hud_shown() ? 2 : 1; return; }
         if (code == 0x3B && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_kbpick_open = 1; return; }
         if (code == 0x3F && !release && s_ctrl && (s_shift_l || s_shift_r)) { g_screen_again = 1; return; }
+        if (code == 0x2E && s_ctrl) g_ctrl_c = 1;  /* noticed at once, by whoever is busy (the wizard) */
         g_tw_key = (u8)(code + 1);           /* gibson, if it is on */
         u8 nxt = (u8)((s_head + 1) % QLEN);
         if (nxt != s_tail) {
@@ -164,6 +165,8 @@ void kbd_irq(void)
     /* Ctrl+Alt+Del always works, whatever else has gone wrong. */
     if (code == 0x53 && s_ctrl && (s_alt || s_altgr)) reboot();
 }
+
+volatile u8 g_ctrl_c;
 
 int kbd_event(void)
 {

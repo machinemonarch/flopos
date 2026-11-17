@@ -326,8 +326,9 @@ typedef struct {
     void (*then)(const char *command);
 
     /* ---- version 7 ---- */
-    /* Frames in red, gold and green instead of neon, and keys in yellow
-     * instead of pink, until the app leaves or turns it off. */
+    /* The frames' turning colours instead of neon, until the app leaves or
+     * turns it off: 1 red, gold and green, with keys in yellow instead of
+     * pink; 2 ice: cyan, teal and blue, a glint of silver, black. */
     void (*win_ember)(int on);
 
     /* ---- version 8: sealing and opening ---- */

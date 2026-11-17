@@ -558,17 +558,29 @@ void snd_fx_end(void)
  * tools/build/mkgibson.py): telephone tones and a thump, through a
  * low-pass.  The keyboard's interrupt only leaves the key; the timer mixes
  * the hit into what the Sound Blaster plays (audio_hit). */
-static u8 *s_gib;
-static u32 s_gib_n;
+static u8 *s_gib, *s_chime[2];          /* the key's hit; the HUD opening, closing */
+static u32 s_gib_n, s_chime_n[2];
+volatile u8 g_chime;                     /* from the keyboard: 1 the HUD opens, 2 it closes */
+
+/* A sound off the floppy, once, kept. */
+static u8 *load_raw(const char *name, u32 *n)
+{
+    FsFile f;
+    u8 *p;
+    *n = 0;
+    if (!fs_find(name, &f) || !f.size || f.size > 16384) return 0;
+    p = halloc(f.size);
+    if (fs_read(&f, p, f.size) > 0) *n = f.size;
+    return p;
+}
 
 int snd_gibson(int on)
 {
     if (on < 0) return s_tw;
     if (on && !s_gib) {
-        FsFile f;
-        if (!fs_find("GIBSON.RAW", &f) || !f.size) return s_tw = 0;
-        s_gib = halloc(f.size);
-        s_gib_n = fs_read(&f, s_gib, f.size) > 0 ? f.size : 0;
+        s_gib = load_raw("GIBSON.RAW", &s_gib_n);
+        s_chime[0] = load_raw("HUDON.RAW", &s_chime_n[0]);
+        s_chime[1] = load_raw("HUDOFF.RAW", &s_chime_n[1]);
     }
     s_tw = 0;                            /* first, so closing never reopens */
     if (!on || !s_gib_n) { audio_gibson(0); return 0; }
@@ -589,6 +601,11 @@ void snd_hush(int on)
 /* From the timer, every millisecond: a key the keyboard left, played. */
 void snd_key(void)
 {
+    if (g_chime) {                       /* the HUD's chime, in place of a key's hit */
+        int c = g_chime - 1;
+        g_chime = 0; g_tw_key = 0;
+        if (s_tw && !(g_hush & 2) && s_chime_n[c]) audio_hit(s_chime[c], s_chime_n[c]);
+    }
     if (g_tw_key) {
         if (s_tw && !(g_hush & 2)) audio_hit(s_gib, s_gib_n);
         g_tw_key = 0;

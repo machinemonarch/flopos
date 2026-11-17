@@ -366,7 +366,8 @@ static const char *s_weary[] = {
     "Yes, yes. The very answer I was hoping for. Mind the step.",
 };
 
-#define ANSWER_MAX 40
+#define ANSWER_MAX 160
+#define LABEL_W 13                      /* "your answer: " */
 
 typedef struct {
     char said[LINES_MAX][64]; int nsaid;
@@ -377,10 +378,21 @@ typedef struct {
     int  done;
 } Gate;
 
+/* An answer longer than its row carries on underneath, lined up with where
+ * it began.  Returns the rows it took. */
+static int draw_field(int x, int row, int each, const char *s, int n, int cursor)
+{
+    int i;
+    for (i = 0; i < n; i++) term_win_put(x + i % each, row + i / each, (u8)s[i], C_TEXT, WIN_PAPER);
+    if (cursor) term_win_put(x + n % each, row + n / each, '_', C_BRIGHT, WIN_PAPER);
+    return n / each + 1;
+}
+
 static void draw_gate(const Gate *g, u32 t)
 {
     int W = term_cols() < 60 ? term_cols() : 60;
-    int boxh = 7 + g->nsaid + g->nriddle + (g->away ? 1 : 0);
+    int each = W - 4 - LABEL_W;                  /* letters a row holds      */
+    int boxh = 7 + g->nsaid + g->nriddle + g->len / each + (g->away ? 1 + g->mlen / each : 0);
     int H = ART_H + boxh, x, y, i, row, top, bot;
 
     /* On a short screen the box keeps its rows and the top of his hat is
@@ -414,15 +426,10 @@ static void draw_gate(const Gate *g, u32 t)
     row++;
     if (g->away) {
         x = term_win_text(2, row, "your riddle: ", C_DIM, WIN_PAPER);
-        for (i = 0; i < g->mlen; i++) term_win_put(x + i, row, (u8)g->mine[i], C_TEXT, WIN_PAPER);
-        if (!g->done && g->stage == 0 && ((t / 450) & 1) == 0)
-            term_win_put(x + g->mlen, row, '_', C_BRIGHT, WIN_PAPER);
-        row++;
+        row += draw_field(x, row, each, g->mine, g->mlen, !g->done && g->stage == 0 && ((t / 450) & 1) == 0);
     }
     x = term_win_text(2, row, "your answer: ", C_DIM, WIN_PAPER);
-    for (i = 0; i < g->len; i++) term_win_put(x + i, row, (u8)g->answer[i], C_TEXT, WIN_PAPER);
-    if (!g->done && (!g->away || g->stage == 1) && ((t / 450) & 1) == 0)
-        term_win_put(x + g->len, row, '_', C_BRIGHT, WIN_PAPER);
+    draw_field(x, row, each, g->answer, g->len, !g->done && (!g->away || g->stage == 1) && ((t / 450) & 1) == 0);
 }
 
 static void tell_wire(const Gate *g)

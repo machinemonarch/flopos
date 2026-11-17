@@ -281,6 +281,7 @@ void   delay_ms(u32 ms);
 
 void   kbd_init(void);
 int    kbd_event(void);                  /* next event, or -1 if none       */
+extern volatile u8 g_ctrl_c;             /* Ctrl-C was pressed: stop what you are saying */
 int    kbd_down(u8 scancode);
 void   kbd_resync(void);  /* after anything that masked IRQ1 */
 
@@ -656,6 +657,8 @@ void   snd_fx_bell(int hz);              /* a bell, struck and left to ring */
 void   snd_fx_end(void);
 int    snd_gibson(int on);           /* key sounds: 1 on, 0 off, -1 asks */
 extern volatile u8 g_tw_key;
+extern volatile u8 g_chime;             /* the HUD's chime: 1 opening, 2 closing */
+int    hud_shown(void);
 void   audio_hit(const u8 *p, u32 n);
 int    audio_gibson(int want);       /* the card for gibson, or done with it */
 void   snd_key(void);

@@ -136,13 +136,15 @@ static void fixed_colours(u8 *p)
     }
 }
 
-/* Frames' loop of colours: neon, or (for a program that asks) red to
- * gold to green and round again.  Keys are yellow with it. */
+/* Frames' loop of colours: neon, or for a program that asks, 1: red to
+ * gold to green and round again, keys yellow with it (maelcum); 2: ice,
+ * cyan, teal and blue, a glint of silver, and black (browzer).  The loop
+ * turns in the palette, so its shine costs no drawing at all. */
 static int s_cool;
 void mood_ember(int on)
 {
-    s_cool = on != 0;
-    g_key_colour = on ? PAL_BANANA + 6 : PAL_KEY;
+    s_cool = on;
+    g_key_colour = on == 1 ? PAL_BANANA + 6 : PAL_KEY;
 }
 
 static void neon_fill(u8 *rgb, u32 t)
@@ -151,8 +153,14 @@ static void neon_fill(u8 *rgb, u32 t)
     for (i = 0; i < PAL_NEON_N; i++) {
         int a = (int)((t >> 4) + (u32)i * (1024 / PAL_NEON_N)) & 1023;
         if (s_cool) {
-            static const u8 at[4][3] = { { 63, 6, 4 }, { 63, 50, 2 }, { 4, 50, 10 }, { 63, 6, 4 } };
-            int seg = a * 3 >> 10, f = (a * 3 & 1023) >> 2, k;      /* which stretch, and 0..255 along it */
+            static const u8 ember[4][3] = { { 63, 6, 4 }, { 63, 50, 2 }, { 4, 50, 10 }, { 63, 6, 4 } };
+            /* mostly cyan, teal and blue; one glint of silver, then black */
+            static const u8 ice[9][3] = { { 4, 63, 63 }, { 0, 40, 38 }, { 6, 22, 63 }, { 0, 30, 34 },
+                                          { 4, 63, 63 }, { 6, 22, 63 }, { 48, 52, 58 }, { 2, 3, 8 },
+                                          { 4, 63, 63 } };
+            const u8 (*at)[3] = s_cool == 1 ? ember : ice;
+            int n = s_cool == 1 ? 3 : 8;
+            int seg = a * n >> 10, f = (a * n & 1023) >> 2, k;      /* which stretch, and 0..255 along it */
             for (k = 0; k < 3; k++) rgb[i * 3 + k] = (u8)(at[seg][k] + (at[seg + 1][k] - at[seg][k]) * f / 256);
             continue;
         }
