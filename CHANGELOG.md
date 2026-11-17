@@ -8,6 +8,17 @@ without it. Each version's notes are also written next to its image, as
 
 ### FEATURES
 
+- The HUD rolls down from the top of the screen, the whole width of it:
+  the command line on the left, with room for long lines, and the
+  meters on the right. With `gibson on` it chimes as it opens and closes.
+- The HUD's sound bars span 32 Hz to 10.5 kHz in ten bands, thirty times
+  a second, and the lowest ones now tell their notes apart.
+- Ctrl-C stops the wizard in the middle of his line.
+- The wizard's riddle takes long answers, carried onto the rows below.
+- browzer's frames turn through cyan, teal and blue, with a glint of
+  silver.
+- `gibson`'s key sound is new: a fast phone-tone warble ending in a low
+  thump, as loud as the HUD's chimes.
 - While maelcum is open the background music is silent, and while it
   writes or reads a tape the key sounds are too. Apps can ask for that
   quiet (`hush` in the app interface).
