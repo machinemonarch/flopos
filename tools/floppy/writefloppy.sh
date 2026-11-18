@@ -232,8 +232,11 @@ shout() {
     fi
     printf '%s\n' "$reset"
     printf '%s' "$green"
-    printf '  THE DISCOVERED DEVICE IS TOTALLY A FLOPPY DISK!\n'
-    printf '  Typing "YES" to write to it is TOTALLY SAFE, BOSS.\n'
+    printf '  THE DISCOVERED DEVICE SHOULD HOPEFULLY BE A FLOPPY DISK!\n'
+    printf '  ASSUMING you have no valuable data on it, typing "YES" in order to write to the device\n'
+    printf '  IS HOPEFULLY SAFE, BOSS.\n'
+    printf '\n'
+    printf '  BUT WHO KNOWS, REALLY? I STILL RECOMMEND YOU DOUBLE-CHECK BEFORE YOU WRITE TO IT.\n'
     printf '%s\n' "$reset"
 }
 shout
