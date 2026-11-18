@@ -98,6 +98,7 @@ for decades:
 | [AES-SIV, RFC 5297](https://www.rfc-editor.org/rfc/rfc5297), and [CMAC, RFC 4493](https://www.rfc-editor.org/rfc/rfc4493) | `aes.c`: NTS's cipher |
 | [ALPN, RFC 7301](https://www.rfc-editor.org/rfc/rfc7301) | `tls.c`: asking for NTS's key exchange |
 | [HLS, RFC 8216](https://www.rfc-editor.org/rfc/rfc8216) | browzer: radio in short pieces |
+| [Opus, RFC 6716](https://www.rfc-editor.org/rfc/rfc6716), and [Ogg Opus, RFC 7845](https://www.rfc-editor.org/rfc/rfc7845) | `opus.c`: its music layer, CELT |
 | VEXP 1.3 by Adrian Gradwell (freeware, 1997) | `panel.c`: `wide` |
 | [Scale2x](https://www.scale2x.it/) | `term.c`: smooth letters |
 | [FreeType's notes on text rendering](https://freetype.org/freetype2/docs/hinting/text-rendering-general.html) | `mkfont.py`: fitting letters to the pixel grid, fewer half-tones |

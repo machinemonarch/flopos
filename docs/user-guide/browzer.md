@@ -31,7 +31,7 @@ browzer) gives smaller text.
 ## Music and radio
 
 Links to sound play through the Sound Blaster: mp3 and mp2, AAC and AAC+
-(also in .m4a files), Ogg Vorbis, FLAC, wav, tracker songs (mod, xm, s3m, it), Shoutcast or
+(also in .m4a files), Ogg Vorbis, Opus, FLAC, wav, tracker songs (mod, xm, s3m, it), Shoutcast or
 Icecast radio with their playlists, and stations that stream in short
 pieces (HLS, `.m3u8`), live or not, sealed with AES-128 or in MP4
 pieces, adverts spliced in included. A file under 2 MB plays while you
@@ -41,8 +41,9 @@ stops it.
 A page's streams are found even without scripts: "Listen live" buttons
 play, and streams named only in the page's data are listed at the top.
 
-Not yet: Opus, and HLS sealed with SAMPLE-AES or in parts of one long
-file (byte ranges). An .m4a file with its index at the end plays only if
+Not yet: Opus's speech modes (a station of nothing but speech-coded Opus
+is refused; music in Opus plays), and HLS sealed with SAMPLE-AES or in
+parts of one long file (byte ranges). An .m4a file with its index at the end plays only if
 it is under 2 MB.
 
 ![Радио Music Bg playing, its name and the song in Cyrillic](../images/browzer-radio-bulgaria.png)

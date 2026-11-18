@@ -16,7 +16,8 @@ without it. Each version's notes are also written next to its image, as
 - The inventory shows how full the floppy is: a bar, the share used, and
   how many KB of how many.
 - browzer plays mp2 (MPEG audio layer II), which some broadcasters still
-  send, and AAC in .m4a files, as podcasts come.
+  send, AAC in .m4a files, as podcasts come, and Opus, as more and more
+  stations send. Opus's speech modes are not played yet.
 - HLS stations that splice in adverts of another kind or rate play on
   through them.
 - browzer's keys at the bottom show j when a page has scripts that have

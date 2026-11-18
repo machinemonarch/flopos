@@ -9,7 +9,9 @@ encoder and its settings), decodes the file with FLOPOS's own decoders
 FLOPOS's form (mono, at FLOPOS's rate), lines the two up and prints the
 correlation (median over half-second windows) and the gain.  ok needs a
 correlation of 0.98 or more and a gain within 0.5-1.0 (FLOPOS leaves 3 dB of
-headroom: about 0.7).
+headroom: about 0.7).  Opus is checked against libopus itself (through
+ctypes), decoding in mono as FLOPOS does; its speech-only files must be
+refused.
 
 The source is ~/.cache/flopos-fuzz/audio/seed*.mp3 (the bench site's); the
 files made are kept in build/audiotest/codecs/.
@@ -33,13 +35,16 @@ CASES = {
     "mp3": ("audio/x-raw,rate=44100,channels=2 ! lamemp3enc target=bitrate bitrate=128 cbr=true", "g.mp3", "mpegaudioparse ! mpg123audiodec"),
     "m4a": ("audio/x-raw,rate=44100,channels=2 ! avenc_aac bitrate=96000 ! aacparse ! qtmux", "h.m4a", "qtdemux ! aacparse ! avdec_aac"),
     "m4a-faststart": ("audio/x-raw,rate=48000,channels=2 ! avenc_aac bitrate=128000 ! aacparse ! qtmux faststart=true", "i.m4a", "qtdemux ! aacparse ! avdec_aac"),
-    "opus-128": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=128000 ! oggmux", "j.opus", "oggdemux ! opusdec"),
-    "opus-64-mono": ("audio/x-raw,rate=48000,channels=1 ! opusenc bitrate=64000 ! oggmux", "k.opus", "oggdemux ! opusdec"),
-    "opus-32-voice": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=32000 audio-type=voice ! oggmux", "l.opus", "oggdemux ! opusdec"),
-    "opus-24-hybrid": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=24000 bandwidth=superwideband ! oggmux", "m.opus", "oggdemux ! opusdec"),
-    "opus-12-silk": ("audio/x-raw,rate=48000,channels=1 ! opusenc bitrate=12000 bandwidth=wideband audio-type=voice ! oggmux", "n.opus", "oggdemux ! opusdec"),
-    "opus-96-short": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=96000 frame-size=5 ! oggmux", "o.opus", "oggdemux ! opusdec"),
+    "opus-128": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=128000 ! oggmux", "j.opus", "oggdemux ! opusdec ! audio/x-raw,channels=1"),
+    "opus-64-mono": ("audio/x-raw,rate=48000,channels=1 ! opusenc bitrate=64000 ! oggmux", "k.opus", "oggdemux ! opusdec ! audio/x-raw,channels=1"),
+    "opus-32-voice": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=32000 audio-type=voice ! oggmux", "l.opus", "oggdemux ! opusdec ! audio/x-raw,channels=1"),
+    "opus-24-hybrid": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=24000 bandwidth=superwideband ! oggmux", "m.opus", "oggdemux ! opusdec ! audio/x-raw,channels=1"),
+    "opus-12-silk": ("audio/x-raw,rate=48000,channels=1 ! opusenc bitrate=12000 bandwidth=wideband audio-type=voice ! oggmux", "n.opus", "oggdemux ! opusdec ! audio/x-raw,channels=1"),
+    "opus-96-short": ("audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=96000 frame-size=5 ! oggmux", "o.opus", "oggdemux ! opusdec ! audio/x-raw,channels=1"),
 }
+
+# Opus's speech layers (SILK, hybrid) are not read: a file of nothing else must be refused.
+REFUSED = {"opus-12-silk"}
 
 GST = """import gi, sys; gi.require_version('Gst','1.0'); from gi.repository import Gst; Gst.init(None)
 p = Gst.parse_launch(sys.argv[1]); p.set_state(Gst.State.PLAYING)
@@ -84,7 +89,42 @@ def flopos(path):
     rate = int(info.split(", ")[1].split()[0]) if " Hz" in info else 0
     return np.frombuffer(r.stdout, dtype="<i2").astype(float), rate, info
 
+def opus_reference(path, rate):
+    """Opus decoded by the system's libopus, in mono (as FLOPOS plays it:
+    with stereo phase inversion off, which GStreamer's opusdec, decoding
+    in stereo, keeps), at 48 kHz, then brought to rate."""
+    import ctypes
+    try: lib = ctypes.CDLL("libopus.so.0")
+    except OSError: return None
+    err = ctypes.c_int()
+    dec = ctypes.c_void_p(lib.opus_decoder_create(48000, 1, ctypes.byref(err)))
+    lib.opus_decoder_create.restype = ctypes.c_void_p
+    b, i, pkt, n, out = open(path, "rb").read(), 0, b"", 0, []
+    pcm = (ctypes.c_float * 5760)()
+    skip = 0
+    while i + 27 <= len(b) and b[i:i + 4] == b"OggS":
+        ns = b[i + 26]; lace = b[i + 27:i + 27 + ns]; at = i + 27 + ns
+        for l in lace:
+            pkt += b[at:at + l]; at += l
+            if l < 255:
+                n += 1
+                if n == 1: skip = pkt[10] | pkt[11] << 8
+                elif n > 2:
+                    k = lib.opus_decode_float(dec, pkt, len(pkt), pcm, 5760, 0)
+                    if k > 0: out.append(np.frombuffer(pcm, dtype=np.float32, count=k).copy())
+                pkt = b""
+        i = at
+    x = np.concatenate(out)[skip:] * 32768.0
+    if rate == 48000: return x
+    raw = path + ".ref48.raw"
+    x.astype("<i2").tofile(raw)
+    out_raw = path + ".ref.raw"
+    ok = gst('filesrc location="%s" ! rawaudioparse format=pcm pcm-format=s16le sample-rate=48000 num-channels=1 ! audioconvert '
+             '! audioresample quality=10 ! audio/x-raw,format=S16LE,channels=1,rate=%d ! filesink location="%s"' % (raw, rate, out_raw))
+    return np.fromfile(out_raw, dtype="<i2").astype(float) if ok else None
+
 def reference(path, how, rate):
+    if "opusdec" in how: return opus_reference(path, rate)
     raw = path + ".ref.raw"
     ok = gst('filesrc location="%s" ! %s ! audioconvert ! audioresample quality=10 ! audio/x-raw,format=S16LE,channels=1,rate=%d '
              '! filesink location="%s"' % (path, how, rate, raw))
@@ -123,6 +163,11 @@ def main():
                                                  '! filesink location="%s"' % (src, enc, path)):
             print("FAILED  %s: GStreamer could not make it" % name); failed += 1; continue
         a, rate, info = flopos(path)
+        if name in REFUSED:
+            good = "not something FLOPOS plays" in info
+            failed += not good
+            print("%-7s %-22s refused, as it should be" % ("ok", name) if good else "FAILED  %s: played (%s)" % (name, info))
+            continue
         if not rate or not len(a):
             print("FAILED  %s: %s" % (name, info or "nothing came out")); failed += 1; continue
         b = reference(path, how, rate)

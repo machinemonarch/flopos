@@ -19,8 +19,8 @@
  * in mdct.c; everything else is here, from the specification.  A new
  * stream starting part way (an Icecast station changing track) starts the
  * decoder again.  Floor type 0, which no encoder has used since 2000, is
- * not read.  Ogg can also carry FLAC (most FLAC stations send it so); then
- * the packets are handed to flac.c instead.
+ * not read.  Ogg can also carry FLAC (most FLAC stations send it so) or
+ * Opus; then the packets are handed to flac.c or opus.c instead.
  * ===========================================================================
  */
 #include "decode.h"
@@ -31,7 +31,7 @@ void *memcpy(void *d, const void *s, u32 n);
 #define MAXCH 8
 
 /* ---- memory: set up once per stream, out of one pool ------------------------- */
-static u8  s_pool[960u << 10];             /* the largest setups seen need under 512 KB */
+static u8  s_pool[896u << 10];             /* the largest setups seen need under 512 KB */
 static u32 s_pool_used;
 static void *take(u32 n)
 {
@@ -451,6 +451,10 @@ static struct {
     struct { int block, map; } modes[64];
     int headers;                         /* how many of the three have come */
     int flac;                            /* the Ogg holds FLAC, not Vorbis  */
+    int opus;                            /* or Opus: 1 until music (CELT) has come, then 2 */
+    int opus_seen;                       /* packets before music came       */
+    int opus_speech;                     /* none came: speech, which is not read */
+    int skip;                            /* Opus's pre-skip still to drop   */
     u32 serial;
     float *prev;                          /* the last block, windowed         */
     float *slope[2];                      /* the window's rising edges, worked out once */
@@ -665,6 +669,30 @@ static int packet(const u8 *p, int len)
         if (len >= 2 && p[0] == 0xFF && (p[1] & 0xFE) == 0xF8) { V.out_n = flac_one(p, (u32)len, V.out); V.out_at = 0; }
         return 1;
     }
+    /* Ogg Opus (RFC 7845): "OpusHead" (version, channels, pre-skip, rate,
+     * gain, mapping), then "OpusTags", then a packet each.  Mono and stereo
+     * only (mapping family 0). */
+    if (!V.headers && len >= 19 && p[0] == 'O' && p[1] == 'p' && p[2] == 'u' && p[3] == 's' && p[4] == 'H' &&
+        p[5] == 'e' && p[6] == 'a' && p[7] == 'd') {
+        if ((p[8] >> 4) || p[9] < 1 || p[9] > 2 || p[18] != 0) return 0;
+        V.opus = 1; V.ch = p[9]; V.half = OPUS_HALF; V.rate = 48000; V.kbps = 0; V.headers = 2;
+        V.skip = ((int)p[10] | (int)p[11] << 8) >> V.half;
+        opus_start(V.half);
+        return 1;
+    }
+    if (V.opus) {
+        if (V.headers < 3) { V.headers = 3; return 1; }   /* OpusTags */
+        /* Encoders start in the hybrid speech mode for a second or so even
+         * for music: wait up to three seconds for the music layer. */
+        if (V.opus == 1) {
+            if (opus_playable(p, len)) V.opus = 2;
+            else if (++V.opus_seen >= 150) { V.opus = 2; V.opus_speech = 1; }
+        }
+        V.out_n = opus_packet(p, len, V.out);
+        V.out_at = 0;
+        if (V.skip) { int k = V.skip < V.out_n ? V.skip : V.out_n; V.out_at = k; V.skip -= k; }
+        return 1;
+    }
     if (V.headers < 3) {
         if (len < 7 || !(p[1] == 'v' && p[2] == 'o' && p[3] == 'r' && p[4] == 'b' && p[5] == 'i' && p[6] == 's'))
             return V.headers ? 1 : 0;
@@ -681,7 +709,7 @@ static void fresh(void)
 {
     int i;
     s_pool_used = 0;
-    V.headers = 0; V.flac = 0; V.have_prev = 0; V.out_n = V.out_at = 0; V.pkt_len = 0; V.pkt_bad = 0;
+    V.headers = 0; V.flac = 0; V.opus = 0; V.opus_seen = 0; V.opus_speech = 0; V.have_prev = 0; V.out_n = V.out_at = 0; V.pkt_len = 0; V.pkt_bad = 0;
     if (!s_invdb[255]) {
         /* 0.546875 dB a step, from -139.5 dB to 0 */
         double r = fexp(2.302585092994046 * 7.0 / 256.0), v = 1.0;
@@ -781,7 +809,7 @@ int vorbis_open(AudioIn *in, Decoder *d)
     fresh();
     s_nseg = s_seg = 0;
     V.serial = 0;
-    while (V.headers < 3) {
+    while (V.headers < 3 || V.opus == 1) {      /* Opus: and on to its music */
         int r = next_packet();
         if (r == AUDIO_BAD) return 0;
         if (r) continue;
@@ -789,7 +817,8 @@ int vorbis_open(AudioIn *in, Decoder *d)
         if (r == AUDIO_MORE) { in->pos = keep; fresh(); s_nseg = 0; return AUDIO_MORE; }
         if (r != 1) return 0;
     }
-    d->kind = V.flac ? "FLAC" : "Vorbis";
+    if (V.opus_speech) return 0;
+    d->kind = V.flac ? "FLAC" : V.opus ? "Opus" : "Vorbis";
     d->rate = V.half ? V.rate / 2 : V.rate;
     d->channels = V.ch;
     d->kbps = V.kbps;

@@ -605,9 +605,10 @@ static void l2_samples(int q, float f[3])
         for (k = 0; k < 3; k++) f[k] = (float)(2 * (int)getbits(L2_BITS[q]) - (lev - 1)) * inv;
 }
 
-static int layer2(const u8 *p, int len)
+static int layer2(const u8 *frame, int len)
 {
     static u8 alloc[2][32], scfsi[2][32], sfi[2][32][3];
+    static u8 p[1729 + 4];                   /* the frame, with the four zero bytes the bit reader looks past */
     int t, lim, bound, ch, sb, gr, nch = M.nch, nsb = M.half ? 16 : 32;
 
     if (M.lsf) t = 4;
@@ -615,6 +616,9 @@ static int layer2(const u8 *p, int len)
         int per = M.kbps / nch, rate = RATES[0][M.sr_index];
         t = per <= 48 ? (rate == 32000 ? 3 : 2) : per <= 80 ? 0 : rate == 48000 ? 0 : 1;
     }
+    if (len > 1729) return 2;
+    for (sb = 0; sb < len; sb++) p[sb] = frame[sb];
+    p[len] = p[len + 1] = p[len + 2] = p[len + 3] = 0;
     lim = L2_LIMIT[t];
     bound = nch == 2 && M.mode == 1 ? 4 + M.mode_ext * 4 : lim;
     if (bound > lim) bound = lim;

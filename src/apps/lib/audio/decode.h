@@ -69,6 +69,16 @@ const u8 *mp4_box(const u8 *p, u32 n, u32 *at, const char *t, u32 *len, const u8
 const u8 *mp4_in(const u8 *p, u32 n, const char *t, u32 *len);
 int       mp4_sound(const u8 *trak, u32 n, Mp4Sound *s);   /* 1 if it is sound that can be played */
 
+/* Opus (opus.c), for vorbis.c's Ogg: set up (half: at 24 kHz), then a
+ * packet at a time into out (room for 120 ms); opus_playable says if a
+ * packet is one it reads (CELT), not speech (SILK, hybrid: silence). */
+#ifndef OPUS_HALF
+#define OPUS_HALF 1                      /* Opus at 24 kHz; 0 (48 kHz) only to check it against libopus */
+#endif
+void opus_start(int half);
+int  opus_packet(const u8 *p, int n, s16 *out);
+int  opus_playable(const u8 *p, int n);
+
 /* AAC's bare blocks (aac.c), for mp4.c: set up from the rate index and
  * channels; one block in; its samples out. */
 int  aac_raw_open(int sri, int ch, Decoder *d);
