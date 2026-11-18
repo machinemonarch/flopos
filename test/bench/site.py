@@ -24,9 +24,13 @@ QEMU's guest reaches it at http://10.0.2.2:PORT/.  Pages:
   /hls/lo.m3u8       a finished playlist of mp3 in MPEG transport packets
   /hls/raw.m3u8      the same as bare mp3 segments with an ID3 tag in front
   /hls/live.m3u8     a live window of four, sliding on with the clock
+  /hls/aes.m3u8      lo.m3u8 sealed with AES-128 (an IV given, then the
+                     pieces' numbers as IVs); /hls/badkey.m3u8 the wrong key
+  /hls/fmp4.m3u8     AAC in MP4 pieces (EXT-X-MAP), made by GStreamer;
+  /hls/fmp4aes.m3u8  the same sealed, its header too
                      (the sound is the first ~/.cache/flopos-fuzz/audio/seed*.mp3)
 """
-import glob, http.server, json, os, struct, sys, time
+import glob, http.server, json, os, struct, subprocess, sys, tempfile, time
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8150
 SONGS = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser("~/.cache/flopos-songs")
@@ -189,9 +193,83 @@ def _ts(es, cc=[0]):
 def _id3():
     return b"ID3\x04\x00\x00\x00\x00\x00\x0a" + b"PRIV\x00\x00\x00\x00\x00\x00"[:10]
 
+KEY, BADKEY = bytes(range(16)), bytes(range(1, 17))
+
+def _seal(b, iv, key=KEY):
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    n = 16 - len(b) % 16
+    e = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    return e.update(b + bytes([n]) * n) + e.finalize()
+
+def _iv(n): return n.to_bytes(16, "big")
+
+def _aac_mp4():
+    """The sound as fragmented MP4 AAC, two seconds a piece, made once by
+    GStreamer's encoder and muxer: (init, [pieces]), or None."""
+    out = os.path.expanduser("~/.cache/flopos-fuzz/audio/hls-aac.mp4")
+    if not os.path.exists(out) and FRAMES:
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a.mp3")
+            open(src, "wb").write(b"".join(FRAMES))
+            prog = ("import gi; gi.require_version('Gst','1.0'); from gi.repository import Gst; Gst.init(None)\n"
+                    "p = Gst.parse_launch('filesrc location=%s ! mpegaudioparse ! decodebin ! audioconvert ! audioresample"
+                    " ! audio/x-raw,rate=44100,channels=2 ! avenc_aac bitrate=64000 ! mp4mux fragment-duration=2000"
+                    " streamable=true ! filesink location=%s')\n"
+                    "p.set_state(Gst.State.PLAYING)\n"
+                    "p.get_bus().timed_pop_filtered(120 * Gst.SECOND, Gst.MessageType.EOS | Gst.MessageType.ERROR)\n"
+                    "p.set_state(Gst.State.NULL)\n") % (src, out + ".part")
+            subprocess.run([sys.executable, "-c", prog], timeout=180)
+            if os.path.exists(out + ".part") and os.path.getsize(out + ".part"): os.replace(out + ".part", out)
+    if not os.path.exists(out): return None
+    b, i, boxes = open(out, "rb").read(), 0, []
+    while i + 8 <= len(b):
+        n = struct.unpack(">I", b[i:i + 4])[0] or len(b) - i
+        boxes.append((b[i + 4:i + 8], b[i:i + n])); i += n
+    init = b"".join(x for t, x in boxes if t in (b"ftyp", b"moov"))
+    pieces, cur = [], b""
+    for t, x in boxes:
+        if t == b"moof" and cur: pieces.append(cur); cur = b""
+        if t in (b"moof", b"mdat"): cur += x
+    if cur: pieces.append(cur)
+    return init, pieces
+
+MP4 = None
+
 def hls(p):
     """(content type, body) for an /hls/ path, or None."""
+    global MP4
     pl = "application/vnd.apple.mpegurl"
+    if p in ("/hls/aes.m3u8", "/hls/badkey.m3u8"):
+        k = "key" if "aes" in p else "badkey"
+        body = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n"
+        body += '#EXT-X-KEY:METHOD=AES-128,URI="%s",IV=0x000102030405060708090A0B0C0D0E0F\n' % k
+        for n in range(min(NSEG, 6)):
+            if n == 2: body += '#EXT-X-KEY:METHOD=AES-128,URI="%s"\n' % k
+            body += "#EXTINF:2.0,\naes/%d.ts\n" % n
+        return pl, (body + "#EXT-X-ENDLIST\n").encode()
+    if p == "/hls/key": return "application/octet-stream", KEY
+    if p == "/hls/badkey": return "application/octet-stream", BADKEY
+    if p.startswith("/hls/aes/") and p.endswith(".ts"):
+        n = int(p[9:-3])
+        return "video/mp2t", _seal(_ts(_seg(n)), bytes(range(16)) if n < 2 else _iv(n))
+    if p.startswith("/hls/fmp4") or p.startswith("/hls/m4s/"):
+        if MP4 is None: MP4 = _aac_mp4() or False
+        if not MP4: return None
+        init, pieces = MP4
+        sealed = "aes" in p
+        if p.endswith(".m3u8"):
+            body = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:3\n#EXT-X-MEDIA-SEQUENCE:0\n"
+            if sealed: body += '#EXT-X-KEY:METHOD=AES-128,URI="key",IV=0x0000000000000000000000000000ABCD\n'
+            body += '#EXT-X-MAP:URI="m4s/%s"\n' % ("init-aes.mp4" if sealed else "init.mp4")
+            if sealed: body += '#EXT-X-KEY:METHOD=AES-128,URI="key"\n'
+            for n in range(min(len(pieces), 12)):
+                body += "#EXTINF:2.0,\nm4s/%s%d.m4s\n" % ("aes" if sealed else "", n)
+            return pl, (body + "#EXT-X-ENDLIST\n").encode()
+        if p == "/hls/m4s/init.mp4": return "video/mp4", init
+        if p == "/hls/m4s/init-aes.mp4": return "video/mp4", _seal(init, _iv(0xABCD))
+        n = p[9:-4]
+        if n.startswith("aes"): return "video/iso.segment", _seal(pieces[int(n[3:])], _iv(int(n[3:])))
+        return "video/iso.segment", pieces[int(n)]
     if p == "/hls/master.m3u8":
         return pl, b"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=256000,CODECS=\"mp4a.40.2\"\nhi.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=64000,CODECS=\"mp4a.40.2\"\nlo.m3u8\n"
     if p in ("/hls/lo.m3u8", "/hls/raw.m3u8"):

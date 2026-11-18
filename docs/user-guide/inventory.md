@@ -7,6 +7,9 @@ sit beside it and are never mixed with yours.
     here> inventory
     here> inventory NOTES        start in a folder
 
+Under the list, a bar shows how full the floppy is: the share used, and
+how many KB of how many. The system's own files count too.
+
 ## Keys
 
 - **Up, Down, PgUp, PgDn:** Move.

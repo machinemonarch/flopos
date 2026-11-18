@@ -497,9 +497,16 @@ int ui_key(void)
  * taken.  Each segment is fetched whole into s_seg, the second half of
  * s_dl, which a stream leaves free (the media hooks are told so by s_hls), and its sound added to the stream's buffer, which
  * feed() plays from as it does any radio.  Segments are AAC or mp3 inside
- * MPEG transport packets, or the bare frames with an ID3 tag in front.
- * Sealed segments (EXT-X-KEY) and MP4 pieces (EXT-X-MAP) are not read. */
+ * MPEG transport packets, the bare frames with an ID3 tag in front, or
+ * MP4 pieces (EXT-X-MAP names the header they share).  Sealed segments
+ * (EXT-X-KEY, AES-128) are opened with the key the playlist points to. */
 static int  s_ts_pid;                    /* the transport stream's sound     */
+static char s_key_uri[PAGE_HREF_MAX + 16], s_map_uri[PAGE_HREF_MAX + 16];   /* fetched already */
+static u8   s_key[16];
+static int  s_mp4;                       /* the segments are MP4 pieces     */
+static const char *s_hls_why;            /* why a playlist could not be played */
+static u32  s_mp4_track, s_mp4_size;     /* the sound's track, its default sample size */
+static int  s_mp4_mp3, s_aac_prof, s_aac_sfi, s_aac_ch;   /* what the header says the sound is */
 
 static u32 hls_len(const char *t) { u32 n = 0; while (t[n]) n++; return n; }
 
@@ -587,6 +594,326 @@ static int hls_feed(const u8 *p, u32 n)
     return stream_take(p, (int)n);
 }
 
+/* ---- MP4 pieces (ISO 14496-12, fragmented) ----
+ * The header (EXT-X-MAP) holds a moov box: the sound's track, and in its
+ * esds the AAC setup (or a note that it is mp3).  Each segment is moof
+ * boxes, saying where each sample lies and how long it is, and mdat boxes
+ * holding them.  AAC samples are bare, so each gets an ADTS header in
+ * front, the form the radio decoder knows. */
+static u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3]; }
+
+/* The next box of type t (or any, t 0) in p[*at..n): its body and length,
+ * and *at moved past it; 0 when there are no more.  *type gets its type. */
+static const u8 *mp4_box(const u8 *p, u32 n, u32 *at, const char *t, u32 *len, const u8 **type)
+{
+    while (*at + 8 <= n) {
+        u32 i = *at, sz = be32(p + i), h = 8;
+        if (sz == 1) {                               /* a 64-bit size */
+            if (i + 16 > n || be32(p + i + 8)) return 0;
+            sz = be32(p + i + 12); h = 16;
+        } else if (sz == 0) sz = n - i;              /* to the end */
+        if (sz < h || sz > n - i) return 0;
+        *at = i + sz;
+        if (!t || (p[i + 4] == t[0] && p[i + 5] == t[1] && p[i + 6] == t[2] && p[i + 7] == t[3])) {
+            *len = sz - h;
+            if (type) *type = p + i + 4;
+            return p + i + h;
+        }
+    }
+    return 0;
+}
+
+static const u8 *mp4_in(const u8 *p, u32 n, const char *t, u32 *len)
+{
+    u32 at = 0;
+    return mp4_box(p, n, &at, t, len, 0);
+}
+
+/* An MPEG-4 descriptor's length (up to four bytes of seven bits). */
+static u32 desc_len(const u8 *p, u32 n, u32 *at)
+{
+    u32 v = 0, k;
+    for (k = 0; k < 4 && *at < n; k++) {
+        u8 b = p[(*at)++];
+        v = v << 7 | (b & 127);
+        if (!(b & 128)) return v;
+    }
+    return 0xFFFFFFFFu;
+}
+
+/* k bits from c at bit *pos (the caller has checked there are enough). */
+static u32 bits_at(const u8 *c, u32 *pos, int k)
+{
+    u32 v = 0;
+    for (; k > 0; k--, (*pos)++) v = v << 1 | ((c[*pos >> 3] >> (7 - (*pos & 7))) & 1);
+    return v;
+}
+
+/* esds: the sound's kind, and for AAC its setup (AudioSpecificConfig). */
+static int mp4_esds(const u8 *p, u32 n)
+{
+    u32 at = 4, l, oti, pos = 0;
+    u8 f;
+    const u8 *c;
+#define BITS(k) bits_at(c, &pos, (k))
+    if (at >= n || p[at++] != 3) return 0;          /* ES_Descriptor */
+    if ((l = desc_len(p, n, &at)) > n - at || at + 3 > n) return 0;
+    f = p[at + 2]; at += 3;
+    if (f & 0x80) at += 2;
+    if (f & 0x40) { if (at >= n) return 0; at += 1 + p[at]; }
+    if (f & 0x20) at += 2;
+    if (at >= n || p[at++] != 4) return 0;          /* DecoderConfigDescriptor */
+    if ((l = desc_len(p, n, &at)) > n - at || l < 13) return 0;
+    oti = p[at];
+    if (oti == 0x69 || oti == 0x6B) { s_mp4_mp3 = 1; return 1; }
+    if (oti != 0x40 && oti != 0x66 && oti != 0x67) return 0;
+    at += 13;
+    if (at >= n || p[at++] != 5) return 0;          /* DecoderSpecificInfo */
+    if ((l = desc_len(p, n, &at)) > n - at || l < 2) return 0;
+    c = p + at;
+    {
+        u32 aot = BITS(5), sfi, ch;
+        if (aot == 31) { if (l < 3) return 0; aot = 32 + BITS(6); }
+        if ((sfi = BITS(4)) == 15) return 0;        /* a rate ADTS cannot say */
+        ch = BITS(4);
+        if (aot == 5 || aot == 29) {                /* HE-AAC: its core underneath */
+            if (l < 4) return 0;
+            if (BITS(4) == 15) { if (l < 7) return 0; (void)BITS(24); }
+            aot = BITS(5);
+        }
+        if (aot < 1 || aot > 4 || ch < 1 || ch > 7) return 0;
+        s_aac_prof = (int)aot; s_aac_sfi = (int)sfi; s_aac_ch = (int)ch;
+    }
+#undef BITS
+    s_mp4_mp3 = 0;
+    return 1;
+}
+
+/* The header: finds the sound's track and what it is.  1 if it can be played. */
+static int mp4_init(const u8 *p, u32 n)
+{
+    u32 ml, tl, at = 0, l, k;
+    const u8 *moov = mp4_in(p, n, "moov", &ml), *trak, *b;
+    if (!moov) return 0;
+    while ((trak = mp4_box(moov, ml, &at, "trak", &tl, 0))) {
+        const u8 *mdia = mp4_in(trak, tl, "mdia", &l), *e;
+        u32 dl, el, sl, id;
+        if (!mdia) continue;
+        b = mp4_in(mdia, l, "hdlr", &k);
+        if (!b || k < 12 || b[8] != 's' || b[9] != 'o' || b[10] != 'u' || b[11] != 'n') continue;
+        b = mp4_in(trak, tl, "tkhd", &k);
+        if (!b || k < 24) continue;
+        id = be32(b + (b[0] == 1 ? 20 : 12));
+        if (!(b = mp4_in(mdia, l, "minf", &dl)) || !(b = mp4_in(b, dl, "stbl", &dl)) ||
+            !(b = mp4_in(b, dl, "stsd", &dl)) || dl < 8 + 8 + 28)
+            continue;
+        b += 8; dl -= 8;                             /* the first sample entry */
+        sl = be32(b);
+        if (sl < 8 + 28 || sl > dl) continue;
+        if (b[4] == '.' && b[5] == 'm' && b[6] == 'p' && b[7] == '3') s_mp4_mp3 = 1;
+        else {
+            u32 skip = 28 + (b[16] == 0 && b[17] == 1 ? 16 : b[16] == 0 && b[17] == 2 ? 36 : 0);
+            if (b[4] != 'm' || b[5] != 'p' || b[6] != '4' || b[7] != 'a' || 8 + skip > sl) continue;
+            e = mp4_in(b + 8 + skip, sl - 8 - skip, "esds", &el);
+            if (!e || !mp4_esds(e, el)) continue;
+        }
+        s_mp4_track = id;
+        s_mp4_size = 0;
+        if ((b = mp4_in(moov, ml, "mvex", &l))) {    /* the track's defaults */
+            u32 x = 0, xl;
+            const u8 *t;
+            while ((t = mp4_box(b, l, &x, "trex", &xl, 0)))
+                if (xl >= 24 && be32(t + 4) == id) s_mp4_size = be32(t + 16);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/* One segment's samples, into the stream. */
+static int mp4_feed(const u8 *p, u32 n)
+{
+    u32 at = 0, ml;
+    const u8 *moof, *ty;
+    while ((moof = mp4_box(p, n, &at, 0, &ml, &ty))) {
+        u32 fat = 0, tl, moof_at;
+        const u8 *traf;
+        if (ty[0] != 'm' || ty[1] != 'o' || ty[2] != 'o' || ty[3] != 'f') continue;
+        moof_at = (u32)(moof - p) - 8;
+        while ((traf = mp4_box(moof, ml, &fat, "traf", &tl, 0))) {
+            u32 hl, rat = 0, rl, base = moof_at, size = s_mp4_size, fl, o, pos = moof_at;
+            const u8 *h = mp4_in(traf, tl, "tfhd", &hl), *r;
+            if (!h || hl < 8 || be32(h + 4) != s_mp4_track) continue;
+            fl = be32(h) & 0xFFFFFF; o = 8;
+            if (fl & 1) { if (hl < o + 8 || be32(h + o)) continue; base = be32(h + o + 4); o += 8; }
+            if (fl & 2) o += 4;
+            if (fl & 8) o += 4;
+            if (fl & 0x10) { if (hl < o + 4) continue; size = be32(h + o); }
+            pos = base;
+            while ((r = mp4_box(traf, tl, &rat, "trun", &rl, 0))) {
+                u32 f, cnt, each = 0, i, ro = 8;
+                if (rl < 8) break;
+                f = be32(r) & 0xFFFFFF; cnt = be32(r + 4);
+                if (f & 1) { if (rl < ro + 4) break; pos = base + be32(r + ro); ro += 4; }
+                if (f & 4) ro += 4;
+                each = 4 * (!!(f & 0x100) + !!(f & 0x200) + !!(f & 0x400) + !!(f & 0x800));
+                if (ro > rl || (each && cnt > (rl - ro) / each)) break;
+                for (i = 0; i < cnt; i++, ro += each) {
+                    u32 sz = (f & 0x200) ? be32(r + ro + ((f & 0x100) ? 4 : 0)) : size;
+                    if (pos > n || sz > n - pos) return 1;     /* runs off the piece */
+                    if (!s_mp4_mp3) {
+                        u32 L = sz + 7;
+                        u8 a[7];
+                        if (L > 8191) { pos += sz; continue; }
+                        a[0] = 0xFF; a[1] = 0xF1;
+                        a[2] = (u8)(((s_aac_prof - 1) & 3) << 6 | (s_aac_sfi & 15) << 2 | ((s_aac_ch >> 2) & 1));
+                        a[3] = (u8)((s_aac_ch & 3) << 6 | (L >> 11 & 3));
+                        a[4] = (u8)(L >> 3); a[5] = (u8)((L & 7) << 5 | 0x1F); a[6] = 0xFC;
+                        if (!stream_take(a, 7)) return 0;
+                    }
+                    if (sz && !stream_take(p + pos, (int)sz)) return 0;
+                    pos += sz;
+                }
+            }
+        }
+    }
+    return 1;
+}
+
+static int same(const char *a, const char *b)
+{
+    while (*a && *a == *b) { a++; b++; }
+    return *a == *b;
+}
+
+/* The text of attr="..." or attr=... on this line, into out. */
+static int hls_attr(const char *l, const char *key, char *out, int cap)
+{
+    int k = 0;
+    if (*l) l++;                                     /* past the '#' */
+    while (*l && *l != '\n') {
+        if ((l[-1] == ':' || l[-1] == ',') && tag(l, key)) {
+            l += hls_len(key);
+            if (*l == '"') { l++; while (*l && *l != '"' && *l != '\n' && k < cap - 1) out[k++] = *l++; }
+            else while (*l && *l != ',' && *l != '\r' && *l != '\n' && k < cap - 1) out[k++] = *l++;
+            out[k] = 0;
+            return 1;
+        }
+        l++;
+    }
+    out[0] = 0;
+    return 0;
+}
+
+static int hexv(char c)
+{
+    return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+
+/* What the tags say about the segments after them. */
+typedef struct {
+    int  seal;                           /* 0 open, 1 AES-128, -1 sealed some way not known */
+    int  has_iv;
+    u8   iv[16];
+    char key[PAGE_HREF_MAX + 16];        /* where the key is */
+    char map[PAGE_HREF_MAX + 16];        /* where the MP4 header is, or "" */
+    u32  map_len, map_at;                /* a part of that file (BYTERANGE), or 0 */
+    int  map_seal, map_has_iv;           /* the key in force when the header was named */
+    u8   map_iv[16];
+} HlsTags;
+static HlsTags s_tags;
+
+static void hls_tag(const char *l, const char *base)
+{
+    char v[PAGE_HREF_MAX];
+    if (tag(l, "#EXT-X-KEY:")) {
+        int i, k;
+        hls_attr(l, "METHOD=", v, (int)sizeof v);
+        s_tags.seal = same(v, "NONE") ? 0 : same(v, "AES-128") ? 1 : -1;   /* SAMPLE-AES is not read */
+        s_tags.key[0] = 0;
+        if (hls_attr(l, "URI=", v, (int)sizeof v) && !url_resolve(base, v, s_tags.key, (int)sizeof s_tags.key))
+            s_tags.key[0] = 0;
+        s_tags.has_iv = hls_attr(l, "IV=", v, (int)sizeof v) && v[0] == '0' && (v[1] == 'x' || v[1] == 'X');
+        if (s_tags.has_iv) {                         /* hex, right-aligned in 16 bytes */
+            for (i = 0; i < 16; i++) s_tags.iv[i] = 0;
+            for (k = 2; v[k]; k++) { }
+            for (i = 0, k--; k >= 2 && i < 32; k--, i++) {
+                int h = hexv(v[k]);
+                if (h < 0) { s_tags.seal = -1; break; }
+                s_tags.iv[15 - i / 2] |= (u8)(i & 1 ? h << 4 : h);
+            }
+        }
+    } else if (tag(l, "#EXT-X-MAP:")) {
+        s_tags.map[0] = 0;
+        if (hls_attr(l, "URI=", v, (int)sizeof v) && !url_resolve(base, v, s_tags.map, (int)sizeof s_tags.map))
+            s_tags.map[0] = 0;
+        s_tags.map_len = s_tags.map_at = 0;
+        if (hls_attr(l, "BYTERANGE=", v, (int)sizeof v)) {      /* length@offset */
+            const char *q = v;
+            while (*q >= '0' && *q <= '9') s_tags.map_len = s_tags.map_len * 10 + (u32)(*q++ - '0');
+            if (*q == '@') for (q++; *q >= '0' && *q <= '9'; q++) s_tags.map_at = s_tags.map_at * 10 + (u32)(*q - '0');
+            if (!s_tags.map_len) s_tags.map[0] = 0;
+        }
+        s_tags.map_seal = s_tags.seal;
+        s_tags.map_has_iv = s_tags.has_iv;
+        memcpy(s_tags.map_iv, s_tags.iv, 16);
+    }
+}
+
+/* The key in force, fetched once. */
+static int hls_key(void)
+{
+    if (!s_tags.key[0]) return 0;
+    if (same(s_key_uri, s_tags.key)) return 1;
+    s_key_uri[0] = 0;
+    if (!hls_get(s_tags.key) || s_seg_len != 16) return 0;
+    memcpy(s_key, s_seg, 16);
+    fmt_str(s_key_uri, sizeof s_key_uri, "%s", s_tags.key);
+    return 1;
+}
+
+/* Fetches one piece into s_seg and, if it was sealed, opens it:
+ * AES-128-CBC, then the PKCS#7 padding, which also shows a wrong key.
+ * The IV is the tag's, or the piece's number.  0 if it cannot be had. */
+static int hls_fetch(const char *uri, int seal, int has_iv, const u8 *iv, u32 seq)
+{
+    u8 v[16];
+    u32 pad, i;
+    if (seal < 0 || (seal && !hls_key())) return 0;
+    if (!hls_get(uri)) return 0;
+    if (!seal) return 1;
+    if (!s_seg_len || s_seg_len % 16) return 0;
+    if (has_iv) memcpy(v, iv, 16);
+    else {
+        for (i = 0; i < 12; i++) v[i] = 0;
+        v[12] = (u8)(seq >> 24); v[13] = (u8)(seq >> 16); v[14] = (u8)(seq >> 8); v[15] = (u8)seq;
+    }
+    A->crypt_cbc(s_key, v, s_seg, s_seg_len, s_seg);
+    pad = s_seg[s_seg_len - 1];
+    if (pad < 1 || pad > 16) return 0;
+    for (i = 1; i <= pad; i++) if (s_seg[s_seg_len - i] != pad) return 0;
+    s_seg_len -= pad;
+    return 1;
+}
+
+/* The MP4 header in force, fetched and read once.  0 if it cannot be. */
+static int hls_map(void)
+{
+    if (same(s_map_uri, s_tags.map)) return 1;
+    s_map_uri[0] = 0;
+    if (!hls_fetch(s_tags.map, s_tags.map_seal, s_tags.map_has_iv, s_tags.map_iv, 0)) return 0;
+    if (s_tags.map_len) {                            /* a part of the file */
+        if (s_tags.map_at > s_seg_len || s_tags.map_len > s_seg_len - s_tags.map_at) return 0;
+        memmove(s_seg, s_seg + s_tags.map_at, s_tags.map_len);
+        s_seg_len = s_tags.map_len;
+    }
+    if (s_seg_len && s_seg[0] == 0x47) s_mp4 = 0;   /* a transport stream's tables: nothing to keep */
+    else if (mp4_init(s_seg, s_seg_len)) s_mp4 = 1;
+    else return 0;
+    fmt_str(s_map_uri, sizeof s_map_uri, "%s", s_tags.map);
+    return 1;
+}
+
 /* Waits ms while the music plays on; 0 if esc was pressed. */
 static int hls_wait(u32 ms)
 {
@@ -605,8 +932,9 @@ static int hls_play(void)
 {
     char base[PAGE_HREF_MAX + 16], uri[PAGE_HREF_MAX + 16];
     u32 next = 0, i, n;
-    int first = 1, tries = 0;
+    int first = 1, tries = 0, first_piece = 1, st = DL_STREAM_END;
 
+    s_hls_why = 0;
     n = s_dl_len < PL_MAX - 1 ? s_dl_len : PL_MAX - 1;
     memcpy(s_pl, s_dl, n); s_pl[n] = 0;
     fmt_str(base, sizeof base, "%s", s_dl_url);
@@ -649,6 +977,7 @@ static int hls_play(void)
     s_buffering = 0;
     s_dl_type[0] = 0;                    /* the sound says what it is */
     s_ts_pid = -1;
+    s_mp4 = 0; s_key_uri[0] = 0; s_map_uri[0] = 0;
     s_conn_ms = A->ms();
     s_lock = 0;
 
@@ -657,9 +986,12 @@ static int hls_play(void)
         u32 count = 0, got = 0;
         const char *l = s_pl;
         int ended = has(s_pl, "#EXT-X-ENDLIST");
-        if (has(s_pl, "#EXT-X-MAP") || (has(s_pl, "#EXT-X-KEY") && !has(s_pl, "METHOD=NONE")))
-            return DL_UNPLAYABLE;
+        if (has(s_pl, "#EXT-X-BYTERANGE")) {          /* pieces of one long file */
+            s_hls_why = "Its pieces are parts of one long file, which browzer does not fetch.";
+            st = DL_UNPLAYABLE; goto out;
+        }
         s_live = !ended;
+        s_tags.seal = 0; s_tags.map[0] = 0;          /* each reading names them afresh */
         for (l = s_pl; *l; ) {                        /* how many segments it lists */
             if (*l != '#' && *l != '\r' && *l != '\n') count++;
             while (*l && *l != '\n') l++;
@@ -670,14 +1002,33 @@ static int hls_play(void)
             first = 0;
         }
         for (l = s_pl, i = 0; *l; ) {
-            if (*l != '#' && *l != '\r' && *l != '\n') {
+            if (*l == '#') hls_tag(l, base);
+            else if (*l != '\r' && *l != '\n') {
                 char rel[PAGE_HREF_MAX];
                 int k = 0;
                 while (l[k] && l[k] != '\r' && l[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = l[k]; k++; }
                 rel[k] = 0;
                 if (seq + i >= next && url_resolve(base, rel, uri, (int)sizeof uri)) {
-                    if (!hls_get(uri)) { if (s_esc) goto out; break; }
-                    if (!hls_feed(s_seg, s_seg_len)) goto out;
+                    if (s_tags.seal < 0) {
+                        s_hls_why = "It is sealed in a way browzer cannot open (AES-128 it can).";
+                        st = DL_UNPLAYABLE; goto out;
+                    }
+                    if (!s_tags.map[0]) { s_mp4 = 0; s_map_uri[0] = 0; }
+                    else if (!hls_map()) {
+                        s_hls_why = "Its pieces are MP4, and browzer found no sound in them it can play.";
+                        if (!s_esc) st = DL_UNPLAYABLE;
+                        goto out;
+                    }
+                    if (!hls_fetch(uri, s_tags.seal, s_tags.has_iv, s_tags.iv, seq + i)) {
+                        if (s_esc) goto out;
+                        if (s_tags.seal && first_piece) {
+                            s_hls_why = "It is sealed, and the key it names did not open it.";
+                            st = DL_UNPLAYABLE; goto out;
+                        }
+                        break;
+                    }
+                    first_piece = 0;
+                    if (!(s_mp4 ? mp4_feed(s_seg, s_seg_len) : hls_feed(s_seg, s_seg_len))) goto out;
                     next = seq + i + 1;
                     got++;
                 }
@@ -698,7 +1049,12 @@ static int hls_play(void)
     }
 out:
     media_end(s_esc ? -1 : 1);
-    return DL_STREAM_END;
+    if (s_hls_why && !s_esc) {
+        char t[120];
+        fmt_str(t, sizeof t, "[browzer] HLS: %s\n", s_hls_why);
+        A->wire(t);
+    }
+    return s_esc ? DL_STREAM_END : st;
 }
 
 
@@ -1370,6 +1726,10 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     s_esc ? "Stopped." : s_live ? "The station stopped answering, five times running." :
                     s_music ? "That was all of it; the last of it is still playing." : "The stream ended.",
                     s_now[0] ? "<p>Last playing: " : "", s_now[0] ? s_now : "", s_now[0] ? "</p>" : "");
+        } else if (st == DL_UNPLAYABLE && s_hls_why) {
+            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is a radio stream in pieces (HLS). %s</p>",
+                    name, name, s_hls_why);
+            s_hls_why = 0;
         } else if (st == DL_UNPLAYABLE) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is %s, which browzer cannot play "
                     "(mp3, AAC, Ogg, FLAC, wav, .mod, .xm, .s3m and .it it can).</p>", name, name, s_dl_type);

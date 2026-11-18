@@ -122,6 +122,34 @@ text</textarea><button type="submit" name="go" value="1">Go</button><input type=
                   ((b"\x00\x00\x01\xc0\x00\x00\x80\x80\x05\x21\x00\x01\x00\x01" if i == 0 else b"") +
                    b"\xff\xfb\x90\x44" + bytes(range(256)) * 2)[:184] for i in range(12))
     resp("hls-ts.bin", ts, ctype="video/mp2t")
+    # Several answers in one (browzer.c's NEXT): a playlist, then what it names.
+    def answers(name, *parts):
+        out = []
+        for body, ctype in parts:
+            if isinstance(body, str): body = body.encode()
+            out.append(("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n" % (ctype, len(body))).encode() + body)
+        open(os.path.join(d, name), "wb").write(b"\0\0NEXT\0\0".join(out))
+    def xor_seal(b, key, iv):               # what browzer.c's pretend crypt_cbc undoes
+        b = b + bytes([16 - len(b) % 16]) * (16 - len(b) % 16)
+        return bytes(x ^ key[i & 15] ^ iv[i & 15] for i, x in enumerate(b))
+    pl, key = "application/vnd.apple.mpegurl", bytes(range(16))
+    answers("hls-aes.bin", ("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:7\n"
+                            "#EXT-X-KEY:METHOD=AES-128,URI=\"k\"\n#EXTINF:2,\na.ts\n#EXT-X-ENDLIST\n", pl),
+            (key, "application/octet-stream"), (xor_seal(ts, key, (7).to_bytes(16, "big")), "video/mp2t"))
+    mp4 = os.path.expanduser("~/.cache/flopos-fuzz/audio/hls-aac.mp4")   # made by test/bench/site.py
+    if os.path.exists(mp4):
+        b, i, init, piece = open(mp4, "rb").read(), 0, b"", b""
+        while i + 8 <= len(b):
+            n = struct.unpack(">I", b[i:i + 4])[0] or len(b) - i
+            if b[i + 4:i + 8] in (b"ftyp", b"moov"): init += b[i:i + n]
+            elif b[i + 4:i + 8] in (b"moof", b"mdat") and len(piece) < 20000: piece += b[i:i + n]
+            i += n
+        answers("hls-mp4.bin", ("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MAP:URI=\"i.mp4\"\n#EXTINF:2,\na.m4s\n"
+                                "#EXTINF:2,\nb.m4s\n#EXT-X-ENDLIST\n", pl), (init, "video/mp4"), (piece, "video/iso.segment"))
+        iv = bytes(range(16, 32))
+        answers("hls-mp4aes.bin", ("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-KEY:METHOD=AES-128,URI=\"k\",IV=0x101112131415161718191A1B1C1D1E1F\n"
+                                   "#EXT-X-MAP:URI=\"i.mp4\",BYTERANGE=\"%d@0\"\n#EXTINF:2,\na.m4s\n#EXT-X-ENDLIST\n" % len(init), pl),
+                (key, "application/octet-stream"), (xor_seal(init, key, iv), "video/mp4"), (xor_seal(piece, key, iv), "video/iso.segment"))
     resp("text.bin", "plain text\nwith lines\n\tand tabs\n" * 20, ctype="text/plain")
     resp("moved.bin", "<a href='/new'>moved</a>", status="302 Found",
          extra="Location: /new/place?x=1\r\nSet-Cookie: sid=abc123; Path=/; HttpOnly\r\nSet-Cookie: big=%s; Max-Age=60\r\n" % ("v" * 300))

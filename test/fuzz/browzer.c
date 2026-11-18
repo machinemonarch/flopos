@@ -13,7 +13,9 @@
  * styles read (dom.c, css.c).  In half the runs the site's scripts are
  * allowed, and a pretend script room knocks on browzer's door (script.c)
  * with requests made from the input -- the door must survive anything
- * the real room could send. */
+ * the real room could send.  An input may hold several answers, split by
+ * NEXT (below): each connection then gets the next one, round again, so
+ * a playlist can be followed by its key, its MP4 header and its pieces. */
 #include "app.h"
 #include "../../src/room/room.h"
 #include "../../src/room/door.h"
@@ -27,7 +29,10 @@ const u32 fuzz_max = 64 * 1024;
 int app_main(const Api *api, int argc, char **argv);
 void fmt_vstr(char *dst, unsigned long cap, const char *fmt, __builtin_va_list ap);   /* src/kernel/fmt.c */
 
-static u8 *s_in; static u32 s_len, s_at, s_mode;
+static u8 *s_in; static u32 s_len, s_at, s_end, s_mode;
+#define NEXT "\0\0NEXT\0\0"                 /* between answers                 */
+#define NEXT_LEN 8
+static u32 s_part[9], s_nparts;          /* where each answer starts; the last is the end */
 static int s_opens, s_keys, s_quiet;
 static u32 s_ms;
 static void (*s_feeder)(void);
@@ -99,7 +104,8 @@ static int  conn_open(const char *host, u16 port, int secure, void (*note)(const
     (void)strlen(host); (void)port; (void)secure;
     if (note) note("connecting");
     if (++s_opens > 6) return 0;
-    s_at = 0;
+    s_at = s_part[(s_opens - 1) % s_nparts];
+    s_end = s_part[(s_opens - 1) % s_nparts + 1] - ((s_opens - 1) % s_nparts + 1 < s_nparts ? NEXT_LEN : 0);
     return 1;
 }
 static int  conn_write(const u8 *d, int n) { volatile u8 x = 0; int i; for (i = 0; i < n; i++) x ^= d[i]; (void)x; return n; }
@@ -108,9 +114,9 @@ static int  conn_read(u8 *b, int n, int wait_ms)
     u32 piece = 1 + ((s_mode >> 4) & 0x3FF);
     (void)wait_ms;
     s_ms += 5;
-    if (s_at >= s_len) return ((s_mode >> 15) & 3) == 3 ? -2 : 0;
+    if (s_at >= s_end) return ((s_mode >> 15) & 3) == 3 ? -2 : 0;
     if (((s_mode >> 14) & 1) && (++s_quiet & 7) == 0) return -1;      /* gone quiet for a moment */
-    if (piece > s_len - s_at) piece = s_len - s_at;
+    if (piece > s_end - s_at) piece = s_end - s_at;
     if ((int)piece > n) piece = (u32)n;
     memcpy(b, s_in + s_at, piece);
     s_at += piece;
@@ -142,6 +148,11 @@ static void win_ember(int on) { (void)on; }
 static void crypt_key(const char *p, const u8 *salt, u32 sl, u32 it, u8 key[32]) { (void)p; (void)salt; (void)sl; (void)it; memset(key, 0, 32); }
 static void crypt_seal(int a, const u8 k[32], const u8 n[12], const u8 *aad, u32 al, const u8 *in, u32 len, u8 *out, u8 tag[16])
 { (void)a; (void)k; (void)n; (void)aad; (void)al; memcpy(out, in, len); memset(tag, 0, 16); }
+static void crypt_cbc(const u8 k[16], const u8 iv[16], const u8 *in, u32 n, u8 *out)
+{
+    u32 i;                                   /* not AES: only so a sealed piece can come out right */
+    for (i = 0; i < n; i++) out[i] = in[i] ^ k[i & 15] ^ iv[i & 15];
+}
 static int  crypt_open(int a, const u8 k[32], const u8 n[12], const u8 *aad, u32 al, const u8 *in, u32 len, const u8 tag[16], u8 *out)
 { (void)a; (void)k; (void)n; (void)aad; (void)al; (void)tag; memcpy(out, in, len); return 1; }
 static void rnd(u8 *out, u32 n) { u32 i; for (i = 0; i < n; i++) out[i] = (u8)(i * 7); }
@@ -194,7 +205,7 @@ static const Api s_api = {
     audio_listen, audio_heard,
     inv_list, inv_stat, inv_read, inv_write, inv_mkdir, inv_remove, inv_move, inv_room, inv_why, then,
     win_ember, crypt_key, crypt_seal, crypt_open, rnd, clock6, glyph,
-    room_open, room_task, room_why,
+    room_open, room_task, room_why, 0, crypt_cbc, inv_room,
 };
 
 void fuzz_one(const u8 *data, u32 len, u32 mode)
@@ -203,7 +214,14 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
     char *argv[3];
     s_in = malloc(len ? len : 1);
     memcpy(s_in, data, len);
-    s_len = len; s_at = 0; s_mode = mode; s_opens = 0; s_keys = 0; s_quiet = 0; s_feeder = 0;
+    s_len = len; s_at = 0; s_end = len; s_mode = mode; s_opens = 0;
+    {
+        u32 i;
+        s_nparts = 0; s_part[0] = 0;
+        for (i = 0; i + NEXT_LEN <= len && s_nparts < 7; i++)
+            if (!memcmp(data + i, NEXT, NEXT_LEN)) { s_part[++s_nparts] = i + NEXT_LEN; i += NEXT_LEN - 1; }
+        s_part[++s_nparts] = len;
+    } s_keys = 0; s_quiet = 0; s_feeder = 0;
     s_knock = 0;
     memset(s_sites, ' ', sizeof s_sites);
     if (mode & 8) memcpy(s_sites, "fuzz.test\n", 10);   /* scripts allowed, half the time */

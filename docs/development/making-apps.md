@@ -34,10 +34,10 @@ goes up, so older apps keep working. In short:
 - **Windows:** `win_open`, `win_text`, `win_put`, `win_frame` and the rest, in character cells, with colours and bold, italic, underline. A program that draws its own title puts `os_version()` after its name.
 - **The terminal:** `print`, `newline`, `putc`, `colour`.
 - **Keys and time:** `key`, `pump` (keeps music and screen going while waiting), `ms`.
-- **Files:** `inv_*` for the user's inventory (make, write, list, move, remove); `file_*` for the system's own files, written in place only.
+- **Files:** `inv_*` for the user's inventory (make, write, list, move, remove; `inv_room` and `inv_size` for how full the floppy is); `file_*` for the system's own files, written in place only.
 - **The network:** `net_online`, then one connection at a time with `conn_open` (TLS and the certificate check included), `conn_read`, `conn_write`, `conn_close`, `conn_why`.
 - **Sound:** `audio_open`, `audio_write`, `audio_feeder` (a refill routine the timer calls), `audio_listen` and `audio_heard`.
-- **Sealing:** `crypt_key`, `crypt_seal`, `crypt_open`, `random`.
+- **Sealing:** `crypt_key`, `crypt_seal`, `crypt_open`, `random`; `crypt_cbc` undoes AES-128-CBC (sealed radio).
 - **Other:** `clock`, `glyph`, `wire` (to the serial line), `then` (run another app on leaving), `win_ember` (maelcum's colours), and the script room for browzer.
 
 ## The wall

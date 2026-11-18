@@ -997,6 +997,7 @@ int    inv_mkdir(const char *path);
 int    inv_remove(const char *path);
 int    inv_move(const char *from, const char *to);
 u32    inv_room(void);                    /* bytes free on the floppy       */
+u32    inv_size(void);                    /* bytes it holds for files, in all */
 const char *inv_why(void);                /* why the last one failed        */    /* -> 1 on success               */
 int    disk_write(u32 lba, int count);
 u8     disk_last_status(void);

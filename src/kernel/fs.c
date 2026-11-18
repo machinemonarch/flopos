@@ -678,6 +678,12 @@ u32 inv_room(void)
     return fat_free() * s_spc * 512;
 }
 
+u32 inv_size(void)
+{
+    if (!fs_mount() || !s_inv) return 0;
+    return s_clusters * s_spc * 512;
+}
+
 /* Make the file, or replace it, with these n bytes. */
 int inv_write(const char *path, const u8 *buf, u32 n)
 {

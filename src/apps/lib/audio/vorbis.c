@@ -31,7 +31,7 @@ void *memcpy(void *d, const void *s, u32 n);
 #define MAXCH 8
 
 /* ---- memory: set up once per stream, out of one pool ------------------------- */
-static u8  s_pool[1 << 20];                /* the largest setups seen need under half */
+static u8  s_pool[960u << 10];             /* the largest setups seen need under 512 KB */
 static u32 s_pool_used;
 static void *take(u32 n)
 {

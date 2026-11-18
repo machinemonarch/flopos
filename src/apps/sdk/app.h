@@ -26,7 +26,7 @@ typedef signed int          s32;
 typedef unsigned long long  u64;
 #endif
 
-#define APP_API_VERSION 11
+#define APP_API_VERSION 12
 #define APP_BASE        0x00C00000u      /* 12MB: two whole 4MB pages, the app's own */
 #define APP_MAX         0x00800000u      /* 8MB: code, data, buffers and the stack */
 #define APP_STACK       0x00040000u      /* the top 256KB: its stack, and a page the system fills in */
@@ -367,6 +367,14 @@ typedef struct {
      * sounds either, for sound that must not be disturbed (a tape being
      * written or read).  hush(0) lets them back; leaving the app does too. */
     void (*hush)(int on);
+
+    /* ---- version 12: sealed media, and the floppy's size ---- */
+    /* AES-128 in CBC mode, undone: n bytes (a multiple of 16) from in to
+     * out, which may be the same.  For radio sealed that way (HLS).  It
+     * cannot tell a wrong key; the caller judges what comes out. */
+    void (*crypt_cbc)(const u8 key[16], const u8 iv[16], const u8 *in, u32 n, u8 *out);
+    /* The bytes the floppy holds for files, in all (inv_room is what is free). */
+    u32  (*inv_size)(void);
 } Api;
 
 #define CRYPT_CHACHA20_POLY1305 0        /* 256-bit key                     */

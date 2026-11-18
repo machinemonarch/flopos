@@ -33,13 +33,13 @@ might; `ip drop 0` stops it.
 - **`test/tapetest/run.sh`:** Cassette sound through a pretend tape (off speed, wavering, quiet, noisy, dull, upside down, a dropout) and back.
 - **`test/keeptest.sh`:** What `writefloppy.sh` does to carry the user's files to a new release.
 - **`test/doccheck.py`:** Every link in the Markdown leads to a page and heading.
-- **`test/audiotest/`:** `render.c` plays a tracker song through FLOPOS's tracker; `compare.py` checks it against libopenmpt; `fetch.py` fetches the songs in `songs.txt` (never kept here).
+- **`test/audiotest/`:** `render.c` plays a tracker song through FLOPOS's tracker; `compare.py` checks it against libopenmpt; `fetch.py` fetches the songs in `songs.txt` (never kept here); `decode.c` runs any recording through FLOPOS's decoders and writes the samples.
 - **`tools/wizard/enginetest.py`:** The wizard's engine against the Python version.
 
 ## In the emulator
 
 - **`test/bench/run.py IMAGE OUT STEP ...`:** Boots the image, types and presses keys, and checks each step against what FLOPOS says on its serial line (`key:ctrl-shift-f10`, `type:whoami\n=>alright`). It waits on FLOPOS's messages, with the clock running ahead; a full check takes about half a minute. `--slow` holds it to the laptop's speed. It records everything the Sound Blaster played.
-- **`test/bench/site.py`:** A small local site imitating pages browzer has had trouble with; `--site SONGS` starts it.
+- **`test/bench/site.py`:** A small local site imitating pages browzer has had trouble with, and HLS radio of every kind browzer plays (sealed, MP4 pieces, a wrong key); `--site SONGS` starts it.
 - **`test/bench/tlstest.py IMAGE WORKDIR`:** A test authority and six local OpenSSL servers, every TLS form FLOPOS takes and one it must refuse.
 - **`test/roomtest/run.py`, `test/scripttest/run.py`:** The script room, and scripts on the test site's pages.
 - **`test/walltest/run.py`:** An app that breaks each of the wall's rules (`rogue.c`); FLOPOS must close it and carry on.

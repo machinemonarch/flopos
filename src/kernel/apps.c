@@ -142,6 +142,11 @@ static int api_room_task(const u8 *task, u32 len, u8 *answer, u32 cap, u32 ms,
     return room_task(task, len, answer, cap, ms, (u32)door, door_buf, door_cap);
 }
 
+static void api_cbc(const u8 *key, const u8 *iv, const u8 *in, u32 n, u8 *out)
+{
+    aes_cbc_decrypt(key, 16, iv, in, out, n & ~15u);
+}
+
 static const Api s_api = {
     APP_API_VERSION,
     api_win_open, term_win_close, term_win_width, term_win_height,
@@ -174,6 +179,8 @@ static const Api s_api = {
     room_open, api_room_task, room_why,
     /* version 11 */
     snd_hush,
+    /* version 12 */
+    api_cbc, inv_size,
 };
 
 /* ---- behind the wall (wall.c): one request from an app, checked -----------
@@ -337,6 +344,9 @@ int app_ask(u32 n, const u32 *a, u32 *result)
              r = (u32)room_task((const u8 *)a[0], a[1], (u8 *)a[2], a[3], a[4], a[5], (u8 *)a[6], a[7]); break;
     case 60: r = wall_string(2, room_why()); break;
     case 61: k->hush((int)a[0]); break;
+    case 62: BUF(0, 16); BUF(1, 16); BUF(2, a[3]); BUF(4, a[3]);
+             k->crypt_cbc((const u8 *)a[0], (const u8 *)a[1], (const u8 *)a[2], a[3], (u8 *)a[4]); break;
+    case 63: r = k->inv_size(); break;
     default: return 0;
     }
 #undef STR
@@ -345,7 +355,7 @@ int app_ask(u32 n, const u32 *a, u32 *result)
     *result = r;
     return 1;
 }
-_Static_assert((sizeof(Api) - 4) / 4 == 62, "a function was added to the table: give it a case in app_ask");
+_Static_assert((sizeof(Api) - 4) / 4 == 64, "a function was added to the table: give it a case in app_ask");
 
 static int memory_for_apps(void)
 {

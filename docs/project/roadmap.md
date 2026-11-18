@@ -4,6 +4,10 @@ Ideas waiting their turn. None is started until Max picks it, and each
 gets a short plan with a rough cost first. What is done is in the
 CHANGELOG.
 
+## Planned
+
+- **Packed files, the release after next:** The kernel, the apps and the pictures kept packed on the floppy with a simple, fast LZ, and unpacked as they load. Nothing is packed today. A strong packer halves the kernel and browzer; a simple one saves about a third, roughly 250 KB of floppy, and loads a third faster, since the Pentium unpacks far faster than the drive reads. It needs an unpacker in the boot stub and the app loader, and testing on the laptop.
+
 ## Waiting to be picked
 
 - **A chat app:** Like Discord, IRC, WhatsApp or Signal; which is open. IRC is easiest for this machine, given a channel worth being in.

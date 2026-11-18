@@ -11,7 +11,10 @@ without it. Each version's notes are also written next to its image, as
 - `clock` opens a menu: the time, where it came from, the signed time
   servers, and how far to trust the network beyond them.
 - browzer plays stations that stream in short pieces (HLS, `.m3u8`),
-  live or not, AAC or mp3, as many big broadcasters do.
+  live or not, AAC or mp3, sealed with AES-128 or not, in transport
+  packets or MP4 pieces, as many big broadcasters do.
+- The inventory shows how full the floppy is: a bar, the share used, and
+  how many KB of how many.
 - The system now runs above the first megabyte: it had six kilobytes
   left to grow in, and now has hundreds.
 

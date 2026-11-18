@@ -21,6 +21,7 @@
 
 static const Api *A;
 static int  W, H, ROWS;
+#define BAR 24                           /* the fullness bar's cells        */
 static char s_dir[INV_PATH];             /* where we are; "" is the top     */
 static InvItem s_it[MAXI];
 static int  s_n, s_sel, s_top;
@@ -123,8 +124,16 @@ static void draw(void)
     A->win_put(x++, 0, A_FR_H, A_GREY, A_PAPER, 0);
     A->format(m, sizeof m, " /%s ", s_dir);
     A->win_text(x, 0, m, A_TEXT, A_PAPER);
-    A->format(m, sizeof m, " %u KB free ", room / 1024);
-    A->win_text(W - 3 - len(m), H - 1, m, A_DIM, A_PAPER);
+    {                                            /* how full the floppy is */
+        u32 size = A->inv_size(), used = size > room ? size - room : 0;
+        u32 uk = used / 1024, sk = size / 1024 ? size / 1024 : 1;   /* in KB, so nothing overflows */
+        u32 pct = uk * 100 / sk, cells = BAR * uk / sk;
+        u8 fill = pct >= 90 ? A_RED : A_ACCENT;
+        x = A->win_text(2, H - 6, "floppy", A_DIM, A_PAPER) + 1;
+        for (i = 0; i < BAR; i++) A->win_put(x + i, H - 6, ' ', A_TEXT, (u32)i < cells ? fill : A_HILITE, 0);
+        A->format(m, sizeof m, "%u%%  %u KB of %u KB used", pct, (used + 512) / 1024, (size + 512) / 1024);
+        A->win_text(x + BAR + 2, H - 6, m, A_TEXT, A_PAPER);
+    }
 
     A->win_text(2, 1, "name", A_DIM, A_PAPER);
     A->win_text(16, 1, "kind", A_DIM, A_PAPER);
@@ -219,7 +228,7 @@ int app_main(const Api *api, int argc, char **argv)
     A = api;
     A->win_open(A->screen_cols(), A->screen_rows());
     W = A->win_width(); H = A->win_height();
-    ROWS = H - 8;
+    ROWS = H - 9;
 
     /* Where to start: a folder, or a file's folder with the file picked out. */
     if (argc >= 2 && argv[1][0] && A->inv_stat(argv[1], &st)) {
