@@ -43,7 +43,7 @@ Weighed before it was written, and kept to what Chrome offers:
 
 ## Patched
 
-- **Signed network time (2026-11-18):** the clock is set only from NTS (RFC 8915, `nts.c`): a TLS 1.3 key exchange with the certificate checked, then NTP answers signed with AES-SIV-CMAC (`aes.c`, checked against RFC 5297's examples), each with a fresh identifier and a one-time cookie. Plain NTP is only a fallback, by default only from the time server the local network names, and never earlier than the last `bye` (`clock` sets it). Tried against Netnod's and PTB's public servers; `test/fuzz` has an `nts` target.
+- **Signed network time (2026-11-18):** the clock is set only from NTS (RFC 8915, `nts.c`): a TLS 1.3 key exchange with the certificate checked, then NTP answers signed with AES-SIV-CMAC (`aes.c`, checked against RFC 5297's examples), each with a fresh identifier and a one-time cookie. Plain NTP is only a fallback, by default only from the time server the local network names, and never earlier than the last `bye` (`clock` sets it). Tried against Netnod's and PTB's public servers (Cloudflare's and time.nl's hang up before a 120 MHz machine has checked their certificates); `test/fuzz` has an `nts` target.
 - **App requests `clock` and `glyph`:** read only, writing a fixed few bytes into a checked buffer.
 - **Sealing for apps (1.37.0):** PBKDF2 keys and ChaCha20/AES-GCM sealing, buffers checked, rounds capped. 10,000 rounds is light, so passphrases must be long.
 - **Walls between apps and the kernel (1.33.0):** apps run in ring 3 behind paging, every pointer checked, a rule-breaker closed (`test/walltest`). Not covered: faults in the kernel's own readers, and a 486 (no wall).

@@ -33,7 +33,10 @@ int  conn_read(u8 *b, int n, int wait_ms);
 void conn_close(void);
 const char *conn_why(void);
 
-static const char *const s_default[3] = { "nts.netnod.se", "ptbtime1.ptb.de", "time.cloudflare.com" };
+/* Servers that wait for a 120 MHz machine: its TLS handshake, with the
+ * certificate chain checked, takes about two seconds, and some (Cloudflare's,
+ * time.nl's) hang up before it is done. */
+static const char *const s_default[3] = { "nts.netnod.se", "ptbtime1.ptb.de", "ptbtime2.ptb.de" };
 static char s_srv[3][64];                /* the signed servers, in order   */
 static int  s_trust = 1, s_loaded;
 static char s_source[80];                /* where the time last came from  */
