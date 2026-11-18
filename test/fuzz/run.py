@@ -112,6 +112,16 @@ text</textarea><button type="submit" name="go" value="1">Go</button><input type=
 <p>שלום 世界 😀 end</p></body></html>"""
     resp("page.bin", page)
     resp("small.bin", "<title>t</title><p>Just <a href='/a'>one</a> link.</p>")
+    # HLS: every request answered alike, so a playlist's segments are the
+    # playlist again, or the transport packets below
+    resp("hls-master.bin", "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\nlo.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=999999999999\nhi.m3u8\n",
+         ctype="application/vnd.apple.mpegurl")
+    resp("hls-live.bin", "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:4294967290\n" +
+         "".join("#EXTINF:2.0,\nseg%d.ts\n" % i for i in range(8)), ctype="application/vnd.apple.mpegurl")
+    ts = b"".join(bytes([0x47, 0x41 if i == 0 else 0x01, 0x01, 0x10 | (i & 15)]) +
+                  ((b"\x00\x00\x01\xc0\x00\x00\x80\x80\x05\x21\x00\x01\x00\x01" if i == 0 else b"") +
+                   b"\xff\xfb\x90\x44" + bytes(range(256)) * 2)[:184] for i in range(12))
+    resp("hls-ts.bin", ts, ctype="video/mp2t")
     resp("text.bin", "plain text\nwith lines\n\tand tabs\n" * 20, ctype="text/plain")
     resp("moved.bin", "<a href='/new'>moved</a>", status="302 Found",
          extra="Location: /new/place?x=1\r\nSet-Cookie: sid=abc123; Path=/; HttpOnly\r\nSet-Cookie: big=%s; Max-Age=60\r\n" % ("v" * 300))

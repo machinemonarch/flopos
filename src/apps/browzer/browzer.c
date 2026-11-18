@@ -240,12 +240,22 @@ static int is_playlist(void)
 {
     return type_is(s_dl_type, "audio/x-mpegurl") || type_is(s_dl_type, "audio/mpegurl") ||
            type_is(s_dl_type, "audio/x-scpls") || type_is(s_dl_type, "application/pls") ||
-           ends_with(s_dl_url, ".m3u") || ends_with(s_dl_url, ".pls");
+           type_is(s_dl_type, "application/vnd.apple.mpegurl") || type_is(s_dl_type, "application/x-mpegurl") ||
+           ends_with(s_dl_url, ".m3u") || ends_with(s_dl_url, ".m3u8") || ends_with(s_dl_url, ".pls");
 }
+
+/* An HLS piece being fetched (hls_get, below): the media hooks fill s_seg. */
+#define PL_MAX  (16u << 10)
+#define SEG_MAX (DL_MAX - ST_MAX - PL_MAX)   /* the half of s_dl a stream leaves free */
+#define s_seg   (s_dl + ST_MAX)
+#define s_pl    ((char *)s_dl + DL_MAX - PL_MAX)   /* the playlist, behind the segment */
+static u32  s_seg_len;
+static int  s_hls, s_seg_whole;
 
 static int media_start(const char *ctype, const char *url, u32 length, u32 metaint, const char *station)
 {
     int i, audio;
+    if (s_hls) { s_seg_len = 0; return 1; }     /* an HLS piece: whole, into s_seg */
     /* Its memory is about to be used -- except when a station is called
      * again, when what is still queued plays on while it answers. */
     if (!s_redial) { music_stop(); s_redials = 0; }
@@ -385,6 +395,13 @@ static int stream_take(const u8 *p, int n)
 
 static int media_bytes(const u8 *p, int n)
 {
+    if (s_hls) {
+        if (s_seg_len + (u32)n > SEG_MAX) return 0;
+        memcpy(s_seg + s_seg_len, p, (u32)n);
+        s_seg_len += (u32)n;
+        if (s_dl_state == DL_STREAM) stream_draw();     /* the player stays alive */
+        return 1;
+    }
     if (s_dl_state == DL_STREAM) {
         /* Take the song titles out, if the station puts them in. */
         while (n > 0 && s_metaint) {
@@ -421,6 +438,7 @@ static int media_bytes(const u8 *p, int n)
 static void media_end(int whole)
 {
     if (whole < 0) { s_esc = 1; whole = 0; }          /* esc, while reading */
+    if (s_hls) { s_seg_whole = whole; return; }
     if (s_dl_state == DL_COMING) s_dl_state = whole ? DL_CAME : DL_BROKE;
     else if (s_dl_state == DL_STREAM) {
         /* What is left is played out by feed(); a station about to be
@@ -470,6 +488,219 @@ int ui_key(void)
     if (k >= 0 && (mods & (M_CTRL | M_ALT))) return -1;
     return k;
 }
+
+/* ---- HLS ------------------------------------------------------------------
+ * Some stations stream as a playlist of short pieces (HTTP Live Streaming,
+ * RFC 8216): an .m3u8 lists segments of a few seconds each, and a live
+ * one is read again for the next ones as they are made.  A "master"
+ * playlist lists versions at different bitrates instead; the leanest is
+ * taken.  Each segment is fetched whole into s_seg, the second half of
+ * s_dl, which a stream leaves free (the media hooks are told so by s_hls), and its sound added to the stream's buffer, which
+ * feed() plays from as it does any radio.  Segments are AAC or mp3 inside
+ * MPEG transport packets, or the bare frames with an ID3 tag in front.
+ * Sealed segments (EXT-X-KEY) and MP4 pieces (EXT-X-MAP) are not read. */
+static int  s_ts_pid;                    /* the transport stream's sound     */
+
+static u32 hls_len(const char *t) { u32 n = 0; while (t[n]) n++; return n; }
+
+/* Is needle anywhere in t? */
+static int has(const char *t, const char *needle)
+{
+    u32 i, k, m = hls_len(needle);
+    for (i = 0; t[i]; i++) {
+        for (k = 0; k < m && t[i + k] == needle[k]; k++) { }
+        if (k == m) return 1;
+    }
+    return 0;
+}
+
+static int hls_is(const u8 *t, u32 n)
+{
+    u32 i;
+    if (n < 7 || t[0] != '#' || t[1] != 'E' || t[2] != 'X' || t[3] != 'T' || t[4] != 'M' || t[5] != '3' || t[6] != 'U')
+        return 0;
+    for (i = 0; i + 8 < n; i++)          /* a plain .m3u has #EXTINF too: look for HLS's own tags */
+        if (t[i] == '#' && t[i + 1] == 'E' && t[i + 2] == 'X' && t[i + 3] == 'T' && t[i + 4] == '-' && t[i + 5] == 'X' && t[i + 6] == '-')
+            return 1;
+    return 0;
+}
+
+/* Does the line at l start with the tag? */
+static int tag(const char *l, const char *t)
+{
+    while (*t) if (*l++ != *t++) return 0;
+    return 1;
+}
+
+/* The number after key on this line (whole: 0 means the playlist's own
+ * tags, searched to its end). */
+static u32 num_in(const char *l, const char *key, int whole)
+{
+    u32 v = 0;
+    while (*l && (whole || *l != '\n')) {
+        if (tag(l, key)) { l += hls_len(key); while (*l >= '0' && *l <= '9') v = v * 10 + (u32)(*l++ - '0'); return v; }
+        l++;
+    }
+    return 0;
+}
+
+/* One segment or playlist, fetched whole into s_seg. */
+static int hls_get(const char *url)
+{
+    s_seg_len = 0; s_seg_whole = 0;
+    s_hls = 1;
+    (void)http_load(url, &s_pg, 0, 0);
+    s_hls = 0;
+    return s_seg_whole && !s_esc;
+}
+
+/* Sound out of a segment, into the stream's buffer.  MPEG transport
+ * packets (188 bytes, 0x47 first): the first stream whose packets begin
+ * with an audio PES header (stream id 0xC0-0xDF) is followed, and the
+ * header stepped over.  Bare frames: an ID3 tag in front is stepped over. */
+static int hls_feed(const u8 *p, u32 n)
+{
+    u32 i;
+    if (n >= 188 && p[0] == 0x47 && (n < 376 || p[188] == 0x47)) {
+        for (i = 0; i + 188 <= n; i += 188) {
+            const u8 *k = p + i;
+            int pid = ((k[1] & 0x1F) << 8) | k[2], afc = (k[3] >> 4) & 3, off = 4;
+            if (k[0] != 0x47 || !(afc & 1)) continue;
+            if (afc & 2) off += 1 + k[4];
+            if (off + 9 > 188) continue;
+            if ((k[1] & 0x40) && k[off] == 0 && k[off + 1] == 0 && k[off + 2] == 1) {
+                int sid = k[off + 3];
+                if (s_ts_pid < 0 && sid >= 0xC0 && sid <= 0xDF) s_ts_pid = pid;
+                if (pid == s_ts_pid) off += 9 + k[off + 8];
+            }
+            if (pid != s_ts_pid || off >= 188) continue;
+            if (!stream_take(k + off, 188 - off)) return 0;
+        }
+        return 1;
+    }
+    if (n >= 10 && p[0] == 'I' && p[1] == 'D' && p[2] == '3') {
+        u32 t = 10 + ((u32)(p[6] & 127) << 21 | (u32)(p[7] & 127) << 14 | (u32)(p[8] & 127) << 7 | (p[9] & 127));
+        if (p[5] & 0x10) t += 10;                    /* a footer too */
+        if (t >= n) return 1;
+        p += t; n -= t;
+    }
+    return stream_take(p, (int)n);
+}
+
+/* Waits ms while the music plays on; 0 if esc was pressed. */
+static int hls_wait(u32 ms)
+{
+    u32 t0 = A->ms();
+    while (A->ms() - t0 < ms) {
+        if (ui_key() == UK_ESC) { s_esc = 1; return 0; }
+        stream_draw();
+        A->pump(0);
+    }
+    return 1;
+}
+
+/* Follows the playlist s_dl holds (from s_dl_url) until it ends, esc, or
+ * the station stops answering.  Returns the state for the page to say. */
+static int hls_play(void)
+{
+    char base[PAGE_HREF_MAX + 16], uri[PAGE_HREF_MAX + 16];
+    u32 next = 0, i, n;
+    int first = 1, tries = 0;
+
+    n = s_dl_len < PL_MAX - 1 ? s_dl_len : PL_MAX - 1;
+    memcpy(s_pl, s_dl, n); s_pl[n] = 0;
+    fmt_str(base, sizeof base, "%s", s_dl_url);
+
+    /* A master playlist: the leanest version. */
+    if (has(s_pl, "#EXT-X-STREAM-INF")) {
+        u32 best = 0xFFFFFFFFu;
+        const char *l = s_pl;
+        uri[0] = 0;
+        while (*l) {
+            if (tag(l, "#EXT-X-STREAM-INF")) {
+                u32 bw = num_in(l, "BANDWIDTH=", 0);
+                const char *u = l;
+                while (*u && *u != '\n') u++;
+                while (*u == '\n' || *u == '\r') u++;
+                if (*u && *u != '#' && bw < best) {
+                    char rel[PAGE_HREF_MAX];
+                    int k = 0;
+                    while (u[k] && u[k] != '\r' && u[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = u[k]; k++; }
+                    rel[k] = 0;
+                    if (url_resolve(base, rel, uri, (int)sizeof uri)) best = bw;
+                }
+            }
+            while (*l && *l != '\n') l++;
+            if (*l) l++;
+        }
+        if (!uri[0] || !hls_get(uri)) return s_esc ? DL_STREAM_END : DL_UNPLAYABLE;
+        n = s_seg_len < PL_MAX - 1 ? s_seg_len : PL_MAX - 1;
+        memcpy(s_pl, s_seg, n); s_pl[n] = 0;
+        fmt_str(base, sizeof base, "%s", uri);
+    }
+
+    /* The stream, as media_start makes it for radio. */
+    s_lock = 1;
+    s_dl_state = DL_STREAM;
+    s_metaint = 0;
+    s_in.buf = s_dl; s_in.len = 0; s_in.pos = 0; s_in.done = 0;
+    s_dec.decode = 0;
+    s_feeding_ok = 0;
+    s_buffering = 0;
+    s_dl_type[0] = 0;                    /* the sound says what it is */
+    s_ts_pid = -1;
+    s_conn_ms = A->ms();
+    s_lock = 0;
+
+    for (;;) {
+        u32 seq = num_in(s_pl, "#EXT-X-MEDIA-SEQUENCE:", 1), target = num_in(s_pl, "#EXT-X-TARGETDURATION:", 1);
+        u32 count = 0, got = 0;
+        const char *l = s_pl;
+        int ended = has(s_pl, "#EXT-X-ENDLIST");
+        if (has(s_pl, "#EXT-X-MAP") || (has(s_pl, "#EXT-X-KEY") && !has(s_pl, "METHOD=NONE")))
+            return DL_UNPLAYABLE;
+        s_live = !ended;
+        for (l = s_pl; *l; ) {                        /* how many segments it lists */
+            if (*l != '#' && *l != '\r' && *l != '\n') count++;
+            while (*l && *l != '\n') l++;
+            if (*l) l++;
+        }
+        if (first) {                                  /* live: join near the end */
+            next = seq + (s_live && count > 3 ? count - 3 : 0);
+            first = 0;
+        }
+        for (l = s_pl, i = 0; *l; ) {
+            if (*l != '#' && *l != '\r' && *l != '\n') {
+                char rel[PAGE_HREF_MAX];
+                int k = 0;
+                while (l[k] && l[k] != '\r' && l[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = l[k]; k++; }
+                rel[k] = 0;
+                if (seq + i >= next && url_resolve(base, rel, uri, (int)sizeof uri)) {
+                    if (!hls_get(uri)) { if (s_esc) goto out; break; }
+                    if (!hls_feed(s_seg, s_seg_len)) goto out;
+                    next = seq + i + 1;
+                    got++;
+                }
+                i++;
+            }
+            while (*l && *l != '\n') l++;
+            if (*l) l++;
+        }
+        if (ended) break;
+        /* Live: read the playlist again after half a segment's length; a
+         * station that gives nothing new for a while has stopped. */
+        tries = got ? 0 : tries + 1;
+        if (tries > 6) break;
+        if (!hls_wait((target ? target : 6) * 500)) goto out;
+        if (!hls_get(base)) { if (s_esc) goto out; break; }
+        n = s_seg_len < PL_MAX - 1 ? s_seg_len : PL_MAX - 1;
+        memcpy(s_pl, s_seg, n); s_pl[n] = 0;
+    }
+out:
+    media_end(s_esc ? -1 : 1);
+    return DL_STREAM_END;
+}
+
 
 static PageField *field_of(int link)
 {
@@ -1087,6 +1318,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
             }
         }
 
+        if (st == DL_CAME && hls_is(s_dl, s_dl_len)) st = hls_play();   /* pieces, followed */
         if (st == DL_CAME && is_playlist()) {
             /* Each of its servers in turn, until one answers with sound. */
             char cand[4][PAGE_HREF_MAX + 16];

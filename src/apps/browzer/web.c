@@ -2181,7 +2181,8 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                      * for playing, not for reading. */
                     int k = 0, pl;
                     while (u->path[k] && u->path[k] != '?') k++;
-                    pl = (k > 4 && lower_eq(u->path + k - 4, ".m3u", 4)) || (k > 4 && lower_eq(u->path + k - 4, ".pls", 4));
+                    pl = (k > 4 && lower_eq(u->path + k - 4, ".m3u", 4)) || (k > 4 && lower_eq(u->path + k - 4, ".pls", 4)) ||
+                         (k > 5 && lower_eq(u->path + k - 5, ".m3u8", 5));
                     if (pl && s_pg) { html = 0; fmt_str(ctype, sizeof ctype, "audio/x-mpegurl"); }
                 }
                 if (!html && !lower_eq(ctype, "text/", 5) && ctype[0] && s_pg && web_media_start &&

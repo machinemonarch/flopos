@@ -8,6 +8,8 @@ without it. Each version's notes are also written next to its image, as
 
 ### FEATURES
 
+- browzer plays stations that stream in short pieces (HLS, `.m3u8`),
+  live or not, AAC or mp3, as many big broadcasters do.
 - The system now runs above the first megabyte: it had six kilobytes
   left to grow in, and now has hundreds.
 

@@ -19,8 +19,14 @@ QEMU's guest reaches it at http://10.0.2.2:PORT/.  Pages:
   /radio-browser/json/stations/bycountrycodeexact/IL   that directory's answer
   /js/...            pages with scripts for the script room (see JS below)
   /css/basic         a page whose styles hide things and pin a pop-up
+  /hls/master.m3u8   HLS: a master playlist of two bitrates (the high one is
+                     missing, so only the leaner may be taken), leading to
+  /hls/lo.m3u8       a finished playlist of mp3 in MPEG transport packets
+  /hls/raw.m3u8      the same as bare mp3 segments with an ID3 tag in front
+  /hls/live.m3u8     a live window of four, sliding on with the clock
+                     (the sound is the first ~/.cache/flopos-fuzz/audio/seed*.mp3)
 """
-import glob, http.server, json, os, sys
+import glob, http.server, json, os, struct, sys, time
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8150
 SONGS = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser("~/.cache/flopos-songs")
@@ -126,6 +132,85 @@ h1 { text-align: center } nav ul { list-style: none } .sr { position: absolute; 
 <nav><ul><li>Home</li><li>About</li></ul></nav><div class="menu">HOVER MENU</div><p hidden>HIDDEN ATTR</p><p>The end.</p>""",
 }
 
+# ---- HLS ---------------------------------------------------------------------
+def _mp3(b):
+    """The frames of an MPEG-1 layer III file, after any ID3 tag."""
+    i = 0
+    if b[:3] == b"ID3":
+        i = 10 + ((b[6] & 127) << 21 | (b[7] & 127) << 14 | (b[8] & 127) << 7 | (b[9] & 127))
+    rates = (0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
+    out, sr = [], 44100
+    while i + 4 <= len(b):
+        if b[i] != 0xFF or (b[i + 1] & 0xFE) != 0xFA: i += 1; continue   # MPEG-1 layer III
+        br = rates[b[i + 2] >> 4] if (b[i + 2] >> 4) < 15 else 0
+        sr = (44100, 48000, 32000, 0)[(b[i + 2] >> 2) & 3]
+        if not br or not sr: i += 1; continue
+        n = 144000 * br // sr + ((b[i + 2] >> 1) & 1)
+        if i + n > len(b): break
+        out.append(b[i:i + n]); i += n
+    return out, sr
+
+def _frames():
+    fr, sr = [], 44100
+    for f in sorted(glob.glob(os.path.expanduser("~/.cache/flopos-fuzz/audio/seed*.mp3"))):
+        got, sr = _mp3(open(f, "rb").read())
+        if got: fr = got; break
+    if not fr: return [], 44100
+    while len(fr) * 1152 < sr * 40: fr = fr + fr            # forty seconds at least
+    return fr, sr
+
+FRAMES, RATE = _frames()
+SEG_FRAMES = max(1, 2 * RATE // 1152)                         # two seconds a segment
+NSEG = len(FRAMES) // SEG_FRAMES
+T0 = time.time()
+
+def _seg(n):
+    n %= max(1, NSEG)
+    return b"".join(FRAMES[n * SEG_FRAMES:(n + 1) * SEG_FRAMES])
+
+def _ts(es, cc=[0]):
+    def pkt(pid, payload, start):
+        hdr = bytes([0x47, (0x40 if start else 0) | (pid >> 8), pid & 0xFF])
+        cc[0] = (cc[0] + 1) & 15
+        if len(payload) >= 184: return hdr + bytes([0x10 | cc[0]]) + payload[:184], payload[184:]
+        stuff = 184 - len(payload) - 1                        # adaptation field fills the rest
+        af = bytes([stuff]) + (bytes([0]) + b"\xff" * (stuff - 1) if stuff else b"")
+        return hdr + bytes([0x30 | cc[0]]) + af + payload, b""
+    pat = b"\x00\x00\xb0\x0d\x00\x01\xc1\x00\x00\x00\x01\xf0\x00" + b"\x00" * 4
+    pmt = b"\x00\x02\xb0\x12\x00\x01\xc1\x00\x00\xe1\x01\xf0\x00\x03\xe1\x01\xf0\x00" + b"\x00" * 4
+    out = pkt(0, pat + b"\xff" * (184 - len(pat)), True)[0] + pkt(0x1000, pmt + b"\xff" * (184 - len(pmt)), True)[0]
+    pes = b"\x00\x00\x01\xc0\x00\x00\x80\x80\x05\x21\x00\x01\x00\x01" + es
+    first = True
+    while pes:
+        p, pes = pkt(0x101, pes, first); first = False
+        out += p
+    return out
+
+def _id3():
+    return b"ID3\x04\x00\x00\x00\x00\x00\x0a" + b"PRIV\x00\x00\x00\x00\x00\x00"[:10]
+
+def hls(p):
+    """(content type, body) for an /hls/ path, or None."""
+    pl = "application/vnd.apple.mpegurl"
+    if p == "/hls/master.m3u8":
+        return pl, b"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=256000,CODECS=\"mp4a.40.2\"\nhi.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=64000,CODECS=\"mp4a.40.2\"\nlo.m3u8\n"
+    if p in ("/hls/lo.m3u8", "/hls/raw.m3u8"):
+        ext = "ts" if "lo" in p else "mp3"
+        body = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n"
+        for n in range(min(NSEG, 12)): body += "#EXTINF:2.0,\n%s/%d.%s\n" % (ext, n, ext)
+        return pl, (body + "#EXT-X-ENDLIST\n").encode()
+    if p == "/hls/live.m3u8":
+        now = int((time.time() - T0) / 2)
+        body = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:%d\n" % now
+        for n in range(now, now + 4): body += "#EXTINF:2.0,\n%s/hls/ts/%d.ts\n" % (HOST, n)
+        return pl, body.encode()
+    if p.startswith("/hls/ts/") and p.endswith(".ts"):
+        return "video/mp2t", _ts(_seg(int(p[8:-3])))
+    if p.startswith("/hls/mp3/") and p.endswith(".mp3"):
+        return "audio/mpeg", _id3() + _seg(int(p[9:-4]))
+    return None
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
     def log_message(self, *a): pass
@@ -164,6 +249,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # UTF-8 as it is in the first two, \\u escapes in the third, \\/ throughout
             body = (json.dumps(st[:2], ensure_ascii=False)[:-1] + ", " + json.dumps(st[2]) + "]").replace("/", "\\/")
             return self.send(200, "application/json", body.encode())
+        if p.startswith("/hls/"):
+            h = hls(p)
+            if h: return self.send(200, h[0], h[1])
         if p in JS:
             ctype = "application/javascript" if p.endswith(".js") else "application/json" if p.startswith("/api/") else "text/html; charset=UTF-8"
             return self.send(200, ctype, JS[p].encode())
