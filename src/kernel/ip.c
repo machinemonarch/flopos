@@ -322,7 +322,6 @@ static int udp_send(u32 to, u16 sport, u16 dport, const u8 *data, int len)
 
 static u32 s_xid;
 static int s_dhcp;                       /* 1 waiting offer, 2 ack, 3 done */
-static u32 s_ntp_srv;                    /* the time server DHCP named, or 0 */
 static u32 s_off_ip, s_off_server, s_off_mask, s_off_gw, s_off_dns;
 
 static int dhcp_send(int type)
@@ -363,7 +362,7 @@ static void take_dhcp(const u8 *p, int len)
 {
     const u8 *mac = net_mac();
     int i, type = 0;
-    u32 server = 0, mask = 0, gw = 0, dns = 0, ntp = 0;
+    u32 server = 0, mask = 0, gw = 0, dns = 0;
 
     if (len < 240 || p[0] != 2 || get32(p + 4) != s_xid) return;
     for (i = 0; i < 6; i++) if (p[28 + i] != mac[i]) return;
@@ -379,7 +378,6 @@ static void take_dhcp(const u8 *p, int len)
         if (code == 1  && l >= 4) mask = get32(p + i + 2);
         if (code == 3  && l >= 4) gw = get32(p + i + 2);
         if (code == 6  && l >= 4) dns = get32(p + i + 2);
-        if (code == 42 && l >= 4) ntp = get32(p + i + 2);
         i += 2 + l;
     }
 
@@ -391,7 +389,6 @@ static void take_dhcp(const u8 *p, int len)
         s_off_dns = dns;
         s_dhcp = 2;
     } else if (type == DHCP_ACK && s_dhcp == 2) {
-        s_ntp_srv = ntp;
         s_ip = get32(p + 16);
         s_mask = mask ? mask : s_off_mask;
         s_gw = gw ? gw : s_off_gw;
@@ -532,49 +529,36 @@ u32 ip_lookup(const char *name)
     return 0;
 }
 
-/* ---- the time -----------------------------------------------------------
- * One question to a time server: 48 bytes, and the answer's seconds since
- * 1900 sit in the middle of 48 coming back.  The question carries eight
- * random bytes where the time would go, and an answer is believed only if
- * it comes from the server that was asked and carries them back -- so a
- * stranger cannot tell this machine what time it is with a guess.
- */
-static u16 s_ntp_port;
-static u32 s_ntp_asked, s_ntp_nonce[2], s_ntp_got;
+/* ---- a question over UDP ----------------------------------------------
+ * One datagram out to a server, and its answer back (nts.c asks the time
+ * this way).  The answer is believed only if it comes from the address
+ * asked, to the random port it was asked from, while the question is open. */
+static u16 s_ask_port;
+static u32 s_ask_to;
+static u8 *s_ask_buf;
+static int s_ask_max, s_ask_len;
 
-static void take_ntp(const u8 *ip_hdr, const u8 *p, int len)
+static void take_answer(const u8 *ip_hdr, const u8 *p, int len)
 {
-    if (len < 48 || get32(ip_hdr + 12) != s_ntp_asked) return;
-    if ((p[0] & 7) != 4 || p[1] == 0 || p[1] > 15) return;     /* a server, and not refusing */
-    if (get32(p + 24) != s_ntp_nonce[0] || get32(p + 28) != s_ntp_nonce[1]) return;
-    s_ntp_got = get32(p + 40) - 3155673600u;    /* since 2000; past 2036 too */
-    if (!s_ntp_got) s_ntp_got = 1;
+    if (get32(ip_hdr + 12) != s_ask_to || s_ask_len) return;
+    if (len > s_ask_max) len = s_ask_max;
+    { int i; for (i = 0; i < len; i++) s_ask_buf[i] = p[i]; }
+    s_ask_len = len ? len : -1;
 }
 
-u32 ip_ntp_time(void)
+int ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wait_ms)
 {
-    u8 q[48];
-    u32 srv = s_ntp_srv, until;
-    int i, tries;
-
-    if (!net_ready() || !s_ip) return 0;
-    if (!srv) srv = ip_lookup("pool.ntp.org");
-    if (!srv) return 0;
-    s_ntp_got = 0;
-    for (tries = 0; tries < 2 && !s_ntp_got; tries++) {
-        for (i = 0; i < 48; i++) q[i] = 0;
-        q[0] = 0x23;                     /* version 4, a client           */
-        rand_bytes((u8 *)s_ntp_nonce, 8);
-        put32(q + 40, s_ntp_nonce[0]);
-        put32(q + 44, s_ntp_nonce[1]);
-        s_ntp_asked = srv;
-        s_ntp_port = (u16)(49152 + (s_ntp_nonce[0] & 0x3FFF));
-        if (!udp_send(srv, s_ntp_port, 123, q, 48)) break;
-        until = ms_now() + 1500;
-        while (ms_now() < until && !s_ntp_got) ip_poll();
-    }
-    s_ntp_port = 0;
-    return s_ntp_got;
+    u16 r;
+    u32 until;
+    if (!net_ready() || !s_ip || !to) return 0;
+    rand_bytes((u8 *)&r, 2);
+    s_ask_to = to; s_ask_buf = ans; s_ask_max = max; s_ask_len = 0;
+    s_ask_port = (u16)(49152 + (r & 0x3FFF));
+    if (!udp_send(to, s_ask_port, port, q, qlen)) { s_ask_port = 0; return 0; }
+    until = ms_now() + (u32)wait_ms;
+    while (ms_now() < until && !s_ask_len) ip_poll();
+    s_ask_port = 0;
+    return s_ask_len > 0 ? s_ask_len : 0;
 }
 
 static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
@@ -593,7 +577,7 @@ static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
         if (get32(ip_hdr + 12) == s_dns && get16(u) == s_dns_srv_port)
             take_dns(u + 8, ulen - 8);
     }
-    else if (dport == s_ntp_port && s_ntp_port) take_ntp(ip_hdr, u + 8, ulen - 8);
+    else if (dport == s_ask_port && s_ask_port) take_answer(ip_hdr, u + 8, ulen - 8);
 }
 
 /* ---- everything that arrives ------------------------------------------

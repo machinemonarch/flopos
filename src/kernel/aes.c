@@ -282,3 +282,107 @@ void aes_cbc_decrypt(const u8 *key, int klen, const u8 iv[16], const u8 *in, u8 
         for (j = 0; j < 16; j++) { out[i + j] = x[j] ^ prev[j]; prev[j] = cur[j]; }
     }
 }
+
+/* ---- AES-SIV-CMAC-256 (RFC 5297) -------------------------------------------
+ * The one cipher NTS signs time with (RFC 8915).  The 32-byte key is two
+ * AES-128 keys: the first for CMAC (RFC 4493), the second for counter mode.
+ * S2V folds the strings it is given -- the associated data, the nonce,
+ * then the plaintext -- into one 16-byte value V with CMAC; V is the tag,
+ * and, with two bits cleared, the counter the plaintext is encrypted from.
+ * Opening runs the counter first, then S2V over what came out, and accepts
+ * only if it gives V again. */
+static void dbl(u8 b[16])
+{
+    u8 carry = b[0] & 0x80;
+    int i;
+    for (i = 0; i < 15; i++) b[i] = (u8)((b[i] << 1) | (b[i + 1] >> 7));
+    b[15] = (u8)(b[15] << 1);
+    if (carry) b[15] ^= 0x87;
+}
+
+/* CMAC of m (n bytes); with xd, the last 16 bytes of m are xored with xd
+ * first (S2V's "xorend", without copying m). */
+static void cmac(const AesKey *K, const u8 *m, u32 n, const u8 *xd, u8 out[16])
+{
+    u8 k1[16] = { 0 }, k2[16], x[16] = { 0 }, blk[16];
+    u32 i, j, last;
+    encrypt_block(K, k1, k1);                /* L = E(0) */
+    dbl(k1);
+    for (i = 0; i < 16; i++) k2[i] = k1[i];
+    dbl(k2);
+    last = n ? (n - 1) / 16 : 0;             /* the last block's number */
+    for (i = 0; i <= last; i++) {
+        u32 at = i * 16, len = n - at < 16 ? n - at : 16;
+        for (j = 0; j < 16; j++) {
+            u8 c = j < len ? m[at + j] : 0;
+            if (xd && n >= 16 && at + j >= n - 16 && j < len) c ^= xd[at + j - (n - 16)];
+            blk[j] = c;
+        }
+        if (i == last) {
+            if (len == 16 && n) for (j = 0; j < 16; j++) blk[j] ^= k1[j];
+            else { blk[len] ^= 0x80; for (j = 0; j < 16; j++) blk[j] ^= k2[j]; }
+        }
+        for (j = 0; j < 16; j++) x[j] ^= blk[j];
+        encrypt_block(K, x, x);
+    }
+    for (j = 0; j < 16; j++) out[j] = x[j];
+}
+
+static void s2v(const AesKey *K, const u8 *const *ad, const u32 *adlen, int nad,
+                const u8 *p, u32 n, u8 v[16])
+{
+    u8 d[16] = { 0 }, t[16];
+    int i, j;
+    cmac(K, d, 16, 0, d);                    /* D = CMAC(zero block) */
+    for (i = 0; i < nad; i++) {
+        dbl(d);
+        cmac(K, ad[i], adlen[i], 0, t);
+        for (j = 0; j < 16; j++) d[j] ^= t[j];
+    }
+    if (n >= 16) { cmac(K, p, n, d, v); return; }      /* xorend */
+    dbl(d);
+    for (j = 0; j < 16; j++) t[j] = (u8)(j < (int)n ? p[j] : j == (int)n ? 0x80 : 0) ^ d[j];
+    cmac(K, t, 16, 0, v);
+}
+
+static void siv_ctr(const AesKey *K, const u8 v[16], const u8 *in, u8 *out, u32 n)
+{
+    u8 q[16], ks[16];
+    u32 i, j;
+    for (j = 0; j < 16; j++) q[j] = v[j];
+    q[8] &= 0x7F; q[12] &= 0x7F;             /* bits 63 and 31 cleared */
+    for (i = 0; i < n; i += 16) {
+        encrypt_block(K, q, ks);
+        for (j = 0; j < 16 && i + j < n; j++) out[i + j] = in[i + j] ^ ks[j];
+        for (j = 16; j-- > 0; ) if (++q[j]) break;
+    }
+}
+
+/* out gets the 16-byte tag, then the ciphertext: n + 16 bytes. */
+void aessiv_seal(const u8 key[32], const u8 *const *ad, const u32 *adlen, int nad,
+                 const u8 *p, u32 n, u8 *out)
+{
+    AesKey K1, K2;
+    if (!s_ready) build_sbox();
+    expand(key, 16, &K1);
+    expand(key + 16, 16, &K2);
+    s2v(&K1, ad, adlen, nad, p, n, out);
+    siv_ctr(&K2, out, p, out + 16, n);
+}
+
+/* in is the tag and ciphertext (n >= 16); p gets n - 16 bytes.  1 if real. */
+int aessiv_open(const u8 key[32], const u8 *const *ad, const u32 *adlen, int nad,
+                const u8 *in, u32 n, u8 *p)
+{
+    AesKey K1, K2;
+    u8 v[16], diff = 0;
+    int j;
+    if (n < 16) return 0;
+    if (!s_ready) build_sbox();
+    expand(key, 16, &K1);
+    expand(key + 16, 16, &K2);
+    siv_ctr(&K2, in, in + 16, p, n - 16);
+    s2v(&K1, ad, adlen, nad, p, n - 16, v);
+    for (j = 0; j < 16; j++) diff |= (u8)(v[j] ^ in[j]);
+    return diff == 0;
+}

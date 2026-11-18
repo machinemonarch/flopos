@@ -480,7 +480,10 @@ int    rtc_lost_power(void);              /* the BIOS found it had lost power */
 int    clock_drift(s32 *secs);            /* how far out the network found it */
 int    clock_from_goodbye(void);         /* at boot: no earlier than bye   */
 void   clock_remember(void);             /* at bye                         */
-u32    ip_ntp_time(void);                /* UTC seconds since 2000, or 0   */
+int    ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wait_ms);
+/* --- nts.c ---------------------------------------------------------------- */
+int    conn_busy(void);
+u32    nts_time(void);                   /* signed UTC seconds since 2000, or 0 */
 u32    store_clock_get(void);
 void   store_clock_set(u32 s);
 
@@ -827,6 +830,12 @@ int    aesgcm_open(const u8 key[16], const u8 iv[12], const u8 *aad, u32 alen,
                    const u8 *ct, u32 len, const u8 tag[16], u8 *pt);
 void   aes_cbc_encrypt(const u8 *key, int klen, const u8 iv[16], const u8 *in, u8 *out, u32 n);
 void   aes_cbc_decrypt(const u8 *key, int klen, const u8 iv[16], const u8 *in, u8 *out, u32 n);
+/* AES-SIV-CMAC-256 (RFC 5297), for NTS: ad[] are the associated data then
+ * the nonce, in order; seal writes the 16-byte tag then n bytes. */
+void   aessiv_seal(const u8 key[32], const u8 *const *ad, const u32 *adlen, int nad,
+                   const u8 *p, u32 n, u8 *out);
+int    aessiv_open(const u8 key[32], const u8 *const *ad, const u32 *adlen, int nad,
+                   const u8 *in, u32 n, u8 *p);
 
 /* --- x25519.c ------------------------------------------------------------ */
 void   x25519(u8 out[32], const u8 scalar[32], const u8 point[32]);
@@ -870,6 +879,9 @@ int    tls_untrusted(void);              /* the failure: it could not prove */
 int    tls_checked(void);                /* this connection was proved      */
 const char *tls_who(void);               /* the authority that vouched      */
 void   tls_set_note(void (*fn)(const char *));
+void   tls_alpn(const char *proto);      /* ask for this protocol (ALPN), "" none */
+int    tls_export(const char *label, const u8 *ctx, int clen, u8 *out, int olen);
+int    tls_checking(void);               /* whether certificates are being checked */
 
 /* --- el3.c -------------------------------------------------------------- */
 int    el3_start(int sock, u32 cor, u16 io);

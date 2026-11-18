@@ -96,8 +96,8 @@ int rtc_read(u8 *hour, u8 *min, u8 *sec, u16 *year, u8 *month, u8 *day)
  * in some year of its own choosing -- and no web site's certificate can be
  * checked against a date in 1996.  So the clock is set from two places:
  *
- *   the network, when there is one: one question to a time server, the
- *   one DHCP names or else pool.ntp.org (ip.c), kept in Swedish time,
+ *   the network, when there is one: one question to a time server,
+ *   signed with NTS (nts.c), kept in Swedish time,
  *   since that is where this laptop lives;
  *
  *   and, with no network, the time this machine last said goodbye, kept
@@ -200,8 +200,8 @@ int clock_drift(s32 *secs) { *secs = s_drift; return s_drift_known; }
 
 int clock_from_network(void)
 {
-    u32 utc = ip_ntp_time(), local, was = store_clock_get(), before;
-    if (!utc) return 0;
+    u32 utc = nts_time(), local, was = store_clock_get(), before;
+    if (!utc) return 0;                                   /* unsigned time is no time */
     local = utc + sweden(utc);
     if (local < 24u * 365u * 86400u) return 0;            /* before 2024: no */
     if (was && local + 86400u < was) {

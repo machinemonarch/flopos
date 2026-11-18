@@ -26,6 +26,8 @@ static void (*s_note)(const char *);
 
 static void say(const char *t) { if (s_note) s_note(t); }
 
+int conn_busy(void) { return s_open; }    /* an app's connection is open */
+
 int net_online(void)
 {
     return net_up() && (ip_addr() || ip_apply_saved() || ip_dhcp());

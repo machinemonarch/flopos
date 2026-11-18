@@ -102,6 +102,19 @@ static int cbc(void) { return s_suite == S12_CBC128 || s_suite == S12_CBC256; }
 static int cbc_klen(void) { return s_suite == S12_CBC256 ? 32 : 16; }
 
 void tls_offer_pq(int on) { s_offer_pq = on; }
+
+/* For NTS (nts.c): the one application protocol to ask for (ALPN, RFC
+ * 7301), and keys exported from the session (RFC 8446 7.5).  The exporter
+ * secret is kept only for TLS 1.3, and only until the next connection. */
+static char s_alpn[16];
+static u8   s_exp[32];
+static int  s_exp_ok;
+void tls_alpn(const char *proto)
+{
+    int i = 0;
+    while (proto[i] && i < (int)sizeof s_alpn - 1) { s_alpn[i] = proto[i]; i++; }
+    s_alpn[i] = 0;
+}
 int  tls_pq_broke(void)   { return s_pq_broke; }
 
 static u8 *s_rec;                        /* one record as it arrived        */
@@ -121,6 +134,7 @@ static u8  *s_certmsg;                   /* its Certificate message, kept  */
 static void (*s_note)(const char *);
 
 void tls_check(int on)       { s_check = on; }
+int  tls_checking(void)      { return s_check; }
 int  tls_untrusted(void)     { return s_untrusted; }
 int  tls_checked(void)       { return s_checked; }
 const char *tls_who(void)    { return s_checked ? x509_who() : ""; }
@@ -461,6 +475,16 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
         m[n++] = 0;
         put16(m + n, (u32)sni_len); n += 2;
         for (i = 0; i < sni_len; i++) m[n++] = (u8)host[i];
+    }
+
+    /* application_layer_protocol_negotiation, when one was asked for. */
+    if (s_alpn[0]) {
+        int al = 0;
+        while (s_alpn[al]) al++;
+        put16(m + n, 0x0010); n += 2; put16(m + n, (u32)(al + 3)); n += 2;
+        put16(m + n, (u32)(al + 1)); n += 2;
+        m[n++] = (u8)al;
+        for (i = 0; i < al; i++) m[n++] = (u8)s_alpn[i];
     }
 
     /* supported_groups: the post-quantum hybrid, then plain x25519, and
@@ -993,6 +1017,7 @@ int tls_connect(const char *host)
     s_up = 0;
     s_untrusted = 0;
     s_checked = 0;
+    s_exp_ok = 0;
     s_eof = 0;
     s_hsbuf_len = 0;
     s_plain_len = s_plain_pos = 0;
@@ -1143,6 +1168,8 @@ int tls_connect(const char *host)
     /* The application keys come from the transcript up to their Finished. */
     derive(master, "c ap traffic", cli_ap);
     derive(master, "s ap traffic", srv_ap);
+    derive(master, "exp master", s_exp);     /* for tls_export */
+    s_exp_ok = 1;
 
     /* Our Finished, under our handshake key. */
     transcript_now(h);
@@ -1217,6 +1244,19 @@ int tls_read(u8 *buf, int max, int wait_ms)
             s_plain_pos = 0;
         }
     }
+}
+
+/* TLS-Exporter(label, context, length) (RFC 8446 7.5): 0 when there is
+ * no TLS 1.3 session to export from. */
+int tls_export(const char *label, const u8 *ctx, int clen, u8 *out, int olen)
+{
+    u8 h_empty[32], hc[32], sec[32];
+    if (!s_exp_ok || olen > 255) return 0;
+    sha256(0, 0, h_empty);
+    expand_label(s_exp, label, h_empty, 32, sec, 32);
+    sha256(ctx, (u32)clen, hc);
+    expand_label(sec, "exporter", hc, 32, out, olen);
+    return 1;
 }
 
 void tls_close(void)

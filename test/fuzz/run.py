@@ -204,6 +204,30 @@ text</pre></table>
 {"title":"\\u0420\\u0430\\u0434\\u0438\\u043e","listen_url":"http://b.test:8000/stream"},{"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","mp3":"/m.mp3"},
 {"name":"left open</script><p>&larr; back &rarr; &laquo;x&raquo; &times;</p></body></html>""")
 
+def seeds_nts(d):
+    """A key exchange's answer (the records a real server sends: protocol,
+    cipher, eight cookies, a server and a port, the end) and a time
+    server's signed answer (an identifier, then the tag and the new cookies
+    it seals), whole and in variations."""
+    if os.path.isdir(d) and os.listdir(d): return
+    os.makedirs(d, exist_ok=True)
+    rec = lambda t, body: struct.pack(">HH", t, len(body)) + body
+    rnd = random.Random(8915)
+    for k in range(6):
+        cookies = [bytes(rnd.getrandbits(8) for _ in range((100, 104, 132, 64, 256, 300)[k])) for _ in range(8)]
+        ke = rec(0x8001, b"\x00\x00") + rec(0x8004, b"\x00\x0f") + b"".join(rec(5, c) for c in cookies)
+        if k & 1: ke += rec(6, b"ntp.fuzz.test") + rec(7, b"\x00\x7b")
+        if k == 4: ke += rec(0x0003, b"\x00\x01")        # a warning, not critical
+        ke += rec(0x8000, b"")
+        hdr = bytes([0x24, 1, 0, 0xE9]) + bytes(20) + bytes(8) + bytes(8) + struct.pack(">II", 3900000000, 0)
+        uid = struct.pack(">HH", 0x0104, 36) + bytes(32)
+        inner = b"".join(struct.pack(">HH", 0x0204, 4 + len(c)) + c for c in cookies[:(k % 3) + 1])
+        nonce = bytes(range(16))
+        auth_body = struct.pack(">HH", 16, 16 + len(inner)) + nonce + bytes(16) + inner
+        auth = struct.pack(">HH", 0x0404, 4 + len(auth_body)) + auth_body
+        tail = struct.pack(">HH", 0x0204, 8) + b"late" if k == 5 else b""     # after the tag: not believed
+        open(os.path.join(d, "nts%d.bin" % k), "wb").write(struct.pack(">H", len(ke)) + ke + hdr + uid + auth + tail)
+
 def seeds_tls(d):
     """Real conversations: an authority and two sites' certificates are
     made, openssl serves them on this PC in each form FLOPOS takes, and
@@ -264,6 +288,10 @@ TARGETS = {
                 {"FUZZ_ROOTS": os.path.join(OUT, "made", "tls", "roots.dat")},
                 # The seals' checks are renamed, and tls.c (the target) puts its own in front of them.
                 {"src/kernel/chacha.c": "-Daead_open=real_aead_open", "src/kernel/aes.c": "-Daesgcm_open=real_aesgcm_open"}),
+    "nts":     (files("test/fuzz/nts.c", "test/fuzz/kshim.c", "src/kernel/nts.c"), ["src/kernel"],
+                os.path.join(OUT, "made", "nts"), lambda: seeds_nts(os.path.join(OUT, "made", "nts")), {},
+                # the signature's check is renamed, and nts.c (the target) puts its own in front of it
+                {"src/kernel/aes.c": "-Daessiv_open=real_aessiv_open"}),
     "browzer": (files("test/fuzz/browzer.c", "src/kernel/fmt.c") + glob("src/apps/browzer") + glob("src/apps/lib/audio")
                 + glob("src/apps/lib/dsp") + glob("src/apps/lib/bits"), ["src/apps/sdk", "src/apps/browzer", "src/kernel"] + LIB,
                 os.path.join(OUT, "made", "browzer"), lambda: seeds_browzer(os.path.join(OUT, "made", "browzer")), {}),

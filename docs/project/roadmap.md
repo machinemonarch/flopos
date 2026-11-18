@@ -2,7 +2,7 @@
 
 Ideas waiting their turn. None is started until Max picks it, and each
 gets a short plan with a rough cost first. What is done is in the
-CHANGELOG; what was fixed in the security review is in Security[^1].
+CHANGELOG.
 
 ## Waiting to be picked
 
@@ -11,19 +11,6 @@ CHANGELOG; what was fixed in the security review is in Security[^1].
 
 ## Security, waiting for a decision
 
-Weak spots found by reading the code on 2026-11-10, none tried as a real
-attack. Max sets the order.
-
-### 9. The time from the network is not signed (medium)
-
-**Set aside on 2026-11-12, not dropped.** The clock battery works and the
-clock already refuses to go back past the last `bye`; take this up again
-if the battery fails.
-
-Plain NTP (`rtc.c`, `ip.c`) has no signature. Answers must come from the
-server asked and carry back a random number, so nobody off the path can
-fake one, but someone on your own network could, to make an expired
-certificate look valid. **Fix:** NTS (RFC 8915), NTP with a TLS handshake
-first, at a few seconds per network start.
+Nothing at the moment. What was fixed is in Security[^1].
 
 [^1]: [Security](../design/security.md)

@@ -11,8 +11,9 @@ answers (the RFCs' and FIPS documents' examples, NIST's ML-KEM vectors).
 `crypto` runs the checks again on the machine.
 
 - **`sha256.c`:** SHA-256, HMAC, HKDF.
+- **`nts.c`:** Signed network time (NTS).
 - **`sha512.c`, `sha3.c`, `sha1.c`:** SHA-512 and SHA-384; SHA-3 and SHAKE; SHA-1 (HMAC on TLS 1.2 CBC records only).
-- **`chacha.c`, `aes.c`:** ChaCha20-Poly1305; AES-GCM and AES-CBC.
+- **`chacha.c`, `aes.c`:** ChaCha20-Poly1305; AES-GCM, AES-CBC and AES-SIV-CMAC.
 - **`x25519.c`, `mlkem.c`:** X25519 and ML-KEM-768.
 - **`bignum.c`, `rsa.c`, `ecdsa.c`:** RSA (PKCS#1 v1.5 and PSS), ECDSA and ECDH on P-256 and P-384.
 - **`x509.c`:** Certificates and chains, up to `ROOTS.DAT`.
@@ -42,6 +43,7 @@ Weighed before it was written, and kept to what Chrome offers:
 
 ## Patched
 
+- **Signed network time (2026-11-18):** the clock is set only from NTS (RFC 8915, `nts.c`): a TLS 1.3 key exchange with the certificate checked, then NTP answers signed with AES-SIV-CMAC (`aes.c`, checked against RFC 5297's examples), each with a fresh identifier and a one-time cookie. Plain NTP is gone. Tried against Netnod's and PTB's public servers; `test/fuzz` has an `nts` target.
 - **App requests `clock` and `glyph`:** read only, writing a fixed few bytes into a checked buffer.
 - **Sealing for apps (1.37.0):** PBKDF2 keys and ChaCha20/AES-GCM sealing, buffers checked, rounds capped. 10,000 rounds is light, so passphrases must be long.
 - **Walls between apps and the kernel (1.33.0):** apps run in ring 3 behind paging, every pointer checked, a rule-breaker closed (`test/walltest`). Not covered: faults in the kernel's own readers, and a 486 (no wall).

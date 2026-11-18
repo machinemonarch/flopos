@@ -19,7 +19,9 @@ without it. Each version's notes are also written next to its image, as
 
 ### SECURITY FIXES
 
-- None yet.
+- The clock takes its time from the network only when it is signed
+  (NTS): nobody on the network can wind it back to make an expired
+  certificate look good. Without a signed answer it keeps its own time.
 
 ## 1.45.0 — 2026-11-18
 

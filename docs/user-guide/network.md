@@ -43,9 +43,12 @@ type nothing private there.
 Not done: revocation checks, and fetching an authority's certificate a
 site forgot to send.
 
-**The clock** sets itself from a time server whenever the network comes
-up (Swedish time), and without a network starts from the time `bye`
-wrote. It never goes back before that.
+**The clock** sets itself whenever the network comes up (Swedish time),
+from signed time only (NTS): the time server proves who it is as a secure
+site does, and signs every answer, so nobody on the network can wind the
+clock back. Without a network, or without a signed answer, it keeps its
+own time, and starts from the time `bye` wrote if that is later. It
+never goes back before that.
 
 **Updating the authorities:** `tools/build/mkroots.py` rebuilds
 `data/roots.dat` from a Linux PC's `/etc/ssl/certs/ca-certificates.crt`.
