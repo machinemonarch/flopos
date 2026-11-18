@@ -695,6 +695,8 @@ const char *script_go(void)
     return go;
 }
 
+int script_state(void) { return !s_count ? 0 : s_on ? 2 : 1; }
+
 void script_site_toggle(Page *pg)
 {
     const char *site;

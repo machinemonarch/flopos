@@ -1,5 +1,5 @@
 /* ===========================================================================
- * mp3.c -- MPEG audio layer III, into mono samples.
+ * mp3.c -- MPEG audio layers III and II, into mono samples.
  *
  * An mp3 is frames of 1152 samples (576 for the lower rates), each frame
  * a header, some "side information" saying how its bits are spent, and
@@ -22,6 +22,9 @@
  * integer multiply.  MPEG-1 and the low-rate MPEG-2 and 2.5 are read;
  * intensity stereo is not undone (for mono it changes the level of a few
  * bands at most).  The fixed tables are in mp3tab.h.
+ *
+ * Layer II (mp2), older and simpler, is read too (see layer2() below): it
+ * shares the frame headers and the synthesis filterbank, and nothing else.
  * ===========================================================================
  */
 #include "decode.h"
@@ -43,7 +46,9 @@ static float s_dct4[18][18];             /* the long transform, as a DCT-IV  */
 static float s_imdct_s[6][12];
 static float s_win[4][36];               /* windows by block type           */
 static float s_cs[8], s_ca[8];           /* alias reduction                 */
+static float s_sf2[64];                  /* layer II's scale factors: 2^(1 - i/3) */
 static int   s_ready;
+static int   s_lay;                      /* the last header's layer: 3 or 2 */
 
 /* Huffman: each table decoded by lookup on the next nine bits (prefix.h),
  * not walked a bit at a time.  Tables that share their codes share one. */
@@ -111,6 +116,11 @@ static void tables(void)
             s_cs[i] = (float)(1.0 / sq);
             s_ca[i] = (float)(ci[i] / sq);
         }
+    }
+    for (i = 0; i < 64; i++) {
+        double v = 2.0;
+        for (k = 0; k < i; k++) v *= 0.79370052598409973738;   /* 2^(-1/3) */
+        s_sf2[i] = (float)v;
     }
     build_codes();
     s_ready = 1;
@@ -194,21 +204,28 @@ static const u16 BITRATE[2][15] = {
     { 0,32,40,48,56,64,80,96,112,128,160,192,224,256,320 },      /* MPEG-1        */
     { 0,8,16,24,32,40,48,56,64,80,96,112,128,144,160 },          /* MPEG-2, 2.5   */
 };
+static const u16 BITRATE_L2[15] = { 0,32,48,56,64,80,96,112,128,160,192,224,256,320,384 };   /* MPEG-1 layer II */
 static const u16 RATES[3][3] = { {44100,48000,32000}, {22050,24000,16000}, {11025,12000,8000} };
 
-/* A layer III header at p?  Fills in what it says; the frame's length. */
+/* A layer III or II header at p?  Fills in what it says (and s_lay); the
+ * frame's length. */
 static int header(const u8 *p, int *ver, int *sri, int *nch, int *kbps)
 {
     int v, lay, bri, s;
     if (p[0] != 0xFF || (p[1] & 0xE0) != 0xE0) return 0;
     v = (p[1] >> 3) & 3;                 /* 3: MPEG-1, 2: MPEG-2, 0: 2.5    */
-    lay = (p[1] >> 1) & 3;
+    lay = (p[1] >> 1) & 3;               /* 1: layer III, 2: layer II       */
     bri = p[2] >> 4;
     s = (p[2] >> 2) & 3;
-    if (v == 1 || lay != 1 || bri == 0 || bri == 15 || s == 3) return 0;
+    if (v == 1 || (lay != 1 && lay != 2) || bri == 0 || bri == 15 || s == 3) return 0;
     *ver = v == 3 ? 0 : v == 2 ? 1 : 2;
     *sri = s;
     *nch = ((p[3] >> 6) & 3) == 3 ? 1 : 2;
+    s_lay = lay == 1 ? 3 : 2;
+    if (s_lay == 2) {                    /* 1152 samples a frame, at any rate */
+        *kbps = *ver ? BITRATE[1][bri] : BITRATE_L2[bri];
+        return 144000 * *kbps / RATES[*ver][s] + ((p[2] >> 1) & 1);
+    }
     *kbps = BITRATE[*ver ? 1 : 0][bri];
     return (*ver ? 72000 : 144000) * *kbps / RATES[*ver][s] + ((p[2] >> 1) & 1);
 }
@@ -545,6 +562,110 @@ static void synth(s16 *out)
     }
 }
 
+/* ---- layer II ------------------------------------------------------------------------
+ * No Huffman codes and no transform: each subband (up to 30 of the 32) is
+ * given a few bits a sample by its "allocation", read first, then scale
+ * factors for each third of the frame, then twelve groups of three samples
+ * a subband, which go straight into the synthesis.  Which allocations a
+ * subband may have depends on the subband and on one of five tables,
+ * chosen by the rate and the bitrate a channel (ISO 11172-3 tables B.2a-d,
+ * and 13818-3's for the lower rates).  Above `bound', joint stereo sends
+ * one set of samples for both channels, each with its own scale factors. */
+typedef struct { u8 nbal, q[15]; } L2Class;    /* bits in the allocation; the quantisations it picks */
+static const L2Class L2C[8] = {
+    { 4, { 0,2,4,5,6,7,8,9,10,11,12,13,14,15,16 } },   /* MPEG-1, the lowest subbands */
+    { 4, { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,16 } },
+    { 3, { 0,1,2,3,4,5,16 } },
+    { 2, { 0,1,16 } },
+    { 4, { 0,1,3,4,5,6,7,8,9,10,11,12,13,14,15 } },   /* MPEG-1 at low bitrates */
+    { 3, { 0,1,3,4,5,6,7 } },
+    { 4, { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 } },    /* the lower rates (MPEG-2) */
+    { 2, { 0,1,3 } },
+};
+static const u8 L2_TABLE[5][30] = {      /* each subband's class, by table */
+    { 0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3 },
+    { 0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3 },
+    { 4,4,5,5,5,5,5,5 },
+    { 4,4,5,5,5,5,5,5,5,5,5,5 },
+    { 6,6,6,6,5,5,5,5,5,5,5,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7 },
+};
+static const u8  L2_LIMIT[5] = { 27, 30, 8, 12, 30 };
+static const u16 L2_LEVELS[17] = { 3,5,7,9,15,31,63,127,255,511,1023,2047,4095,8191,16383,32767,65535 };
+static const u8  L2_BITS[17] = { 5,7,3,10,4,5,6,7,8,9,10,11,12,13,14,15,16 };   /* 3, 5 and 9 come three to a code */
+
+/* Three samples of a subband, as fractions of its scale: (2v - (levels-1)) / levels. */
+static void l2_samples(int q, float f[3])
+{
+    int lev = L2_LEVELS[q], k;
+    float inv = 1.0f / (float)lev;
+    if (q == 0 || q == 1 || q == 3) {
+        u32 c = getbits(L2_BITS[q]);
+        for (k = 0; k < 3; k++) { int v = (int)(c % (u32)lev); c /= (u32)lev; f[k] = (float)(2 * v - (lev - 1)) * inv; }
+    } else
+        for (k = 0; k < 3; k++) f[k] = (float)(2 * (int)getbits(L2_BITS[q]) - (lev - 1)) * inv;
+}
+
+static int layer2(const u8 *p, int len)
+{
+    static u8 alloc[2][32], scfsi[2][32], sfi[2][32][3];
+    int t, lim, bound, ch, sb, gr, nch = M.nch, nsb = M.half ? 16 : 32;
+
+    if (M.lsf) t = 4;
+    else {
+        int per = M.kbps / nch, rate = RATES[0][M.sr_index];
+        t = per <= 48 ? (rate == 32000 ? 3 : 2) : per <= 80 ? 0 : rate == 48000 ? 0 : 1;
+    }
+    lim = L2_LIMIT[t];
+    bound = nch == 2 && M.mode == 1 ? 4 + M.mode_ext * 4 : lim;
+    if (bound > lim) bound = lim;
+    M.bits = p;
+    M.bitpos = (u32)(4 + (M.crc ? 2 : 0)) * 8;
+    M.bitend = (u32)len * 8;
+
+    for (sb = 0; sb < lim; sb++) {
+        int nb = L2C[L2_TABLE[t][sb]].nbal;
+        if (sb < bound) for (ch = 0; ch < nch; ch++) alloc[ch][sb] = (u8)getbits(nb);
+        else alloc[0][sb] = alloc[1][sb] = (u8)getbits(nb);
+    }
+    for (sb = 0; sb < lim; sb++)
+        for (ch = 0; ch < nch; ch++) if (alloc[ch][sb]) scfsi[ch][sb] = (u8)getbits(2);
+    for (sb = 0; sb < lim; sb++)
+        for (ch = 0; ch < nch; ch++) {
+            u8 *f = sfi[ch][sb];
+            if (!alloc[ch][sb]) continue;
+            switch (scfsi[ch][sb]) {
+            case 0: f[0] = (u8)getbits(6); f[1] = (u8)getbits(6); f[2] = (u8)getbits(6); break;
+            case 1: f[0] = f[1] = (u8)getbits(6); f[2] = (u8)getbits(6); break;
+            case 2: f[0] = f[1] = f[2] = (u8)getbits(6); break;
+            default: f[0] = (u8)getbits(6); f[1] = f[2] = (u8)getbits(6); break;
+            }
+        }
+
+    for (gr = 0; gr < 12; gr++) {
+        int part = gr >> 2, slot = (gr % 6) * 3, k;
+        for (sb = 0; sb < lim; sb++) {
+            const L2Class *c = &L2C[L2_TABLE[t][sb]];
+            float f[3];
+            for (ch = 0; ch < nch; ch++) {
+                float sc;
+                if (!alloc[ch][sb]) continue;
+                if (ch == 0 || sb < bound) l2_samples(c->q[alloc[ch][sb] - 1], f);   /* above bound: the same samples */
+                if (sb >= nsb) continue;         /* read, but above what half rate keeps */
+                sc = s_sf2[sfi[ch][sb][part] & 63];
+                for (k = 0; k < 3; k++) M.sb[slot + k][sb] += f[k] * sc;
+            }
+        }
+        if (gr % 6 == 5) {
+            int i, j;
+            synth(M.out + (gr / 6) * (M.half ? 288 : 576));
+            for (i = 0; i < 18; i++) for (j = 0; j < 32; j++) M.sb[i][j] = 0;
+        }
+    }
+    M.out_n = 2 * (M.half ? 288 : 576);
+    M.out_at = 0;
+    return 1;
+}
+
 /* ---- a frame ---------------------------------------------------------------------- */
 static int skip_id3(AudioIn *in)
 {
@@ -579,7 +700,9 @@ static int sync(AudioIn *in)
         len = header(p, &ver, &sri, &nch, &kbps);
         if (len >= 21) {
             if (in->len - in->pos >= (u32)len + 4) {
-                if (header(p + len, &v2, &s2, &n2, &k2) && v2 == ver && s2 == sri) return len;
+                int lay = s_lay;
+                if (header(p + len, &v2, &s2, &n2, &k2) && v2 == ver && s2 == sri && s_lay == lay) { s_lay = lay; return len; }
+                s_lay = lay;
             } else if (in->done || M.frame_len) {
                 return len;                                 /* the last, or known */
             } else
@@ -604,6 +727,7 @@ static int frame(AudioIn *in)
     M.mode = (p[3] >> 6) & 3; M.mode_ext = (p[3] >> 4) & 3;
     M.crc = !(p[1] & 1);
     M.frame_len = len;
+    if (s_lay == 2) { in->pos += (u32)len; return layer2(p, len); }
     si = M.lsf ? (nch == 1 ? 9 : 17) : (nch == 1 ? 17 : 32);
     if (4 + (M.crc ? 2 : 0) + si > len) { in->pos += (u32)len; return 2; }   /* skipped */
     side_info(p + 4 + (M.crc ? 2 : 0), si);
@@ -714,7 +838,7 @@ int mp3_open(AudioIn *in, Decoder *d)
     header(in->buf + in->pos, &ver, &sri, &nch, &kbps);
     M.frame_len = 0;
     M.half = RATES[ver][sri] >= 32000;
-    d->kind = "MP3";
+    d->kind = s_lay == 2 ? "MP2" : "MP3";
     d->rate = RATES[ver][sri] / (M.half ? 2 : 1);
     d->channels = nch;
     d->kbps = kbps;

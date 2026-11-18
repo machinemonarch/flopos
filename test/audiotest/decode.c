@@ -1,7 +1,7 @@
 /* decode.c -- a recording through FLOPOS's own decoders, on this PC.
  *
  *     gcc -O2 -Isrc/apps/sdk -Isrc/apps/lib/audio -Isrc/apps/lib/bits -Isrc/apps/lib/dsp \
- *         test/audiotest/decode.c src/apps/lib/audio/{aac,decode,flac,mp3,vorbis}.c \
+ *         test/audiotest/decode.c src/apps/lib/audio/{aac,decode,flac,mp3,mp4,opus,vorbis}.c \
  *         src/apps/lib/bits/prefix.c src/apps/lib/dsp/{dct,mdct}.c -lm -o build/audiotest/decode
  *     build/audiotest/decode FILE > OUT.raw
  *

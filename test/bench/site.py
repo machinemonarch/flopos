@@ -28,7 +28,11 @@ QEMU's guest reaches it at http://10.0.2.2:PORT/.  Pages:
                      pieces' numbers as IVs); /hls/badkey.m3u8 the wrong key
   /hls/fmp4.m3u8     AAC in MP4 pieces (EXT-X-MAP), made by GStreamer;
   /hls/fmp4aes.m3u8  the same sealed, its header too
+  /hls/break.m3u8    mp3 pieces, a break (EXT-X-DISCONTINUITY) to an advert in
+                     AAC at 32 kHz, and a break back
                      (the sound is the first ~/.cache/flopos-fuzz/audio/seed*.mp3)
+  /codecs/NAME       a file test/audiotest/codecs.py made (build/audiotest/codecs/),
+                     whole; /codecs/live/NAME the same as a stream, with no length
 """
 import glob, http.server, json, os, struct, subprocess, sys, tempfile, time
 
@@ -235,6 +239,25 @@ def _aac_mp4():
 
 MP4 = None
 
+def _aac_ad():
+    """Six seconds of the sound as AAC (ADTS) at 32 kHz, made once by
+    GStreamer: the advert in /hls/break.m3u8."""
+    out = os.path.expanduser("~/.cache/flopos-fuzz/audio/hls-ad.aac")
+    if not os.path.exists(out) and FRAMES:
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a.mp3")
+            open(src, "wb").write(b"".join(FRAMES[len(FRAMES) // 2:len(FRAMES) // 2 + 6 * RATE // 1152]))
+            prog = ("import gi; gi.require_version('Gst','1.0'); from gi.repository import Gst; Gst.init(None)\n"
+                    "p = Gst.parse_launch('filesrc location=%s ! mpegaudioparse ! decodebin ! audioconvert ! audioresample"
+                    " ! audio/x-raw,rate=32000,channels=2 ! avenc_aac bitrate=48000 ! aacparse ! audio/mpeg,stream-format=adts"
+                    " ! filesink location=%s')\n"
+                    "p.set_state(Gst.State.PLAYING)\n"
+                    "p.get_bus().timed_pop_filtered(60 * Gst.SECOND, Gst.MessageType.EOS | Gst.MessageType.ERROR)\n"
+                    "p.set_state(Gst.State.NULL)\n") % (src, out + ".part")
+            subprocess.run([sys.executable, "-c", prog], timeout=120)
+            if os.path.exists(out + ".part") and os.path.getsize(out + ".part"): os.replace(out + ".part", out)
+    return open(out, "rb").read() if os.path.exists(out) else None
+
 def hls(p):
     """(content type, body) for an /hls/ path, or None."""
     global MP4
@@ -247,6 +270,15 @@ def hls(p):
             if n == 2: body += '#EXT-X-KEY:METHOD=AES-128,URI="%s"\n' % k
             body += "#EXTINF:2.0,\naes/%d.ts\n" % n
         return pl, (body + "#EXT-X-ENDLIST\n").encode()
+    if p == "/hls/break.m3u8":
+        body = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n"
+        body += "#EXTINF:2.0,\nts/0.ts\n#EXTINF:2.0,\nts/1.ts\n#EXTINF:2.0,\nts/2.ts\n"
+        body += "#EXT-X-DISCONTINUITY\n#EXTINF:6.0,\nad.ts\n#EXT-X-DISCONTINUITY\n"
+        body += "#EXTINF:2.0,\nts/3.ts\n#EXTINF:2.0,\nts/4.ts\n#EXTINF:2.0,\nts/5.ts\n#EXT-X-ENDLIST\n"
+        return pl, body.encode()
+    if p == "/hls/ad.ts":
+        ad = _aac_ad()
+        return ("video/mp2t", _ts(ad)) if ad else None
     if p == "/hls/key": return "application/octet-stream", KEY
     if p == "/hls/badkey": return "application/octet-stream", BADKEY
     if p.startswith("/hls/aes/") and p.endswith(".ts"):
@@ -292,10 +324,10 @@ def hls(p):
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
     def log_message(self, *a): pass
-    def send(self, code, ctype, body, extra=()):
+    def send(self, code, ctype, body, extra=(), length=True):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
+        if length: self.send_header("Content-Length", str(len(body)))
         for k, v in extra: self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
@@ -327,6 +359,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # UTF-8 as it is in the first two, \\u escapes in the third, \\/ throughout
             body = (json.dumps(st[:2], ensure_ascii=False)[:-1] + ", " + json.dumps(st[2]) + "]").replace("/", "\\/")
             return self.send(200, "application/json", body.encode())
+        if p.startswith("/codecs/"):
+            name = os.path.basename(p)
+            f = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "build", "audiotest", "codecs", name)
+            if os.path.isfile(f):
+                ctype = {"mp2": "audio/mpeg", "mp3": "audio/mpeg", "m4a": "audio/mp4", "opus": "audio/ogg"}.get(name.rsplit(".", 1)[-1], "application/octet-stream")
+                return self.send(200, ctype, open(f, "rb").read(), length="/live/" not in p)
         if p.startswith("/hls/"):
             h = hls(p)
             if h: return self.send(200, h[0], h[1])

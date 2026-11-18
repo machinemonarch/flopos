@@ -112,6 +112,7 @@ int   script_submit(Page *pg, int form); /* 1 if a script stopped it       */
 void  script_changed(Page *pg, int field);
 int   script_site_on(const char *host);
 void  script_site_toggle(Page *pg);
+int   script_state(void);             /* 0 no scripts, 1 some not run, 2 this site's run */
 const char *script_go(void);          /* where a script asked to go, once */
 const char *script_note(void);           /* "3 scripts, none of them run." */
 extern int g_dom_dirty;                  /* scripts changed the page        */

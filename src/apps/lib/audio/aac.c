@@ -30,6 +30,9 @@
  * two.  At 32 kHz and up it works at half rate, as mp3.c and vorbis.c
  * do: half the spectrum, half-size transforms.  Written from ISO/IEC
  * 13818-7 and 14496-3; the codebooks are in aactab.h.
+ *
+ * MP4 files carry the same blocks without ADTS headers: mp4.c hands them
+ * over one at a time (aac_raw_open, aac_raw, aac_take).
  * ===========================================================================
  */
 #include "decode.h"
@@ -768,11 +771,12 @@ static int aac_decode(Decoder *d, AudioIn *in, s16 *out, int max)
     return n;
 }
 
+static void setup(Decoder *d);
+
 /* Ready once a frame header has been found and checked against the next. */
 int aac_open(AudioIn *in, Decoder *d)
 {
     u32 at = in->pos;
-    int i;
 
     tables();
     /* An ID3 tag in front, as some .aac files have. */
@@ -801,6 +805,14 @@ int aac_open(AudioIn *in, Decoder *d)
         if (++at - in->pos > 65536) return 0;
     }
     in->pos = at;
+    setup(d);
+    return 1;
+}
+
+/* Ready for a stream of C.sri and C.cfg (C.rate and C.half set). */
+static void setup(Decoder *d)
+{
+    int i;
     C.swb_l = AAC_SWB_LONG[C.sri]; C.nswb_l = AAC_NSWB_LONG[C.sri];
     C.swb_s = AAC_SWB_SHORT[C.sri]; C.nswb_s = AAC_NSWB_SHORT[C.sri];
     C.nlong = C.half ? 512 : 1024;
@@ -821,5 +833,38 @@ int aac_open(AudioIn *in, Decoder *d)
     d->rate = C.half ? C.rate / 2 : C.rate;
     d->channels = C.cfg ? C.cfg : 2;
     d->decode = aac_decode;
+}
+
+/* ---- for MP4 (mp4.c): bare blocks -------------------------------------------- */
+int aac_raw_open(int sri, int ch, Decoder *d)
+{
+    if (sri < 0 || sri >= 12) return 0;
+    tables();
+    C.sri = sri; C.cfg = ch;
+    C.rate = RATES[sri];
+    C.half = C.rate >= 32000;
+    d->kbps = 0;
+    setup(d);
     return 1;
+}
+
+/* One block, as MP4 keeps it: 1 if it gave samples (aac_take has them),
+ * 2 if it was damaged. */
+int aac_raw(const u8 *p, u32 len)
+{
+    if (len > 8192) return 2;
+    memcpy(s_frame, p, len);
+    s_frame[len] = s_frame[len + 1] = s_frame[len + 2] = s_frame[len + 3] = 0;
+    bits_init(&s_b, s_frame, len);
+    C.out_n = C.out_at = 0;
+    if (!raw_block()) return 2;
+    emit();
+    return 1;
+}
+
+int aac_take(s16 *out, int max)
+{
+    int n = 0;
+    while (n < max && C.out_at < C.out_n) out[n++] = C.out[C.out_at++];
+    return n;
 }

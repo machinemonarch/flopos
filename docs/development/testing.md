@@ -33,7 +33,7 @@ might; `ip drop 0` stops it.
 - **`test/tapetest/run.sh`:** Cassette sound through a pretend tape (off speed, wavering, quiet, noisy, dull, upside down, a dropout) and back.
 - **`test/keeptest.sh`:** What `writefloppy.sh` does to carry the user's files to a new release.
 - **`test/doccheck.py`:** Every link in the Markdown leads to a page and heading.
-- **`test/audiotest/`:** `render.c` plays a tracker song through FLOPOS's tracker; `compare.py` checks it against libopenmpt; `fetch.py` fetches the songs in `songs.txt` (never kept here); `decode.c` runs any recording through FLOPOS's decoders and writes the samples.
+- **`test/audiotest/`:** `render.c` plays a tracker song through FLOPOS's tracker; `compare.py` checks it against libopenmpt; `fetch.py` fetches the songs in `songs.txt` (never kept here); `decode.c` runs any recording through FLOPOS's decoders; `codecs.py` checks them against GStreamer on files it makes (mp3, mp2, .m4a); `heard.py` checks a bench recording against the file played.
 - **`tools/wizard/enginetest.py`:** The wizard's engine against the Python version.
 
 ## In the emulator

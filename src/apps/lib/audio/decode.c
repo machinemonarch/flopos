@@ -31,6 +31,12 @@ int audio_detect(AudioIn *in, Decoder *d, const char *ctype)
     return r;
 }
 
+u32 audio_detect_limit(const AudioIn *in)
+{
+    const u8 *b = in->buf + in->pos;
+    return in->len - in->pos >= 8 && is(b + 4, "ftyp") ? 0xFFFFFFFFu : 65536u;
+}
+
 static int detect(AudioIn *in, Decoder *d, const char *ctype)
 {
     const u8 *b = in->buf + in->pos;
@@ -40,6 +46,7 @@ static int detect(AudioIn *in, Decoder *d, const char *ctype)
     if (n >= 12 && is(b, "RIFF") && is(b + 8, "WAVE")) return wav_open(in, d);
     if (n >= 4 && is(b, "OggS")) return vorbis_open(in, d);
     if (n >= 4 && is(b, "fLaC")) return flac_open(in, d);
+    if (n >= 8 && is(b + 4, "ftyp")) return mp4_open(in, d);
     /* FLAC with an ID3 tag in front, which some programs put there */
     if (n >= 10 && is(b, "ID3")) {
         u32 t = 10 + ((u32)(b[6] & 127) << 21 | (u32)(b[7] & 127) << 14 | (u32)(b[8] & 127) << 7 | (b[9] & 127));

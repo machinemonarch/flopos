@@ -15,6 +15,12 @@ without it. Each version's notes are also written next to its image, as
   packets or MP4 pieces, as many big broadcasters do.
 - The inventory shows how full the floppy is: a bar, the share used, and
   how many KB of how many.
+- browzer plays mp2 (MPEG audio layer II), which some broadcasters still
+  send, and AAC in .m4a files, as podcasts come.
+- HLS stations that splice in adverts of another kind or rate play on
+  through them.
+- browzer's keys at the bottom show j when a page has scripts that have
+  not run, and say what it does.
 - The system now runs above the first megabyte: it had six kilobytes
   left to grow in, and now has hundreds.
 

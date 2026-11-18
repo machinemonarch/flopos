@@ -54,6 +54,26 @@ int  mp3_open(AudioIn *in, Decoder *d);
 int  vorbis_open(AudioIn *in, Decoder *d);
 int  flac_open(AudioIn *in, Decoder *d);
 int  aac_open(AudioIn *in, Decoder *d);
+int  mp4_open(AudioIn *in, Decoder *d);  /* AAC in an MP4 file (.m4a) */
+
+/* How many bytes audio_detect may want before it can tell: a few KB for
+ * most, but an MP4 file's index comes first and can be hundreds of KB. */
+u32  audio_detect_limit(const AudioIn *in);
+
+/* MP4 (mp4.c).  mp4_room lends memory for a long file's index (two bytes
+ * a sample); without it a few minutes' worth fit.  The boxes and the
+ * sound track's description, for others that read MP4 (browzer's HLS). */
+typedef struct { int mp3, prof, sfi, ch; u32 track; } Mp4Sound;
+void      mp4_room(u8 *room, u32 cap);
+const u8 *mp4_box(const u8 *p, u32 n, u32 *at, const char *t, u32 *len, const u8 **type);
+const u8 *mp4_in(const u8 *p, u32 n, const char *t, u32 *len);
+int       mp4_sound(const u8 *trak, u32 n, Mp4Sound *s);   /* 1 if it is sound that can be played */
+
+/* AAC's bare blocks (aac.c), for mp4.c: set up from the rate index and
+ * channels; one block in; its samples out. */
+int  aac_raw_open(int sri, int ch, Decoder *d);
+int  aac_raw(const u8 *p, u32 len);
+int  aac_take(s16 *out, int max);
 
 /* Ogg carries FLAC too: vorbis.c reads the Ogg pages and hands flac.c the
  * STREAMINFO block's 34 bytes (the rate, or 0 if it cannot be played), then
