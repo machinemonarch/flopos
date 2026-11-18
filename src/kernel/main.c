@@ -236,8 +236,8 @@ void kmain(void)
 
     boot_begin();
     {
-        extern char _image_end[];
-        u32 kb = ((u32)_image_end - 0x10000u + 1023u) / 1024u;
+        extern char _image_bytes[];
+        u32 kb = ((u32)_image_bytes + 1023u) / 1024u;
         boot_step("Hauling Saffran and %u KB off the wobbly disc...", kb);
     }
     boot_step("Forgot where I placed stuff.");

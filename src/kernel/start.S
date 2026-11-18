@@ -289,6 +289,20 @@ pm_start:
         movl    $PM_STACK, %esp
         movl    %esp, %ebp
 
+        /* The kernel proper runs at 1MB (linker.ld): copy it up from where
+         * it sits in the image, behind this stub.  A20 is open by now (the
+         * stub checked), and without memory above 1MB there is nowhere to
+         * go: stop. */
+        cmpl    $1024, 0x504             /* BOOTINFO_EXTKB: KB above 1MB */
+        jb      halt
+        cld
+        movl    $_high_lma, %esi
+        movl    $_high_start, %edi
+        movl    $_high_end, %ecx
+        subl    %edi, %ecx
+        shrl    $2, %ecx
+        rep     movsl
+
         /* .bss is NOLOAD, so it is not in the disk image -- clear it. */
         movl    $_bss_start, %edi
         movl    $_bss_end, %ecx

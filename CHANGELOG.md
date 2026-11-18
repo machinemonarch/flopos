@@ -6,6 +6,19 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+### FEATURES
+
+- The system now runs above the first megabyte: it had six kilobytes
+  left to grow in, and now has hundreds.
+
+### BUG FIXES
+
+- None yet.
+
+### SECURITY FIXES
+
+- None yet.
+
 ## 1.45.0 — 2026-11-18
 
 ### FEATURES

@@ -45,5 +45,5 @@ What this BIOS does that FLOPOS works around:
 - **Interrupt controllers:** The BIOS must get the 8259s in its own layout during a call, or a tick is lost and the clock stops. Every call goes through `bios_int` (`src/kernel/bioscall.c`).
 - **Interrupts:** Code that disables interrupts restores them as they were, never just enables them.
 - **The first 64 KB:** The code that returns to 16-bit mode must sit in the kernel's first 64 KB; `src/kernel/linker.ld` refuses a kernel where it doesn't.
-- **Below 0x70000:** The disk and video BIOS buffers start there, so the kernel must end below it; the linker script checks that too.
+- **Below 0x80000:** The kernel's image is loaded whole below Saffran's picture before it is copied up to 1 MB; the linker script checks it fits.
 - **The 3Com card:** Its configuration register address is in card units, writing attribute memory switches off its I/O window, and the adapter's enable bit must be set.

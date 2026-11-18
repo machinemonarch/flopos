@@ -14,16 +14,16 @@ detail.
 
 ## Memory
 
-- **0x10000:** The kernel. It must end below 0x70000 (the linker script checks).
+- **0x10000:** The boot stub and the real-mode thunk every BIOS call goes through, which must stay in the first 64 KB. The rest of the kernel is loaded behind it, then copied up to 1 MB at start (`start.S`).
 - **0x70000:** The disk buffer, below 1 MB where the BIOS can reach it.
-- **1 MB and up:** The heap: screen buffers, tables, network buffers, the wizard's model. It only ever grows.
+- **1 MB:** The kernel: code, data and variables (`linker.ld`).
+- **After the kernel:** The heap: screen buffers, tables, network buffers, the wizard's model. It only ever grows.
 - **12 MB to 20 MB:** The app area, the only memory an app can touch.
 - **0x7000000:** The video card's frame buffer.
 
 Paging is on, with 4 MB pages mapping every address to itself; only the
 app area is open to apps. It is switched off during each BIOS call
-(`src/kernel/wall.c`). With no memory above 1 MB, the heap moves into
-conventional memory.
+(`src/kernel/wall.c`). FLOPOS needs at least 3 MB in all.
 
 ## Interrupts, time and keys
 

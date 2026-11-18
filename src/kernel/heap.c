@@ -1,27 +1,21 @@
 /* ===========================================================================
  * heap.c -- a bump allocator over extended memory.
  *
- * FLOPOS needs about half a megabyte of frame buffers and lookup tables,
- * which will not fit under the 640K line next to the kernel, the stack and
- * the VGA aperture.  So everything big lives above 1MB and is handed out
- * from here, forwards only.  Nothing is ever freed: the scene list is
+ * Everything big lives above 1MB, after the kernel (which runs at 1MB:
+ * linker.ld), and is handed out from here, forwards only.  Nothing is ever freed: the scene list is
  * fixed and allocated once at boot, so a free() would never be called.
  * ===========================================================================
  */
 #include "flopos.h"
 #include "io.h"
 
-#define HEAP_BASE 0x00100000u            /* first byte above the 1MB line  */
-#define LOW_TOP   0x0008E000u            /* leaves the stack at 0x8F000     */
-#define NEED_KB   512u                   /* less than this is not worth it  */
+#define NEED_KB   1024u                  /* less than this is not worth it  */
 
-/* The linker puts this at the end of .bss, which is the end of everything
- * the kernel image occupies. */
+/* The linker puts this at the end of .bss, which since the kernel moved
+ * up to 1MB (linker.ld) is where the heap begins. */
 extern char _bss_end[];
 
-static u32 s_next = HEAP_BASE;
-static u32 s_limit = HEAP_BASE;
-static int s_low;                        /* running out of low memory?      */
+static u32 s_base, s_next, s_limit;
 
 /* Two complementary patterns, because an address with nothing behind it
  * will often read back whatever was last on the bus and so pass a
@@ -44,34 +38,15 @@ void heap_init(void)
 {
     u32 kb = BOOTINFO_EXTKB;
 
-    /* Trust the BIOS, but never past 8MB -- we need nothing like that much
-     * and a lying BIOS should not get us a fault. */
+    /* From the end of the kernel to what the BIOS counted, but never past
+     * 9MB: the apps' area starts at 12MB, and a lying BIOS should not get
+     * us a fault.  The kernel itself needs memory above 1MB to run at all
+     * (start.S stops without it), so there is no low fallback any more. */
     if (kb > 8192) kb = 8192;
-    s_limit = HEAP_BASE + kb * 1024u;
-
-    /* Prove the memory is actually there before trusting the BIOS about
-     * it.  Two complementary patterns, because an address with nothing
-     * behind it will often read back whatever was last on the bus and so
-     * pass a single-pattern test.
-     *
-     * Nothing here needs to check A20: the 16-bit stub verifies the gate
-     * is open and halts with a message rather than continue without it, so
-     * by the time this runs 1MB cannot be aliasing 0. */
-    if (kb >= NEED_KB && memory_is_real(HEAP_BASE)) {
-        s_next = HEAP_BASE;
-        s_low = 0;
-        return;
-    }
-
-    /* No usable extended memory.  Everything FLOPOS allocates comes to
-     * about a hundred kilobytes, and there is close to half a megabyte
-     * free between the end of the kernel and the stack, so fall back to
-     * conventional memory and carry on rather than giving up.  This is
-     * what lets it run on a machine whose BIOS will not tell us about
-     * anything above the 1MB line. */
-    s_next  = ((u32)_bss_end + 15u) & ~15u;
-    s_limit = LOW_TOP;
-    s_low = 1;
+    s_base = s_next = ((u32)_bss_end + 15u) & ~15u;
+    s_limit = 0x00100000u + kb * 1024u;
+    if (s_limit < s_base + NEED_KB * 1024u || !memory_is_real(s_base))
+        fatal("Not enough memory above 1MB.", "FLOPOS needs at least 3MB in all.");
 }
 
 /* Nothing in FLOPOS can carry on without the buffer it asked for, so a
@@ -93,10 +68,10 @@ void *halloc(usize bytes)
     return (void *)p;
 }
 
-u32 heap_base(void)  { return s_low ? (((u32)_bss_end + 15u) & ~15u) : HEAP_BASE; }
+u32 heap_base(void)  { return s_base; }
 u32 heap_used(void)  { return s_next - heap_base(); }
 u32 heap_total(void) { return s_limit - heap_base(); }
-int heap_is_low(void) { return s_low; }
+int heap_is_low(void) { return 0; }
 
 /* gcc will emit calls to these for struct copies and array initialisers
  * however hard we try to avoid it, so give it real ones. */
