@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.45.0 — 2026-11-18
+
 ### FEATURES
 
 - The HUD rolls down from the top of the screen, the whole width of it:
