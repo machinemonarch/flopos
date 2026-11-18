@@ -44,11 +44,14 @@ Not done: revocation checks, and fetching an authority's certificate a
 site forgot to send.
 
 **The clock** sets itself whenever the network comes up (Swedish time),
-from signed time only (NTS): the time server proves who it is as a secure
-site does, and signs every answer, so nobody on the network can wind the
-clock back. Without a network, or without a signed answer, it keeps its
-own time, and starts from the time `bye` wrote if that is later. It
-never goes back before that.
+from signed time first (NTS): the time server proves who it is as a
+secure site does, and signs every answer, so nobody on the network can
+wind the clock back. `clock` opens a menu for how far to trust the
+network beyond that: signed only; signed, then the time server your own
+network names (the default); or signed, then any. It also lists the
+signed servers, which you can change, and says where the time last came
+from. Without an answer it keeps its own time, and it never goes back
+before the time `bye` wrote.
 
 **Updating the authorities:** `tools/build/mkroots.py` rebuilds
 `data/roots.dat` from a Linux PC's `/etc/ssl/certs/ca-certificates.crt`.

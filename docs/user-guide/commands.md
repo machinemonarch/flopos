@@ -49,6 +49,7 @@ more).
 ## The network
 
 - **`network`:** The connection menu.
+- **`clock`:** Where the time comes from, and how far to trust the network for it.
 - **`ping place`:** `ping example.com`.
 - **`browzer fetch address`:** A page as text in the terminal.
 

@@ -91,7 +91,7 @@ and typing there is fed in as keys.
 - **`tcp.c`:** TCP with a 16-segment window and SACK.
 - **`conn.c`:** One connection for apps: lookup, TCP, and TLS with the certificate check.
 - **`tls.c`:** TLS 1.3 and 1.2, client side. See Security[^4].
-- **`nts.c`:** The clock's time from the network, signed (NTS).
+- **`nts.c`, `clockui.c`:** The clock's time from the network, signed (NTS), and the `clock` menu.
 - **`netui.c`:** The `network` menu.
 - **`src/apps/browzer/`:** HTTP, HTML, CSS and the script room's door.
 - **`src/room/`:** The JavaScript engine, run walled off in its own memory.

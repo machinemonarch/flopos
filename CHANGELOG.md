@@ -8,6 +8,8 @@ without it. Each version's notes are also written next to its image, as
 
 ### FEATURES
 
+- `clock` opens a menu: the time, where it came from, the signed time
+  servers, and how far to trust the network beyond them.
 - browzer plays stations that stream in short pieces (HLS, `.m3u8`),
   live or not, AAC or mp3, as many big broadcasters do.
 - The system now runs above the first megabyte: it had six kilobytes
@@ -19,9 +21,10 @@ without it. Each version's notes are also written next to its image, as
 
 ### SECURITY FIXES
 
-- The clock takes its time from the network only when it is signed
-  (NTS): nobody on the network can wind it back to make an expired
-  certificate look good. Without a signed answer it keeps its own time.
+- The clock takes its time from the network signed (NTS) first, so
+  nobody on the network can wind it back to make an expired certificate
+  look good. By default the only unsigned time it will take instead is
+  from the time server your own network names.
 
 ## 1.45.0 — 2026-11-18
 

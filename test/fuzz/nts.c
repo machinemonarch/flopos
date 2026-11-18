@@ -8,7 +8,8 @@
  * every signature as good (so the cookies sealed inside an answer are
  * read as well -- a real one could not be forged), bit 1 hands the
  * question's timestamp and identifier back as a real server would, so
- * the answer gets past those checks to the rest. */
+ * the answer gets past those checks to the rest, and bit 2 has the
+ * network name a plain time server, so the unsigned fallback is read too. */
 #include "flopos.h"
 #include <string.h>
 
@@ -43,6 +44,9 @@ const char *tls_why(void) { return "fuzz"; }
 int  tls_export(const char *label, const u8 *ctx, int clen, u8 *out, int olen)
 { (void)label; (void)ctx; (void)clen; memset(out, 7, (size_t)olen); return 1; }
 u32  ip_lookup(const char *name) { (void)name; return 0x0A000202u; }
+u32  ip_ntp_server(void) { return (s_mode & 4) ? 0x0A000203u : 0; }   /* bit 2: the network names one */
+int  store_clockset_get(u32 *trust, char server[3][64]) { (void)trust; (void)server; return 0; }
+int  store_clockset_set(u32 trust, const char server[3][64]) { (void)trust; (void)server; return 1; }
 
 int ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wait_ms)
 {
@@ -52,7 +56,7 @@ int ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wa
     memcpy(ans, s_in + s_ke_end, n);
     if ((s_mode & 2) && n >= 48 && qlen >= 48) {
         memcpy(ans + 24, q + 40, 8);         /* our timestamp, carried back */
-        for (i = 48; i + 36 <= n; i += 4)    /* and our identifier, where it goes */
+        for (i = 48; qlen >= 84 && i + 36 <= n; i += 4)    /* and our identifier, where it goes */
             if (ans[i] == 0x01 && ans[i + 1] == 0x04) { memcpy(ans + i + 4, q + 52, 32); break; }
     }
     return (int)n;

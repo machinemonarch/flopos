@@ -358,11 +358,14 @@ static int dhcp_send(int type)
     return udp_send(0xFFFFFFFF, 68, 67, b, n);
 }
 
+static u32 s_ntp_srv;                    /* the time server DHCP named, or 0 */
+u32 ip_ntp_server(void) { return s_ntp_srv; }
+
 static void take_dhcp(const u8 *p, int len)
 {
     const u8 *mac = net_mac();
     int i, type = 0;
-    u32 server = 0, mask = 0, gw = 0, dns = 0;
+    u32 server = 0, mask = 0, gw = 0, dns = 0, ntp = 0;
 
     if (len < 240 || p[0] != 2 || get32(p + 4) != s_xid) return;
     for (i = 0; i < 6; i++) if (p[28 + i] != mac[i]) return;
@@ -378,6 +381,7 @@ static void take_dhcp(const u8 *p, int len)
         if (code == 1  && l >= 4) mask = get32(p + i + 2);
         if (code == 3  && l >= 4) gw = get32(p + i + 2);
         if (code == 6  && l >= 4) dns = get32(p + i + 2);
+        if (code == 42 && l >= 4) ntp = get32(p + i + 2);   /* a time server (nts.c) */
         i += 2 + l;
     }
 
@@ -393,6 +397,7 @@ static void take_dhcp(const u8 *p, int len)
         s_mask = mask ? mask : s_off_mask;
         s_gw = gw ? gw : s_off_gw;
         s_dns = dns ? dns : s_off_dns;
+        s_ntp_srv = ntp;
         s_how = 2;
         s_dhcp = 3;
     } else if (type == DHCP_NAK && s_dhcp == 2) {

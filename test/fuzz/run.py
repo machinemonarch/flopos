@@ -288,7 +288,7 @@ TARGETS = {
                 {"FUZZ_ROOTS": os.path.join(OUT, "made", "tls", "roots.dat")},
                 # The seals' checks are renamed, and tls.c (the target) puts its own in front of them.
                 {"src/kernel/chacha.c": "-Daead_open=real_aead_open", "src/kernel/aes.c": "-Daesgcm_open=real_aesgcm_open"}),
-    "nts":     (files("test/fuzz/nts.c", "test/fuzz/kshim.c", "src/kernel/nts.c"), ["src/kernel"],
+    "nts":     (files("test/fuzz/nts.c", "test/fuzz/kshim.c", "src/kernel/nts.c", "src/kernel/fmt.c"), ["src/kernel"],
                 os.path.join(OUT, "made", "nts"), lambda: seeds_nts(os.path.join(OUT, "made", "nts")), {},
                 # the signature's check is renamed, and nts.c (the target) puts its own in front of it
                 {"src/kernel/aes.c": "-Daessiv_open=real_aessiv_open"}),

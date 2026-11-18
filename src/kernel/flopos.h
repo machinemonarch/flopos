@@ -483,7 +483,14 @@ void   clock_remember(void);             /* at bye                         */
 int    ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wait_ms);
 /* --- nts.c ---------------------------------------------------------------- */
 int    conn_busy(void);
-u32    nts_time(void);                   /* signed UTC seconds since 2000, or 0 */
+u32    nts_time(void);                   /* UTC seconds since 2000 as trusted, or 0 */
+const char *nts_source(void);            /* where the last time came from  */
+int    nts_trust(void);                  /* 0 signed only, 1 then the network's, 2 then any */
+const char *nts_server(int i);           /* the signed servers, in order   */
+int    nts_settings(int trust, const char server[3][64]);   /* kept on the floppy */
+int    store_clockset_get(u32 *trust, char server[3][64]);
+int    store_clockset_set(u32 trust, const char server[3][64]);
+u32    ip_ntp_server(void);              /* the time server DHCP named, or 0 */
 u32    store_clock_get(void);
 void   store_clock_set(u32 s);
 
@@ -1046,6 +1053,8 @@ int    ui_key(void);
 int    ui_wait_key(void);
 int    ui_key_mods(int *mods);
 void   netui_run(void);
+void   clockui_run(void);
+int    net_online(void);                 /* the network up, with an address */
 int    app_run(const char *word, int argc, char **argv);
 void   apps_list(void);
 int    ip_apply_saved(void);

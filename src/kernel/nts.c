@@ -18,10 +18,11 @@
  *      opens with the server's key; inside it are new cookies.  A cookie
  *      is used once, so nobody can link one request to the next.
  *
- * Without the signature there is no time from the network at all: the
- * clock keeps its own (rtc.c), which it does well.  Asked only when the
- * network comes up, and never while an app has its connection open (there
- * is only the one).
+ * How far to trust the network beyond that is a setting (the clock menu,
+ * clockui.c, kept in STATE.BIN): signed only; signed, then plain NTP from
+ * the time server the local network names (DHCP); or signed, then any.
+ * Asked when the network comes up.  The key exchange is never made while
+ * an app has its connection open (there is only the one).
  * ===========================================================================
  */
 #include "flopos.h"
@@ -32,7 +33,10 @@ int  conn_read(u8 *b, int n, int wait_ms);
 void conn_close(void);
 const char *conn_why(void);
 
-static const char *const s_servers[] = { "nts.netnod.se", "ptbtime1.ptb.de", "time.cloudflare.com" };
+static const char *const s_default[3] = { "nts.netnod.se", "ptbtime1.ptb.de", "time.cloudflare.com" };
+static char s_srv[3][64];                /* the signed servers, in order   */
+static int  s_trust = 1, s_loaded;
+static char s_source[80];                /* where the time last came from  */
 #define KE_PORT  4460
 #define AEAD_SIV 15                      /* AEAD_AES_SIV_CMAC_256          */
 #define COOKIES  8
@@ -202,17 +206,83 @@ static u32 ask_time(void)
     return get32(a + 40) - 3155673600u;              /* since 2000; past 2036 too */
 }
 
+/* The settings, from the floppy, or the defaults. */
+static void load(void)
+{
+    u32 t;
+    int i, k;
+    if (s_loaded) return;
+    s_loaded = 1;
+    if (store_clockset_get(&t, s_srv) && t <= 2) { s_trust = (int)t; return; }
+    s_trust = 1;
+    for (i = 0; i < 3; i++) {
+        for (k = 0; s_default[i][k]; k++) s_srv[i][k] = s_default[i][k];
+        s_srv[i][k] = 0;
+    }
+}
+
+int nts_trust(void) { load(); return s_trust; }
+const char *nts_server(int i) { load(); return i >= 0 && i < 3 ? s_srv[i] : ""; }
+const char *nts_source(void) { return s_source; }
+
+int nts_settings(int trust, const char server[3][64])
+{
+    int i, k;
+    load();
+    s_trust = trust < 0 || trust > 2 ? 1 : trust;
+    for (i = 0; i < 3; i++) {
+        for (k = 0; k < 63 && server[i][k]; k++) s_srv[i][k] = server[i][k];
+        s_srv[i][k] = 0;
+    }
+    s_ncookies = 0;                              /* other servers: a fresh exchange */
+    return store_clockset_set((u32)s_trust, s_srv);
+}
+
+/* Plain NTP, unsigned, from one server: the time it says, or 0.  Its
+ * answer must come from that address, to the port asked from, and carry
+ * back our random transmit time. */
+static u32 plain_time(u32 to)
+{
+    u8 q[48], a[96], sent[8];
+    int i, got;
+    for (i = 0; i < 48; i++) q[i] = 0;
+    q[0] = 0x23;
+    rand_bytes(sent, 8);
+    for (i = 0; i < 8; i++) q[40 + i] = sent[i];
+    got = ip_udp_ask(to, 123, q, 48, a, (int)sizeof a, 1500);
+    if (got < 48 || (a[0] & 7) != 4 || a[1] == 0 || a[1] > 15) return 0;
+    for (i = 0; i < 8; i++) if (a[24 + i] != sent[i]) return 0;
+    return get32(a + 40) - 3155673600u;
+}
+
+static void source(const char *what, u32 ip, const char *how)
+{
+    if (what) fmt_str(s_source, sizeof s_source, "%s, %s", what, how);
+    else fmt_str(s_source, sizeof s_source, "%u.%u.%u.%u, %s", ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255, how);
+}
+
 u32 nts_time(void)
 {
     u32 t;
-    unsigned s;
-    if (conn_busy()) return 0;
-    for (s = 0; s < sizeof s_servers / sizeof s_servers[0]; s++) {
-        if (!s_ncookies && !key_exchange(s_servers[s])) continue;
-        t = ask_time();
-        if (!t && !s_ncookies) continue;
-        if (t) return t;
-        s_ncookies = 0;                              /* a fresh exchange next time */
+    int s;
+    load();
+    if (!conn_busy())
+        for (s = 0; s < 3; s++) {
+            if (!s_srv[s][0]) continue;
+            if (!s_ncookies && !key_exchange(s_srv[s])) continue;
+            t = ask_time();
+            if (t) { source(s_srv[s], 0, "signed"); return t; }
+            s_ncookies = 0;                              /* a fresh exchange next time */
+        }
+    if (s_trust >= 1 && ip_ntp_server()) {               /* the local network's own */
+        t = plain_time(ip_ntp_server());
+        if (t) { source(0, ip_ntp_server(), "the network's own, not signed"); return t; }
     }
+    if (s_trust == 2) {
+        u32 to = ip_lookup("pool.ntp.org");
+        t = to ? plain_time(to) : 0;
+        if (t) { source("pool.ntp.org", 0, "not signed"); return t; }
+    }
+    fmt_str(s_source, sizeof s_source, "nothing %s answered", s_trust ? "trusted" : "signed");
     return 0;
 }

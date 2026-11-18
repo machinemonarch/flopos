@@ -207,6 +207,53 @@ int store_keys_set(const char *code)
     return store_save();
 }
 
+/* The clock's settings (nts.c, clockui.c): how far to trust the network's
+ * time, and the signed servers to ask, in order.  Its own mark and sum. */
+typedef struct {
+    char magic[4];                       /* "CLOK"                         */
+    u32  trust;
+    char server[3][64];
+    u32  sum;
+} ClockSet;
+
+static ClockSet *s_clkset;
+
+static u32 clockset_sum(const ClockSet *c)
+{
+    u32 sum = 0x434C4F4Bu, i;
+    const u8 *p = (const u8 *)c;
+    for (i = 0; i < (u32)__builtin_offsetof(ClockSet, sum); i++) sum = (sum << 5 | sum >> 27) ^ p[i];
+    return sum;
+}
+
+int store_clockset_get(u32 *trust, char server[3][64])
+{
+    int i, k;
+    if (!s_ready || !s_clkset) return 0;
+    if (s_clkset->magic[0] != 'C' || s_clkset->magic[1] != 'L' || s_clkset->magic[2] != 'O' ||
+        s_clkset->magic[3] != 'K' || s_clkset->sum != clockset_sum(s_clkset)) return 0;
+    *trust = s_clkset->trust;
+    for (i = 0; i < 3; i++) {
+        for (k = 0; k < 63 && s_clkset->server[i][k]; k++) server[i][k] = s_clkset->server[i][k];
+        server[i][k] = 0;
+    }
+    return 1;
+}
+
+int store_clockset_set(u32 trust, const char server[3][64])
+{
+    int i, k;
+    if (!s_ready || !s_clkset) return 0;
+    memset8(s_clkset, 0, sizeof *s_clkset);
+    s_clkset->magic[0] = 'C'; s_clkset->magic[1] = 'L'; s_clkset->magic[2] = 'O'; s_clkset->magic[3] = 'K';
+    s_clkset->trust = trust;
+    for (i = 0; i < 3; i++)
+        for (k = 0; k < 63 && server[i][k]; k++) s_clkset->server[i][k] = server[i][k];
+    s_clkset->sum = clockset_sum(s_clkset);
+    s_taught_dirty = 1;
+    return store_save();
+}
+
 static u32 settings_sum(const Settings *t)
 {
     return 0x5E7u ^ t->net_how ^ t->ip ^ (t->mask * 3) ^ (t->gw * 5) ^ (t->dns * 7);
@@ -294,6 +341,7 @@ void store_init(void)
     s_set     = (Settings *)(statebuf + g_diskmap.state_sectors * SECTOR - 64);
     s_clk     = (SavedClock *)(statebuf + g_diskmap.state_sectors * SECTOR - 128);
     s_keys    = (SavedKeys *)(statebuf + g_diskmap.state_sectors * SECTOR - 192);
+    s_clkset  = (ClockSet *)(statebuf + g_diskmap.state_sectors * SECTOR - 448);
 
     if (!read_in()) return;
     s_boots++;

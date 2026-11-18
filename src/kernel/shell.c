@@ -160,6 +160,11 @@ static void cmd_network(void)
     netui_run();
 }
 
+static void cmd_clock(void)
+{
+    clockui_run();
+}
+
 static void cmd_whoami(void)
 {
     say(voice(V_WHOAMI));
@@ -1417,6 +1422,7 @@ static const Cmd s_cmds[] = {
     { "remember","write it all to the disk",     cmd_remember},
     { "journal", "what I have written down",     cmd_journal },
     { "network", "how this machine is connected",cmd_network },
+    { "clock",   "where the time comes from",    cmd_clock   },
     { "apps",    "programs on the floppy",       cmd_apps    },
     { "ping",    "is anybody out there",         cmd_ping    },
     { "report",  "tell Claude how you are",      cmd_report  },

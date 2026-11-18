@@ -79,6 +79,10 @@ journal       what was written down, and the words not known
 network       the connection: card, address, automatic or by hand
   Tab goes round, Enter changes, Esc leaves.
 
+[clock]
+clock         the time, where it came from, and how far to trust the network
+  signed time (NTS) first; Tab goes round, Enter changes, Esc leaves
+
 [apps]
 apps          the programs on the floppy; type a name to run one
 
