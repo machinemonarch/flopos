@@ -605,14 +605,12 @@ void hud_frame(u8 *dst, u32 t)
         int rolling = s_roll < all, from = all - s_roll;
         s_full = rolling || fresh || caret != caret_was || !term_win_covers() || g_frame_fx != 0;
         caret_was = caret;
-        if (s_full) {
-            for (y = 0; y < s_roll; y++)
-                memcpy32(dst + y * pitch, strip + (from + y) * pitch, (u32)w4 / 4);
-        } else {
-            int mx = (XD * s_cw) & ~3, mw = (w4 - mx) / 4;
-            for (y = 0; y < 11 * s_ch && y < all; y++)
-                memcpy32(dst + y * pitch + mx, strip + y * pitch + mx, (u32)mw);
-        }
+        /* Always all of it, on top of whatever was drawn under it this
+         * frame -- a page, the moving background -- so nothing shows
+         * through.  It is a copy in memory; only the rows that changed are
+         * sent to the card (hud_rect, and the rows drawn again under it). */
+        for (y = 0; y < s_roll; y++)
+            memcpy32(dst + y * pitch, strip + (from + y) * pitch, (u32)w4 / 4);
         /* The caret, on the screen only. */
         if (caret && !rolling)
             term_overlay_fill(dst, (3 + (s_in_len > IN_W ? IN_W : s_in_len)) * s_cw, (s_hh - 1) * s_ch - 3, s_cw - 1, 2, C_ACCENT);
