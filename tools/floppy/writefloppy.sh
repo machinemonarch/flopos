@@ -217,11 +217,11 @@ model=$(lsblk -d -n -o MODEL,TRAN "$DEVICE" 2>/dev/null | xargs || true)
 # It is printed big because the person reading it is tired and the cost of
 # skimming past a quiet line is somebody's data.
 shout() {
-    local green reset
+    local green red reset
     if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-        green=$'\033[1;92m'; reset=$'\033[0m'
+        green=$'\033[1;92m'; red=$'\033[1;91m'; reset=$'\033[0m'
     else
-        green=""; reset=""
+        green=""; red=""; reset=""
     fi
     printf '\n%s' "$green"
     if command -v figlet >/dev/null 2>&1; then
@@ -235,7 +235,8 @@ shout() {
     printf '  THE DISCOVERED DEVICE SHOULD HOPEFULLY BE A FLOPPY DISK!\n'
     printf '  ASSUMING you have no valuable data on it, typing "YES" in order to write to the device\n'
     printf '  IS HOPEFULLY SAFE, BOSS.\n'
-    printf '\n'
+    printf '%s\n' "$reset"
+    printf '%s' "$red"
     printf '  BUT WHO KNOWS, REALLY? I STILL RECOMMEND YOU DOUBLE-CHECK BEFORE YOU WRITE TO IT.\n'
     printf '%s\n' "$reset"
 }
