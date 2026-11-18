@@ -504,8 +504,8 @@ static int is_http(const u16 *w, int n)
            ((w[4] == ':' && w[5] == '/' && w[6] == '/') || (w[4] == 's' && w[5] == ':' && w[6] == '/' && w[7] == '/'));
 }
 
-/* An address written out as text, not as a link -- 72fm.com shows its
- * stations' stream addresses so -- is made a link to itself.  A long one
+/* An address written out as text, not as a link -- some radio pages show
+ * their stations' stream addresses so -- is made a link to itself.  A long one
  * arrives in pieces of a word's length; s_bare is its link meanwhile. */
 static u16 s_bare;
 

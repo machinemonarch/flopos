@@ -188,8 +188,8 @@ without it. Each version's notes are also written next to its image, as
   æ ø ü ß é è ê à ç ñ ă ș ț and the rest with their capitals, £ € § ° µ
   ¡ ¿, the Cyrillic alphabet as Bulgarian and Ukrainian use it, and the
   Hebrew alphabet with Yiddish's pointed letters. scribe saves and opens
-  them as UTF-8; browzer shows them on pages (Hebrew station names on
-  72fm, which were "(a name in Hebrew)" before) and types them into boxes.
+  them as UTF-8; browzer shows them on pages (Hebrew station names, which were "(a name
+  in Hebrew)" before) and types them into boxes.
 
 - Under the hood, a character is no longer one byte: the screen, windows,
   the HUD, the command line, scribe's documents and browzer's pages hold
@@ -552,9 +552,9 @@ without it. Each version's notes are also written next to its image, as
 
 ## 1.26.0 — 2026-11-11
 
-- **72fm.com's stations can be picked**, Israel's and every other
-  country's. Its country pages name the stations as plain text and leave
-  the rest to a script; browzer now asks the same open directory the
+- **Stations on radio directory pages can be picked**, any country's.
+  Pages that name the stations as plain text and leave the rest to a
+  script are read too: browzer now asks the same open directory the
   script asks (Radio Browser) and lists the 40 most voted stations as
   links, with format and bit rate.
 - **Holding a key repeats it**: Tab runs through a page's links, and the
@@ -601,8 +601,8 @@ without it. Each version's notes are also written next to its image, as
   as it plays instead of being unpacked first. A song with 64 channels
   takes under a fifth of the machine and the screen keeps its 30 frames.
 - **Sound a page names without linking to it** is listed at the end of the
-  page as links, without running anything: ERICADE Radio's stations, and
-  stream addresses written out as text, as on 72fm.com. An address written
+  page as links, without running anything: stations named in a page's
+  data, and stream addresses written out as text. An address written
   as text anywhere is now a link. **Chiptune Radio** and other AzuraCast
   stations are asked for their streams.
 - **DuckDuckGo works**: its front page sends a browser without JavaScript
@@ -756,7 +756,7 @@ without it. Each version's notes are also written next to its image, as
 
 - **Forms in browzer.** Text boxes, big text areas, hidden values and
   buttons work: Tab to a box, Enter, type, Enter sends. Search boxes,
-  logins and chat pages like nojs.chat can be used. Pages are sent both
+  logins and chat pages can be used. Pages are sent both
   ways sites ask for (GET and POST), and the redirect after a form is
   followed. Not yet: checkboxes, radio buttons, drop-down lists.
 - **browzer is an app now**, BROWZER.APP on the floppy, like `write`. The

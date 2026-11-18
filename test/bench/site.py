@@ -9,12 +9,12 @@ QEMU's guest reaches it at http://10.0.2.2:PORT/.  Pages:
   /refresh           DuckDuckGo's front page: a <noscript> refresh to the
                      plain page, its address in &quot;, then 200 KB of script
   /plain             where that leads
-  /code              72fm.com: stream addresses as text in <code>, one long
-  /data              ERICADE Radio: streams in data attributes as JSON,
+  /code              a radio page: stream addresses as text in <code>, one long
+  /data              a radio page: streams in data attributes as JSON,
                      entity-encoded, one relative, one with \\/ escapes
   /public/chiptune   an AzuraCast station page: no stream, only its art
   /api/nowplaying/chiptune   the station's JSON, naming its streams
-  /radio/il          72fm.com's country page: names only, and the Radio
+  /radio/il          a radio directory's country page: names only, and the Radio
                      Browser directory named in a <link rel="preconnect">
   /radio-browser/json/stations/bycountrycodeexact/IL   that directory's answer
   /js/...            pages with scripts for the script room (see JS below)
@@ -28,16 +28,16 @@ HOST = "http://10.0.2.2:%d" % PORT
 
 PAGES = {
     "/plain": "<title>plain</title><h1>The plain page</h1><p>Arrived by the refresh.</p>",
-    "/code": ("<title>72fm-like</title><h1>A station</h1><p>Its stream address:</p>"
+    "/code": ("<title>radio page</title><h1>A station</h1><p>Its stream address:</p>"
               "<p><code class=\"break-all\">%s/listen/radio.mp3</code></p>"
               "<p>and a long one, longer than a word can be: %s/a/very/long/path/that/goes/on/and/on/"
               "for/more/than/eighty/characters/stream.mp3.</p>" % (HOST, HOST)),
-    "/data": ("<title>ERICADE-like</title><h1>Radio</h1><div data-stations=\"[{&quot;id&quot;:1,&quot;name&quot;:"
+    "/data": ("<title>radio page</title><h1>Radio</h1><div data-stations=\"[{&quot;id&quot;:1,&quot;name&quot;:"
               "&quot;Live&quot;,&quot;stream&quot;:&quot;/sc/stream/1/&quot;}]\"></div><div data-show=\"{&quot;title"
               "&quot;:&quot;Show 170&quot;,&quot;image&quot;:&quot;http:\\/\\/10.0.2.2:%d\\/art.webp&quot;,"
               "&quot;url&quot;:&quot;http:\\/\\/10.0.2.2:%d\\/Flashback\\/170.mp3&quot;}\"></div>"
               "<script>var api='%s/api/radio/v2/listening';</script>" % (PORT, PORT, HOST)),
-    "/radio/il": ("<html><head><link rel=\"preconnect\" href=\"%s/radio-browser\" /><title>72fm-like</title></head>"
+    "/radio/il": ("<html><head><link rel=\"preconnect\" href=\"%s/radio-browser\" /><title>radio page</title></head>"
                   "<body><h1>Radio stations from Israel</h1><ul><li>Radio 103FM</li><li>Glglz</li></ul></body></html>" % HOST),
     "/public/chiptune": ("<title>24/7 Chiptune Radio</title><div id=\"app\"></div>"
                          "<img src=\"/api/nowplaying/chiptune/art/1.jpg\"><script>/* a player */</script>"),
