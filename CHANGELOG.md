@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.46.0 — 2026-11-18
+
 ### FEATURES
 
 - `clock` opens a menu: the time, where it came from, the signed time
