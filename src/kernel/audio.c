@@ -388,19 +388,21 @@ void audio_deferred(void)
     s_feeding = 0;
 }
 
-/* Every ten seconds while sound plays, down the serial wire: what share of
+/* Twice a minute while sound plays, down the serial wire: what share of
  * the machine the refill took, and how many frames the screen drew a
  * second -- the two numbers that say whether playing costs the screen
- * anything.  From the main loop, not the interrupt. */
+ * anything.  Nothing when the refill took next to nothing, as it does
+ * when a program decodes for itself.  From the main loop, not the
+ * interrupt. */
 void audio_tell(u32 fps)
 {
     static u32 at, cyc0;
     u32 now = ms_now(), cyc;
     if (s_on != 1 || !g_cpu_mhz) { at = 0; return; }
     if (!at) { at = now; cyc0 = s_feed_cycles; return; }
-    if (now - at < 10000) return;
+    if (now - at < 30000) return;              /* longer would overflow the cycle count */
     cyc = s_feed_cycles - cyc0;
-    serial_printf("[audio] decoding took %u.%u%% of the machine; the screen drew %u frames a second\n",
+    if (cyc / (g_cpu_mhz * (now - at)) >= 1u) serial_printf("[audio] decoding took %u.%u%% of the machine; the screen drew %u frames a second\n",
                   cyc / (g_cpu_mhz * (now - at) * 10u), (cyc / (g_cpu_mhz * (now - at))) % 10u, fps);
     at = now;
     cyc0 = s_feed_cycles;

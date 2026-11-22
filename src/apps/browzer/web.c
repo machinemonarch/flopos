@@ -38,12 +38,14 @@ static void wire(const char *a, const char *b)
 
 /* ---- where the words go ---------------------------------------------- */
 static Page *s_pg;                       /* a page, or 0 for the terminal  */
+int web_quiet;                           /* fetches the status line need not show */
 
 static void note(const char *t, u8 col)
 {
     int i;
     if (!s_pg) { term_colour(col); term_print(t); term_newline(); return; }
     wire("[web] ", t);                 /* browzer's status, for the wire  */
+    if (web_quiet) { if (s_pg->progress) s_pg->progress(); return; }
     for (i = 0; t[i] && i < (int)sizeof s_pg->note - 1; i++) s_pg->note[i] = t[i];
     s_pg->note[i] = 0;
     s_pg->note_col = col;
@@ -56,6 +58,7 @@ static int out_width(void) { return s_pg ? s_pg->width : term_cols() - 1; }
  * machine takes a moment worth knowing about. */
 static void tls_note(const char *t)
 {
+    if (!t) return;
     note(t, C_DIM);
     if (!s_pg) main_pump(1);
 }
@@ -108,7 +111,7 @@ void page_clear(Page *pg)
     s_select = s_opt = -1;
     pg->pool_used = 0;
     pg->title[0] = 0;
-    pg->note[0] = 0;
+    if (!web_quiet) pg->note[0] = 0;     /* an HLS piece leaves the status be */
     pg->bytes = 0;
     pg->status = 0;
     pg->refresh = 0;
@@ -724,7 +727,7 @@ static void sniff(u8 b)
 static void side_fetch(const Url *u, const char *path, const char *what, void (*eat)(u8))
 {
     static u8 buf[2048];
-    char req[PAGE_HREF_MAX + 300];
+    char req[URL_PATH_MAX + 300];
     int n, i, status = 0, state = 0, sp = 0;
     u32 got = 0, last = 0;
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) return;
@@ -2021,7 +2024,8 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 {
     static u8 buf[4096];
     static char head[8192];
-    char req[PAGE_HREF_MAX + 200], line[96];
+    static char req[URL_PATH_MAX + 200];
+    char line[96];
     int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0, asked = 0;
     u32 clen = 0, metaint = 0;
     char station[96];
@@ -2183,11 +2187,11 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                     while (u->path[k] && u->path[k] != '?') k++;
                     pl = (k > 4 && lower_eq(u->path + k - 4, ".m3u", 4)) || (k > 4 && lower_eq(u->path + k - 4, ".pls", 4)) ||
                          (k > 5 && lower_eq(u->path + k - 5, ".m3u8", 5));
-                    if (pl && s_pg) { html = 0; fmt_str(ctype, sizeof ctype, "audio/x-mpegurl"); }
+                    if (pl && s_pg && status >= 200 && status < 300) { html = 0; fmt_str(ctype, sizeof ctype, "audio/x-mpegurl"); }
                 }
                 if (!html && !lower_eq(ctype, "text/", 5) && ctype[0] && s_pg && web_media_start &&
                     status >= 200 && status < 300) {
-                    char where[PAGE_HREF_MAX + 16];
+                    char where[URL_MAX];
                     url_text(u, where, (int)sizeof where);
                     media = web_media_start(ctype, where, clen, metaint, station);
                 }
@@ -2287,10 +2291,10 @@ static int get(const char *url, Page *pg, const u8 *post, int postlen)
         if (s_status != 307 && s_status != 308) { post = 0; postlen = 0; }
         if (moved[0] == '/' && moved[1] != '/') {        /* same server    */
             int i;
-            for (i = 0; moved[i] && i < PAGE_HREF_MAX - 1; i++) u.path[i] = moved[i];
+            for (i = 0; moved[i] && i < URL_PATH_MAX - 1; i++) u.path[i] = moved[i];
             u.path[i] = 0;
         } else if (moved[0] == '/' && moved[1] == '/') {  /* same scheme    */
-            char full[PAGE_HREF_MAX + 8];
+            char full[URL_MAX];
             fmt_str(full, sizeof full, "%s:%s", u.secure ? "https" : "http", moved);
             if (!url_parse(full, &u)) break;
         } else if (!url_parse(moved, &u)) {

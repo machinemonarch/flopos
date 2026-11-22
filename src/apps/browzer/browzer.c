@@ -82,7 +82,7 @@ static u32  s_dl_len;
 enum { DL_NONE, DL_COMING, DL_CAME, DL_BROKE, DL_BIG, DL_STREAM, DL_STREAM_END, DL_UNPLAYABLE, DL_NOCARD };
 static int  s_dl_state;
 static int  s_esc;                       /* esc stopped a stream            */
-static char s_dl_type[48], s_dl_url[PAGE_HREF_MAX + 16], s_station[96], s_now[200], s_title[64];
+static char s_dl_type[48], s_dl_url[URL_MAX], s_station[96], s_now[200], s_title[64];
 static int  s_music;                     /* 0 quiet, 1 playing, 2 the end is queued */
 static int  s_src;                       /* 1 a song, 2 a recording         */
 static int  s_rate;                      /* the card's                      */
@@ -483,10 +483,14 @@ static int playlist_url(char *out, int cap, int nth)
 
 #define UK_SELALL 1                      /* ctrl-a                         */
 
+static int s_ui_mods;                    /* what was held with the last key */
+static int s_ui_ctrl_ok;                 /* the address is being edited: ctrl keys wanted */
 int ui_key(void)
 {
     int mods, k = A->key(&mods);
+    s_ui_mods = k >= 0 ? mods : 0;
     if (k >= 0 && (mods & M_CTRL) && (k == 'a' || k == 'A')) return UK_SELALL;
+    if (k >= 0 && (mods & M_CTRL) && !(mods & M_ALT) && s_ui_ctrl_ok) return k;
     if (k >= 0 && (mods & (M_CTRL | M_ALT))) return -1;
     return k;
 }
@@ -503,7 +507,7 @@ int ui_key(void)
  * MP4 pieces (EXT-X-MAP names the header they share).  Sealed segments
  * (EXT-X-KEY, AES-128) are opened with the key the playlist points to. */
 static int  s_ts_pid;                    /* the transport stream's sound     */
-static char s_key_uri[PAGE_HREF_MAX + 16], s_map_uri[PAGE_HREF_MAX + 16];   /* fetched already */
+static char s_key_uri[URL_MAX], s_map_uri[URL_MAX];   /* fetched already */
 static u8   s_key[16];
 static int  s_mp4;                       /* the segments are MP4 pieces     */
 static const char *s_hls_why;            /* why a playlist could not be played */
@@ -558,7 +562,9 @@ static int hls_get(const char *url)
 {
     s_seg_len = 0; s_seg_whole = 0;
     s_hls = 1;
+    web_quiet = 1;                       /* the status line keeps saying it plays */
     (void)http_load(url, &s_pg, 0, 0);
+    web_quiet = 0;
     s_hls = 0;
     return s_seg_whole && !s_esc;
 }
@@ -714,8 +720,8 @@ typedef struct {
     int  seal;                           /* 0 open, 1 AES-128, -1 sealed some way not known */
     int  has_iv;
     u8   iv[16];
-    char key[PAGE_HREF_MAX + 16];        /* where the key is */
-    char map[PAGE_HREF_MAX + 16];        /* where the MP4 header is, or "" */
+    char key[URL_MAX];                   /* where the key is */
+    char map[URL_MAX];                   /* where the MP4 header is, or "" */
     u32  map_len, map_at;                /* a part of that file (BYTERANGE), or 0 */
     int  map_seal, map_has_iv;           /* the key in force when the header was named */
     u8   map_iv[16];
@@ -725,7 +731,7 @@ static HlsTags s_tags;
 
 static void hls_tag(const char *l, const char *base)
 {
-    char v[PAGE_HREF_MAX];
+    static char v[URL_MAX];
     if (tag(l, "#EXT-X-DISCONTINUITY") && (l[20] == '\r' || l[20] == '\n' || !l[20])) s_tags.brk = 1;
     else if (tag(l, "#EXT-X-KEY:")) {
         int i, k;
@@ -857,11 +863,13 @@ static int hls_wait(u32 ms)
  * the station stops answering.  Returns the state for the page to say. */
 static int hls_play(void)
 {
-    char base[PAGE_HREF_MAX + 16], uri[PAGE_HREF_MAX + 16];
+    static char base[URL_MAX], uri[URL_MAX];
     u32 next = 0, i, n;
     int first = 1, tries = 0, first_piece = 1, st = DL_STREAM_END;
 
     s_hls_why = 0;
+    fmt_str(s_pg.note, sizeof s_pg.note, "A stream in pieces (HLS): each is fetched as the last plays.");
+    s_pg.note_col = C_DIM;
     n = s_dl_len < PL_MAX - 1 ? s_dl_len : PL_MAX - 1;
     memcpy(s_pl, s_dl, n); s_pl[n] = 0;
     fmt_str(base, sizeof base, "%s", s_dl_url);
@@ -878,7 +886,7 @@ static int hls_play(void)
                 while (*u && *u != '\n') u++;
                 while (*u == '\n' || *u == '\r') u++;
                 if (*u && *u != '#' && bw < best) {
-                    char rel[PAGE_HREF_MAX];
+                    static char rel[URL_MAX];
                     int k = 0;
                     while (u[k] && u[k] != '\r' && u[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = u[k]; k++; }
                     rel[k] = 0;
@@ -888,7 +896,12 @@ static int hls_play(void)
             while (*l && *l != '\n') l++;
             if (*l) l++;
         }
-        if (!uri[0] || !hls_get(uri)) return s_esc ? DL_STREAM_END : DL_UNPLAYABLE;
+        if (!uri[0] || !hls_get(uri)) {
+            if (s_esc) return DL_STREAM_END;
+            s_hls_why = uri[0] ? "The station would not hand over the stream it names."
+                               : "It names no stream browzer can fetch.";
+            return DL_UNPLAYABLE;
+        }
         n = s_seg_len < PL_MAX - 1 ? s_seg_len : PL_MAX - 1;
         memcpy(s_pl, s_seg, n); s_pl[n] = 0;
         fmt_str(base, sizeof base, "%s", uri);
@@ -932,7 +945,7 @@ static int hls_play(void)
         for (l = s_pl, i = 0; *l; ) {
             if (*l == '#') hls_tag(l, base);
             else if (*l != '\r' && *l != '\n') {
-                char rel[PAGE_HREF_MAX];
+                static char rel[URL_MAX];
                 int k = 0;
                 while (l[k] && l[k] != '\r' && l[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = l[k]; k++; }
                 rel[k] = 0;
@@ -1000,7 +1013,10 @@ static char s_hist[HISTORY][PAGE_HREF_MAX + 16];
 static int  s_hist_n;
 static int  s_editing;
 static char s_edit[PAGE_HREF_MAX];
-static int  s_edit_len, s_edit_cur, s_edit_all;   /* the caret; ctrl-a picked all */
+static int  s_edit_len, s_edit_cur;     /* its length, and the caret */
+static int  s_edit_anc = -1;             /* where a selection started, or -1 */
+static char s_clip[PAGE_HREF_MAX];       /* ctrl-c and ctrl-x keep it here, for ctrl-v */
+static int  s_clip_len;
 static int  s_leave_armed;               /* asked whether to leave          */
 
 /* Finding on the page, as less does it: / and a few letters, then n for
@@ -1115,11 +1131,13 @@ static void draw(void)
         int vis = s_w - 10;
         term_win_band(1, 1, s_w - 2, WIN_HILITE);
         term_win_text(2, 1, "go:", C_ACCENT, WIN_HILITE);
+        int a = s_edit_anc < 0 ? s_edit_cur : s_edit_anc < s_edit_cur ? s_edit_anc : s_edit_cur;
+        int b = s_edit_anc < 0 ? s_edit_cur : s_edit_anc < s_edit_cur ? s_edit_cur : s_edit_anc;
         i = s_edit_cur > vis - 1 ? s_edit_cur - (vis - 1) : 0;
         for (x = 6; i <= s_edit_len && x < 6 + vis; i++, x++) {
             if (i == s_edit_len)
                 term_win_put(x, 1, '_', C_ACCENT, WIN_HILITE);
-            else if (s_edit_all)
+            else if (i >= a && i < b)                /* picked: reversed */
                 term_win_put(x, 1, (u8)s_edit[i], WIN_HILITE, C_ACCENT);
             else
                 term_win_put_at(x, 1, (u8)s_edit[i], i == s_edit_cur ? C_ACCENT : C_BRIGHT, WIN_HILITE,
@@ -1254,7 +1272,8 @@ static void draw(void)
     {
         const char *keys = s_finding ? " type  \1enter\1 find  \1esc\1 cancel "
                          : s_choosing >= 0 ? " \1up down\1 choose  \1enter\1 keep  \1esc\1 undo "
-                         : s_editing ? " type  \1arrows\1 move  \1ctrl-a\1 all  \1enter\1 go  \1esc\1 cancel "
+                         : s_editing ? (s_w >= 96 ? " type  \1shift\1 picks  \1ctrl-a\1 all  \1ctrl-c x v\1 copy, cut, paste  \1enter\1 go  \1esc\1 cancel "
+                                                  : " type  \1shift\1 picks  \1ctrl-c x v\1  \1enter\1 go  \1esc\1 cancel ")
                          : s_typing >= 0 ? " type  \1enter\1 send  \1tab\1 done  \1esc\1 stop "
                          : s_w >= 96 && script_state() == 1
                              ? " \1tab\1 link  \1enter\1 go  \1bksp\1 back  \1g\1 go to  \1/\1 find  \1b\1 mark  \1m\1 marks  \1j\1 run scripts  \1esc\1 "
@@ -1668,7 +1687,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
             s_hls_why = 0;
         } else if (st == DL_UNPLAYABLE) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is %s, which browzer cannot play "
-                    "(mp3, AAC, Ogg, FLAC, wav, .mod, .xm, .s3m and .it it can).</p>", name, name, s_dl_type);
+                    "(mp3, mp2, AAC, .m4a, Ogg, Opus, FLAC, wav, .mod, .xm, .s3m and .it it can).</p>", name, name, s_dl_type);
         } else if (st == DL_NOCARD) {
             fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>This machine has no sound card "
                     "that plays recordings.</p>", name);
@@ -1680,7 +1699,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     "it was all here.</p>");
         }
         http_page_html(html, &s_pg);
-        for (i = 0; s_dl_url[i]; i++) s_pg.url[i] = s_dl_url[i];
+        for (i = 0; s_dl_url[i] && i < (int)sizeof s_pg.url - 1; i++) s_pg.url[i] = s_dl_url[i];
         s_pg.url[i] = 0;
         s_loading = 0;
         return;
@@ -1903,16 +1922,75 @@ static void edit_start(void)
 {
     int i = 0;
     s_editing = 1;
-    s_edit_all = 0;
+    s_ui_ctrl_ok = 1;
+    s_edit_anc = -1;
     if (!(s_pg.url[0] == 'f' && s_pg.url[1] == 'l' && s_pg.url[2] == 'o' && s_pg.url[3] == 'p'))
         for (; s_pg.url[i] && i < PAGE_HREF_MAX - 1; i++) s_edit[i] = s_pg.url[i];
     s_edit_len = s_edit_cur = i;
 }
 
-static void edit_cut(int at)
+/* The address field's text from a to b taken out; the caret left at a. */
+static void edit_cut(int a, int b)
 {
-    memmove(s_edit + at, s_edit + at + 1, (u32)(s_edit_len - at - 1));
-    s_edit_len--;
+    memmove(s_edit + a, s_edit + b, (u32)(s_edit_len - b));
+    s_edit_len -= b - a;
+    s_edit_cur = a;
+    s_edit_anc = -1;
+}
+
+/* Whatever is picked, taken out; 0 if nothing was. */
+static int edit_cut_sel(void)
+{
+    int a, b;
+    if (s_edit_anc < 0 || s_edit_anc == s_edit_cur) { s_edit_anc = -1; return 0; }
+    a = s_edit_anc < s_edit_cur ? s_edit_anc : s_edit_cur;
+    b = s_edit_anc < s_edit_cur ? s_edit_cur : s_edit_anc;
+    edit_cut(a, b);
+    return 1;
+}
+
+/* The caret to at; with shift held the selection grows or shrinks to it. */
+static void edit_move(int at, int extend)
+{
+    if (extend) { if (s_edit_anc < 0) s_edit_anc = s_edit_cur; }
+    else s_edit_anc = -1;
+    s_edit_cur = at < 0 ? 0 : at > s_edit_len ? s_edit_len : at;
+}
+
+/* Words in an address end at its punctuation: / . ? & = and the like. */
+static int edit_word_char(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+}
+static int edit_word(int at, int dir)
+{
+    if (dir < 0) {
+        while (at > 0 && !edit_word_char(s_edit[at - 1])) at--;
+        while (at > 0 && edit_word_char(s_edit[at - 1])) at--;
+    } else {
+        while (at < s_edit_len && !edit_word_char(s_edit[at])) at++;
+        while (at < s_edit_len && edit_word_char(s_edit[at])) at++;
+    }
+    return at;
+}
+
+static void edit_insert(const char *t, int n)
+{
+    if (n > PAGE_HREF_MAX - 1 - s_edit_len) n = PAGE_HREF_MAX - 1 - s_edit_len;
+    if (n <= 0) return;
+    memmove(s_edit + s_edit_cur + n, s_edit + s_edit_cur, (u32)(s_edit_len - s_edit_cur));
+    memcpy(s_edit + s_edit_cur, t, (u32)n);
+    s_edit_len += n;
+    s_edit_cur += n;
+}
+
+static void edit_copy(void)
+{
+    int a = s_edit_anc < s_edit_cur ? s_edit_anc : s_edit_cur;
+    int b = s_edit_anc < s_edit_cur ? s_edit_cur : s_edit_anc;
+    if (s_edit_anc < 0 || a == b) return;
+    memcpy(s_clip, s_edit + a, (u32)(b - a));
+    s_clip_len = b - a;
 }
 
 /* One of a set of choices picked: the others with its name let go. */
@@ -2148,32 +2226,38 @@ void browzer_run(const char *start)
         }
 
         if (s_editing) {
+            /* As scribe edits: shift picks, ctrl goes by words, ctrl-a
+             * picks it all, ctrl-c, ctrl-x and ctrl-v copy, cut and paste. */
+            int sh = s_ui_mods & M_SHIFT, ctrl = s_ui_mods & M_CTRL;
             if (k == UK_ENTER) {
-                s_editing = 0;
+                s_editing = 0; s_ui_ctrl_ok = 0;
                 s_edit[s_edit_len] = 0;
                 if (s_edit_len) go_typed(s_edit);
             } else if (k == UK_ESC) {
-                s_editing = 0;
+                s_editing = 0; s_ui_ctrl_ok = 0;
             } else if (k == UK_SELALL) {
-                s_edit_all = s_edit_len > 0;
-            } else if (k == UK_LEFT || k == UK_HOME) {
-                s_edit_cur = (s_edit_all || k == UK_HOME) ? 0 : s_edit_cur > 0 ? s_edit_cur - 1 : 0;
-                s_edit_all = 0;
-            } else if (k == UK_RIGHT || k == UK_END) {
-                s_edit_cur = (s_edit_all || k == UK_END) ? s_edit_len
-                           : s_edit_cur < s_edit_len ? s_edit_cur + 1 : s_edit_len;
-                s_edit_all = 0;
+                s_edit_anc = 0; s_edit_cur = s_edit_len;
+            } else if (ctrl && (k == 'c' || k == 'C')) {
+                edit_copy();
+            } else if (ctrl && (k == 'x' || k == 'X')) {
+                edit_copy(); edit_cut_sel();
+            } else if (ctrl && (k == 'v' || k == 'V')) {
+                edit_cut_sel(); edit_insert(s_clip, s_clip_len);
+            } else if (k == UK_LEFT || k == UK_RIGHT) {
+                int dir = k == UK_LEFT ? -1 : 1, a = s_edit_anc < s_edit_cur ? s_edit_anc : s_edit_cur;
+                int b = s_edit_anc < s_edit_cur ? s_edit_cur : s_edit_anc;
+                if (!sh && !ctrl && s_edit_anc >= 0 && a != b) edit_move(dir < 0 ? a : b, 0);   /* to that side of it */
+                else edit_move(ctrl ? edit_word(s_edit_cur, dir) : s_edit_cur + dir, sh);
+            } else if (k == UK_HOME || k == UK_END) {
+                edit_move(k == UK_HOME ? 0 : s_edit_len, sh);
             } else if (k == UK_BKSP || k == UK_DEL) {
-                if (s_edit_all) { s_edit_len = s_edit_cur = 0; s_edit_all = 0; }
-                else if (k == UK_BKSP && s_edit_cur > 0) { edit_cut(s_edit_cur - 1); s_edit_cur--; }
-                else if (k == UK_DEL && s_edit_cur < s_edit_len) edit_cut(s_edit_cur);
-            } else if (k >= 32 && k < 127) {
-                if (s_edit_all) { s_edit_len = s_edit_cur = 0; s_edit_all = 0; }
-                if (s_edit_len < PAGE_HREF_MAX - 1) {
-                    memmove(s_edit + s_edit_cur + 1, s_edit + s_edit_cur, (u32)(s_edit_len - s_edit_cur));
-                    s_edit[s_edit_cur++] = (char)k;
-                    s_edit_len++;
-                }
+                if (edit_cut_sel()) { }
+                else if (k == UK_BKSP && s_edit_cur > 0) edit_cut(ctrl ? edit_word(s_edit_cur, -1) : s_edit_cur - 1, s_edit_cur);
+                else if (k == UK_DEL && s_edit_cur < s_edit_len) edit_cut(s_edit_cur, ctrl ? edit_word(s_edit_cur, 1) : s_edit_cur + 1);
+            } else if (k >= 32 && k < 127 && !ctrl) {
+                char c = (char)k;
+                edit_cut_sel();
+                edit_insert(&c, 1);
             }
             continue;
         }
@@ -2218,6 +2302,7 @@ void browzer_run(const char *start)
             break;
         case 'b': mark_this(); break;
         case 'j':                        /* scripts on this site: on, or off again */
+            if (!script_state()) { say("This page has no scripts for j to run.", C_DIM); break; }
             if (s_pg.url[0] && s_pg.url[0] != 'f') {
                 char u[PAGE_HREF_MAX + 16]; int i;
                 script_site_toggle(&s_pg);

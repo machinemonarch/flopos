@@ -11,7 +11,8 @@
 #include "flopos.h"
 
 #define W 54
-#define H 18
+#define H 23
+#define WIN_TEXT 134
 
 enum { R_TRUST, R_S1, R_S2, R_S3, B_SET, B_CLOSE, NSEL };
 
@@ -23,7 +24,7 @@ static int  s_trust;
 static char s_srv[3][64];
 static int  s_sel, s_edit = -1, s_len;
 static char s_buf[64];
-static char s_status[52];
+static char s_status[96];
 static u8   s_status_col;
 
 static void status(const char *t, u8 col)
@@ -38,15 +39,42 @@ static void keep(void)
     else status("The disk would not keep it.", C_ACCENT);
 }
 
+/* Text from column x, wrapped at spaces to fit inside the frame of a
+ * window ww wide, each row banded in bg when band is set.  Returns the
+ * rows used (at least one). */
+static int wrap(int ww, int x, int y, const char *t, u8 fg, u8 bg, int band)
+{
+    char row[WIN_TEXT];
+    int room = ww - 2 - x, rows = 0;
+    if (room < 8) room = 8;
+    do {
+        int n = 0, cut;
+        while (t[n]) n++;
+        cut = n;
+        if (n > room) {
+            for (cut = room; cut > 0 && t[cut] != ' '; cut--) { }
+            if (!cut) cut = room;                    /* one long word: cut it */
+        }
+        if (cut > (int)sizeof row - 1) cut = (int)sizeof row - 1;
+        { int k; for (k = 0; k < cut; k++) row[k] = t[k]; } row[cut] = 0;
+        if (band) term_win_band(y + rows, 2, ww - 3, bg);
+        term_win_text(x, y + rows, row, fg, bg);
+        rows++;
+        t += cut;
+        while (*t == ' ') t++;
+    } while (*t);
+    return rows;
+}
+
 static void draw(void)
 {
-    char line[64];
+    char line[96];
     u8 h, mi, se, mo, da;
     u16 yr;
     u8 hl = WIN_HILITE, pp = WIN_PAPER;
-    int i, y;
+    int i, y, ww;
 
-    term_win_open(W, H);
+    ww = term_win_open(W, H);
     term_win_frame("clock", C_GREY);
 
     term_win_text(3, 2, "now", C_DIM, pp);
@@ -55,28 +83,30 @@ static void draw(void)
     else fmt_str(line, sizeof line, "the clock cannot be read");
     term_win_text(14, 2, line, C_TEXT, pp);
     term_win_text(3, 3, "last set", C_DIM, pp);
-    term_win_text(14, 3, nts_source()[0] ? nts_source() : "not yet, this time", C_TEXT, pp);
+    y = 3 + wrap(ww, 14, 3, nts_source()[0] ? nts_source() : "not yet, this time", C_TEXT, pp, 0);
 
-    y = 5;
-    if (s_sel == R_TRUST) term_win_band(y, 2, W - 3, hl);
+    y++;
+    if (s_sel == R_TRUST) term_win_band(y, 2, ww - 3, hl);
     term_win_text(3, y, s_sel == R_TRUST ? ">" : " ", C_BRIGHT, s_sel == R_TRUST ? hl : pp);
     term_win_text(5, y, "trust", C_DIM, s_sel == R_TRUST ? hl : pp);
     term_win_text(14, y, s_trust_text[s_trust], C_BRIGHT, s_sel == R_TRUST ? hl : pp);
+    y++;
 
     for (i = 0; i < 3; i++) {
         int sel = s_sel == R_S1 + i;
         u8 bg = sel ? hl : pp;
-        y = 6 + i;
-        if (sel) term_win_band(y, 2, W - 3, hl);
+        if (sel) term_win_band(y, 2, ww - 3, hl);
         term_win_text(3, y, sel ? ">" : " ", C_BRIGHT, bg);
         if (i == 0) term_win_text(5, y, "signed", C_DIM, bg);
-        if (s_edit == i) {
-            int x = term_win_text(14, y, s_buf, C_BRIGHT, bg);
+        if (s_edit == i) {                           /* the end of it, where the typing is */
+            int room = ww - 2 - 14 - 1, at = s_len > room ? s_len - room : 0, x;
+            x = term_win_text(14, y, s_buf + at, C_BRIGHT, bg);
             term_win_put(x, y, '_', C_ACCENT, bg);
-        } else term_win_text(14, y, s_srv[i][0] ? s_srv[i] : "-", C_TEXT, bg);
+            y++;
+        } else y += wrap(ww, 14, y, s_srv[i][0] ? s_srv[i] : "-", C_TEXT, bg, sel);
     }
 
-    term_win_text(5, 9, "plain", C_DIM, pp);
+    term_win_text(5, y, "plain", C_DIM, pp);
     if (s_trust == 0) fmt_str(line, sizeof line, "never");
     else {
         u32 a = ip_ntp_server();
@@ -84,12 +114,12 @@ static void draw(void)
                        (a >> 8) & 255, a & 255, s_trust == 2 ? ", then any" : "");
         else fmt_str(line, sizeof line, "the network's own (none named)%s", s_trust == 2 ? ", then any" : "");
     }
-    term_win_text(14, 9, line, C_TEXT, pp);
+    y += wrap(ww, 14, y, line, C_TEXT, pp, 0);
 
     {
         static const char *names[2] = { "set it now", "close" };
         static const int at[2] = { 5, 20 };
-        y = 11;
+        y++;
         for (i = 0; i < 2; i++) {
             int sel = s_sel == B_SET + i;
             u8 bg = sel ? hl : pp;
@@ -98,8 +128,9 @@ static void draw(void)
             x = term_win_text(x, y, names[i], sel ? C_BRIGHT : C_TEXT, bg);
             term_win_put(x, y, sel ? ']' : ' ', C_BRIGHT, bg);
         }
+        y += 2;
     }
-    if (s_status[0]) term_win_text(3, 13, s_status, s_status_col, pp);
+    if (s_status[0]) wrap(ww, 3, y, s_status, s_status_col, pp, 0);
     term_win_text(3, H - 3, s_edit >= 0 ? "type it, \1enter\1 keeps it, \1esc\1 undoes"
                                         : "\1tab\1 move   \1enter\1 change   \1esc\1 leave", C_DIM, pp);
 }

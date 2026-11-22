@@ -6,6 +6,29 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+### FEATURES
+
+- browzer's address (g) edits as scribe does: Shift with the arrows,
+  Home or End picks, Ctrl with the arrows goes a word at a time, and
+  Ctrl-C, Ctrl-X and Ctrl-V copy, cut and paste.
+
+### BUG FIXES
+
+- browzer plays stations whose stream addresses are long, as signed
+  ones are (RTL's run past a thousand characters): it cut them at 200.
+- A station's playlist that is not there shows the station's own error
+  page, not "Not text, so not shown".
+- While a station plays in pieces (HLS), the status line stays put
+  instead of saying "agreeing on a key" for every piece.
+- j on a page without scripts says so, instead of loading the page again.
+- The clock menu wraps its longer lines instead of cutting them off.
+- The serial wire no longer says "decoding took 0.0%" every ten seconds:
+  twice a minute at most, and only when there is something to say.
+
+### SECURITY FIXES
+
+- None yet.
+
 ## 1.46.0 — 2026-11-18
 
 ### FEATURES

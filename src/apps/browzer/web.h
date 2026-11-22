@@ -88,7 +88,11 @@ void *memmove(void *d, const void *s, u32 n);
 int ui_key(void);
 
 /* ---- addresses (url.c) ---------------------------------------------------- */
-#define URL_PATH_MAX 200
+/* Long enough for the signed addresses big stations hand out (a policy
+ * and a signature in the query make them a thousand characters and more). */
+#define URL_PATH_MAX 2048
+#define URL_MAX      (URL_PATH_MAX + 80) /* a whole address: scheme, host, port, path */
+extern int web_quiet;                    /* set: fetches leave the status line alone (HLS pieces) */
 typedef struct { char host[64]; char path[URL_PATH_MAX]; u16 port; int secure; } Url;
 int    url_parse(const char *u, Url *out);
 int    web_show_text(char *dst, int cap, const char *src);   /* a station's UTF-8 or Latin-1, for the screen */

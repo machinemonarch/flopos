@@ -15,7 +15,7 @@ FLOPOS's web browser, `BROWZER.APP` on the floppy.
 - **Tab / Shift-Tab:** Next / previous link.
 - **Enter:** Follow the link.
 - **Backspace or Left:** Back.
-- **g:** Go somewhere. Ctrl-A picks the whole address.
+- **g:** Go somewhere. The address edits as in scribe: Shift with the arrows, Home or End picks; Ctrl-A picks it all; Ctrl with the arrows goes a word at a time; Ctrl-C, Ctrl-X and Ctrl-V copy, cut and paste.
 - **/:** Find on the page, as in `less`; **n** next, **N** previous, Esc clears.
 - **r:** Reload.
 - **h:** Home: your bookmarks.
