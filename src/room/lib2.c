@@ -1023,12 +1023,12 @@ NATIVE(promise_all)                       /* 0 all, 1 allSettled, 2 race */
 /* ---- timers -------------------------------------------------------------------------- */
 /* vm->timers: an array of [id, due, every, fn, [args]] lists. */
 /* A Worker's turn (dom.c): background work by nature, so the timer that
- * runs it may take as long as a big script's loading, 15 s. */
+ * runs it may take a minute: a 120 MHz Pentium filling a speed test's buffer. */
 NATIVE(timer_long)
 {
     UNUSED;
     vm->long_turn = 1;
-    vm->deadline = host_ms() - vm->door_ms + 15000;
+    vm->deadline = host_ms() - vm->door_ms + 60000;
     return v_undef();
 }
 
@@ -1129,7 +1129,7 @@ int timers_run(Vm *vm, u32 slice_ms)
             i--;
         }
         vm->long_turn = truthy(arr_get(t.u.o, 5));
-        vm->deadline = host_ms() - vm->door_ms + (vm->long_turn ? 15000 : slice_ms);
+        vm->deadline = host_ms() - vm->door_ms + (vm->long_turn ? 60000 : slice_ms);
         vm_call(vm, fn, v_undef(), args->u.arr.items ? args->u.arr.items->v : 0, (int)args->u.arr.len);
         vm->long_turn = 0;
         if (vm->fatal && vm->out_of_time) {          /* which one: a page has many */

@@ -1122,7 +1122,7 @@ void script_tick(Page *pg)
         s_task[0] = T_TIMERS;
         put32(s_task + 1, TIMER_MS);
         fields_to_tree();
-        r = task(5, LOAD_MAX + 500, why, sizeof why);   /* the room's own clock is TIMER_MS a timer, a Worker's turn longer */
+        r = task(5, 60500, why, sizeof why);   /* the room's own clock is TIMER_MS a timer, a Worker's turn a minute */
         if (r < 0 || r == A_TIME) {                  /* said, never silent */
             fmt_str(s_fail, sizeof s_fail, "a timer was stopped: %s", why[0] ? why : "it ran out of time");
             wire(s_fail, "");

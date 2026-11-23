@@ -86,6 +86,10 @@ without it. Each version's notes are also written next to its image, as
   functions' own name and length, and iterators on arrays and strings.
 - **Big pages run their scripts:** a page may have 32,768 parts (was
   6,144), so news sites such as BBC News no longer skip them.
+- **Pages with many downloads at once no longer run the scripts out of
+  memory:** all XMLHttpRequests together keep at most 768 KB of answers
+  (a speed test's six streams only need counting); a finished Worker is
+  let go; a Worker's work may take a minute on the laptop.
 - **Map and Set are built in**, as fast as other browsers' and as the
   standard says: WeakMap, WeakSet and groupBy too.
 - **Array.from** takes anything list-like (a Set, a generator).
