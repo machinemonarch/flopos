@@ -124,8 +124,10 @@ without it. Each version's notes are also written next to its image, as
 
 #### maelcum
 
-- **Reading an encrypted tape**, one header that won't open counts as
-  damage, not a wrong passphrase: each header is written twice.
+- **A damaged spot on an encrypted tape** no longer makes maelcum say
+  your passphrase is wrong. Every piece of the backup is labelled twice
+  on the tape; when one label is damaged, maelcum now reads the other
+  and carries on.
 
 #### Clock
 
