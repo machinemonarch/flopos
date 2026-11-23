@@ -165,6 +165,12 @@ x.addEventListener('load', function (e) { ev.push('load' + (e.loaded > 0 ? '+' :
 x.addEventListener('loadend', function () { ev.push('end'); document.getElementById('o').textContent = 'url: ' + r.join(' | ') + ' | ' + ev.join(',') + ' ' + x.status + ' ' + (x.getResponseHeader('content-type') || ''); });
 x.open('GET', '/api/cors-ok'); x.send();
 </script>""",
+    "/js/observe": """<title>js observe</title><p id="o">not yet</p><div id="d"></div><script>
+var seen = [];
+new MutationObserver(function (rs) { rs.forEach(function (r) { seen.push(r.type + ':' + (r.attributeName || r.addedNodes.length)); });
+  document.getElementById('o').textContent = 'observe ' + seen.join(' '); }).observe(document.getElementById('d'), { childList: true, attributes: true });
+var d = document.getElementById('d'); d.appendChild(document.createElement('span')); d.setAttribute('title', 'x');
+</script>""",
     "/js/clickworker": """<title>js clickworker</title><p id="o">not yet</p><button id="b">go</button><script>
 document.getElementById('b').addEventListener('click', function () {      // a Worker started by a click, as librespeed's
   var w = new Worker('/js/echo.js');
