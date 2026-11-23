@@ -35,6 +35,19 @@ from shots import Monitor, type_text
 SE = {":": "shift-dot", "/": "shift-7", "?": "shift-minus", "=": "shift-0", "&": "shift-6",
       "-": "slash", "_": "shift-slash", ".": "dot", "+": "minus"}
 
+# The bench's clock for its own patience.  When the PC is crowded (more
+# machines than cores, all tests at once), each emulator gets a share of a
+# core and FLOPOS runs that much slower, so a "minute of silence" is
+# counted in shares: a second with twice as much work as cores counts half.
+_fair = [time.time(), 0.0]
+def fair():
+    now = time.time()
+    try: crowd = max(1.0, os.getloadavg()[0] / (os.cpu_count() or 1))
+    except OSError: crowd = 1.0
+    _fair[1] += (now - _fair[0]) / crowd
+    _fair[0] = now
+    return _fair[1]
+
 class Wire:
     """The serial log as it grows."""
     def __init__(self, path): self.path, self.seen = path, 0
@@ -42,8 +55,8 @@ class Wire:
         try: return open(self.path, "rb").read().decode("latin-1")
         except OSError: return ""
     def wait(self, pattern, timeout):
-        end = time.time() + timeout
-        while time.time() < end:
+        end = fair() + timeout
+        while fair() < end:
             t = self.text()
             m = re.search(pattern, t[self.seen:])
             if m: self.seen += m.end(); return True
@@ -51,11 +64,11 @@ class Wire:
         return False
     def quiet(self, secs, timeout):
         """Until nothing new has come for secs, at most timeout."""
-        end, last, since = time.time() + timeout, -1, time.time()
-        while time.time() < end:
+        end, last, since = fair() + timeout, -1, fair()
+        while fair() < end:
             n = len(self.text())
-            if n != last: last, since = n, time.time()
-            elif time.time() - since >= secs: break
+            if n != last: last, since = n, fair()
+            elif fair() - since >= secs: break
             time.sleep(0.2)
         self.seen = len(self.text())
 
@@ -121,11 +134,11 @@ def main():
                 else: mon.cmd("sendkey g"); mon.cmd("sendkey ctrl-a")
                 address(mon, addr); mon.cmd("sendkey ret")
             if want:                                    # wait for what the step should say, as long as anything still comes
-                end, seen, still = time.time() + 900, -1, time.time()
-                while time.time() < end and not re.search(want, wire.text()[start:]):
+                end, seen, still = fair() + 900, -1, fair()
+                while fair() < end and not re.search(want, wire.text()[start:]):
                     n = len(wire.text())
-                    if n != seen: seen, still = n, time.time()
-                    elif time.time() - still > 60: break       # a minute of silence: nothing more is coming
+                    if n != seen: seen, still = n, fair()
+                    elif fair() - still > 60: break       # a minute of silence: nothing more is coming
                     time.sleep(0.3)
                 wire.quiet(1.0, 5)
             else: wire.quiet(2.5, 20)
