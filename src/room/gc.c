@@ -163,7 +163,7 @@ static void scan(GcHdr *h)
         case C_ARRAY: case C_ARGS: grey(o->u.arr.items); break;
         case C_FUNC: grey(o->u.fn.fn); grey(o->u.fn.env); grey_val(o->u.fn.self); break;
         case C_NATIVE: grey(o->u.nat.name); break;
-        case C_BOUND: grey(o->u.bound.target); grey_val(o->u.bound.self); grey(o->u.bound.args); break;
+        case C_BOUND: case C_PROXY: grey(o->u.bound.target); grey_val(o->u.bound.self); grey(o->u.bound.args); break;
         case C_REGEXP: grey(o->u.re.src); if (o->u.re.prog) grey((GcHdr *)o->u.re.prog - 1); break;
         case C_PROMISE: grey_val(o->u.prom.value); grey(o->u.prom.reactions); break;
         case C_BOXED: grey_val(o->u.boxed.v); break;

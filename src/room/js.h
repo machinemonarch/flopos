@@ -97,7 +97,8 @@ enum {
     C_MAP,                               /* Map, Set, WeakMap, WeakSet (u.map; pad: which) */
     C_MAPITER,                           /* an iterator over one (u.iter; pad: keys, values, entries) */
     C_ABUF,                              /* an ArrayBuffer (u.ta: its bytes)  */
-    C_TARRAY                             /* a typed array or DataView (u.ta; pad: the kind, TA_VIEW a DataView) */
+    C_TARRAY,                            /* a typed array or DataView (u.ta; pad: the kind, TA_VIEW a DataView) */
+    C_PROXY                              /* proxy.c: u.bound.target (0: revoked), u.bound.self the handler */
 };
 #define TA_VIEW 9
 
@@ -292,6 +293,13 @@ Val   ta_get(Obj *o, u32 i);
 int   ta_put(Vm *vm, Obj *o, u32 i, Val v);
 Obj  *ta_bytes(Vm *vm, const u8 *p, u32 n);
 Obj  *ta_adopt(Vm *vm, u8 *data, u32 len);
+void  proxy_init(Vm *vm);
+Val   proxy_get(Vm *vm, Obj *p, Str *k, Val recv);
+int   proxy_set(Vm *vm, Obj *p, Str *k, Val v, Val recv);
+int   proxy_has(Vm *vm, Obj *p, Str *k);
+int   proxy_del(Vm *vm, Obj *p, Str *k);
+Obj  *proxy_keys(Vm *vm, Obj *p, int all);
+Val   proxy_call(Vm *vm, Obj *p, Val self, Val *args, int argc, int is_new);
 int   arr_push(Vm *vm, Obj *a, Val v);
 Val   arr_get(Obj *a, u32 i);
 int   arr_set(Vm *vm, Obj *a, u32 i, Val v);

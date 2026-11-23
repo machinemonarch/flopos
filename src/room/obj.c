@@ -274,6 +274,7 @@ Val get_prop(Vm *vm, Val o, Str *k)
     switch (o.t) {
     case T_OBJ: {
         u32 i;
+        if (o.u.o->cls == C_PROXY) return proxy_get(vm, o.u.o, k, o);
         if (o.u.o->cls == C_TARRAY && o.u.o->pad != TA_VIEW) {
             if (k == S_length) return v_num(o.u.o->u.ta.len);      /* the loop's test, quickly */
             if (str_is_index(k, &i)) return i < o.u.o->u.ta.len ? ta_get(o.u.o, i) : v_undef();
@@ -345,6 +346,7 @@ int set_prop(Vm *vm, Val ov, Str *k, Val v)
         return 1;                        /* on a plain string or number: nothing */
     }
     o = ov.u.o;
+    if (o->cls == C_PROXY) return proxy_set(vm, o, k, v, ov);
     if (o->cls == C_ARRAY || o->cls == C_ARGS) {
         u32 i;
         if (k == S_length) {
@@ -398,6 +400,7 @@ int has_prop(Vm *vm, Obj *o, Str *k)
     int guard = 0;
     for (; o && guard++ < 1000; o = o->proto) {
         u32 i;
+        if (o->cls == C_PROXY) return proxy_has(vm, o, k);
         if ((o->cls == C_ARRAY || o->cls == C_ARGS) && (k == S_length || (str_is_index(k, &i) && i < o->u.arr.len))) return 1;
         if (o->cls == C_TARRAY && o->pad != TA_VIEW && str_is_index(k, &i)) return i < o->u.ta.len;
         if (prop_find(o, k)) return 1;
@@ -413,6 +416,7 @@ int del_prop(Vm *vm, Val ov, Val k)
     if (ov.t != T_OBJ) return 1;
     o = ov.u.o;
     ks = to_key(vm, k);
+    if (ks && o->cls == C_PROXY) return proxy_del(vm, o, ks);
     if (!ks || o->sealed) return 0;
     if (o->cls == C_ARRAY) {
         u32 i;
@@ -427,6 +431,7 @@ int del_prop(Vm *vm, Val ov, Val k)
  * properties in the order they were made.  all: the hidden ones too. */
 Obj *own_keys(Vm *vm, Obj *o, int all)
 {
+    if (o->cls == C_PROXY) return proxy_keys(vm, o, all);
     Obj *r = arr_new(vm, 0);
     u32 i;
     if (!r) return 0;

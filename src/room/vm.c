@@ -433,6 +433,7 @@ static Val call_other(Vm *vm, Obj *fn, Val self, Val *args, int argc, int is_new
         vm->callee = keep;
         return r;
     }
+    if (fn->cls == C_PROXY) return proxy_call(vm, fn, self, args, argc, is_new);
     if (fn->cls == C_BOUND) {
         Vals *b = fn->u.bound.args;
         u32 nb = b ? b->n : 0, i, base = vm->sp;
