@@ -195,6 +195,10 @@ extern void (*web_media_end)(int whole);
  * sets this, and does styles and scripts there. */
 extern void (*web_page_loaded)(Page *pg, const Url *u);
 
+/* What browzer calls itself to every server (%s: the FLOPOS release it came
+ * with), with where to read about it, as crawlers do. */
+#define BROWZER_UA "browzer/%s (FLOPOS; a 1996 Toshiba; +https://github.com/machinemonarch/flopos)"
+
 /* A response's headers, a byte at a time, into a buffer: see web.c. */
 typedef struct { int len, line, skip; u32 last; } Head;
 int head_byte(Head *h, char *buf, int cap, u8 b);

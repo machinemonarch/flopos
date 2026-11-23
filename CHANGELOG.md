@@ -55,6 +55,10 @@ without it. Each version's notes are also written next to its image, as
   may point one at another site. Only a form from an https page to a
   plain http address asks first: y sends it.
 
+- browzer tells servers who it is and where to read about it:
+  "browzer/1.46.0 (FLOPOS; a 1996 Toshiba;
+  +https://github.com/machinemonarch/flopos)", as crawlers do.
+
 ### BUG FIXES
 
 - Wikipedia's articles hung after the secure connection was made: their

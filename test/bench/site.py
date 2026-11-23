@@ -89,6 +89,9 @@ document.getElementById('h').textContent = 'built by app.js';""",
     "/js/form": """<title>js form</title><form id="f" action="/ok"><input name="q"></form>
 <script>document.getElementById('f').setAttribute('action', 'http://10.0.2.3:8150/collect');
 document.getElementById('f').insertAdjacentHTML('beforeend', '<p>form points elsewhere</p>');</script>""",
+    "/https/form": """<title>https form</title><form action="http://10.0.2.2:8150/collect"><input name="q" value="hi"><input type="submit" value="Send"></form>
+<form action="https://10.0.2.2.nip.io:8151/collect"><input name="r" value="ok"><input type="submit" value="Send safely"></form>""",
+    "/collect": """<title>collected</title><p>COLLECTED</p>""",
     "/js/loop": """<title>js loop</title><p>a script that never ends</p><script>while (true) {}</script>""",
     "/radio/player": """<title>radio player</title><h1>A station</h1>
 <div id="radio-stream" class="play" url="/m/201549"><div class="btn">Listen Live</div></div>
@@ -422,7 +425,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ctype = "application/javascript" if p.endswith(".js") else "application/json" if p.startswith("/api/") else "text/html; charset=UTF-8"
             return self.send(200, ctype, JS[p].encode())
         if p in PAGES: return self.send(200, "text/html", PAGES[p].encode())
+        if p.startswith("/collect?"): return self.send(200, "text/html", JS["/collect"].encode())   # a form sent here
         self.send(404, "text/plain", b"not here")
 
 if __name__ == "__main__":
+    # https too, on the next port, under the test bench's own authority
+    # (test/bench/testca.py), which only test images trust.
+    try:
+        import importlib.util, ssl, threading
+        spec = importlib.util.spec_from_file_location("testca", os.path.join(os.path.dirname(os.path.abspath(__file__)), "testca.py"))
+        testca = importlib.util.module_from_spec(spec); spec.loader.exec_module(testca)
+        ca, crt, key = testca.files()
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain(crt, key)
+        tls = http.server.ThreadingHTTPServer(("127.0.0.1", PORT + 1), Handler)
+        tls.socket = ctx.wrap_socket(tls.socket, server_side=True)
+        threading.Thread(target=tls.serve_forever, daemon=True).start()
+    except Exception as e:
+        sys.stderr.write("no https on %d: %s\n" % (PORT + 1, e))
     http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

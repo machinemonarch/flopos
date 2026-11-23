@@ -1904,6 +1904,7 @@ static void submit(PageField *by)
         Url u;
         if (url_resolve(s_pg.url, act[0] ? act : s_pg.url, to, sizeof to) && url_parse(to, &u) && !u.secure) {
             s_send_armed = (int)(by - s_pg.fields) + 1;
+            A->wire("[page] asks first: this form would go unencrypted\n");
             return;
         }
     }

@@ -39,9 +39,12 @@ might; `ip drop 0` stops it.
 ## In the emulator
 
 - **`test/bench/run.py IMAGE OUT STEP ...`:** Boots the image, types and presses keys, and checks each step against what FLOPOS says on its serial line (`key:ctrl-shift-f10`, `type:whoami\n=>alright`). It waits on FLOPOS's messages, with the clock running ahead; a full check takes about half a minute. `--slow` holds it to the laptop's speed. It records everything the Sound Blaster played.
-- **`test/bench/site.py`:** A small local site imitating pages browzer has had trouble with, and HLS radio of every kind browzer plays (sealed, MP4 pieces, a wrong key); `--site SONGS` starts it.
+- **`test/bench/site.py`:** A small local site imitating pages browzer has had trouble with, and HLS radio of every kind browzer plays (sealed, MP4 pieces, a wrong key); `--site SONGS` starts it. It speaks https on the next port too, as 10.0.2.2.nip.io.
+- **`test/bench/clockcheck.py`:** Boots under each QEMU clock at once and times it. `-icount shift=4,sleep=on,align=off` (the tools' clock) is among the fastest; the real clock takes minutes.
+- **`test/bench/testca.py`:** The test bench's own authority, and copies of an image that trust it (never the image itself).
 - **`test/bench/tlstest.py IMAGE WORKDIR`:** A test authority and six local OpenSSL servers, every TLS form FLOPOS takes and one it must refuse.
-- **`test/roomtest/run.py`, `test/scripttest/run.py`:** The script room, and scripts on the test site's pages.
+- **`test/roomtest/run.py`, `test/scripttest/run.py`:** The script room, and scripts and forms on the test site's pages, in pieces on many machines at once (about half a minute).
+- **`test/sites/run.py`:** The scoreboard: browzer's scripts on common sites, graded, one machine a site (`--jobs N`, `--only a,b`).
 - **`test/walltest/run.py`:** An app that breaks each of the wall's rules (`rogue.c`); FLOPOS must close it and carry on.
 - **`test/wiretest.py`, `test/persisttest.py`:** The serial line, and that saved things survive a reboot.
 - **`test/shots.py`:** Screenshots (`make shot`).

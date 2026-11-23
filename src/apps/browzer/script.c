@@ -210,11 +210,11 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
         if (s_cross) fmt_str(ck, sizeof ck, "Origin: %s\r\n%s", s_origin, s_extra);
         else if (!s_anon) cookie_header(&u, ck, sizeof ck);
         if (body && blen >= 0 && method && method[0] == 'P')
-            fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+            fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
                     "Content-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
                     method, u.path, u.host, A->os_version(), btype && btype[0] ? btype : "text/plain", (u32)blen, ck);
         else
-            fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+            fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
                     "Accept: */*\r\n%sConnection: close\r\n\r\n", method && method[0] ? method : "GET", u.path, u.host, A->os_version(), ck);
         for (n = 0; req[n]; n++) { }
         A->conn_write((const u8 *)req, n);

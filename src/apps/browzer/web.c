@@ -727,12 +727,12 @@ static void sniff(u8 b)
 static void side_fetch(const Url *u, const char *path, const char *what, void (*eat)(u8))
 {
     static u8 buf[2048];
-    char req[URL_PATH_MAX + 300];
+    char req[URL_PATH_MAX + 400];
     int n, i, status = 0, state = 0, sp = 0;
     u32 got = 0, last = 0;
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) return;
     note(what, C_DIM);
-    fmt_str(req, sizeof req, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+    fmt_str(req, sizeof req, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
             "Accept: application/json\r\nConnection: close\r\n\r\n", path, u->host, A->os_version());
     for (n = 0; req[n]; n++) { }
     conn_write((const u8 *)req, n);
@@ -2042,7 +2042,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     static u8 buf[4096];
     static char head[8192];
     Head hd = { 0, 0, 0, 0 };
-    static char req[URL_PATH_MAX + 200];
+    char req[URL_PATH_MAX + 400];            /* the address, and room for the rest: on the stack, not in the 8 MB */
     char line[96];
     int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0, asked = 0;
     u32 clen = 0, metaint = 0;
@@ -2090,7 +2090,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 
     if (post)
         fmt_str(req, sizeof req,
-                "POST %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+                "POST %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
                 "Accept: text/html, text/plain, */*\r\n"
                 "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: %u\r\n"
                 "Connection: close\r\n",
@@ -2099,7 +2099,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
         /* A sound file is asked for from its first byte on, as browsers'
          * players ask for one: some servers send recordings only so. */
         fmt_str(req, sizeof req,
-                "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+                "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
                 "Accept: text/html, text/plain, */*\r\nIcy-MetaData: 1\r\n%sConnection: close\r\n",
                 u->path, u->host, A->os_version(), sound_file(u->path) ? "Range: bytes=0-\r\n" : "");
     for (n = 0; req[n]; n++) { }

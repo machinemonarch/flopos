@@ -14,7 +14,8 @@ and nothing it must never show may be there.  Prints ok or FAILED.
 
 The steps run in pieces, each on its own machine, all at once: a piece
 starts at each page, and a page of scripts (js/) is opened, then allowed
-with j -- but the first, which tries them off.
+with j -- but the first, which tries them off.  The image is a copy
+that also trusts the test site's https (test/bench/testca.py).
 """
 import os, shutil, socket, subprocess, sys, tempfile, threading, time
 
@@ -41,6 +42,17 @@ STEPS = [
     r"key:ret=>\[shown\] clicked, after a wait",
     r"js/modules=>\[shown\] modules: abab 1 string(.|\n)*\[shown\] inline abab, late(.|\n)*\[shown\] current script",
     r"js/big=>\[shown\] big 2600(.|\n)*\[shown\] after the huge one: undefined",
+    r"https://10.0.2.2.nip.io:8151/https/form=>\[page\] 200, \d+ links: https form",
+    r"key:tab",
+    r"key:tab",
+    r"key:ret=>asks first: this form would go unencrypted",
+    r"key:y=>\[page\] 200, \d+ links: collected",
+    r"https://10.0.2.2.nip.io:8151/https/form=>\[page\] 200, \d+ links: https form",
+    r"key:tab",
+    r"key:tab",
+    r"key:tab",
+    r"key:tab",
+    r"key:ret=>\A(?![\s\S]*asks first)[\s\S]*links: collected",
     r"table/basic=>\[shown\] Name +City +Kind\r?\n\[shown\] Radio One +Sofia +Talk",
     r"radio/feed=>\[shown\] MAIN\r?\n\[shown\] Listen live",
     r"type:qy",
@@ -66,6 +78,9 @@ def pieces():
 def main():
     img = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "dist", "flopos.img")
     tmp = tempfile.mkdtemp(prefix="flopos-scripttest.")
+    sys.path.insert(0, os.path.join(ROOT, "test", "bench"))
+    import testca                                  # a copy that trusts the test site's https too
+    img = testca.image(img, os.path.join(tmp, "t.img"))
     ok, site, results = True, None, {}
     with socket.socket() as s:                     # one test site for all of them
         if s.connect_ex(("127.0.0.1", 8150)):
