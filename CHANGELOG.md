@@ -32,79 +32,62 @@ without it. Each version's notes are also written next to its image, as
   "browzer/1.46.0 (FLOPOS; Running on a 1996 Toshiba Laptop;
   +https://github.com/machinemonarch/flopos)".
 
+- **Big pages run their scripts:** a page may have 32,768 parts (was
+  6,144), so news sites such as BBC News no longer skip them.
+
 #### Script room (JavaScript)
 
+- **librespeed.org's speed test runs**, tried on the laptop.
 - **Newer JavaScript runs**, where before the whole script was refused:
   - class fields (private ones too) and static blocks
   - modules: import and export, import maps, import() and import.meta;
     scripts marked for old browsers are then skipped, as elsewhere
+  - modules from data: addresses, and import.meta.resolve (the check
+    radio.garden makes)
   - generators, async generators and for await
   - taking lists and objects apart: ...rest, defaults, into properties
   - tagged templates, new X(...list), await at a module's top level
   - document.currentScript, which packed scripts use to find their
     other files
-- **fetch() answers of any size up to 512 KB** come whole: past what one
-  hand-over holds (64 KB), browzer passes them on in pieces as they
-  arrive, holding none of it. Before, they were cut at 64 KB.
-- **Response headers** reach scripts: response.headers.get() and
-  XMLHttpRequest's getResponseHeader(). Another site's answer shows only
-  the headers any page may read.
-- **URL** follows the standard: ../ and ./ are worked out, an address
-  that is not one throws, every part (search, pathname, hash...) can be
-  read and set and the address follows, and searchParams stays linked.
-  URLSearchParams sorts, counts and goes through its pairs; URL.canParse
-  and URL.parse are there.
-- **Headers, Request and Response** are complete: Headers goes through
-  its entries, Request can be made and handed to fetch(), Response.json()
-  and Response.error() exist.
-- **XMLHttpRequest** has every event (progress, load, loadend...), many
-  listeners per event, status text, the response's address and headers,
-  and abort().
 - **Web Workers:** a page's background script runs beside it, with
-  postMessage both ways, as speed tests (librespeed) and many apps use.
+  postMessage both ways, as speed tests and many apps use. A Worker's
+  work may take a minute; other timers four seconds.
 - **Typed arrays:** ArrayBuffer, Uint8Array to Float64Array, DataView,
   TextEncoder and TextDecoder, built into the engine.
 - **Blob and File**, and fetch() and XMLHttpRequest send and receive
   bytes: arrayBuffer(), blob(), and responseType "arraybuffer" and "blob".
+- **fetch() answers up to 512 KB** come whole, passed on in pieces as
+  they arrive, with their headers. Before, they were cut at 64 KB.
 - **XMLHttpRequest streams:** a download is read as it arrives, with
-  progress as it comes, and can be stopped part way; an upload of any
-  size goes out in pieces, with upload progress.
-- **Errors no script caught** in a timer now show on the serial wire, as
-  browsers' consoles show them; a timer stopped for time says so.
-- **librespeed.org's speed test runs**, and with it every page that
-  starts a Worker or import() from a click or a timer (they were never
-  loaded); a Worker's own work may take 15 s, other timers 4 s.
-- **The script room has 7 MB** (was 4), at 24-31 MB: a page's scripts
-  get about 5 MB, enough for a speed test's 1 MB buffer.
-- **Fetches are rate-limited, not capped:** 60 at once, then six a
-  second, so a long-running page carries on and a runaway one is held.
-- **A timer stopped for time or memory says so,** naming its function.
-- **The last of the JavaScript list is in:** modules from data: addresses
-  and import.meta.resolve (radio.garden's check), MutationObserver that
-  reports changes, Resize- and IntersectionObserver, Proxy and Reflect,
-  Intl (numbers, currencies, dates, plurals, "3 days ago", lists),
-  functions' own name and length, and iterators on arrays and strings.
-- **Big pages run their scripts:** a page may have 32,768 parts (was
-  6,144), so news sites such as BBC News no longer skip them.
-- **Pages with many downloads at once no longer run the scripts out of
-  memory:** all XMLHttpRequests together keep at most 768 KB of answers
-  (a speed test's six streams only need counting); a finished Worker is
-  let go; a Worker's work may take a minute on the laptop.
+  progress, and can be stopped part way; an upload of any size goes out
+  in pieces, with upload progress. Every event, many listeners each.
+- **URL** follows the standard: ../ and ./ are worked out, an address
+  that is not one throws, every part can be read and set and the address
+  follows, and searchParams stays linked. URL.canParse and URL.parse.
+- **Headers, Request and Response** are complete: Request can be made
+  and handed to fetch(), Response.json() and Response.error() exist.
+- **Proxy and Reflect**, which frameworks such as Vue need.
+- **Observers:** MutationObserver reports changes; Resize- and
+  IntersectionObserver give their first measure.
+- **Intl:** numbers, currencies, dates, plurals, "3 days ago" and lists
+  (English and common European ways of writing them).
 - **Map and Set are built in**, as fast as other browsers' and as the
   standard says: WeakMap, WeakSet and groupBy too.
-- **Array.from** takes anything list-like (a Set, a generator).
-- **Errors:** new Error(message, {cause}), URIError and AggregateError,
-  which polyfills look for. A missing method is named in the error
-  ("querySelector is not a function").
+- **Smaller pieces:** Array.from takes anything list-like; arrays and
+  strings carry their iterator; functions have their own name and
+  length; new Error(message, {cause}), URIError and AggregateError.
+- **Fetches are rate-limited, not capped:** 60 at once, then six a
+  second, so a long-running page carries on and a runaway one is held.
+- **Problems say so:** an error no script caught in a timer shows on the
+  serial wire, and a timer stopped for time or memory names its function.
 - **Reading a big script** takes a quarter of the memory it did.
 - **The result:** of 568 scripts from 38 well-known sites, 34 are still
   refused, down from 176. Most of those left are too big.
 
 #### Kernel
 
-- **Apps get 12 MB** (was 8): the script room moved up to 24-31 MB, into
-  memory nothing used.
-
+- **Apps get 12 MB** (was 8), and **the script room 7 MB** (was 4), at
+  24-31 MB, in memory nothing used: a page's scripts get about 5 MB.
 - **Programs are packed on the floppy** and unpacked as they load: the
   script room and every app take about half the space (300 KB freed) and
   less of the floppy's slow reading. Your own files stay plain.
@@ -128,23 +111,28 @@ without it. Each version's notes are also written next to its image, as
 
 #### Script room (JavaScript)
 
-- A script that threw an error inside a generator stopped the whole room.
-- A plain for-of over promises stops with an error, instead of going
-  round for ever.
+- **A Worker or import() started from a click or a timer** was never
+  loaded; now it is.
+- **Pages with many downloads at once ran the scripts out of memory:**
+  all XMLHttpRequests together now keep at most 768 KB of answers, and a
+  finished Worker is let go.
+- **An error inside a generator** stopped the whole script room.
+- **A plain for-of over promises** went round for ever; it now stops with
+  an error.
 
 #### maelcum
 
-- Reading an encrypted tape, one header that won't open counts as damage,
-  not a wrong passphrase: each header is written twice.
+- **Reading an encrypted tape**, one header that won't open counts as
+  damage, not a wrong passphrase: each header is written twice.
 
 #### Clock
 
-- The clock menu wraps its longer lines instead of cutting them off.
+- **The clock menu** wraps its longer lines instead of cutting them off.
 
 #### Sound
 
-- The serial wire no longer says "decoding took 0.0%" every ten seconds:
-  twice a minute at most, and only when there is something to say.
+- **The serial wire** no longer says "decoding took 0.0%" every ten
+  seconds: twice a minute at most, and only when there is something to say.
 
 ### SECURITY FIXES
 
@@ -155,14 +143,16 @@ without it. Each version's notes are also written next to its image, as
   (the sum wrapped round). The check now cannot wrap. Found by fuzzing.
 - **A long list of cookies overflowed a buffer by one byte** when sent.
   A cookie now goes in whole or not at all. Found by fuzzing.
-- **Proxy's ownKeys could hand the engine something not a name**, which
-  it trusted as one. Every name is now checked.
-
 - **fetch() to another site** sends no cookies there, keeps none it is
   given, says where it comes from, and asks that site first when the
   request is not a plain one.
 - **No public page's script can reach your own network** (a router's
   pages, say).
+
+#### Script room (JavaScript)
+
+- **Proxy's ownKeys could hand the engine something not a name**, which
+  it trusted as one. Every name is now checked.
 
 ## 1.46.0 — 2026-11-18
 
