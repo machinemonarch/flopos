@@ -23,7 +23,10 @@ STEPS = [
     r"key:ret=>\[shown\] clicked 1",
     r"js/fetch=>\[shown\] \* fetched beta",
     r"js/timer=>\[shown\] tick 3",
-    r"js/elsewhere=>refused: it tried to fetch from another site",
+    r"js/elsewhere=>\[shown\] fetching",
+    r"js/cors=>\[shown\] a: allowed yes, cookies none, from http://10\.0\.2\.2:8150(.|\n)*\[shown\] b: refused(.|\n)*\[shown\] c: put hi",
+    r"http://10.0.2.2.nip.io:8150/js/cors-local",
+    r"key:j=>refused: a fetch into the local network(.|\n)*local refused",
     r"js/form=>refused: it tried to send a form to another site",
     r"js/loop=>stopped: it ran out of time",
     r"css/basic=>\[shown\] +Centred title(.|\n)*\[shown\] The end\.",
@@ -32,13 +35,14 @@ STEPS = [
     r"js/async=>\[shown\] \* async alpha\r?\n\[shown\] \* async beta",
     r"key:tab",
     r"key:ret=>\[shown\] clicked, after a wait",
-    r"js/modules=>\[shown\] modules: abab 1 string(.|\n)*\[shown\] current script(.|\n)*\[shown\] inline abab, late",
+    r"js/modules=>\[shown\] modules: abab 1 string(.|\n)*\[shown\] inline abab, late(.|\n)*\[shown\] current script",
+    r"js/big=>\[shown\] big 2600(.|\n)*\[shown\] after the huge one: undefined",
     r"table/basic=>\[shown\] Name +City +Kind\r?\n\[shown\] Radio One +Sofia +Talk",
     r"radio/feed=>\[shown\] MAIN\r?\n\[shown\] Listen live",
     r"type:qy",
     r"type:version\n=>FLOPOS \d",
 ]
-NEVER = ["EVIL RAN", "NOMODULE RAN", "STOLE", "STILL RUNNING", "AN ADVERT", "SUBSCRIBE NOW", "SCREEN READER ONLY",
+NEVER = ["EVIL RAN", "NOMODULE RAN", "SECRET LEAKED", "LOCAL REACHED", "HUGE RAN", "STOLE", "STILL RUNNING", "AN ADVERT", "SUBSCRIBE NOW", "SCREEN READER ONLY",
          "PHONE MENU", "HOVER MENU", "HIDDEN ATTR", "the script did not run"]
 
 def main():

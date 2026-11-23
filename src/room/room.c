@@ -115,6 +115,9 @@ void room_main(u32 len)
         s_ready = 1;
         answer(A_OK, 0);
     }
+    case T_SRCDROP:                      /* a script that will not come after all */
+        s_srclen = 0;
+        answer(A_OK, 0);
     case T_SRC:                          /* a piece of a script's text      */
         if (s_srclen + len - 1 > sizeof s_src) answer(A_ROOM, "the script is too long for the room");
         memcpy(s_src + s_srclen, m + 1, len - 1);

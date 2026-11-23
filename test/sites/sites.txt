@@ -1,0 +1,50 @@
+# The sites browzer's scripts are measured on (test/sites/run.py): common
+# sites of every kind, none anybody's favourites.  A line: the address,
+# then what on the serial wire shows its main purpose works (a regular
+# expression; none: the page came and its scripts ran).  Sites out of
+# reach for 32 MB and 120 MHz are at the end, marked "out", and not graded.
+#
+# radio and music
+https://somafm.com/                              sound it names
+https://radio.garden/
+https://www.radio-browser.info/
+https://www.nts.live/
+https://www.bbc.co.uk/sounds
+https://tunein.com/
+https://www.mixcloud.com/
+https://bandcamp.com/
+https://www.sr.se/
+https://www.radiofrance.fr/fip
+https://www.npr.org/
+# news
+https://www.bbc.com/news
+https://www.theguardian.com/international
+https://text.npr.org/
+https://www.svt.se/
+https://www.dr.dk/
+https://www.dn.se/
+https://www.aftonbladet.se/
+https://news.ycombinator.com/
+https://lobste.rs/
+# reference and maps
+https://en.wikipedia.org/wiki/Floppy_disk
+https://www.wikipedia.org/
+https://archive.org/
+https://www.openstreetmap.org/
+https://stackoverflow.com/questions
+https://github.com/
+# weather
+https://www.yr.no/en
+https://www.smhi.se/
+# search and the rest
+https://lite.duckduckgo.com/lite/
+https://old.reddit.com/
+https://mastodon.social/explore
+https://www.imdb.com/
+https://www.discogs.com/
+https://librespeed.org/
+# out of reach: too big for this machine whatever is built
+out https://www.youtube.com/
+out https://www.google.com/maps
+out https://www.speedtest.net/
+out https://fast.com/

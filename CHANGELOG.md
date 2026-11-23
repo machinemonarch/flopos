@@ -27,6 +27,11 @@ without it. Each version's notes are also written next to its image, as
   scripts use to find their other files.
 - Reading a big script takes a quarter of the memory it did: looking
   ahead no longer copies every string it passes.
+- A page's scripts may be bigger: 256 KB each (was 100), 640 KB a page
+  (was 250). A fetched script now goes to the script room in pieces as it
+  arrives, so browzer keeps none of it whole.
+- A script's fetch() can read another site's answer when that site
+  allows it (CORS), as in other browsers; before, the script was stopped.
 - Of 568 scripts from 38 well-known sites, 34 are still refused before
   they start, where 176 were. Most of those left are too big for the
   memory scripts have.
@@ -48,7 +53,10 @@ without it. Each version's notes are also written next to its image, as
 
 ### SECURITY FIXES
 
-- None yet.
+- A script's fetch() to another site sends no cookies there and keeps
+  none it is given, says where it comes from, and is asked first when it
+  is not a plain request; and no public page's script can reach an
+  address on your own network (a router's pages, say).
 
 ## 1.46.0 — 2026-11-18
 

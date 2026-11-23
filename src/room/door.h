@@ -67,5 +67,6 @@ enum { DK_UNDEF, DK_NULL, DK_BOOL, DK_NUM, DK_STR, DK_NODE, DK_LIST, DK_ERR };
 #define T_MODSCAN 7
 #define T_MODRUN  8
 #define T_DYNDONE 9
+#define T_SRCDROP 10                     /* the pieces sent so far: forget them */
 
 #endif

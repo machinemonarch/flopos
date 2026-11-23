@@ -142,6 +142,19 @@ export function bump() { counter++; }
 export const twice = s => s + s;""",
     "/js/mod/name.js": """export const name = 'ab';""",
     "/js/mod/late.js": """export default function () { return 'late'; }""",
+    "/js/big": """<title>js big</title><p id="b">not yet</p><p id="a">not after</p>
+<script src="/js/big.js"></script><script src="/js/huge.js"></script>
+<script>document.getElementById('a').textContent = 'after the huge one: ' + (typeof huge);</script>""",
+    "/js/big.js": "var big = 0;\n" + "big += 1; // a line long enough to make the file big, in pieces\n" * 2600 + "document.getElementById('b').textContent = 'big ' + big;",
+    "/js/huge.js": "var huge = 1; // HUGE RAN\n" * 12000,
+    "/js/cors": """<title>js cors</title><p id="a">a: waiting</p><p id="b">b: waiting</p><p id="c">c: waiting</p>
+<script>
+var other = 'http://10.0.2.2.nip.io:8150';
+fetch(other + '/api/cors-ok').then(r => r.json()).then(j => { document.getElementById('a').textContent = 'a: allowed ' + j.ok + ', cookies ' + j.cookie + ', from ' + j.origin; });
+fetch(other + '/api/cors-no').then(r => r.text()).then(t => { document.getElementById('b').textContent = t; }, e => { document.getElementById('b').textContent = 'b: refused'; });
+fetch(other + '/api/cors-put', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: 'hi'}).then(r => r.json()).then(j => { document.getElementById('c').textContent = 'c: put ' + j.put; }, e => { document.getElementById('c').textContent = 'c: put refused'; });
+</script>""",
+    "/js/cors-local": """<title>js cors local</title><script>fetch('http://10.0.2.2:8150/api/items').then(() => console.log('LOCAL REACHED'), () => console.log('local refused'));</script>""",
     "/table/basic": """<title>table basic</title><h1>Stations</h1>
 <table><caption>Three stations</caption>
 <thead><tr><th>Name</th><th>City</th><th>Kind</th></tr></thead>
@@ -351,8 +364,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for k, v in extra: self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+    # Another site's API, for CORS (reached as 10.0.2.2.nip.io: another
+    # site by name, the same server): what it lets other pages read.
+    def do_OPTIONS(self):
+        if self.path == "/api/cors-put":
+            return self.send(204, "text/plain", b"", [("Access-Control-Allow-Origin", "*"),
+                                                      ("Access-Control-Allow-Methods", "GET, PUT")])
+        return self.send(204, "text/plain", b"")
+    def do_PUT(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        got = self.rfile.read(n) if n else b""
+        return self.send(200, "application/json", b'{"put": "' + got.replace(b'"', b"") + b'"}', [("Access-Control-Allow-Origin", "*")])
     def do_GET(self):
         p = self.path
+        if p == "/api/cors-ok":
+            cookie = self.headers.get("Cookie") or ""
+            return self.send(200, "application/json", json.dumps({"ok": "yes", "cookie": cookie or "none", "origin": self.headers.get("Origin") or "none"}).encode(),
+                             [("Access-Control-Allow-Origin", "*"), ("Set-Cookie", "THIRDPARTY=1; path=/")])
+        if p == "/api/cors-no":
+            return self.send(200, "application/json", b'{"secret": "SECRET LEAKED"}')
         if p.startswith("/m/"):
             found = glob.glob(os.path.join(SONGS, os.path.basename(p[3:]) + ".*"))
             if not found: return self.send(404, "text/plain", b"no such song")

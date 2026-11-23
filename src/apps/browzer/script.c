@@ -30,14 +30,15 @@
 #include "../../room/room.h"
 #include "../../room/door.h"
 
-#define SCRIPT_MAX   (100 * 1024)
-#define PAGE_SCRIPTS (250 * 1024)
+#define SCRIPT_MAX   (100 * 1024)       /* one written in the page, or a style sheet: held whole */
+#define SCRIPT_BIG   (256 * 1024)       /* one fetched: streamed to the room, which holds this much */
+#define PAGE_SCRIPTS (640 * 1024)
 #define MAX_SCRIPTS  16
 #define CSS_MAX      (64 * 1024)
 #define CSS_PAGE     (200 * 1024)
 #define LOAD_MS      2000                /* each script, as the page loads  */
 #define LOAD_PER_KB  60                  /* and this much more for each KB of it: a */
-#define LOAD_MAX     8000                /* library takes time just to read (jQuery, 87 KB: 3 s) */
+#define LOAD_MAX     15000               /* library takes time just to read (jQuery, 87 KB: 3 s) */
 #define EVENT_MS     500                 /* each click, each timer          */
 #define FETCHES      30                  /* a page's fetches                */
 
@@ -178,6 +179,14 @@ int script_site_on(const char *host)
 /* An address, fetched into out: its status and type.  Returns its length,
  * or -1.  Used for style sheets, scripts, and scripts' own fetches; it
  * sends the site's cookies, as a page's own request would. */
+static int (*s_sink)(const u8 *p, int n);   /* set: web_get hands the body here, not to out */
+/* A request to another site, as a script's fetch() makes it (CORS): it
+ * says where it comes from, sends no cookies and keeps none, and its
+ * answer is only for the script if the other site says so. */
+static int  s_cross;
+static char s_origin[80], s_extra[160];
+static char s_acao[96], s_acam[96];      /* Access-Control-Allow-Origin, -Methods */
+
 int web_get(const char *url, const char *method, const u8 *body, int blen, const char *btype,
             char *out, int cap, int *status, char *ctype, int ccap)
 {
@@ -196,14 +205,16 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
         if (!url_parse(where, &u)) return -1;
         if (!A->conn_open(u.host, u.port, u.secure, 0)) return -1;
         ck[0] = 0;
-        cookie_header(&u, ck, sizeof ck);
+        s_acao[0] = s_acam[0] = 0;
+        if (s_cross) fmt_str(ck, sizeof ck, "Origin: %s\r\n%s", s_origin, s_extra);
+        else cookie_header(&u, ck, sizeof ck);
         if (body && blen >= 0 && method && method[0] == 'P')
             fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
                     "Content-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
                     method, u.path, u.host, A->os_version(), btype && btype[0] ? btype : "text/plain", (u32)blen, ck);
         else
-            fmt_str(req, sizeof req, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
-                    "Accept: */*\r\n%sConnection: close\r\n\r\n", u.path, u.host, A->os_version(), ck);
+            fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
+                    "Accept: */*\r\n%sConnection: close\r\n\r\n", method && method[0] ? method : "GET", u.path, u.host, A->os_version(), ck);
         for (n = 0; req[n]; n++) { }
         A->conn_write((const u8 *)req, n);
         if (body && blen > 0 && method && method[0] == 'P') A->conn_write(body, blen);
@@ -231,8 +242,18 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
                             } else if (((ln[0] | 32) == 's') && ((ln[4] | 32) == '-') && ((ln[5] | 32) == 'c') && ln[10] == ':') {
                                 char save = *end;
                                 *end = 0;
-                                cookie_set(&u, ln + 11);
+                                if (!s_cross) cookie_set(&u, ln + 11);   /* another site's: not kept */
                                 *end = save;
+                            } else if (!lower_cmp_n(ln, "access-control-allow-", 21) && (end - ln) > 28) {
+                                char *v = ln + 21, *dst = 0;
+                                int k = 0;
+                                if (!lower_cmp_n(v, "origin:", 7)) { dst = s_acao; v += 7; }
+                                else if (!lower_cmp_n(v, "methods:", 8)) { dst = s_acam; v += 8; }
+                                if (dst) {
+                                    while (*v == ' ') v++;
+                                    while (v < end && *v != '\r' && k < 95) dst[k++] = *v++;
+                                    dst[k] = 0;
+                                }
                             } else if (ctype && ((ln[0] | 32) == 'c') && ((ln[8] | 32) == 't') && ln[12] == ':') {
                                 char *v = ln + 13; int k = 0;
                                 while (*v == ' ') v++;
@@ -244,12 +265,18 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
                     }
                     continue;
                 }
-                if (got < cap) out[got++] = (char)buf[i];
+                if (s_sink && *status == 200) {      /* the rest of this read, at once */
+                    if (!s_sink(buf + i, n - i)) { got = -1; break; }
+                    got += n - i;
+                    break;
+                }
+                if (!s_sink && got < cap) out[got++] = (char)buf[i];
             }
-            if (got >= cap) break;
+            if (got < 0 || (!s_sink && got >= cap)) break;
             main_pump(0);
         }
         A->conn_close();
+        if (got < 0) return -1;
         if (*status >= 300 && *status < 400 && loc[0]) {
             /* a redirect: to the same site only */
             char next[PAGE_HREF_MAX + 16];
@@ -337,28 +364,93 @@ static const char *base_name(const char *u)
 }
 
 /* Run one script's text in the room: in pieces if it is long. */
-static void run_text(const char *src, u32 len, const char *name, u32 node)
+/* A script's text goes to the room in pieces of 60000 (T_SRC); the last
+ * stays in s_task, after where the task that runs it will need its
+ * header, until that task is sent.  It comes from a buffer, or straight
+ * from the network as it arrives (feed_bytes, through web_get's sink),
+ * so a fetched script never needs room for all of it here. */
+#define PIECE 60000
+static u32 s_feed_n, s_feed_total;
+static int s_feed_bad;                   /* 1 too big, 2 the room said no */
+
+static int feed_bytes(const u8 *p, int n)
 {
-    u32 at = 0, n, k, ms = LOAD_MS + (len >> 10) * LOAD_PER_KB, t0 = A->ms();
-    char why[200];
+    while (n > 0) {
+        u32 take = PIECE - s_feed_n;
+        if (take > (u32)n) take = (u32)n;
+        if (s_feed_total + take > SCRIPT_BIG) { s_feed_bad = 1; return 0; }
+        memcpy(s_task + 1 + s_feed_n, p, take);
+        s_feed_n += take; s_feed_total += take; p += take; n -= (int)take;
+        if (s_feed_n == PIECE) {
+            s_task[0] = T_SRC;
+            if (task(PIECE + 1, 1000, 0, 0) != A_OK) { s_feed_bad = 2; return 0; }
+            s_feed_n = 0;
+        }
+    }
+    return 1;
+}
+
+static void feed_start(void) { s_feed_n = s_feed_total = 0; s_feed_bad = 0; }
+
+/* Pieces sent, then given up: the room forgets them. */
+static void feed_drop(void)
+{
+    if (s_feed_total > s_feed_n && s_room) { s_task[0] = T_SRCDROP; (void)task(1, 1000, 0, 0); }
+    feed_start();
+}
+
+/* The fetched script at url, fed to the room.  Its length, or -1 (and
+ * s_fail says why). */
+static int feed_url(const char *url)
+{
+    int st, got;
+    feed_start();
+    s_sink = feed_bytes;
+    got = web_get(url, "GET", 0, 0, 0, 0, 0, &st, 0, 0);
+    s_sink = 0;
+    if (got < 0 || st != 200 || s_feed_bad) {
+        if (s_feed_bad == 1) { s_big++; fmt_str(s_fail, sizeof s_fail, "%s is too big (over %u KB)", base_name(url), (u32)SCRIPT_BIG >> 10); wire("too big: ", url); }
+        else { s_failed++; fmt_str(s_fail, sizeof s_fail, "%s did not come", base_name(url)); }
+        feed_drop();
+        return -1;
+    }
+    return got;
+}
+
+static int feed_text(const char *src, u32 len)
+{
+    feed_start();
+    if (!feed_bytes((const u8 *)src, (int)len)) { feed_drop(); return -1; }
+    return (int)len;
+}
+
+/* The last piece, moved up behind a header of hdr bytes. */
+static u32 feed_last(u32 hdr)
+{
+    memmove(s_task + hdr, s_task + 1, s_feed_n);
+    return hdr + s_feed_n;
+}
+
+/* Run what was fed, as the script name (at node). */
+static void run_fed(u32 len, const char *name, u32 node)
+{
+    u32 n, k, hdr, ms = LOAD_MS + (len >> 10) * LOAD_PER_KB, t0 = A->ms();
+    char why[200], head[80];
     int r;
     if (ms > LOAD_MAX) ms = LOAD_MAX;
-    while (len - at > 60000) {
-        s_task[0] = T_SRC;
-        for (k = 0; k < 60000; k++) s_task[1 + k] = (u8)src[at + k];
-        at += 60000;
-        if (task(60001, 1000, why, sizeof why) != A_OK) { fmt_str(s_fail, sizeof s_fail, "%s: %s", name, why); s_failed++; return; }
-    }
+    hdr = 9;
+    for (k = 0; name[k] && k < 60; k++) head[k] = name[k];
+    head[k] = 0;
+    hdr += k + 1;
+    n = feed_last(hdr);
     s_task[0] = T_RUN;
     put32(s_task + 1, ms);
     put32(s_task + 5, node);
-    n = 9;
-    for (k = 0; name[k] && k < 60; k++) s_task[n++] = (u8)name[k];
-    s_task[n++] = 0;
-    for (k = at; k < len && n < ROOM_MAIL_SIZE; k++) s_task[n++] = (u8)src[k];
+    for (k = 0; k <= hdr - 10; k++) s_task[9 + k] = (u8)head[k];
     s_cur_script = node;
     r = task(n, ms, why, sizeof why);
     s_cur_script = 0;
+    feed_start();
     {
         char t[200];
         if (r == A_OK) fmt_str(t, sizeof t, "%s, %u KB, %u ms", name, len >> 10, A->ms() - t0);
@@ -371,6 +463,12 @@ static void run_text(const char *src, u32 len, const char *name, u32 node)
     else fmt_str(s_fail, sizeof s_fail, "%s was stopped: %s", name, why);
     if (s_fail[0] >= 'a' && s_fail[0] <= 'z' && name[0] == 'a' && name[1] == ' ') s_fail[0] = (char)(s_fail[0] - 32);
     wire(s_fail, "");
+}
+
+static void run_text(const char *src, u32 len, const char *name, u32 node)
+{
+    if (feed_text(src, len) < 0) { s_failed++; fmt_str(s_fail, sizeof s_fail, "%s: the room would not take it", name); return; }
+    run_fed(len, name, node);
 }
 
 static int is_js(u32 n)
@@ -488,48 +586,38 @@ static int module_slot(const char *url)
 static int load_module(int me, const char *given, u32 given_len, int depth)
 {
     int i, ndep = 0, dep[64];
-    u32 len, at = 0, ms, k, n, t0 = A->ms();
+    u32 len, ms, k, n, t0 = A->ms();
     const char *url = s_mod_url[me];
     char why[200];
     if (s_mod_state[me]) return s_mod_state[me] > 0;      /* read already (or a circle) */
     s_mod_state[me] = -1;
     if (depth > 24) { s_big++; return 0; }
     if (given) {
-        len = given_len;
-        for (k = 0; k < len; k++) s_fetched[k] = given[k];
+        int got = feed_text(given, given_len);
+        if (got < 0) { s_failed++; return 0; }
+        len = (u32)got;
     } else {
         Url u;
-        int st, got;
+        int got;
         if (!url_parse(url, &u)) return 0;
         if (!same_site(u.host, s_host) && !library_host(&u)) { s_other++; wire("not fetched, another site: ", url); return 0; }
         if (s_meter >= PAGE_SCRIPTS) { s_big++; return 0; }
         note_loading(base_name(url));
-        got = web_get(url, "GET", 0, 0, 0, s_fetched, SCRIPT_MAX + 1, &st, 0, 0);
-        if (got < 0 || st != 200) { s_failed++; fmt_str(s_fail, sizeof s_fail, "%s did not come", base_name(url)); return 0; }
-        if (got > SCRIPT_MAX || s_meter + (u32)got > PAGE_SCRIPTS) {
-            s_big++;
-            fmt_str(s_fail, sizeof s_fail, "%s is too big (%u KB)", base_name(url), (u32)got >> 10);
-            wire("too big: ", url);
-            return 0;
-        }
+        if ((got = feed_url(url)) < 0) return 0;
+        if (s_meter + (u32)got > PAGE_SCRIPTS) { s_big++; feed_drop(); return 0; }
         len = (u32)got;
     }
     s_meter += len;
-    /* read it: the text in pieces, then the last with the address */
-    while (len - at > 60000) {
-        s_task[0] = T_SRC;
-        for (k = 0; k < 60000; k++) s_task[1 + k] = (u8)s_fetched[at + k];
-        at += 60000;
-        if (task(60001, 1000, why, sizeof why) != A_OK) { fmt_str(s_fail, sizeof s_fail, "%s: %s", base_name(url), why); s_failed++; return 0; }
-    }
+    /* read it: the last piece, behind the address */
     ms = LOAD_MS + (len >> 10) * LOAD_PER_KB;
     if (ms > LOAD_MAX) ms = LOAD_MAX;
+    for (k = 0; url[k]; k++) { }
+    n = feed_last(5 + k + 1);
     s_task[0] = T_MODSCAN;
     put32(s_task + 1, ms);
-    n = 5;
-    for (k = 0; url[k]; k++) s_task[n++] = (u8)url[k];
-    s_task[n++] = 0;
-    for (k = at; k < len && n < ROOM_MAIL_SIZE; k++) s_task[n++] = (u8)s_fetched[k];
+    for (k = 0; url[k]; k++) s_task[5 + k] = (u8)url[k];
+    s_task[5 + k] = 0;
+    feed_start();
     if (task(n, ms, why, sizeof why) != A_OK) {
         char t[260];
         s_failed++;
@@ -660,16 +748,16 @@ static void run_scripts(void)
             if (!same_site(u.host, s_host)) wire("a library from ", u.host);
             if (s_meter >= PAGE_SCRIPTS) { s_big++; continue; }
             note_loading(base_name(url));
-            len = web_get(url, "GET", 0, 0, 0, s_fetched, SCRIPT_MAX + 1, &st, 0, 0);
-            if (len < 0 || st != 200) { s_failed++; fmt_str(s_fail, sizeof s_fail, "%s did not come", base_name(url)); continue; }
-            if (len > SCRIPT_MAX || s_meter + (u32)len > PAGE_SCRIPTS) {
+            (void)st;
+            if ((len = feed_url(url)) < 0) continue;
+            if (s_meter + (u32)len > PAGE_SCRIPTS) {
                 s_big++;
-                fmt_str(s_fail, sizeof s_fail, "%s is too big (%u KB)", base_name(url), (u32)len >> 10);
-                wire("too big: ", url);
+                fmt_str(s_fail, sizeof s_fail, "%s would pass %u KB of scripts for the page", base_name(url), (u32)PAGE_SCRIPTS >> 10);
+                feed_drop();
                 continue;
             }
             s_meter += (u32)len;
-            run_text(s_fetched, (u32)len, base_name(url), n);
+            run_fed((u32)len, base_name(url), n);
             drain_imports();
         } else {
             u32 len;
@@ -1073,6 +1161,40 @@ static int resolved(u32 n, const char *name)
 }
 
 /* Another site?  For a form's action, a fetch, a script's navigation. */
+/* A host on the local network, or this machine: no public page's script
+ * may reach one (a router's pages, say). */
+static int private_host(const char *h)
+{
+    u32 a[4] = { 0, 0, 0, 0 }, n = 0, i, dots = 0, len = 0;
+    const char *p;
+    for (p = h; *p; p++) { if (*p == '.') dots++; len++; }
+    if (!dots || !lower_cmp(h, "localhost")) return 1;
+    {
+        static const char *const tails[] = { ".local", ".localhost", ".lan", ".home", ".internal", ".intranet", ".arpa", 0 };
+        for (i = 0; tails[i]; i++) {
+            u32 tl = 0;
+            while (tails[i][tl]) tl++;
+            if (len > tl && !lower_cmp(h + len - tl, tails[i])) return 1;
+        }
+    }
+    for (p = h; *p; p++) {                   /* an address: four numbers, all of it */
+        if (*p >= '0' && *p <= '9') { if (n < 4) a[n] = a[n] * 10 + (u32)(*p - '0'); }
+        else if (*p == '.') n++;
+        else return 0;                       /* a name, not an address */
+    }
+    if (n != 3) return 0;
+    return a[0] == 10 || a[0] == 127 || a[0] == 0 || (a[0] == 169 && a[1] == 254) ||
+           (a[0] == 172 && a[1] >= 16 && a[1] <= 31) || (a[0] == 192 && a[1] == 168) || a[0] >= 224;
+}
+
+/* Does the other site's answer let this page's script read it? */
+static int cors_allows(void)
+{
+    const char *a = s_acao;
+    while (*a == ' ') a++;
+    return (a[0] == '*' && !a[1]) || !lower_cmp(a, s_origin);
+}
+
 static int elsewhere(const char *where)
 {
     char url[PAGE_HREF_MAX + 16];
@@ -1504,11 +1626,47 @@ static int door(u8 *buf, u32 len, u32 cap)
         u32 ml, ul, bodyl, tl;
         int st, got;
         m = gstr(&ml); u = gstr(&ul); body = gstr(&bodyl); t = gstr(&tl);
-        if (elsewhere(u)) return refuse("it tried to fetch from another site");
         if (++s_fetches > FETCHES) return refuse("it fetched too often");
         if (!url_resolve(s_pg->url, u, url, sizeof url)) return refuse("it fetched an address browzer cannot read");
+        type[0] = 0;
+        if (elsewhere(u)) {
+            /* another site: only as CORS allows (preflight first when it is
+             * not a plain GET, HEAD or POST of a form or text), never into
+             * the local network from a page that is not on it */
+            Url pu, tu;
+            int simple, i;
+            if (!url_parse(s_pg->url, &pu) || !url_parse(url, &tu)) return refuse("it fetched an address browzer cannot read");
+            if (private_host(tu.host) && !private_host(pu.host)) { got = -1; st = 0; wire("refused: a fetch into the local network: ", url); goto answer; }
+            fmt_str(s_origin, sizeof s_origin, "%s://%s", pu.secure ? "https" : "http", pu.host);
+            if (!((pu.secure && pu.port == 443) || (!pu.secure && pu.port == 80))) {
+                for (i = 0; s_origin[i]; i++) { }
+                fmt_str(s_origin + i, sizeof s_origin - (u32)i, ":%u", (u32)pu.port);
+            }
+            simple = (!m[0] || !lower_cmp(m, "GET") || !lower_cmp(m, "HEAD") || !lower_cmp(m, "POST")) &&
+                     (!t[0] || !lower_cmp_n(t, "text/plain", 10) || !lower_cmp_n(t, "application/x-www-form-urlencoded", 33) ||
+                      !lower_cmp_n(t, "multipart/form-data", 19));
+            s_cross = 1;
+            note_loading("what a script asked another site for");
+            if (!simple) {
+                fmt_str(s_extra, sizeof s_extra, "Access-Control-Request-Method: %s\r\n%s", m[0] ? m : "GET",
+                        t[0] ? "Access-Control-Request-Headers: content-type\r\n" : "");
+                got = web_get(url, "OPTIONS", 0, 0, 0, s_scratch, sizeof s_scratch - 1, &st, 0, 0);
+                if (got < 0 || st < 200 || st >= 300 || !cors_allows() ||
+                    (s_acam[0] && s_acam[0] != '*' && !lower_has(s_acam, m[0] ? m : "GET"))) {
+                    s_cross = 0; s_extra[0] = 0; got = -1; st = 0;
+                    wire("refused by the other site: ", url);
+                    goto answer;
+                }
+            }
+            s_extra[0] = 0;
+            got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, sizeof s_scratch - 1, &st, type, sizeof type);
+            s_cross = 0;
+            if (got >= 0 && !cors_allows()) { got = -1; st = 0; type[0] = 0; wire("not allowed by the other site: ", url); }
+            goto answer;
+        }
         note_loading("what a script asked for");
         got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, sizeof s_scratch - 1, &st, type, sizeof type);
+    answer:
         s_on_ = 0;
         put(DK_STR);                          /* status, type, body          */
         put4((u32)(got < 0 ? 0 : st));

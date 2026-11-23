@@ -68,15 +68,17 @@ it; Esc stops typing. Not yet: file uploads.
 
 Off until you press **j** on a site; allowed sites are kept in
 `SITES.TXT`. Scripts can change the page, react to clicks and forms, use
-timers, `async` and `await`, and fetch from their own site. jQuery works.
-Not yet: generators and modules. Big modern sites won't work.
+timers, `async` and `await`, generators and modules, and fetch from their
+own site, or from another that allows it. jQuery works. A script can be
+256 KB, a page's scripts 640 KB; the biggest modern sites won't fit.
 
 How they are kept safe:
 
 - **The gate:** other sites' scripts are never fetched, except libraries from jsDelivr, cdnjs, Google's and unpkg, over https, on allowed sites.
 - **The room:** scripts run walled off in 4 MB of their own, with no network, files or cookies.
-- **The door:** every request goes through browzer, which checks it, and a script that sends to another site or asks for something odd is stopped.
-- **The clock:** two seconds a script while loading (up to eight for a big library), half a second for a click.
+- **The door:** every request goes through browzer, which checks it, and a script that sends a form to another site or asks for something odd is stopped.
+- **Other sites:** a script may fetch from another site only as that site allows (CORS), without your cookies there, and never from a public page into your own network.
+- **The clock:** two seconds a script while loading (up to fifteen for a big one), half a second for a click.
 - **No `eval`.**
 
 Secure connections: The network[^1].
