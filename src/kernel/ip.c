@@ -52,6 +52,7 @@ typedef struct {
     u8  mac[6];
     u32 at;                              /* when it last said so           */
     u32 asked;                           /* when we last asked again, or 0 */
+    u8  other[6], has_other;             /* a different card that answered then */
 } ArpEntry;
 
 /* How long an answer is believed before it is asked again.  The old one
@@ -147,6 +148,15 @@ static const u8 *arp_lookup(u32 ip)
     ArpEntry *e = arp_find(ip);
     u32 now = ms_now();
     if (!e) return 0;
+    /* Asked again, and only another card answered in a whole second: the
+     * old one has gone (a router swapped), so the new one is believed. */
+    if (e->asked && now - e->asked > 1000 && e->has_other) {
+        int j;
+        serial_printf("[net] %u.%u.%u.%u has moved to another card\n",
+                      ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
+        for (j = 0; j < 6; j++) e->mac[j] = e->other[j];
+        e->at = now; e->asked = 0; e->has_other = 0;
+    }
     if (now - e->at > ARP_LIFE && (!e->asked || now - e->asked > 1000)) {
         e->asked = now ? now : 1;        /* still believed while it answers */
         arp_send_ask(ip);
@@ -163,16 +173,10 @@ static u32 s_ask_ip, s_ask_until;        /* the question we are waiting on  */
 static void arp_learn(u32 ip, const u8 *mac)
 {
     ArpEntry *e = arp_find(ip);
-    int i, j, changed = 0;
+    int i, j;
 
     if (!ip) return;
-    if (e) {
-        for (j = 0; j < 6; j++) if (e->mac[j] != mac[j]) changed = 1;
-        if (changed)
-            serial_printf("[net] %u.%u.%u.%u answered from another card than before: %x:%x:%x:%x:%x:%x\n",
-                          ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255,
-                          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    } else {
+    if (!e) {
         i = s_arp_next;
         if (s_gw && s_arp[i].ip == s_gw) i = (i + 1) % ARP_N;
         s_arp_next = (i + 1) % ARP_N;
@@ -182,6 +186,25 @@ static void arp_learn(u32 ip, const u8 *mac)
     for (j = 0; j < 6; j++) e->mac[j] = mac[j];
     e->at = ms_now();
     e->asked = 0;
+    e->has_other = 0;
+}
+
+/* An answer to asking again about one we know.  The card we know
+ * answering is all it takes; another card is only noted, and believed only
+ * if the known one stays silent (arp_lookup), so a stranger answering for
+ * the router cannot take its place while the router is still there. */
+static void arp_again(ArpEntry *e, const u8 *mac)
+{
+    int j, same = 1;
+    for (j = 0; j < 6; j++) if (e->mac[j] != mac[j]) same = 0;
+    if (same) { e->at = ms_now(); e->asked = 0; e->has_other = 0; return; }
+    if (!e->has_other) {
+        serial_printf("[net] %u.%u.%u.%u answered from another card too: %x:%x:%x:%x:%x:%x\n",
+                      e->ip >> 24, (e->ip >> 16) & 255, (e->ip >> 8) & 255, e->ip & 255,
+                      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        for (j = 0; j < 6; j++) e->other[j] = mac[j];
+        e->has_other = 1;
+    }
 }
 
 static void arp_ask(u32 ip)
@@ -692,7 +715,7 @@ static void poll_frames(void)
                     arp_learn(who, a + 8);
                     s_ask_ip = 0;
                 } else if (e && e->asked && now - e->asked < 1000)
-                    arp_learn(who, a + 8);
+                    arp_again(e, a + 8);
             }
             if (s_ip && get16(a + 6) == ARP_REQUEST && get32(a + 24) == s_ip)
                 arp_answer(f);

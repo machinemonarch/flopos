@@ -31,7 +31,9 @@ without it. Each version's notes are also written next to its image, as
   older kind. Now it stops and says so.
 - **Neighbours on the network are learned only from answers to our own
   questions,** not from anything they send, and asked again every five
-  minutes. Before, the first claim was kept for good.
+  minutes. Before, the first claim was kept for good. A stranger
+  answering for the router is only noted: the router is replaced only if
+  it has stopped answering.
 - **Damaged packets are thrown away:** the checksum on every IP header
   and every ping is now checked. And the address handed out by DHCP is
   taken only from the server whose offer was accepted.

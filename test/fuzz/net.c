@@ -17,6 +17,10 @@
  * clock on two minutes with every frame, for what only happens late:
  * addresses asked again, a window asked about, a conversation given up.
  * Bit 6: nobody answers ARP; bit 7: answers come from changing cards.
+ * Bit 8: FLOPOS hangs up first; bit 9: it sends more than the other end
+ * takes, then waits long enough for TCP to give up.  Bit 10: settings
+ * typed by hand are on the floppy.  The input's start is also read as an
+ * address typed by hand.
  * What is left of the input comes at the end.
  */
 #include "flopos.h"
@@ -46,7 +50,12 @@ void rand_bytes(u8 *out, int n)
 }
 void serial_print(const char *s) { (void)s; }
 void serial_printf(const char *fmt, ...) { (void)fmt; }
-int  store_net_get(u32 *how, u32 *ip, u32 *mask, u32 *gw, u32 *dns) { (void)how; (void)ip; (void)mask; (void)gw; (void)dns; return 0; }
+int  store_net_get(u32 *how, u32 *ip, u32 *mask, u32 *gw, u32 *dns)    /* bit 10: settings kept by hand */
+{
+    if (!(s_mode & 1024)) return 0;
+    *how = 1; *ip = 0x0A00020Fu; *mask = 0xFFFFFF00u; *gw = 0x0A000202u; *dns = 0x0A000203u;
+    return 1;
+}
 int  clock_from_network(void) { return 0; }
 void main_pump(int now) { (void)now; }
 int  pcic_probe(void) { return 0; }
@@ -171,6 +180,11 @@ static int c_recv(u8 *f, int max)
 const Nic g_nic_el3 = { "none", c_none, c_stop, c_mac, c_send, c_recv, c_why, c_link };
 const Nic g_nic_ne2000 = { "fuzz", c_start, c_stop, c_mac, c_send, c_recv, c_why, c_link };
 
+int ip_apply_saved(void);
+u32 ip_dns(void);
+int ip_how(void);
+u32 ip_ntp_server(void);
+int ip_parse(const char *s, u32 *out);
 int ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wait_ms);
 u32 ip_lookup(const char *name);
 void ip_set_dns(u32 addr, u16 port);
@@ -188,7 +202,15 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
     s_in = data; s_len = len; s_at = 0; s_mode = mode; s_arp_len = 0; s_credit = 0;
     s_last_udp_len = s_last_tcp_len = 0;
     net_up();
+    {                                                   /* an address typed by hand: the input as text */
+        char t[24]; u32 a;
+        for (i = 0; i < 23 && (u32)i < len; i++) t[i] = (char)data[i];
+        t[i] = 0;
+        (void)ip_parse(t, &a);
+        (void)ip_parse("10.0.2.15", &a);
+    }
     ip_configure(0, 0, 0);
+    if (ip_apply_saved()) (void)(ip_gateway() + ip_netmask() + ip_dns() + (u32)ip_how() + ip_ntp_server());
     if ((mode & 3) != 0) {
         ip_configure(0x0A00020Fu, 0xFFFFFF00u, 0x0A000202u);
         ip_set_dns(0x0A000203u, 53);
@@ -198,9 +220,18 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
     case 1: ip_lookup("www.fuzz.test"); ip_lookup("WWW.Fuzz.test");   /* the seeds' question */ break;
     case 2:
         if (tcp_connect(0x5DB8D822u, 443, 3000)) {
+            if (mode & 256) {                            /* hanging up first: theirs comes while ours is out */
+                tcp_close();
+                break;
+            }
             tcp_write((const u8 *)"GET / HTTP/1.0\r\n\r\n", 18);
             for (i = 0; i < 64; i++) if (tcp_read(buf, (int)sizeof buf, 300) < 0) break;
+            if (mode & 512) {                            /* more than they take, then a long wait */
+                tcp_write(buf, 20000);
+                tcp_read(buf, 100, 120000);
+            }
         }
+        (void)tcp_done(); (void)tcp_why();
         tcp_close();
         break;
     case 3: {

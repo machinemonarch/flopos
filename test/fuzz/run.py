@@ -315,6 +315,8 @@ def seeds_net(d):
     conv = [synack, tcp(1001, 0, A | P, body[:1000]), tcp(3001, 0, A, body[:500]), tcp(2001, 0, A, body[:1000]),
             tcp(3501, 0, A | F), tcp(9000, 0, A, body[:200])]
     open(os.path.join(d, "tcp.bin"), "wb").write(b"".join(frame(f) for f in conv))
+    # a server that hangs up at once, while FLOPOS is hanging up too
+    open(os.path.join(d, "tcp-bye.bin"), "wb").write(frame(synack) + frame(tcp(1001, 0, A | F)) + frame(tcp(1002, 0, A)))
     # a server with no room: FLOPOS must ask now and then (zero window probe), then send when it opens
     open(os.path.join(d, "tcp-shut.bin"), "wb").write(frame(tcp(1000, 0, S | A, opts=bytes([2, 4, 5, 0xb4]), win=0)) +
                                                      frame(tcp(1001, 0, A, win=0)) + frame(tcp(1001, 0, A, win=0)) + frame(tcp(1001, 0, A, win=8192)) +
