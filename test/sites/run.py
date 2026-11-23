@@ -41,7 +41,7 @@ def main():
            "-drive", "file=%s,if=floppy,format=raw,snapshot=on" % image, "-boot", "a", "-vga", "std", "-display", "none",
            "-monitor", "stdio", "-audiodev", "none,id=snd1", "-device", "sb16,audiodev=snd1",
            "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9"]
-    boots, lock = [], threading.Lock()
+    boots, lock, deaf = [], threading.Lock(), [0]
     def boot(w):
         """A fresh machine at browzer's door: its own serial log (serial-W-N.log)."""
         with lock: boots.append(None); log = os.path.join(out, "serial-%d-%d.log" % (w, len(boots)))
@@ -98,6 +98,7 @@ def main():
             if r is None and re.search(r"Nobody knows", wire.text()[-400:]):
                 # The network can go deaf for good (a fault of its own, not the
                 # scripts'): try the site once more on a fresh machine.
+                with lock: deaf[0] += 1
                 q.terminate(); q, mon, wire = boot(w)
                 r = visit(mon, wire, url, want, True)
             if r is None: r, stuck = (url, "-", "no", 0, "the page did not come"), True
@@ -118,7 +119,9 @@ def main():
     board.write(time.strftime("%Y-%m-%d %H:%M") + ("  (laptop speed)" if slow else "") + ", %d at once\n" % jobs)
     for r in rows: board.write(show(r) + "\n")
     graded = [r for r in rows]
-    if len(boots) > jobs: print("(%d fresh boots: the network went deaf)" % (len(boots) - jobs)); board.write("(%d fresh boots: the network went deaf)\n" % (len(boots) - jobs))
+    if len(boots) > jobs:
+        t = "(%d fresh boots: %d after the network went deaf, %d after a page that did not come)" % (len(boots) - jobs, deaf[0], len(boots) - jobs - deaf[0])
+        print(t); board.write(t + "\n")
     bots = sum(r[4].startswith("bot check") for r in rows)
     line = "%d sites (%d behind a bot check): scripts all run on %d, partly on %d, none run on %d; works on %d" % (
         len(graded), bots, sum(r[1] == "yes" for r in graded), sum(r[1] == "part" for r in graded), sum(r[1] == "none" for r in graded), sum(r[2] == "yes" for r in graded))

@@ -48,7 +48,7 @@ Weighed before it was written, and kept to what Chrome offers:
 - **Sealing for apps (1.37.0):** PBKDF2 keys and ChaCha20/AES-GCM sealing, buffers checked, rounds capped. 10,000 rounds is light, so passphrases must be long.
 - **Walls between apps and the kernel (1.33.0):** apps run in ring 3 behind paging, every pointer checked, a rule-breaker closed (`test/walltest`). Not covered: faults in the kernel's own readers, and a 486 (no wall).
 - **TCP resets (1.31.4):** believed only at the exact sequence number (RFC 5961).
-- **ARP (1.31.4):** an address is learned only as an answer to a question just asked, and the router's entry can't be pushed out.
+- **ARP (1.31.4, tightened after 1.47):** an address is learned only as an answer to a question of ours, never from what is sent to us; it is asked again every five minutes, a changed card is noted on the wire, and the router's entry can't be pushed out.
 - **TCP starting numbers and ports (1.31.4):** from the random pool.
 - **DNS (1.32.0):** random question number and port, answers only from the server asked.
 - **Stack tripwire (1.32.0):** a known value 108 KB down the stack, checked 250 times a second.

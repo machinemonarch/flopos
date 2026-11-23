@@ -268,16 +268,47 @@ static int ne_recv(u8 *frame, int max)
     dma_in((u16)(s_next << 8), hdr, 4);
     len = (hdr[2] | (hdr[3] << 8)) - 4;
 
-    if (len > 0 && len <= max && (hdr[0] & 0x01))
-        dma_in((u16)((s_next << 8) + 4), frame, len);
-    else
-        len = 0;
+    /* A header is believed only if its next page is where its length
+     * says (give or take the page some cards leave spare).  QEMU's card,
+     * when its ring fills exactly, takes it for empty and writes over the
+     * oldest frame; what is read there is then not a header at all.  The
+     * old answer to that, going back to the start of the ring, landed on
+     * more of the same, and the card stayed full and deaf for good.  Now
+     * everything in the ring is let go and reading starts again where the
+     * card is. */
+    {
+        int pages = (len + 4 + 4 + 255) >> 8, ring = RX_STOP - RX_START;
+        int step = ((int)hdr[1] - (int)s_next + ring) % ring;
+        if (!(hdr[0] & 0x01) || len < 14 || len > NET_MTU || hdr[1] < RX_START || hdr[1] >= RX_STOP ||
+            step < pages - 1 || step > pages) {
+            serial_printf("[ne2000] a damaged frame in the ring at %x (status %x, next %x, %d bytes): the ring let go\n",
+                          s_next, hdr[0], hdr[1], len);
+            s_next = curr;
+            wr(R_BNRY, (u8)(s_next == RX_START ? RX_STOP - 1 : s_next - 1));
+            return 0;
+        }
+    }
+    if (len <= max) dma_in((u16)((s_next << 8) + 4), frame, len);
+    else len = 0;
 
     s_next = hdr[1];
-    if (s_next < RX_START || s_next >= RX_STOP) s_next = RX_START;
     wr(R_BNRY, (u8)(s_next == RX_START ? RX_STOP - 1 : s_next - 1));
 
     return len;
+}
+
+/* Where the ring stands, for the wire (net_state). */
+const char *ne2000_state(void)
+{
+    static char t[80];
+    u8 curr, bnry, isr;
+    if (!s_up) return "down";
+    wr(R_CMD, CMD_PAGE1 | CMD_RD_ABORT | CMD_START);
+    curr = rd(R_CURR);
+    wr(R_CMD, CMD_RD_ABORT | CMD_START);
+    bnry = rd(R_BNRY); isr = rd(R_ISR);
+    fmt_str(t, sizeof t, "ring next %x, card at %x, boundary %x, status %x", s_next, curr, bnry, isr);
+    return t;
 }
 
 /* No link status register on this part worth the name; in QEMU there is

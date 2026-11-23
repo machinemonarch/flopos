@@ -60,28 +60,19 @@ int conn_open(const char *host, u16 port, int secure, void (*note)(const char *t
         tls_set_note(note);
         say("agreeing on a key...");
         if (!tls_connect(host)) {
-            int ok = 0;
-            /* The post-quantum handshake was chosen and then failed: that
-             * is ours to fix, not the site's, so try once more without it
-             * and say so down the wire, where it can be read. */
-            if (tls_pq_broke()) {
-                serial_printf("[tls] post-quantum handshake with %s failed (%s); retrying with X25519 alone\n",
+            /* A post-quantum handshake that the server chose and that then
+             * failed is not tried again without it: whoever broke it on
+             * the way would get exactly that, the older key agreement
+             * alone.  It is said down the wire, where it can be read. */
+            if (tls_pq_broke())
+                serial_printf("[tls] post-quantum handshake with %s failed (%s); not tried again without it\n",
                               host, tls_why());
-                tcp_close();
-                if (tcp_connect(to, port, 6000)) {
-                    tls_offer_pq(0);
-                    ok = tls_connect(host);
-                    tls_offer_pq(1);
-                }
-            }
-            if (!ok) {
-                if (tls_untrusted())
-                    fmt_str(s_why, sizeof s_why, "It could not prove it is %s: %s.", host, tls_why());
-                else
-                    fmt_str(s_why, sizeof s_why, "The secure handshake failed: %s.", tls_why());
-                tcp_close();
-                return 0;
-            }
+            if (tls_untrusted())
+                fmt_str(s_why, sizeof s_why, "It could not prove it is %s: %s.", host, tls_why());
+            else
+                fmt_str(s_why, sizeof s_why, "The secure handshake failed: %s.", tls_why());
+            tcp_close();
+            return 0;
         }
         serial_printf("[tls] %s: %s, %s, %s\n", host, tls_cipher(),
                       tls_kex(),

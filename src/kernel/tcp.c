@@ -71,6 +71,7 @@ static int s_tx_len;                     /* sent-unacked plus unsent       */
 
 static u32 s_rtx_at, s_rto;
 static int s_tries;
+static u32 s_probe_at, s_probe_gap;      /* asking a shut window: when next, how often */
 
 const char *tcp_why(void) { return s_why; }
 int tcp_open(void) { return s_state == ESTAB || s_state == CLOSE_WAIT; }
@@ -187,12 +188,28 @@ static void output(void)
  * and on a single cable almost never needed. */
 static void tick(void)
 {
-    if (s_state == CLOSED || s_snd_nxt == s_snd_una) return;
+    if (s_state == CLOSED) return;
+    if (s_snd_nxt == s_snd_una) {
+        /* Nothing on the way, something waiting, and they said they have
+         * no room.  The word that they have room again is a bare
+         * acknowledgement, and if it is lost both ends wait for ever; so
+         * every so often one byte is offered, which they answer with where
+         * their window stands (RFC 9293 3.8.6.1).  Never given up on while
+         * they answer: tcp_write has its own limit. */
+        if (s_peer_win || !s_tx_len || (s_state != ESTAB && s_state != CLOSE_WAIT)) { s_probe_at = 0; return; }
+        if (!s_probe_at) { s_probe_gap = s_rto; s_probe_at = ms_now() + s_probe_gap; return; }
+        if (before(ms_now(), s_probe_at)) return;
+        segment(F_ACK, s_snd_nxt, s_tx, 1);
+        if (s_probe_gap < 8000) s_probe_gap *= 2;
+        s_probe_at = ms_now() + s_probe_gap;
+        return;
+    }
     if (before(ms_now(), s_rtx_at)) return;
 
     if (++s_tries > 8) {
         s_state = CLOSED;
         s_why = "the other end stopped answering";
+        serial_printf("[tcp] the other end stopped answering (card: %s)\n", net_state());
         return;
     }
     s_rto *= 2;
@@ -407,6 +424,7 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
     s_sack_ok = 0;
     s_tx_len = 0;
     s_tries = 0;
+    s_probe_at = 0;
     s_rto = 1000;
     s_why = "";
     s_state = SYN_SENT;

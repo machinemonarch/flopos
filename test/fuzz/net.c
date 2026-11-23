@@ -8,11 +8,16 @@
  * asking the time.  Bit 2 makes the pretend card helpful, the way a real
  * server is: each frame is addressed to what FLOPOS just sent (addresses,
  * ports, the DHCP and DNS question numbers, TCP's acknowledgement) and its
- * TCP checksum put right, so garbage gets past the doors to the readers
- * behind them.  Bit 3 also puts the IP and UDP lengths right.  The card
- * answers every ARP question at once, and hands over the input's frames
- * only after FLOPOS has said something (three for each IP packet it sends),
- * the way answers come after questions; what is left comes at the end.
+ * checksums (IP, TCP, ping) put right, so garbage gets past the doors to
+ * the readers behind them.  Bit 3 also puts the IP and UDP lengths right.
+ * The card answers every ARP question at once, and hands over the input's
+ * frames only after FLOPOS has said something, the way answers come after
+ * questions: three for each IP packet it sends, or (bit 4, patient) one
+ * for each that is more than a bare acknowledgement.  Bit 5 moves the
+ * clock on two minutes with every frame, for what only happens late:
+ * addresses asked again, a window asked about, a conversation given up.
+ * Bit 6: nobody answers ARP; bit 7: answers come from changing cards.
+ * What is left of the input comes at the end.
  */
 #include "flopos.h"
 #include <stdlib.h>
@@ -45,6 +50,7 @@ int  store_net_get(u32 *how, u32 *ip, u32 *mask, u32 *gw, u32 *dns) { (void)how;
 int  clock_from_network(void) { return 0; }
 void main_pump(int now) { (void)now; }
 int  pcic_probe(void) { return 0; }
+const char *ne2000_state(void) { return "fuzz"; }
 
 static u16 g16(const u8 *p) { return (u16)(p[0] << 8 | p[1]); }
 static void p16(u8 *p, u32 v) { p[0] = (u8)(v >> 8); p[1] = (u8)v; }
@@ -61,13 +67,17 @@ static int c_none(void) { return 0; }
 
 static int c_send(const u8 *f, int len)
 {
-    if (len >= 34 && g16(f + 12) == 0x0800) s_credit += 3;   /* an answer comes after a question */
-    if (len >= 42 && g16(f + 12) == 0x0806 && g16(f + 20) == 1) {    /* who has: it is us */
+    if (len >= 34 && g16(f + 12) == 0x0800) {            /* an answer comes after a question */
+        int bare = f[23] == 6 && len >= 54 && f[47] == 0x10 && g16(f + 16) == 20 + (f[46] >> 4) * 4;
+        s_credit += !(s_mode & 16) ? 3 : bare ? 0 : 1;
+    }
+    if (len >= 42 && g16(f + 12) == 0x0806 && g16(f + 20) == 1 && !(s_mode & 64)) {   /* who has: it is us */
         memcpy(s_arp, f, 42);
         memcpy(s_arp, s_mac, 6); memcpy(s_arp + 6, "\x02\x00\x00\x00\x00\x01", 6);
         p16(s_arp + 20, 2);
         memcpy(s_arp + 22, "\x02\x00\x00\x00\x00\x01", 6); memcpy(s_arp + 28, f + 38, 4);
         memcpy(s_arp + 32, s_mac, 6); memcpy(s_arp + 38, f + 28, 4);
+        if (s_mode & 128) s_arp[27] ^= (u8)s_now;        /* now and then from another card */
         s_arp_len = 42;
     }
     if (len >= 34 && g16(f + 12) == 0x0800) {
@@ -83,6 +93,16 @@ static u16 tsum(const u8 *ip, const u8 *seg, int len)
     int i;
     for (i = 0; i + 1 < len; i += 2) s += g16(seg + i);
     if (i < len) s += (u32)seg[i] << 8;
+    while (s >> 16) s = (s & 0xFFFF) + (s >> 16);
+    return (u16)~s;
+}
+
+static u16 isum(const u8 *p, int len)
+{
+    u32 s = 0;
+    int i;
+    for (i = 0; i + 1 < len; i += 2) s += g16(p + i);
+    if (i < len) s += (u32)p[i] << 8;
     while (s >> 16) s = (s & 0xFFFF) + (s >> 16);
     return (u16)~s;
 }
@@ -124,6 +144,12 @@ static void helpful(u8 *f, int len)
         p16(t + 16, 0);
         p16(t + 16, tsum(h, t, tl));
     }
+    if (h[9] == 1 && g16(h + 2) >= hl + 4 && 14 + g16(h + 2) <= len) {   /* a ping's own sum */
+        p16(h + hl + 2, 0);
+        p16(h + hl + 2, isum(h + hl, g16(h + 2) - hl));
+    }
+    p16(h + 10, 0);                                      /* and the header's */
+    p16(h + 10, isum(h, hl));
 }
 
 static int c_recv(u8 *f, int max)
@@ -138,6 +164,7 @@ static int c_recv(u8 *f, int max)
     memcpy(f, s_in + s_at, n);
     s_at += n;
     if (s_mode & 4) helpful(f, (int)n);
+    if (s_mode & 32) s_now += 120000;
     return (int)n;
 }
 

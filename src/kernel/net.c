@@ -117,6 +117,18 @@ const char  *net_name(void)  { return s_nic ? s_nic->name : "none"; }
 const char  *net_why(void)   { return s_why; }
 const u8    *net_mac(void)   { return s_nic ? s_nic->mac() : (const u8 *)"\0\0\0\0\0\0"; }
 
+/* For the wire, when something goes quiet: the queue, and the card's own
+ * idea of where it is. */
+const char *ne2000_state(void);
+const char *net_state(void)
+{
+    static char t[120];
+    const char *c = "";
+    if (s_nic == &g_nic_ne2000) { s_busy++; c = ne2000_state(); s_busy--; }
+    fmt_str(t, sizeof t, "%u waiting%s%s", s_qin - s_qout, c[0] ? ", " : "", c);
+    return t;
+}
+
 /* The wire has a minimum: sixty bytes before the checksum, and anything
  * shorter is a runt that switches are entitled to throw away.  An ARP
  * request is forty-two.  So short frames are copied out and padded with

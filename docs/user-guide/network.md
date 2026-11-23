@@ -26,7 +26,7 @@ Settings made by hand are kept on the floppy.
 ## How private it is
 
 - **TLS 1.3,** or **TLS 1.2** for sites with nothing newer, with the ciphers Chrome still offers and nothing older. A TLS 1.3 site answering in 1.2 is refused (someone forced the older version).
-- **Post-quantum key exchange:** X25519MLKEM768, so traffic recorded today stays private against a future quantum computer. Sites without it fall back to X25519.
+- **Post-quantum key exchange:** X25519MLKEM768, so traffic recorded today stays private against a future quantum computer. Sites without it get X25519. A post-quantum handshake that breaks halfway is not tried again without it, since that is exactly what someone in between would want.
 - **The site must prove who it is,** up to one of 119 authorities from Mozilla's list (`ROOTS.DAT`), and sign the handshake with its own key. browzer's status line says who vouched.
 - **`crypto`** checks every piece against published answers on the laptop.
 

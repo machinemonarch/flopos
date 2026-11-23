@@ -45,16 +45,28 @@
 static u32 s_ip, s_mask, s_gw, s_dns;
 static u16 s_dns_srv_port = 53;          /* settable, for testing          */
 static int s_how;                        /* 0 none, 1 by hand, 2 by DHCP   */
+static u32 s_frames;                     /* every frame that came, for the wire */
 
 typedef struct {
     u32 ip;
     u8  mac[6];
-    u32 at;                              /* when we learned it             */
+    u32 at;                              /* when it last said so           */
+    u32 asked;                           /* when we last asked again, or 0 */
 } ArpEntry;
+
+/* How long an answer is believed before it is asked again.  The old one
+ * is used meanwhile, so nothing waits; a card that has moved (a router
+ * swapped, an address handed to another machine) is found within this. */
+#define ARP_LIFE 300000
 
 #define ARP_N 8
 static ArpEntry s_arp[ARP_N];
 static int s_arp_next;
+
+/* Whether a moment has come.  The millisecond count wraps after 49 days,
+ * so it is asked by a signed difference: "now < until" read across the
+ * wrap waited 49 days more. */
+static int due(u32 until) { return (s32)(ms_now() - until) >= 0; }
 
 /* ---- putting numbers on the wire -------------------------------------- */
 static void put16(u8 *p, u16 v) { p[0] = (u8)(v >> 8); p[1] = (u8)v; }
@@ -119,38 +131,67 @@ void ip_configure(u32 addr, u32 mask, u32 gw)
 }
 
 /* ---- who is behind an address ----------------------------------------- */
-static const u8 *arp_lookup(u32 ip)
+static void arp_send_ask(u32 ip);
+
+static ArpEntry *arp_find(u32 ip)
 {
     int i;
     if (!ip) return 0;                   /* an empty slot is not anybody's */
     for (i = 0; i < ARP_N; i++)
-        if (s_arp[i].ip == ip) return s_arp[i].mac;
+        if (s_arp[i].ip == ip) return &s_arp[i];
     return 0;
 }
 
-/* What is known is never replaced: once the router (or anyone) has a
- * card to its name, a later claim to be it is ignored.  The table starts
- * again when the address is set.  A newcomer takes the oldest slot, but
- * never the router's. */
+static const u8 *arp_lookup(u32 ip)
+{
+    ArpEntry *e = arp_find(ip);
+    u32 now = ms_now();
+    if (!e) return 0;
+    if (now - e->at > ARP_LIFE && (!e->asked || now - e->asked > 1000)) {
+        e->asked = now ? now : 1;        /* still believed while it answers */
+        arp_send_ask(ip);
+    }
+    return e->mac;
+}
+
+/* Only what answers a question of ours is learned: nobody gets into the
+ * table by writing to us, or by announcing themselves.  A newcomer takes
+ * the oldest slot, but never the router's.  The table starts again when
+ * the address is set. */
 static u32 s_ask_ip, s_ask_until;        /* the question we are waiting on  */
 
 static void arp_learn(u32 ip, const u8 *mac)
 {
-    int i;
+    ArpEntry *e = arp_find(ip);
+    int i, j, changed = 0;
 
     if (!ip) return;
-    for (i = 0; i < ARP_N; i++)
-        if (s_arp[i].ip == ip) return;
-    i = s_arp_next;
-    if (s_gw && s_arp[i].ip == s_gw) i = (i + 1) % ARP_N;
-    s_arp_next = (i + 1) % ARP_N;
-
-    s_arp[i].ip = ip;
-    for (int j = 0; j < 6; j++) s_arp[i].mac[j] = mac[j];
-    s_arp[i].at = ms_now();
+    if (e) {
+        for (j = 0; j < 6; j++) if (e->mac[j] != mac[j]) changed = 1;
+        if (changed)
+            serial_printf("[net] %u.%u.%u.%u answered from another card than before: %x:%x:%x:%x:%x:%x\n",
+                          ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255,
+                          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } else {
+        i = s_arp_next;
+        if (s_gw && s_arp[i].ip == s_gw) i = (i + 1) % ARP_N;
+        s_arp_next = (i + 1) % ARP_N;
+        e = &s_arp[i];
+        e->ip = ip;
+    }
+    for (j = 0; j < 6; j++) e->mac[j] = mac[j];
+    e->at = ms_now();
+    e->asked = 0;
 }
 
 static void arp_ask(u32 ip)
+{
+    s_ask_ip = ip;
+    s_ask_until = ms_now() + 1000;
+    arp_send_ask(ip);
+}
+
+static void arp_send_ask(u32 ip)
 {
     u8 f[42];
     int n, i;
@@ -165,9 +206,6 @@ static void arp_ask(u32 ip)
     put32(f + n + 14, s_ip);
     for (i = 0; i < 6; i++) f[n + 18 + i] = 0;
     put32(f + n + 24, ip);
-
-    s_ask_ip = ip;
-    s_ask_until = ms_now() + 1000;
     net_send(f, n + 28);
 }
 
@@ -198,7 +236,7 @@ static u32 s_ping_from;
 
 static void take_icmp(const u8 *ip_hdr, const u8 *p, int len)
 {
-    if (len < 8) return;
+    if (len < 8 || checksum(p, len) != 0) return;
 
     if (p[0] == ICMP_ECHO_REPLY &&
         get16(p + 4) == s_ping_id && get16(p + 6) == s_ping_seq) {
@@ -213,7 +251,7 @@ static void take_icmp(const u8 *ip_hdr, const u8 *p, int len)
         u8 f[NET_MTU];
         int n, hl = (ip_hdr[0] & 0x0F) * 4;
         u32 src = get32(ip_hdr + 12);
-        const u8 *mac = arp_lookup(((src ^ s_ip) & s_mask) ? s_gw : src);
+        const u8 *mac = ip_route(src, 0);    /* unknown: asked, and the next ping is answered */
         int i;
 
         if (!mac || len > NET_MTU - 34) return;
@@ -386,7 +424,9 @@ static void take_dhcp(const u8 *p, int len)
         i += 2 + l;
     }
 
-    if (type == DHCP_OFFER && s_dhcp == 1) {
+    /* The yes (or no) must come from the server whose offer we took. */
+    if ((type == DHCP_ACK || type == DHCP_NAK) && s_off_server && server != s_off_server) return;
+    if (type == DHCP_OFFER && s_dhcp == 1 && get32(p + 16)) {
         s_off_ip = get32(p + 16);
         s_off_server = server;
         s_off_mask = mask ? mask : 0xFFFFFF00;
@@ -424,12 +464,12 @@ int ip_dhcp(void)
         s_dhcp = 1;
         if (!dhcp_send(DHCP_DISCOVER)) return 0;
         until = ms_now() + 1000u * (u32)(attempt + 1);
-        while (ms_now() < until && s_dhcp == 1) ip_poll();
+        while (!due(until) && s_dhcp == 1) ip_poll();
         if (s_dhcp != 2) continue;
 
         if (!dhcp_send(DHCP_REQUEST)) return 0;
         until = ms_now() + 2000;
-        while (ms_now() < until && s_dhcp == 2) ip_poll();
+        while (!due(until) && s_dhcp == 2) ip_poll();
         if (s_dhcp == 3) {
             s_arp_next = 0;
             memset8((u8 *)s_arp, 0, sizeof s_arp);
@@ -508,7 +548,8 @@ u32 ip_lookup(const char *name)
 {
     static u8 q[300];                    /* kept: take_dns compares the answer with it */
     int n = 12, i, start;
-    u32 until;
+    u32 until, seen = s_frames;
+    const char *name0 = name;
 
     if (!net_ready() || !s_dns || !name[0]) return 0;
 
@@ -544,10 +585,12 @@ u32 ip_lookup(const char *name)
         s_dns_done = 0;
         if (!udp_send(s_dns, s_dns_port, s_dns_srv_port, q, n)) return 0;
         until = ms_now() + 2000;
-        while (ms_now() < until && !s_dns_done) ip_poll();
+        while (!due(until) && !s_dns_done) ip_poll();
         if (s_dns_done) { s_dns_port = 0; return s_dns_got; }
     }
     s_dns_port = 0;                      /* nobody is waiting any more     */
+    serial_printf("[net] no answer about %s from the name server (%u frames came meanwhile; card: %s)\n",
+                  name0, s_frames - seen, net_state());
     return 0;
 }
 
@@ -579,7 +622,7 @@ int ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wa
     s_ask_port = (u16)(49152 + (r & 0x3FFF));
     if (!udp_send(to, s_ask_port, port, q, qlen)) { s_ask_port = 0; return 0; }
     until = ms_now() + (u32)wait_ms;
-    while (ms_now() < until && !s_ask_len) ip_poll();
+    while (!due(until) && !s_ask_len) ip_poll();
     s_ask_port = 0;
     return s_ask_len > 0 ? s_ask_len : 0;
 }
@@ -631,6 +674,7 @@ static void poll_frames(void)
     for (guard = 0; guard < 48; guard++) {
         len = net_recv(f, (int)sizeof f);
         if (len < 14) return;
+        s_frames++;
         if (g_net_drop && ++seen % g_net_drop == 0) continue;
         rand_add((u32)len ^ ((u32)f[len - 1] << 16));
 
@@ -638,12 +682,17 @@ static void poll_frames(void)
         case ET_ARP: {
             const u8 *a = f + 14;
             if (len < 42) break;
-            if (get16(a + 2) != ET_IPV4) break;
-            /* Believed only as the answer to a question just asked. */
-            if (get16(a + 6) == ARP_REPLY && s_ask_ip &&
-                get32(a + 14) == s_ask_ip && ms_now() < s_ask_until) {
-                arp_learn(s_ask_ip, a + 8);
-                s_ask_ip = 0;
+            if (get16(a) != 1 || get16(a + 2) != ET_IPV4 || a[4] != 6 || a[5] != 4) break;
+            /* Believed only as the answer to a question just asked: the
+             * one being waited on, or asking again about one we know. */
+            if (get16(a + 6) == ARP_REPLY && (!s_ip || get32(a + 24) == s_ip)) {
+                u32 who = get32(a + 14), now = ms_now();
+                ArpEntry *e = arp_find(who);
+                if (s_ask_ip && who == s_ask_ip && !due(s_ask_until)) {
+                    arp_learn(who, a + 8);
+                    s_ask_ip = 0;
+                } else if (e && e->asked && now - e->asked < 1000)
+                    arp_learn(who, a + 8);
             }
             if (s_ip && get16(a + 6) == ARP_REQUEST && get32(a + 24) == s_ip)
                 arp_answer(f);
@@ -658,6 +707,7 @@ static void poll_frames(void)
             /* A piece of a bigger packet is not put back together here; read
              * as if whole, its middle would pass for a header.  Dropped. */
             if (get16(h + 6) & 0x3FFF) break;
+            if (checksum(h, hl) != 0) break;     /* damaged on the way          */
             {
                 /* Ours, or everybody's.  Before DHCP has finished we have
                  * no address at all, and the reply that gives us one is
@@ -671,12 +721,6 @@ static void poll_frames(void)
                 int tot = get16(h + 2);
                 if (!mine && !dhcp) break;
                 if (tot < hl || 14 + tot > len) break;
-                /* A neighbour who writes to us is remembered, so a ping
-                 * can be answered; the router and strangers beyond it
-                 * are not learned this way. */
-                if (s_ip && dst == s_ip && get32(h + 12) != s_gw &&
-                    !((get32(h + 12) ^ s_ip) & s_mask))
-                    arp_learn(get32(h + 12), f + 6);
                 /* Pings only to us: one sent to everybody would have every
                  * machine answer at once (RFC 1122 3.2.2.6). */
                 if (h[9] == PROTO_ICMP && s_ip && dst == s_ip)
@@ -711,14 +755,14 @@ const u8 *ip_route(u32 to, int wait_ms)
      * in more arrivals, which send, which wait, each a level deeper on the
      * stack.  Ask once and give up; TCP sends again later. */
     if (s_taking) {
-        if (!s_ask_ip || ms_now() >= s_ask_until) arp_ask(target);
+        if (!s_ask_ip || due(s_ask_until)) arp_ask(target);
         return 0;
     }
 
     for (tries = 0; tries < 3; tries++) {
         arp_ask(target);
         until = ms_now() + (u32)(wait_ms / 3);
-        while (ms_now() < until) {
+        while (!due(until)) {
             ip_poll();
             mac = arp_lookup(target);
             if (mac) return mac;
@@ -761,7 +805,7 @@ int ip_ping(u32 to, int seq, int wait_ms)
     if (!net_send(f, n + 36)) return -3;
 
     until = start + (u32)wait_ms;
-    while (ms_now() < until) {
+    while (!due(until)) {
         ip_poll();
         if (s_ping_got) return (int)(ms_now() - start);
     }

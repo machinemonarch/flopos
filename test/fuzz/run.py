@@ -276,8 +276,14 @@ def seeds_net(d):
     os.makedirs(d, exist_ok=True)
     mac = bytes.fromhex("525400123456"); gw = bytes.fromhex("020000000001")
     ip = lambda s: bytes(int(x) for x in s.split("."))
+    def isum(b):
+        t = sum((b[i] << 8) + (b[i + 1] if i + 1 < len(b) else 0) for i in range(0, len(b), 2))
+        while t >> 16: t = (t & 0xFFFF) + (t >> 16)
+        return ~t & 0xFFFF
+    def icmp(b): b = bytearray(b); b[2:4] = struct.pack(">H", isum(b)); return bytes(b)
     def ipv4(proto, src, dst, body):
         h = bytearray(struct.pack(">BBHHHBBH4s4s", 0x45, 0, 20 + len(body), 1, 0, 64, proto, 0, ip(src), ip(dst)))
+        h[10:12] = struct.pack(">H", isum(h))
         return bytes(h) + body
     eth = lambda body, t=0x0800: mac + gw + struct.pack(">H", t) + body
     udp = lambda sp, dp, data: struct.pack(">HHHH", sp, dp, 8 + len(data), 0) + data
@@ -300,23 +306,27 @@ def seeds_net(d):
                                                 frame(dns([rr(b"\xc0\x0c", 1, ip("1.2.3.4"))])))
     open(os.path.join(d, "dns-odd.bin"), "wb").write(frame(dns([rr(b"\xc0\x0c", 28, bytes(16)), rr(name("a.b"), 1, ip("5.6.7.8"))], qd=2)) +
                                                     frame(dns([], rcode=3)))
-    def tcp(seq, ack, flags, data=b"", opts=b""):
+    def tcp(seq, ack, flags, data=b"", opts=b"", win=65535):
         hl = 20 + len(opts)
-        return eth(ipv4(6, "93.184.216.34", "10.0.2.15", struct.pack(">HHIIBBHHH", 443, 50000, seq, ack, (hl // 4) << 4, flags, 65535, 0, 0) + opts + data))
+        return eth(ipv4(6, "93.184.216.34", "10.0.2.15", struct.pack(">HHIIBBHHH", 443, 50000, seq, ack, (hl // 4) << 4, flags, win, 0, 0) + opts + data))
     S, A, F, R, P = 2, 16, 1, 4, 8
     synack = tcp(1000, 0, S | A, opts=bytes([2, 4, 5, 0xb4, 1, 1, 4, 2, 1, 3, 3, 7]))
     body = bytes(range(256)) * 5
     conv = [synack, tcp(1001, 0, A | P, body[:1000]), tcp(3001, 0, A, body[:500]), tcp(2001, 0, A, body[:1000]),
             tcp(3501, 0, A | F), tcp(9000, 0, A, body[:200])]
     open(os.path.join(d, "tcp.bin"), "wb").write(b"".join(frame(f) for f in conv))
+    # a server with no room: FLOPOS must ask now and then (zero window probe), then send when it opens
+    open(os.path.join(d, "tcp-shut.bin"), "wb").write(frame(tcp(1000, 0, S | A, opts=bytes([2, 4, 5, 0xb4]), win=0)) +
+                                                     frame(tcp(1001, 0, A, win=0)) + frame(tcp(1001, 0, A, win=0)) + frame(tcp(1001, 0, A, win=8192)) +
+                                                     frame(tcp(1001, 0, A | P, body[:300])) + frame(tcp(1301, 0, A | F)))
     # a piece numbered half the number space away (it was read from 2 GB past the packet, 1.47.0)
     open(os.path.join(d, "tcp-wrap.bin"), "wb").write(frame(synack) + frame(tcp(1001 + (1 << 31), 0, A, body[:100])) +
                                                      frame(tcp(1001 + (1 << 31) - 30000, 0, A, body[:100])))
     open(os.path.join(d, "dns-other.bin"), "wb").write(frame(dns([rr(b"\xc0\x0c", 1, ip("6.6.6.6"))], qd=0)) +
                                                       frame(dns([rr(b"\xc0\x0c", 1, ip("1.2.3.4"))])))
     open(os.path.join(d, "tcp-rst.bin"), "wb").write(frame(synack) + frame(tcp(1001, 0, A, b"hi")) + frame(tcp(1500, 0, R)) + frame(tcp(1003, 0, R)))
-    ping = eth(ipv4(1, "10.0.2.2", "10.0.2.15", bytes([8, 0, 0, 0, 0, 1, 0, 1]) + b"abcdefgh"))
-    pong = eth(ipv4(1, "10.0.2.2", "10.0.2.15", bytes([0, 0, 0, 0, 0x46, 0x4c, 0, 1]) + b"abcdefgh"))
+    ping = eth(ipv4(1, "10.0.2.2", "10.0.2.15", icmp(bytes([8, 0, 0, 0, 0, 1, 0, 1]) + b"abcdefgh")))
+    pong = eth(ipv4(1, "10.0.2.2", "10.0.2.15", icmp(bytes([0, 0, 0, 0, 0x46, 0x4c, 0, 1]) + b"abcdefgh")))
     arp = eth(struct.pack(">HHBBH6s4s6s4s", 1, 0x800, 6, 4, 1, gw, ip("10.0.2.2"), bytes(6), ip("10.0.2.15")), 0x0806)
     ntp = eth(ipv4(17, "10.0.2.3", "10.0.2.15", udp(123, 50000, bytes([0x24, 2]) + bytes(46))))
     open(os.path.join(d, "misc.bin"), "wb").write(b"".join(frame(f) for f in (arp, ping, pong, ntp)))
@@ -387,7 +397,7 @@ TARGETS = {
                 os.path.join(OUT, "made", "nts"), lambda: seeds_nts(os.path.join(OUT, "made", "nts")), {},
                 # the signature's check is renamed, and nts.c (the target) puts its own in front of it
                 {"src/kernel/aes.c": "-Daessiv_open=real_aessiv_open"}),
-    "net":     (files("test/fuzz/net.c", "src/kernel/net.c", "src/kernel/ip.c", "src/kernel/tcp.c"), ["src/kernel"],
+    "net":     (files("test/fuzz/net.c", "src/kernel/net.c", "src/kernel/ip.c", "src/kernel/tcp.c", "src/kernel/fmt.c"), ["src/kernel"],
                 os.path.join(OUT, "made", "net"), lambda: seeds_net(os.path.join(OUT, "made", "net")), {}),
     "browzer": (files("test/fuzz/browzer.c", "src/kernel/fmt.c") + glob("src/apps/browzer") + glob("src/apps/lib/audio")
                 + glob("src/apps/lib/dsp") + glob("src/apps/lib/bits"), ["src/apps/sdk", "src/apps/browzer", "src/kernel"] + LIB,

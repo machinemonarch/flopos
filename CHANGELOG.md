@@ -25,6 +25,16 @@ without it. Each version's notes are also written next to its image, as
   FLOPOS can't be used to multiply someone else's traffic.
 - **Pieces of a split-up packet are dropped** instead of being read as
   if whole.
+- **No falling back from post-quantum.** When a site chose the
+  post-quantum handshake and it broke halfway, FLOPOS used to try again
+  without it. Someone in between could break it on purpose to get the
+  older kind. Now it stops and says so.
+- **Neighbours on the network are learned only from answers to our own
+  questions,** not from anything they send, and asked again every five
+  minutes. Before, the first claim was kept for good.
+- **Damaged packets are thrown away:** the checksum on every IP header
+  and every ping is now checked. And the address handed out by DHCP is
+  taken only from the server whose offer was accepted.
 
 ### BUG FIXES
 
@@ -34,6 +44,15 @@ without it. Each version's notes are also written next to its image, as
   looking up a shortened name.
 - **With no way out set,** packets for other networks are no longer sent
   to a made-up card address.
+- **Uploads no longer stall** when a server says it has no room for
+  more: FLOPOS asks now and then whether it has room again, instead of
+  waiting for a message that might have been lost.
+- **The network no longer stops after 49 days** switched on: a wait that
+  spanned the clock's wrap-around lasted another 49 days.
+- **In QEMU, the network no longer goes deaf for good** after a big
+  download is cut short. The emulated card writes over a frame when its
+  memory fills exactly; FLOPOS now sees the damage and starts afresh. (The
+  laptop's own card was never affected.)
 
 ## 1.47.0 — 2026-11-23
 

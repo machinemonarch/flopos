@@ -710,6 +710,7 @@ int          net_send(const u8 *frame, int len);
 int          net_recv(u8 *frame, int max);
 int          net_frame_begin(u8 *f, const u8 *to, u16 type);
 int          net_link(void);
+const char  *net_state(void);         /* the queue and the card, as words */
 
 /* --- ip.c --------------------------------------------------------------- */
 void   ip_configure(u32 addr, u32 mask, u32 gw);
