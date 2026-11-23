@@ -22,7 +22,7 @@
 #define ROOM_H
 
 #define ROOM_BASE   0x01800000u          /* 24 MB: above the apps' 12 MB      */
-#define ROOM_SIZE   0x00400000u          /* 4 MB                            */
+#define ROOM_SIZE   0x00700000u          /* 7 MB: a 32 MB machine's top megabyte left alone */
 #define ROOM_END    (ROOM_BASE + ROOM_SIZE)
 #define ROOM_MAIL_SIZE 0x10000u
 #define ROOM_MAIL   (ROOM_END - ROOM_MAIL_SIZE)

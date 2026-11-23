@@ -1022,6 +1022,16 @@ NATIVE(promise_all)                       /* 0 all, 1 allSettled, 2 race */
 
 /* ---- timers -------------------------------------------------------------------------- */
 /* vm->timers: an array of [id, due, every, fn, [args]] lists. */
+/* A Worker's turn (dom.c): background work by nature, so the timer that
+ * runs it may take as long as a big script's loading, 15 s. */
+NATIVE(timer_long)
+{
+    UNUSED;
+    vm->long_turn = 1;
+    vm->deadline = host_ms() - vm->door_ms + 15000;
+    return v_undef();
+}
+
 NATIVE(timer_set)                         /* 0 setTimeout, 1 setInterval, 2 requestAnimationFrame */
 {
     Obj *t, *a;
@@ -1049,6 +1059,7 @@ NATIVE(timer_set)                         /* 0 setTimeout, 1 setInterval, 2 requ
     arr_push(vm, t, v_num(magic == 1 ? ms : 0));
     arr_push(vm, t, ARG(0));
     arr_push(vm, t, v_obj(a));
+    arr_push(vm, t, v_bool(vm->long_turn));       /* made in a Worker's turn: one itself */
     arr_push(vm, vm->timers, v_obj(t));
     UNTEMP(vm, 1);
     return v_num(vm->next_timer);
@@ -1117,8 +1128,21 @@ int timers_run(Vm *vm, u32 slice_ms)
             vm->timers->u.arr.len--;
             i--;
         }
-        vm->deadline = host_ms() - vm->door_ms + slice_ms;
+        vm->long_turn = truthy(arr_get(t.u.o, 5));
+        vm->deadline = host_ms() - vm->door_ms + (vm->long_turn ? 15000 : slice_ms);
         vm_call(vm, fn, v_undef(), args->u.arr.items ? args->u.arr.items->v : 0, (int)args->u.arr.len);
+        vm->long_turn = 0;
+        if (vm->fatal && vm->out_of_time) {          /* which one: a page has many */
+            static char b[120];
+            Val nm;
+            u32 n;
+            vm->fatal = 0; nm = get_prop(vm, fn, S_name); vm->fatal = 1; vm->throwing = 0;
+            memcpy(b, "it ran out of time, in the timer ", 33); n = 33;
+            if (nm.t == T_STR && nm.u.s->len) n += str_to_utf8(nm.u.s, b + n, 60);
+            else { memcpy(b + n, "(a function with no name)", 25); n += 25; }
+            b[n] = 0;
+            vm->stop_why = b;
+        }
         if (vm->throwing && !vm->fatal) {
             Val e = vm->exception;
             vm->throwing = 0;
@@ -1231,6 +1255,7 @@ void lib2_init(Vm *vm)
     def_native(vm, g, "setTimeout", timer_set, 2, 0);
     def_native(vm, g, "setInterval", timer_set, 2, 1);
     def_native(vm, g, "requestAnimationFrame", timer_set, 1, 2);
+    def_native(vm, g, "__flopos_long", timer_long, 0, 0);
     def_native(vm, g, "clearTimeout", timer_clear, 1, 0);
     def_native(vm, g, "clearInterval", timer_clear, 1, 0);
     def_native(vm, g, "cancelAnimationFrame", timer_clear, 1, 0);

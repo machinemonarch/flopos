@@ -10,7 +10,7 @@ the links it made itself.  Only those lines, or ok/FAILED, are printed.
 
 ADDRESS is a full http:// address, a path on the local test site, or
 key:a,b,... to press keys (QEMU's names) instead, such as key:h for home,
-type:TEXT to type (\\n for enter), or shot: for one screenshot.
+type:TEXT to type (\\n for enter), wait:N to pause N seconds, or shot: for one screenshot.
 A path is on the local test site
 (test/bench/site.py, started here on port 8150 if it isn't running).
 The first one starts browzer; each later one is typed over the last.
@@ -108,6 +108,8 @@ def main():
                     for ch in part:
                         if ch in SE: mon.cmd("sendkey " + SE[ch], settle=0.05)
                         else: type_text(mon, ch)
+            elif addr.startswith("wait:"):              # a pause of N seconds, for a page that gets ready without saying so
+                time.sleep(float(addr[5:])); print("wait   %s s" % addr[5:]); continue
             elif addr.startswith("shot:"):              # a picture, only where the look is the test
                 wire.quiet(1.0, 10); mon.shot("shot-%d" % i); print("shot   %s/shot-%d.png" % (a.out, i)); continue
             else:

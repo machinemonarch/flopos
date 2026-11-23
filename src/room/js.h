@@ -211,6 +211,7 @@ struct Vm {
     int    throwing;                     /* an exception is on its way out   */
     Val    exception;
     void (*uncaught)(Vm *vm, Val e);     /* one nobody caught, in a timer: said (dom.c) */
+    int    long_turn;                    /* running a Worker's work: its timers may take 15 s */
 
     u32    steps;                        /* instructions run, this task      */
     u32    deadline;                     /* host_ms() at which to stop       */

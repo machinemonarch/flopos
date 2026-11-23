@@ -1325,7 +1325,7 @@ static const char *s_prelude =
 "var WP=Worker.prototype;evts(WP);WP.onmessage=WP.onerror=WP.onmessageerror=null;"
 "WP.postMessage=function(d){if(this._dead)return;var w=this,c=sclone(d);setTimeout(function(){w._in(c);},0);};"
 "WP.terminate=function(){this._dead=1;this._q=[];};"
-"WP._in=function(c){if(this._dead)return;if(!this._ready){this._q.push(c);return;}var sc=this._sc,e=new MessageEvent('message',{data:c}),h=sc.get&&sc.get();"
+"WP._in=function(c){if(this._dead)return;if(!this._ready){this._q.push(c);return;}__flopos_long();var sc=this._sc,e=new MessageEvent('message',{data:c}),h=sc.get&&sc.get();"
 " e.target=e.currentTarget=sc.self;try{if(typeof h==='function')h.call(sc.self,e);else if(typeof sc.self.onmessage==='function')sc.self.onmessage(e);"
 "  (sc._ls.message||[]).slice().forEach(function(f){f.call(sc.self,e);});}catch(x){this._fail(x);}};"
 "WP._fail=function(x){var e={type:'error',message:String(x&&x.message||x),filename:'',lineno:0,colno:0,error:x,preventDefault:function(){}};this._emit(e);};"

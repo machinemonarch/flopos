@@ -77,7 +77,7 @@ be 256 KB, a page's scripts 640 KB; the biggest modern sites won't fit.
 How they are kept safe:
 
 - **The gate:** on an allowed site, scripts from other sites are fetched too (many sites keep theirs under a second name), but only over https and without your cookies there, so a tracker among them cannot follow you from site to site.
-- **The room:** scripts run walled off in 4 MB of their own, with no network, files or cookies.
+- **The room:** scripts run walled off in 7 MB of their own, with no network, files or cookies.
 - **The door:** every request goes through browzer, which checks it, and a script that asks for something odd is stopped.
 - **Forms:** a form goes wherever it says, as in other browsers; the key bar shows where before you send it. Only a form from an https page to a plain http address asks first (y sends it), since anyone on the way could read it.
 - **Other sites:** a script may fetch from another site only as that site allows (CORS), without your cookies there, and never from a public page into your own network.

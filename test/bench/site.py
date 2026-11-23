@@ -164,6 +164,13 @@ x.addEventListener('load', function (e) { ev.push('load' + (e.loaded > 0 ? '+' :
 x.addEventListener('loadend', function () { ev.push('end'); document.getElementById('o').textContent = 'url: ' + r.join(' | ') + ' | ' + ev.join(',') + ' ' + x.status + ' ' + (x.getResponseHeader('content-type') || ''); });
 x.open('GET', '/api/cors-ok'); x.send();
 </script>""",
+    "/js/clickworker": """<title>js clickworker</title><p id="o">not yet</p><button id="b">go</button><script>
+document.getElementById('b').addEventListener('click', function () {      // a Worker started by a click, as librespeed's
+  var w = new Worker('/js/echo.js');
+  w.onmessage = function (e) { document.getElementById('o').textContent = 'clickworker ' + e.data; };
+  w.postMessage(21);
+});
+</script>""",
     "/js/speed": """<title>js speed</title><p id="o">not yet</p><script>
 var w = new Worker('/js/worker.js'), o = document.getElementById('o');
 w.onmessage = function (e) {
@@ -488,6 +495,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                              [("Access-Control-Allow-Origin", "*"), ("Set-Cookie", "THIRDPARTY=1; path=/")])
         if p.startswith("/api/stream"):                   # a speed test's download: 3 MB, read as it comes
             return self.send(200, "application/octet-stream", bytes(range(256)) * 12288)
+        if p == "/js/echo.js":
+            return self.send(200, "application/javascript", b"onmessage = function (e) { postMessage(e.data * 2); };")
         if p == "/js/worker.js":
             return self.send(200, "application/javascript", WORKER.encode())
         if p == "/api/big":                                 # past what one door answer holds: comes in pieces

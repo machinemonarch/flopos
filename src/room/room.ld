@@ -18,6 +18,6 @@ SECTIONS
     .bss (NOLOAD) : { *(.bss) *(.bss.*) *(COMMON) }
     . = ALIGN(4096);
     _room_bss_end = .;
-    ASSERT(_room_bss_end <= 0x01800000 + 0x00400000 - 0x10000 - 0x1000 - 0x40000 - 0x1000 - 0x200000, "the room's engine leaves under 2 MB for the scripts")
+    ASSERT(_room_bss_end <= 0x01800000 + 0x00700000 - 0x10000 - 0x1000 - 0x40000 - 0x1000 - 0x200000, "the room's engine leaves under 2 MB for the scripts")
     /DISCARD/ : { *(.comment*) *(.note*) *(.eh_frame*) }
 }

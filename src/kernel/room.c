@@ -34,7 +34,8 @@ u32 *wall_esp0(void);
 u32  wall_call(u32 fn, u32 a0, u32 a1, u32 a2);
 extern int g_irq_depth;
 
-static u32 s_pt[1024] __attribute__((aligned(4096)));
+#define ROOM_PAGES ((ROOM_SIZE + 0x3FFFFFu) >> 22)   /* 4 MB pages the room spans, each with its own table */
+static u32 s_pt[1024 * ROOM_PAGES] __attribute__((aligned(4096)));
 static int s_loaded;                     /* ROOM.BIN is in, and well       */
 static int s_current;                    /* the room is the one running now */
 static int s_in_task;
@@ -60,7 +61,8 @@ static void map(int room)
     for (i = APP_BASE >> 22; i < (APP_BASE + APP_MAX) >> 22; i++) {
         if (room) pd[i] &= ~4u; else pd[i] |= 4u;
     }
-    pd[ROOM_BASE >> 22] = room ? ((u32)s_pt | 7u) : (ROOM_BASE | 0x83u);
+    for (i = 0; i < ROOM_PAGES; i++)
+        pd[(ROOM_BASE >> 22) + i] = room ? ((u32)&s_pt[i * 1024] | 7u) : ((ROOM_BASE + (i << 22)) | 0x83u);
     flush();
 }
 
@@ -106,7 +108,7 @@ int room_open(void)
     u32 i;
     if (s_loaded) return 1;
     if (!wall_on()) { s_why = "this machine cannot keep scripts apart from the rest (no 4 MB pages)"; return 0; }
-    if (!memory_for_room()) { s_why = "scripts need 28 MB of memory; this machine has less"; return 0; }
+    if (!memory_for_room()) { s_why = "scripts need 31 MB of memory; this machine has less"; return 0; }
     if (!fs_mount() || !fs_find("ROOM.BIN", &f)) { s_why = "ROOM.BIN is not on the floppy"; return 0; }
     map(0);
     {
@@ -126,9 +128,9 @@ int room_open(void)
     s_entry = h->entry;
     s_ro_end = h->ro_end;
     /* The pages: code read-only; the gaps not there; the rest the room's. */
-    for (i = 0; i < 1024; i++) {
+    for (i = 0; i < 1024 * ROOM_PAGES; i++) {
         u32 a = ROOM_BASE + i * 4096u;
-        if (a == ROOM_GAP1 || a == ROOM_GAP2) s_pt[i] = 0;
+        if (a >= ROOM_END || a == ROOM_GAP1 || a == ROOM_GAP2) s_pt[i] = 0;   /* past its end: not there */
         else if (a < s_ro_end) s_pt[i] = a | 5u;          /* present, user, read-only */
         else s_pt[i] = a | 7u;                            /* present, user, writable  */
     }

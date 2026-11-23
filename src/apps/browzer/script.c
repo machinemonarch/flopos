@@ -41,7 +41,9 @@
 #define EVENT_MS     500                 /* each click                      */
 #define TIMER_MS     4000                /* each turn of timers: work a page does in the
                                           * background (a Worker filling a buffer) */
-#define FETCHES      30                  /* a page's fetches                */
+#define FETCHES      60                  /* a page's fetches in a burst, then six a second:
+                                          * a runaway script is held back, a long-running
+                                          * page (a speed test) carries on */
 
 int g_dom_dirty;
 static char  s_host[64];                 /* the page's site                 */
@@ -52,6 +54,7 @@ static char  s_note[160];
 static char  s_fail[120];
 static u32   s_meter, s_page_nodes, s_cur_script, s_next_timer, s_last_draw;
 static int   s_loading, s_fetches;
+static u32   s_fetch_at;                 /* when s_fetches was last topped up */
 static char  s_go[PAGE_HREF_MAX];        /* where a script asked to go      */
 static u8    s_task[ROOM_MAIL_SIZE];
 static u8    s_ans[8200];              /* a module's list of imports is the longest answer */
@@ -1080,12 +1083,13 @@ void script_tick(Page *pg)
         s_task[0] = T_TIMERS;
         put32(s_task + 1, TIMER_MS);
         fields_to_tree();
-        r = task(5, TIMER_MS + 500, why, sizeof why);
+        r = task(5, LOAD_MAX + 500, why, sizeof why);   /* the room's own clock is TIMER_MS a timer, a Worker's turn longer */
         if (r < 0 || r == A_TIME) {                  /* said, never silent */
-            fmt_str(s_fail, sizeof s_fail, "a timer was stopped: %s", r == A_TIME ? "it ran out of time" : why);
+            fmt_str(s_fail, sizeof s_fail, "a timer was stopped: %s", why[0] ? why : "it ran out of time");
             wire(s_fail, "");
             set_note();
         }
+        drain_imports();                             /* import() and Workers a timer asked for */
         run_scripts();
     }
     if (g_dom_dirty && ms_now() - s_last_draw > 500) redraw();
@@ -1099,10 +1103,12 @@ int script_click(Page *pg, int link)
     if (!n || n >= g_nodes) return 0;
     fields_to_tree();
     if (event_at(n, "click", 0) || (pg->href[link - 1][0] == 'f' && pg->href[link - 1][1] == 'l')) {
+        drain_imports();                         /* import() and Workers the click asked for */
         run_scripts();
         if (g_dom_dirty) redraw();
         return 1;
     }
+    drain_imports();
     run_scripts();
     if (g_dom_dirty) redraw();
     return 0;
@@ -1117,6 +1123,7 @@ int script_submit(Page *pg, int form)
     if (!n || n >= g_nodes) return 0;
     fields_to_tree();
     stop = event_at(n, "submit", 0);
+    drain_imports();
     run_scripts();
     if (g_dom_dirty) redraw();
     return stop;
@@ -1131,6 +1138,7 @@ void script_changed(Page *pg, int field)
     fields_to_tree();
     event_at(n, "input", 0);
     event_at(n, "change", 0);
+    drain_imports();
     run_scripts();
     if (g_dom_dirty) redraw();
 }
@@ -1754,7 +1762,11 @@ static int door(u8 *buf, u32 len, u32 cap)
         m = gstr(&ml); u = gstr(&ul); body = gstr(&bodyl); t = gstr(&tl);
         total = g32();                        /* the whole body: more than came here follows in pieces */
         web_end();
-        if (++s_fetches > FETCHES) return refuse("it fetched too often");
+        {
+            u32 now = ms_now(), back = (now - s_fetch_at) * 6 / 1000;   /* s_fetches: those used */
+            if (back) { s_fetches = (u32)s_fetches > back ? s_fetches - (int)back : 0; s_fetch_at = now; }
+            if (++s_fetches > FETCHES) return refuse("it fetched too often");
+        }
         if (!url_resolve(s_pg->url, u, url, sizeof url)) return refuse("it fetched an address browzer cannot read");
         type[0] = 0;
         if (elsewhere(u)) {
