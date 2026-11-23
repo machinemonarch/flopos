@@ -12,6 +12,7 @@ CHANGELOG.
 ## Waiting to be picked
 
 - **One connection for many files:** browzer asks in HTTP/1.0, so every page, script and stylesheet opens a new connection with a full TLS handshake, heavy work for a Pentium. Keeping the line open (HTTP/1.1) needs page lengths and pieces (chunked) read in `web.c` and the script fetches, a line kept per site in the kernel, and a retry when a site has quietly hung up. Medium-large; time a slow page first to see what it saves.
+- **Tabs in browzer:** Several pages open at once, switched with a key, each keeping its place. It weighs memory (32 MB, with the script room's share) and goes well with one connection kept per site.
 
 - **A chat app:** Like Discord, IRC, WhatsApp or Signal; which is open. IRC is easiest for this machine, given a channel worth being in.
 - **A mystical protocol for sharing data:** A client on the Toshiba and a server elsewhere, doing what SFTP, NFS or SMB do without reinventing netcat. It should feel obscure and enticing, like a forgotten metro tunnel, all the way down to how it checks data and starts a session. What it is for is undecided, so it starts with an interview of its product owner.
