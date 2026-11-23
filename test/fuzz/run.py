@@ -348,11 +348,11 @@ def main():
     for name in a.targets or TARGETS:
         if name not in TARGETS: print("FAILED  %s: no such target" % name); bad = 1; continue
         src, inc, seeds, make, env, *renamed = TARGETS[name]
-        exe = os.path.join(OUT, name)
+        exe = os.path.join(OUT, name if a.seed == 1 else "%s-s%d" % (name, a.seed))   # each seed its own: they run side by side
         src = [s for s in src if os.path.exists(s)]
         incs = sum((["-I", os.path.join(ROOT, i)] for i in inc), [])
         for f, define in (renamed[0] if renamed else {}).items():      # built apart, with a name changed
-            obj = os.path.join(OUT, name + "-" + os.path.basename(f) + ".o")
+            obj = os.path.join(OUT, "%s-s%d-%s.o" % (name, a.seed, os.path.basename(f)))
             subprocess.run(CC + incs + [define, "-c", os.path.join(ROOT, f), "-o", obj], check=True)
             src.append(obj)
         r = subprocess.run(CC + incs + ["-o", exe,

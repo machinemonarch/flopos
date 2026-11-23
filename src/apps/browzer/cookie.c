@@ -172,12 +172,16 @@ int cookie_header(const Url *u, char *out, int cap)
     for (i = 0; i < s_n; i++) {
         const Cookie *c = &s_jar[i];
         int k;
+        int nl = 0, vl = 0;
         if (!host_ok(c, u->host) || !path_ok(c, u->path) || (c->secure && !u->secure)) continue;
-        if (!any) { for (k = 0; lead[k] && n < cap - 1; k++) out[n++] = lead[k]; any = 1; }
-        else if (n < cap - 3) { out[n++] = ';'; out[n++] = ' '; }
-        for (k = 0; c->name[k] && n < cap - 3; k++) out[n++] = c->name[k];
-        if (n < cap - 3) out[n++] = '=';
-        for (k = 0; c->value[k] && n < cap - 3; k++) out[n++] = c->value[k];
+        while (c->name[nl]) nl++;
+        while (c->value[vl]) vl++;
+        if (n + (any ? 2 : 8) + nl + 1 + vl + 3 > cap) continue;      /* whole or not at all, and room for the end */
+        if (!any) { for (k = 0; lead[k]; k++) out[n++] = lead[k]; any = 1; }
+        else { out[n++] = ';'; out[n++] = ' '; }
+        for (k = 0; k < nl; k++) out[n++] = c->name[k];
+        out[n++] = '=';
+        for (k = 0; k < vl; k++) out[n++] = c->value[k];
     }
     if (!any) return 0;
     out[n++] = '\r'; out[n++] = '\n';

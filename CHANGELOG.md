@@ -146,6 +146,14 @@ without it. Each version's notes are also written next to its image, as
 
 #### browzer
 
+- **A hostile script could make browzer read past a buffer:** a request
+  from the script room with a false, huge length slipped past the check
+  (the sum wrapped round). The check now cannot wrap. Found by fuzzing.
+- **A long list of cookies overflowed a buffer by one byte** when sent.
+  A cookie now goes in whole or not at all. Found by fuzzing.
+- **Proxy's ownKeys could hand the engine something not a name**, which
+  it trusted as one. Every name is now checked.
+
 - **fetch() to another site** sends no cookies there, keeps none it is
   given, says where it comes from, and asks that site first when the
   request is not a plain one.

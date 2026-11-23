@@ -1253,7 +1253,8 @@ static char *gstr(u32 *len)
     static int which;
     u32 n = g32(), k;
     char *t = texts[which++ & 3];
-    if (s_ri + n > s_rl) n = s_rl - s_ri;
+    if (s_ri >= s_rl) n = 0;
+    else if (n > s_rl - s_ri) n = s_rl - s_ri;   /* never s_ri + n: a lying length wraps it */
     if (len) *len = n;
     if (n >= 4096) {
         /* long text (innerHTML, a fetch's body): straight from the request */
