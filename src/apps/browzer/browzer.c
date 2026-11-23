@@ -2384,7 +2384,7 @@ void browzer_run(const char *start)
             break;
         case 'b': mark_this(); break;
         case 'j':                        /* scripts on this site: on, or off again */
-            if (!script_state()) { say("This page has no scripts for j to run.", C_DIM); break; }
+            if (!script_state()) { say("This page has no scripts for j to run.", C_DIM); A->wire("[script] no scripts for j to run\n"); break; }
             if (s_pg.url[0] && s_pg.url[0] != 'f') {
                 char u[PAGE_HREF_MAX + 16]; int i;
                 script_site_toggle(&s_pg);

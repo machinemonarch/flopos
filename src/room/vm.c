@@ -240,6 +240,123 @@ static Val gen_step(Vm *vm, Val self, Val *args, int argc, u32 magic)   /* 0 nex
 
 static Val gen_self(Vm *vm, Val self, Val *args, int argc, u32 magic) { (void)vm; (void)args; (void)argc; (void)magic; return self; }
 
+/* ---- async generators ------------------------------------------------------------
+ * An async generator is a generator inside (its awaits are OP_AWAITY: a
+ * yield that says "wait on this"), wrapped in an object whose next(),
+ * throw() and return() give promises.  Requests queue ("%q": [kind,
+ * value, promise] each) and are served in turn: the generator runs to its
+ * next yield (the head request's promise settles with it), its end, or an
+ * await (the driver waits on the value, then runs it on). */
+static Val agen_wake(Vm *vm, Val self, Val *args, int argc, u32 magic);
+
+static Val agen_new(Vm *vm, Obj *g)
+{
+    Obj *ag, *q;
+    TEMP(vm, v_obj(g));
+    ag = obj_new(vm, vm->agen_proto, C_OBJECT);
+    if (ag) { TEMP(vm, v_obj(ag)); q = arr_new(vm, 0); if (q) prop_put(vm, ag, atom("%q"), v_obj(q), P_HIDDEN); prop_put(vm, ag, atom("%g"), v_obj(g), P_HIDDEN); UNTEMP(vm, 1); }
+    UNTEMP(vm, 1);
+    return ag ? v_obj(ag) : v_undef();
+}
+
+/* Settle the head request and take it off the queue. */
+static void agen_settle(Vm *vm, Obj *q, Val v, int rejected)
+{
+    Val pr = arr_get(arr_get(q, 0).u.o, 2);
+    u32 i;
+    for (i = 1; i < q->u.arr.len; i++) q->u.arr.items->v[i - 1] = q->u.arr.items->v[i];
+    if (q->u.arr.len) q->u.arr.len--;
+    if (pr.t == T_OBJ) promise_resolve_fn(vm, pr.u.o, v, rejected);
+}
+
+/* Run the generator on for the head request: 1 if it now waits on an await. */
+static int agen_step(Vm *vm, Obj *ag, Obj *q, u32 kind, Val arg)
+{
+    Val g = get_prop(vm, v_obj(ag), atom("%g")), r;
+    vm->gen_awaited = 0;
+    TEMP(vm, arg);
+    r = gen_step(vm, g, &arg, 1, kind);
+    UNTEMP(vm, 1);
+    if (vm->fatal) return 1;
+    if (vm->throwing) {
+        Val e = vm->exception;
+        vm->throwing = 0; vm->exception = v_undef();
+        agen_settle(vm, q, e, 1);
+        return 0;
+    }
+    if (vm->gen_awaited) {
+        Obj *pr, *ok, *bad;
+        Val v = r.t == T_OBJ ? get_prop(vm, r, S_value) : v_undef();
+        vm->gen_awaited = 0;
+        TEMP(vm, v);
+        pr = promise_new(vm);
+        if (pr) TEMP(vm, v_obj(pr));
+        ok = pr ? native_new(vm, "await", agen_wake, 1, 0) : 0;
+        if (ok) { TEMP(vm, v_obj(ok)); prop_put(vm, ok, atom("%ag"), v_obj(ag), P_HIDDEN); }
+        bad = ok ? native_new(vm, "await", agen_wake, 1, 1) : 0;
+        if (bad) { prop_put(vm, bad, atom("%ag"), v_obj(ag), P_HIDDEN); promise_then(vm, pr, v_obj(ok), v_obj(bad)); promise_resolve_fn(vm, pr, v, 0); }
+        UNTEMP(vm, 1u + (pr ? 1u : 0u) + (ok ? 1u : 0u));
+        if (!bad) { vm_check_time(vm); return 1; }
+        return 1;
+    }
+    agen_settle(vm, q, r, 0);
+    return 0;
+}
+
+/* Serve the queue until it is empty or waiting. */
+static void agen_run(Vm *vm, Obj *ag)
+{
+    Val qv = get_prop(vm, v_obj(ag), atom("%q"));
+    Obj *q = qv.t == T_OBJ ? qv.u.o : 0;
+    int guard = 0;
+    if (!q || truthy(get_prop(vm, v_obj(ag), atom("%busy")))) return;
+    while (q->u.arr.len && !vm->fatal && guard++ < 100000) {
+        Obj *req = arr_get(q, 0).u.o;
+        prop_put(vm, ag, atom("%busy"), v_bool(1), P_HIDDEN);
+        if (agen_step(vm, ag, q, (u32)arr_get(req, 0).u.n, arr_get(req, 1))) return;   /* waiting: stays busy */
+        prop_put(vm, ag, atom("%busy"), v_bool(0), P_HIDDEN);
+    }
+}
+
+/* An await in it settled: run it on with the answer (or the error thrown there). */
+static Val agen_wake(Vm *vm, Val self, Val *args, int argc, u32 magic)
+{
+    Val agv = get_prop(vm, v_obj(vm->callee), atom("%ag")), qv;
+    (void)self;
+    if (agv.t != T_OBJ) return v_undef();
+    qv = get_prop(vm, agv, atom("%q"));
+    if (qv.t != T_OBJ || !qv.u.o->u.arr.len) return v_undef();
+    if (agen_step(vm, agv.u.o, qv.u.o, magic, argc ? args[0] : v_undef())) return v_undef();
+    prop_put(vm, agv.u.o, atom("%busy"), v_bool(0), P_HIDDEN);
+    agen_run(vm, agv.u.o);
+    return v_undef();
+}
+
+static Val agen_request(Vm *vm, Val self, Val *args, int argc, u32 magic)   /* 0 next, 1 throw, 2 return */
+{
+    Obj *pr = promise_new(vm), *req;
+    Val qv;
+    if (!pr) return v_undef();
+    TEMP(vm, v_obj(pr));
+    qv = self.t == T_OBJ ? get_prop(vm, self, atom("%q")) : v_undef();
+    if (qv.t != T_OBJ) {
+        Obj *e = make_err(vm, E_TYPE, str_ascii("next() on something that is not an async generator"));
+        promise_resolve_fn(vm, pr, e ? v_obj(e) : v_undef(), 1);
+        UNTEMP(vm, 1);
+        return v_obj(pr);
+    }
+    req = arr_new(vm, 0);
+    if (req) {
+        arr_push(vm, req, v_num(magic));
+        arr_push(vm, req, argc ? args[0] : v_undef());
+        arr_push(vm, req, v_obj(pr));
+        arr_push(vm, qv.u.o, v_obj(req));
+        agen_run(vm, self.u.o);
+    }
+    UNTEMP(vm, 1);
+    return v_obj(pr);
+}
+
 void gen_init(Vm *vm)
 {
     vm->gen_proto = obj_new(vm, vm->iter_proto ? vm->iter_proto : vm->object_proto, C_OBJECT);
@@ -248,6 +365,12 @@ void gen_init(Vm *vm)
     def_native(vm, vm->gen_proto, "throw", gen_step, 1, 1);
     def_native(vm, vm->gen_proto, "return", gen_step, 1, 2);
     def_native(vm, vm->gen_proto, "@@iterator", gen_self, 0, 0);
+    vm->agen_proto = obj_new(vm, vm->object_proto, C_OBJECT);
+    if (!vm->agen_proto) return;
+    def_native(vm, vm->agen_proto, "next", agen_request, 1, 0);
+    def_native(vm, vm->agen_proto, "throw", agen_request, 1, 1);
+    def_native(vm, vm->agen_proto, "return", agen_request, 1, 2);
+    def_native(vm, vm->agen_proto, "@@asyncIterator", gen_self, 0, 0);
 }
 
 /* From C: call fn with these arguments. */
@@ -394,12 +517,20 @@ static Obj *iter_new(Vm *vm, Val of, int keys)
 {
     Obj *it;
     /* for-of over an object that says how ([Symbol.iterator]): its iterator */
+    if (!keys && of.t == T_OBJ && of.u.o->cls == C_MAP && of.u.o->pad < 2) {
+        /* a Map or Set as it is (not one with its own [Symbol.iterator]) */
+        Val mk = get_prop(vm, of, atom("@@iterator"));
+        if (vm->throwing) return 0;
+        if (mk.t == T_OBJ && mk.u.o->cls == C_NATIVE && of.u.o->proto == vm->coll_proto[of.u.o->pad]) return mapiter_for(vm, of.u.o);
+    }
+    if (!keys && of.t == T_OBJ && of.u.o->cls == C_MAPITER) return of.u.o;   /* an iterator already */
     if (!keys && of.t == T_OBJ && of.u.o->cls != C_ARRAY && of.u.o->cls != C_ARGS && of.u.o->cls != C_GEN) {
         Val mk = get_prop(vm, of, atom("@@iterator"));
         if (vm->throwing) return 0;
         if (is_callable(mk) && !is_callable(get_prop(vm, of, S_next))) {
             of = vm_call(vm, mk, of, 0, 0);
             if (vm->throwing) return 0;
+            if (of.t == T_OBJ && of.u.o->cls == C_MAPITER) return of.u.o;
         }
     }
     it = obj_new(vm, vm->iter_proto, C_ITER);
@@ -437,6 +568,7 @@ static Obj *iter_new(Vm *vm, Val of, int keys)
 static int iter_next(Vm *vm, Obj *it, Val *out)
 {
     Val of = it->u.iter.of;
+    if (it->cls == C_MAPITER) return mapiter_step(vm, it, out);
     if (of.t == T_OBJ && (of.u.o->cls == C_ARRAY || of.u.o->cls == C_ARGS)) {
         if (it->u.iter.i >= of.u.o->u.arr.len) return 0;
         *out = arr_get(of.u.o, it->u.iter.i++);
@@ -464,6 +596,7 @@ static int iter_next(Vm *vm, Obj *it, Val *out)
         }
         r = vm_call(vm, nx, of, 0, 0);
         if (vm->throwing || r.t != T_OBJ) return 0;
+        if (r.u.o->cls == C_PROMISE) { throw_err(vm, E_TYPE, "that gives promises: it is gone through with for await"); return 0; }
         TEMP(vm, r);
         if (truthy(get_prop(vm, r, S_done))) { UNTEMP(vm, 1); return 0; }
         *out = get_prop(vm, r, S_value);
@@ -473,6 +606,13 @@ static int iter_next(Vm *vm, Obj *it, Val *out)
     if (!IS_NULLISH(of)) throw_err(vm, E_TYPE, "that cannot be gone through with for-of");
     return 0;
 }
+
+Obj *vm_iter_new(Vm *vm, Val of)
+{
+    if (IS_NULLISH(of)) { throw_err(vm, E_TYPE, "cannot go through null or undefined"); return 0; }
+    return iter_new(vm, of, 0);
+}
+int vm_iter_next(Vm *vm, Obj *it, Val *out) { return iter_next(vm, it, out); }
 
 static Obj *make_closure(Vm *vm, Proto *p, Frame *f)
 {
@@ -612,6 +752,7 @@ static Val run(Vm *vm)
             Val r = get_prop(vm, TOP, k[i].u.s);
             CHECK();
             TOP = r;
+            if (r.t == T_UNDEF) { vm->miss_name = k[i].u.s; vm->miss_at = vm->sp - 1; }
             break;
         }
         case OP_SETPROP: {
@@ -723,7 +864,12 @@ static Val run(Vm *vm)
             u32 base = vm->sp - (u32)argc - (op == OP_CALLM ? 2u : 1u);
             Val fnv = AT(argc), self = op == OP_CALLM ? vm->stack[base] : v_undef();
             if (!is_callable(fnv)) {
-                throw_err(vm, E_TYPE, fnv.t == T_UNDEF ? "a function that does not exist was called" : "something that is not a function was called");
+                if (fnv.t == T_UNDEF && vm->miss_name && vm->miss_at == vm->sp - (u32)argc - 1u && vm->miss_name->len < 60) {
+                    char nm[64]; u32 j;                /* the method read just for this call: named */
+                    for (j = 0; j < vm->miss_name->len; j++) nm[j] = vm->miss_name->c[j] < 128 ? (char)vm->miss_name->c[j] : '?';
+                    nm[j] = 0;
+                    throw_err(vm, E_TYPE, "%s is not a function: it does not exist", nm);
+                } else throw_err(vm, E_TYPE, fnv.t == T_UNDEF ? "a function that does not exist was called" : "something that is not a function was called");
                 goto thrown;
             }
             if (fnv.u.o->cls == C_FUNC) {
@@ -824,6 +970,18 @@ static Val run(Vm *vm)
         case OP_ARRAY: { Obj *a = arr_new(vm, 0); if (!a) { vm_check_time(vm); goto thrown; } PUSH(v_obj(a)); break; }
         case OP_APPEND: { if (!arr_push(vm, AT(1).u.o, AT(0))) { vm_check_time(vm); goto thrown; } vm->sp--; break; }
         case OP_SPREAD: spread_into(vm, AT(1), AT(0)); CHECK(); vm->sp--; break;
+        case OP_LISTOF:
+            if (TOP.t != T_OBJ || (TOP.u.o->cls != C_ARRAY && TOP.u.o->cls != C_ARGS)) {
+                Obj *a;
+                if (IS_NULLISH(TOP)) { throw_err(vm, E_TYPE, "cannot destructure null or undefined"); goto thrown; }
+                a = arr_new(vm, 0);
+                if (!a) { vm_check_time(vm); goto thrown; }
+                PUSH(v_obj(a));
+                spread_into(vm, AT(0), AT(1));
+                CHECK();
+                AT(1) = AT(0); vm->sp--;
+            }
+            break;
         case OP_OBJECT: { Obj *o = obj_new(vm, vm->object_proto, C_OBJECT); if (!o) { vm_check_time(vm); goto thrown; } PUSH(v_obj(o)); break; }
         case OP_INITPROP: case OP_INITHIDDEN: {
             u32 i = RD16();
@@ -888,6 +1046,51 @@ static Val run(Vm *vm)
             if (!it) { vm_check_time(vm); goto thrown; }
             if (op == OP_FOROF && IS_NULLISH(TOP)) { throw_err(vm, E_TYPE, "for-of over null or undefined"); goto thrown; }
             TOP = v_obj(it);
+            break;
+        }
+        case OP_FORAWAIT: {                  /* for await: an async iterator, or for-of's own walk */
+            Val mk;
+            if (IS_NULLISH(TOP)) { throw_err(vm, E_TYPE, "for await over null or undefined"); goto thrown; }
+            mk = TOP.t == T_OBJ ? get_prop(vm, TOP, atom("@@asyncIterator")) : v_undef();
+            CHECK();
+            if (is_callable(mk)) {
+                Val it = vm_call(vm, mk, TOP, 0, 0);
+                CHECK();
+                if (it.t != T_OBJ) { throw_err(vm, E_TYPE, "[Symbol.asyncIterator]() gave something that is not an object"); goto thrown; }
+                TOP = it;
+            } else {
+                Obj *it = iter_new(vm, TOP, 0);
+                CHECK();
+                if (!it) { vm_check_time(vm); goto thrown; }
+                TOP = v_obj(it);
+            }
+            break;
+        }
+        case OP_ANEXT: {                     /* the iterator stays; next()'s answer, to be awaited, goes on top */
+            Obj *it = TOP.u.o;
+            Val r;
+            if (it->cls == C_ITER || it->cls == C_MAPITER) {
+                Val v = v_undef();
+                int more = iter_next(vm, it, &v);
+                CHECK();
+                r = iter_result(vm, v, !more);
+            } else {
+                Val nx = get_prop(vm, TOP, S_next);
+                CHECK();
+                r = vm_call(vm, nx, TOP, 0, 0);
+            }
+            CHECK();
+            PUSH(r);
+            break;
+        }
+        case OP_ITERDONE: {                  /* {value, done}: done, out of the loop; else its value */
+            s32 off = RD32();
+            Val r = TOP;
+            if (r.t != T_OBJ) { throw_err(vm, E_TYPE, "an iterator's next() gave something that is not an object"); goto thrown; }
+            if (truthy(get_prop(vm, r, S_done))) { CHECK(); vm->sp--; f->pc += (u32)off; break; }
+            CHECK();
+            TOP = get_prop(vm, r, S_value);
+            CHECK();
             break;
         }
         case OP_ITERNEXT: {
@@ -955,9 +1158,9 @@ static Val run(Vm *vm)
             LOAD();
             break;
         }
-        case OP_GENSTART: case OP_YIELD: {
+        case OP_GENSTART: case OP_YIELD: case OP_AWAITY: {
             Obj *g;
-            Val r, v = op == OP_YIELD ? TOP : v_undef();
+            Val r, v = op != OP_GENSTART ? TOP : v_undef();
             int stop;
             if (op == OP_GENSTART) {
                 g = obj_new(vm, vm->gen_proto, C_GEN);
@@ -968,9 +1171,10 @@ static Val run(Vm *vm)
                 if (!g || g->cls != C_GEN) { throw_err(vm, E_SYNTAX, "yield outside a generator"); goto thrown; }
             }
             TEMP(vm, v_obj(g)); TEMP(vm, v);
-            if (!gen_pack(vm, g, op == OP_YIELD ? 1 : 0)) { UNTEMP(vm, 2); vm_check_time(vm); goto thrown; }
+            if (!gen_pack(vm, g, op != OP_GENSTART ? 1 : 0)) { UNTEMP(vm, 2); vm_check_time(vm); goto thrown; }
             g->u.co.prom = v_num(0);
-            r = op == OP_YIELD ? iter_result(vm, v, 0) : v_obj(g);
+            if (op == OP_AWAITY) vm->gen_awaited = 1;   /* for agen_step: wait on v, then go on */
+            r = op != OP_GENSTART ? iter_result(vm, v, 0) : f->p->gen == 2 ? agen_new(vm, g) : v_obj(g);
             UNTEMP(vm, 2);
             if (vm->throwing || vm->fatal) goto thrown;
             f = &vm->frames[vm->nframes - 1];
@@ -1004,7 +1208,7 @@ static Val run(Vm *vm)
                 LOAD();
                 break;
             }
-            if (f->co && !vm->fatal) {       /* async: the throw rejects its promise */
+            if (f->co && f->co->cls == C_ASYNC && !vm->fatal) {   /* async: the throw rejects its promise */
                 Obj *co = f->co;
                 Val e = vm->exception, r;
                 int stop = f->stop;

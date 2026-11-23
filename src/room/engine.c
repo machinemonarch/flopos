@@ -30,6 +30,7 @@ void engine_init(Vm *vm, u8 *heap, u32 size, f64 now_base)
     gen_init(vm);
     re_init(vm);
     json_init(vm);
+    mapset_init(vm);
     module_init(vm);
     host_init(vm);
     vm->exception = v_undef();

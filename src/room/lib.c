@@ -362,6 +362,11 @@ NATIVE(objproto_tostring)
     if (self.t == T_UNDEF) return v_str(atom("[object Undefined]"));
     if (self.t == T_NULL) return v_str(atom("[object Null]"));
     if (self.t == T_OBJ) {
+        Val tag = get_prop(vm, self, atom("@@toStringTag"));   /* Symbol.toStringTag */
+        if (tag.t == T_STR) {
+            Str *r = str_concat(str_ascii("[object "), tag.u.s);
+            return v_str(r ? str_concat(r, str_ascii("]")) : tag.u.s);
+        }
         switch (self.u.o->cls) {
         case C_ARRAY: return v_str(atom("[object Array]"));
         case C_FUNC: case C_NATIVE: case C_BOUND: return v_str(atom("[object Function]"));
@@ -476,10 +481,18 @@ NATIVE(array_from)
     UNUSED;
     if (!a) return v_undef();
     TEMP(vm, v_obj(a));
-    if (src.t == T_STR) {
-        u32 i;
-        for (i = 0; i < src.u.s->len; i++) arr_push(vm, a, v_str(str_from16(&src.u.s->c[i], 1)));
-    } else if (src.t == T_OBJ) {
+    if (src.t == T_STR || (src.t == T_OBJ && src.u.o->cls != C_ARRAY && src.u.o->cls != C_ARGS &&
+                           (src.u.o->cls == C_GEN || src.u.o->cls == C_MAP || src.u.o->cls == C_MAPITER ||
+                            is_callable(get_prop(vm, src, atom("@@iterator")))))) {
+        /* something iterable: walked as for-of walks it (a string by characters, not halves) */
+        Obj *it = vm_iter_new(vm, src);
+        Val v;
+        if (it) {
+            TEMP(vm, v_obj(it));
+            while (!vm->throwing && vm_iter_next(vm, it, &v)) arr_push(vm, a, v);
+            UNTEMP(vm, 1);
+        }
+    } else if (src.t == T_OBJ && !vm->throwing) {
         u32 n = to_len(vm, get_prop(vm, src, S_length)), i;
         for (i = 0; i < n && !vm->throwing; i++) arr_push(vm, a, get_elem(vm, src, v_num(i)));
     }
@@ -487,7 +500,8 @@ NATIVE(array_from)
         u32 i;
         for (i = 0; i < a->u.arr.len && !vm->throwing; i++) {
             Val x[2]; x[0] = arr_get(a, i); x[1] = v_num(i);
-            a->u.arr.items->v[i] = vm_call(vm, fn, v_undef(), x, 2);
+            x[0] = vm_call(vm, fn, ARG(2), x, 2);
+            if (i < a->u.arr.len) a->u.arr.items->v[i] = x[0];
         }
     }
     UNTEMP(vm, 1);
@@ -1219,20 +1233,45 @@ NATIVE(math_clz32)
 }
 
 /* ---- errors ------------------------------------------------------------------------------- */
+/* the options' cause, and an AggregateError's errors (copied when an array) */
+static void error_extras(Vm *vm, Obj *e, u32 magic, Val opts, Val errs)
+{
+    if (opts.t == T_OBJ) {
+        Str *k = atom("cause");
+        Val has = get_prop(vm, opts, k);
+        if (!vm->throwing && (has.t != T_UNDEF || prop_find(opts.u.o, k))) prop_put(vm, e, k, has, P_HIDDEN);
+    }
+    if (magic == E_AGGREGATE && !vm->throwing) {
+        Obj *a = arr_new(vm, 0);
+        u32 i;
+        if (!a) return;
+        prop_put(vm, e, atom("errors"), v_obj(a), P_HIDDEN);
+        if (errs.t == T_OBJ && errs.u.o->cls == C_ARRAY)
+            for (i = 0; i < errs.u.o->u.arr.len; i++) arr_push(vm, a, arr_get(errs.u.o, i));
+    }
+}
+
 NATIVE(error_ctor)
 {
     Obj *e;
     Str *msg = 0;
+    int at = magic == E_AGGREGATE;   /* AggregateError(errors, message, options) */
     UNUSED;
-    if (ARG(0).t != T_UNDEF) msg = to_str(vm, ARG(0));
+    if (ARG(at).t != T_UNDEF) msg = to_str(vm, ARG(at));
+    if (vm->throwing) return v_undef();
     /* class X extends Error: super(msg) calls this with the new object */
     if (!vm->in_new && self.t == T_OBJ && self.u.o != vm->global) {
         if (msg) prop_put(vm, self.u.o, S_message, v_str(msg), P_HIDDEN);
         self.u.o->cls = C_ERROR;
+        error_extras(vm, self.u.o, magic, ARG(at + 1), ARG(0));
         return v_undef();
     }
     e = make_err(vm, (int)magic, msg);
-    return e ? v_obj(e) : v_undef();
+    if (!e) return v_undef();
+    TEMP(vm, v_obj(e));
+    error_extras(vm, e, magic, ARG(at + 1), ARG(0));
+    UNTEMP(vm, 1);
+    return v_obj(e);
 }
 
 NATIVE(error_tostring)
@@ -1259,7 +1298,7 @@ NATIVE(error_tostring)
 void lib_init(Vm *vm)
 {
     Obj *g, *o, *c;
-    static const char *errs[6] = { "Error", "TypeError", "RangeError", "SyntaxError", "ReferenceError", "EvalError" };
+    static const char *errs[8] = { "Error", "TypeError", "RangeError", "SyntaxError", "ReferenceError", "EvalError", "URIError", "AggregateError" };
     int i;
 
     vm->object_proto = obj_new(vm, 0, C_OBJECT);
@@ -1432,9 +1471,9 @@ void lib_init(Vm *vm)
     def_val(vm, o, "SQRT1_2", v_num(0.7071067811865476));
 
     /* the errors */
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < 8; i++) {
         Obj *p = i ? obj_new(vm, vm->error_proto, C_OBJECT) : vm->error_proto;
-        Obj *e = native_new(vm, errs[i], error_ctor, 1, (u32)i);
+        Obj *e = native_new(vm, errs[i], error_ctor, i == E_AGGREGATE ? 2 : 1, (u32)i);
         e->flags |= OF_CTOR;
         if (i) e->proto = vm->err_ctor[0];
         prop_put(vm, e, S_prototype, v_obj(p), P_HIDDEN);

@@ -44,6 +44,12 @@ def main():
     q = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     mon, wire = bench.Monitor(q), bench.Wire(log)
     rows, first = [], True
+    board = open(os.path.join(out, "scoreboard.txt"), "w")   # written as it goes: a cut-short run keeps what it had
+    board.write(time.strftime("%Y-%m-%d %H:%M") + ("  (laptop speed)" if slow else "") + "\n"); board.flush()
+    def row(r):
+        rows.append(r)
+        t = "%-44s runs %-4s works %-3s %5.1f s  %s" % (r[0][:44],) + r[1:]
+        print(t, flush=True); board.write(t + "\n"); board.flush()
     try:
         if not wire.wait(r"your answer:", 90): sys.exit("FAILED: no riddle on the serial wire")
         bench.type_text(mon, "a turnip\n")
@@ -55,11 +61,11 @@ def main():
             else: mon.cmd("sendkey g"); mon.cmd("sendkey ctrl-a")
             bench.address(mon, url); mon.cmd("sendkey ret")
             if not wire.wait(r"\[page\] \d+|It keeps sending|could not|cannot", 240):
-                rows.append((url, "-", "no", 0, "the page did not come")); continue
+                row((url, "-", "no", 0, "the page did not come")); continue
             wire.quiet(2.0, 30)
             start, t0 = len(wire.text()), time.time()
             mon.cmd("sendkey j")
-            wire.wait(r"Scripts: \d+ ran[^\n]*|none of them run|no scripts", 600)
+            wire.wait(r"Scripts: \d+ ran[^\n]*|none of them run|no scripts", 300)
             secs = time.time() - t0
             wire.quiet(3.0, 60)
             seg = wire.text()[start:]
@@ -73,18 +79,15 @@ def main():
             m = re.search(r"\[script\] stopped: ([^\n]*)", seg) or re.search(r"\[script\] too big: ([^\n]*)", seg)
             if m: why = m.group(1)[:70]
             elif other: why = "%d from another site not fetched" % other
-            rows.append((url, runs, works, secs, why))
-            print("%-44s runs %-4s works %-3s %5.1f s  %s" % (url[:44], runs, works, secs, why), flush=True)
+            if not why and re.search(r"too big to build", seg): why = "page too big: scripts not run"
+            row((url, runs, works, secs, why))
     finally:
         q.terminate()
     graded = [r for r in rows]
     line = "%d sites: scripts all run on %d, partly on %d; works on %d" % (
         len(graded), sum(r[1] in ("yes", "none") for r in graded), sum(r[1] == "part" for r in graded), sum(r[2] == "yes" for r in graded))
     print(line)
-    with open(os.path.join(out, "scoreboard.txt"), "w") as f:
-        f.write(time.strftime("%Y-%m-%d %H:%M") + ("  (laptop speed)" if slow else "") + "\n")
-        for r in rows: f.write("%-44s runs %-4s works %-3s %5.1f s  %s\n" % r)
-        f.write(line + "\n")
+    board.write(line + "\n"); board.close()
 
 if __name__ == "__main__":
     main()

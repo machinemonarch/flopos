@@ -35,6 +35,17 @@ without it. Each version's notes are also written next to its image, as
 - Of 568 scripts from 38 well-known sites, 34 are still refused before
   they start, where 176 were. Most of those left are too big for the
   memory scripts have.
+- Map and Set are built into the script engine, as fast as other
+  browsers' for the many keys frameworks keep, and behave as the standard
+  says: for-of over them, [...new Set(list)] to drop repeats, WeakMap and
+  WeakSet that take objects only, Map.groupBy and Object.groupBy.
+- Async generators (async function*) and for await over them run; Vite
+  builds, a common kind, check for them before they load the rest.
+- Array.from takes anything that can be gone through (a Set, a
+  generator); [a, b] = takes it apart the same way.
+- new Error(message, {cause}), URIError and AggregateError, which
+  polyfills look for; a missing method is named in the error
+  ("querySelector is not a function").
 
 ### BUG FIXES
 
@@ -50,6 +61,9 @@ without it. Each version's notes are also written next to its image, as
 - The clock menu wraps its longer lines instead of cutting them off.
 - The serial wire no longer says "decoding took 0.0%" every ten seconds:
   twice a minute at most, and only when there is something to say.
+- A script that threw from inside a generator stopped the script room.
+- A plain for-of over something that gives promises stops with an error
+  instead of going round for ever.
 
 ### SECURITY FIXES
 

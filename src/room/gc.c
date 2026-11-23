@@ -168,6 +168,8 @@ static void scan(GcHdr *h)
         case C_PROMISE: grey_val(o->u.prom.value); grey(o->u.prom.reactions); break;
         case C_BOXED: grey_val(o->u.boxed.v); break;
         case C_ITER: grey_val(o->u.iter.of); grey(o->u.iter.keys); break;
+        case C_MAPITER: grey_val(o->u.iter.of); break;
+        case C_MAP: grey(o->u.map.kv); if (o->u.map.idx) grey((GcHdr *)o->u.map.idx - 1); break;
         case C_ASYNC: case C_GEN:
             grey_val(o->u.co.prom); grey(o->u.co.stack);
             if (o->u.co.fr) {
@@ -241,6 +243,7 @@ void gc_collect(Vm *vm)
 {
     u32 i;
     u8 *p, *run = 0;
+    vm->miss_name = 0;                   /* may name a function swept now */
 
     s_msp = 0; s_overflow = 0;
     for (i = 0; i < vm->sp; i++) grey_val(vm->stack[i]);
@@ -254,7 +257,9 @@ void gc_collect(Vm *vm)
     grey(vm->string_proto); grey(vm->number_proto); grey(vm->boolean_proto);
     grey(vm->error_proto); grey(vm->regexp_proto); grey(vm->date_proto);
     grey(vm->promise_proto); grey(vm->iter_proto); grey(vm->gen_proto);
-    for (i = 0; i < 6; i++) grey(vm->err_ctor[i]);
+    for (i = 0; i < 8; i++) grey(vm->err_ctor[i]);
+    for (i = 0; i < 5; i++) grey(vm->coll_proto[i]);
+    grey(vm->agen_proto);
     grey(vm->element_proto); grey(vm->document_obj); grey(vm->style_proto);
     grey(vm->classlist_proto); grey(vm->event_proto);
     grey(vm->hosts); grey(vm->microq); grey(vm->timers);

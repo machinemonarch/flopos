@@ -10,7 +10,7 @@
  * says "element 23 was clicked", the room calls them, with the element's
  * ancestors after it, as a browser does.
  *
- * What is quicker written in JavaScript (Map and Set, fetch's promises,
+ * What is quicker written in JavaScript (fetch's promises,
  * XMLHttpRequest, location's parts) is: a short prelude, run as each page
  * starts.
  * ===========================================================================
@@ -997,25 +997,6 @@ NATIVE(doc_cookie) { UNUSED; return v_str(S_empty); }     /* cookies are not off
 /* ---- the prelude -------------------------------------------------------------------- */
 static const char *s_prelude =
 "(function(g){"
-"function Map(it){this._k=[];this._v=[];this.size=0;if(it)for(var i=0;i<it.length;i++)this.set(it[i][0],it[i][1]);}"
-"Map.prototype.indexOf=function(k){var a=this._k;for(var i=0;i<a.length;i++)if(a[i]===k||(k!==k&&a[i]!==a[i]))return i;return -1;};"
-"Map.prototype.get=function(k){var i=this.indexOf(k);return i<0?undefined:this._v[i];};"
-"Map.prototype.set=function(k,v){var i=this.indexOf(k);if(i<0){this._k.push(k);this._v.push(v);this.size++;}else this._v[i]=v;return this;};"
-"Map.prototype.has=function(k){return this.indexOf(k)>=0;};"
-"Map.prototype['delete']=function(k){var i=this.indexOf(k);if(i<0)return false;this._k.splice(i,1);this._v.splice(i,1);this.size--;return true;};"
-"Map.prototype.clear=function(){this._k=[];this._v=[];this.size=0;};"
-"Map.prototype.forEach=function(f,t){for(var i=0;i<this._k.length;i++)f.call(t,this._v[i],this._k[i],this);};"
-"Map.prototype.keys=function(){return this._k.slice();};Map.prototype.values=function(){return this._v.slice();};"
-"Map.prototype.entries=function(){var r=[];for(var i=0;i<this._k.length;i++)r.push([this._k[i],this._v[i]]);return r;};"
-"function Set(it){this._k=[];this.size=0;if(it)for(var i=0;i<it.length;i++)this.add(it[i]);}"
-"Set.prototype.indexOf=Map.prototype.indexOf;"
-"Set.prototype.add=function(k){if(this.indexOf(k)<0){this._k.push(k);this.size++;}return this;};"
-"Set.prototype.has=function(k){return this.indexOf(k)>=0;};"
-"Set.prototype['delete']=function(k){var i=this.indexOf(k);if(i<0)return false;this._k.splice(i,1);this.size--;return true;};"
-"Set.prototype.clear=function(){this._k=[];this.size=0;};"
-"Set.prototype.forEach=function(f,t){for(var i=0;i<this._k.length;i++)f.call(t,this._k[i],this._k[i],this);};"
-"Set.prototype.values=Set.prototype.keys=function(){return this._k.slice();};"
-"g.Map=Map;g.Set=Set;g.WeakMap=Map;g.WeakSet=Set;"
 "function Storage(){this._d={};}"
 "Storage.prototype.getItem=function(k){k=String(k);return Object.prototype.hasOwnProperty.call(this._d,k)?this._d[k]:null;};"
 "Storage.prototype.setItem=function(k,v){this._d[String(k)]=String(v);};"

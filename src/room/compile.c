@@ -105,6 +105,8 @@ static void assign(C *c);
 static void statement(C *c);
 static void function(C *c, Str *name, int arrow, int is_expr, int method);
 static void destructure(C *c, int decl, int kw);
+/* await: in an async generator the generator's own pause (vm.c's driver waits) */
+#define emit_await(c) emit((c), (c)->fs->gen_fn ? OP_AWAITY : OP_AWAIT)
 static void unary(C *c, Ex *e);
 static void prologue(C *c, Fs *f);
 static Proto *finish(C *c, Fs *f);
@@ -467,8 +469,7 @@ static void object_literal(C *c)
             State s; save(c, &s);
             next(c);
             if (!is_p(c, ',') && !is_p(c, ':') && !is_p(c, '(') && !is_p(c, '}') && !c->tok.nl) {
-                if (is_p(c, '*')) fail(c, "async generators are not supported yet");
-                is_async = 1;                    /* async m() { } */
+                is_async = 1;                    /* async m() { }, async *m() { } */
             } else load(c, &s);
         }
         if (accept(c, '*')) is_gen = 1;      /* *m() { } */
@@ -862,7 +863,7 @@ static void primary(C *c, Ex *e)
             if (!c->tok.nl && is_kw(c, KW_FUNCTION)) {          /* async function () { } */
                 Str *name = 0;
                 next(c);
-                if (is_p(c, '*')) fail(c, "async generators are not supported yet");
+                if (accept(c, '*')) c->next_gen = 1;          /* async function* () { } */
                 if (c->tok.t == TK_IDENT && !is_p(c, '(')) { name = c->tok.s; next(c); }
                 c->next_async = 1;
                 function(c, name, 0, 1, 0);
@@ -1113,7 +1114,7 @@ static void unary(C *c, Ex *e)
         if (k == KW_AWAIT && c->fs->async_fn) {      /* await x: wait for it, then go on */
             next(c); unary(c, e);
             value(c, e);
-            emit(c, OP_AWAIT);
+            emit_await(c);
             e->k = X_VAL;
             return;
         }
@@ -1259,6 +1260,22 @@ static void assign(C *c)
         int star;
         next(c);
         star = !c->tok.nl && accept(c, '*');
+        if (star && c->fs->async_fn) {       /* in an async generator: each of x's, awaited, yielded */
+            u32 top, exit;
+            assign(c);
+            emit(c, OP_FORAWAIT);
+            top = here(c);
+            emit(c, OP_ANEXT);
+            emit(c, OP_AWAITY);
+            exit = jump(c, OP_ITERDONE);
+            emit(c, OP_YIELD);
+            emit(c, OP_POP);
+            jump_to(c, OP_JMP, top);
+            patch(c, exit);
+            emit(c, OP_POP);
+            emit(c, OP_UNDEF);
+            return;
+        }
         if (star) {                          /* yield* x: each of x's, yielded in turn */
             u32 top, exit;
             assign(c);
@@ -1276,6 +1293,7 @@ static void assign(C *c)
         if (c->tok.nl || c->tok.t == TK_EOF || is_p(c, ')') || is_p(c, ']') || is_p(c, '}') || is_p(c, ',') ||
             is_p(c, ';') || is_p(c, ':')) emit(c, OP_UNDEF);
         else assign(c);
+        if (c->fs->async_fn) emit(c, OP_AWAITY);   /* an async generator yields what it awaited */
         emit(c, OP_YIELD);                   /* its value: what next() is given */
         return;
     }
@@ -1400,6 +1418,7 @@ static void destructure(C *c, int decl, int kw)
 {
     if (accept(c, '[')) {
         int i = 0;
+        emit(c, OP_LISTOF);
         while (!is_p(c, ']')) {
             if (is_p(c, ',')) { next(c); i++; continue; }
             if (accept(c, P3('.', '.', '.'))) {
@@ -1661,11 +1680,15 @@ static void for_statement(C *c, Str *label)
         next(c);                                /* in / of                  */
         expr(c);
         want(c, ')', "expected ) after for (... in ...)");
-        emit(c, in ? OP_FORIN : OP_FOROF);
+        emit(c, in ? OP_FORIN : wait ? OP_FORAWAIT : OP_FOROF);
         loop_begin(c, &lp, label, 1);
         top = here(c);
-        exit = jump(c, OP_ITERNEXT);
-        if (wait) emit(c, OP_AWAIT);
+        if (wait) {                             /* next(), awaited; done?; the value, awaited */
+            emit(c, OP_ANEXT);
+            emit_await(c);
+            exit = jump(c, OP_ITERDONE);
+            emit_await(c);
+        } else exit = jump(c, OP_ITERNEXT);
         save(c, &after);
         load(c, &tgt);
         target(c, kw >= 0, kw);
@@ -1887,7 +1910,7 @@ static void statement(C *c)
             if (is_kw(c, KW_FUNCTION) && !c->tok.nl) {             /* async function name() { } */
                 Str *name;
                 next(c);
-                if (is_p(c, '*')) fail(c, "async generators are not supported yet");
+                if (accept(c, '*')) c->next_gen = 1;          /* async function* name() { } */
                 if (c->tok.t != TK_IDENT) fail(c, "expected a function's name");
                 name = c->tok.s; next(c);
                 c->next_async = 1;
@@ -1936,6 +1959,7 @@ static void statement(C *c)
             if (c->fs->top) fail(c, "return outside a function");
             if (is_p(c, ';') || is_p(c, '}') || c->tok.t == TK_EOF || c->tok.nl) emit(c, OP_UNDEF);
             else expr(c);
+            if (c->fs->gen_fn && c->fs->async_fn) emit(c, OP_AWAITY);
             leave_regions(c, 0);
             emit(c, OP_RET);
             semi(c);
@@ -2033,8 +2057,8 @@ static Proto *finish(C *c, Fs *f)
     p->self_slot = f->self_slot >= 0 ? (u16)f->self_slot : 0xFFFF;
     p->arrow = (u8)f->arrow;
     p->pad[0] = (u8)f->rest;
-    p->pad[1] = (u8)f->async_fn;
-    p->gen = (u8)f->gen_fn;
+    p->pad[1] = (u8)(f->async_fn && !f->gen_fn);   /* an async generator's promises are its own (vm.c) */
+    p->gen = (u8)(f->gen_fn ? (f->async_fn ? 2 : 1) : 0);
     p->name = f->name;
     return p;
 }
@@ -2087,7 +2111,6 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
     f.gen_fn = c->next_gen;
     c->next_async = 0;
     c->next_gen = 0;
-    if (f.gen_fn && f.async_fn) fail(c, "async generators are not supported yet");
     f.name = (method == 3) ? 0 : name;
     c->no_in = 0;
     if (method == 3) {

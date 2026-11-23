@@ -93,7 +93,9 @@ enum {
     C_OBJECT, C_ARRAY, C_FUNC, C_NATIVE, C_BOUND, C_ERROR, C_REGEXP, C_DATE,
     C_ARGS, C_PROMISE, C_HOST, C_STYLE, C_CLASSLIST, C_BOXED, C_ITER,
     C_ASYNC,                             /* an async function, paused at an await */
-    C_GEN                                /* a generator, paused at a yield (u.co too) */
+    C_GEN,                               /* a generator, paused at a yield (u.co too) */
+    C_MAP,                               /* Map, Set, WeakMap, WeakSet (u.map; pad: which) */
+    C_MAPITER                            /* an iterator over one (u.iter; pad: keys, values, entries) */
 };
 
 typedef Val (*NativeFn)(Vm *vm, Val self, Val *args, int argc, u32 magic);
@@ -115,6 +117,7 @@ struct Obj {
         struct { Val v; } boxed;
         struct { Val of; u32 i; Vals *keys; } iter;
         struct { Val prom; Vals *stack; void *fr; } co;    /* fr: its Frame, kept in a K_BYTES block */
+        struct { Vals *kv; u32 n, live; u32 *idx; u32 icap; } map;   /* idx: a K_BYTES block (mapset.c) */
     } u;
 };
 
@@ -193,8 +196,11 @@ struct Vm {
     Obj   *object_proto, *function_proto, *array_proto, *string_proto,
           *number_proto, *boolean_proto, *error_proto, *regexp_proto,
           *date_proto, *promise_proto, *iter_proto, *gen_proto;
-    Obj   *err_ctor[6];                  /* Error, TypeError, RangeError,
-                                          * SyntaxError, ReferenceError, EvalError */
+    Obj   *err_ctor[8];                  /* Error, TypeError, RangeError, SyntaxError,
+                                          * ReferenceError, EvalError, URIError, AggregateError */
+    Obj   *coll_proto[5];                /* Map, Set, WeakMap, WeakSet, their iterators */
+    Obj   *agen_proto;                   /* what an async generator gives (vm.c)  */
+    int    gen_awaited;                  /* the generator just paused was an async one, awaiting */
     Obj   *element_proto, *document_obj, *style_proto, *classlist_proto, *event_proto;
 
     int    throwing;                     /* an exception is on its way out   */
@@ -204,6 +210,8 @@ struct Vm {
     u32    deadline;                     /* host_ms() at which to stop       */
     u32    door_ms;                      /* time spent at the door, not counted */
     int    out_of_time, out_of_room, fatal, in_new;
+    Str   *miss_name;                    /* the last property read that was not there, */
+    u32    miss_at;                      /* and the stack slot it went to: for naming a missing method */
     Obj   *callee;                       /* the native being called         */
     const char *stop_why;
 
@@ -307,7 +315,7 @@ int   is_callable(Val v);
 int   instance_of(Vm *vm, Val v, Val ctor);
 
 /* ---- errors -------------------------------------------------------------------- */
-enum { E_ERROR, E_TYPE, E_RANGE, E_SYNTAX, E_REFERENCE, E_EVAL };
+enum { E_ERROR, E_TYPE, E_RANGE, E_SYNTAX, E_REFERENCE, E_EVAL, E_URI, E_AGGREGATE };
 Val   throw_err(Vm *vm, int kind, const char *fmt, ...);   /* returns undefined */
 Val   throw_val(Vm *vm, Val v);
 Obj   *make_err(Vm *vm, int kind, Str *msg);
@@ -329,6 +337,11 @@ Proto *js_compile(Vm *vm, const char *src, u32 len, const char *name, char *why,
 void  lib_init(Vm *vm);
 void  lib2_init(Vm *vm);
 void  json_init(Vm *vm);
+void  mapset_init(Vm *vm);
+int   mapiter_step(Vm *vm, Obj *it, Val *out);
+Obj  *mapiter_for(Vm *vm, Obj *m);
+Obj  *vm_iter_new(Vm *vm, Val of);      /* for-of's walk, for natives: 0 if it threw */
+int   vm_iter_next(Vm *vm, Obj *it, Val *out);
 void  re_init(Vm *vm);
 void  dom_init(Vm *vm);
 Val   re_exec(Vm *vm, Obj *re, Str *s, u32 from, int *found, u32 *mstart, u32 *mend);
@@ -357,6 +370,9 @@ enum {
     OP_FORIN, OP_FOROF, OP_ITERNEXT,
     OP_REGEXP, OP_TEMPLATE, OP_VOID, OP_DEBUG, OP_OPTCHAIN, OP_SETPROTO,
     OP_INITHIDDEN, OP_AWAIT, OP_GENSTART, OP_YIELD, OP_INITGETELEM, OP_INITSETELEM,
+    OP_LISTOF,                           /* [a, b] = x: x as an array, by iterating when it is not one */
+    OP_AWAITY,                           /* await in an async generator: a yield its driver waits on */
+    OP_FORAWAIT, OP_ANEXT, OP_ITERDONE,  /* for await: the iterator; next(), unawaited; done? */
     OP_COUNT
 };
 

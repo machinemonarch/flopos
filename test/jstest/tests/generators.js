@@ -24,4 +24,8 @@ var fib = []; for (const v of lazy) { if (v > 20) break; fib.push(v); } check(fi
 function* args(a, b = a * 2) { yield a + b; } check(args(1).next().value, 3, 'parameters before the first next');
 var it = { '@@iterator': function () { return count(2); } };
 check([...it], [0, 1], 'an object that gives its own iterator');
+function* thrower() { yield 1; throw new Error('x'); }
+var th = thrower(), thm = ''; th.next();
+try { th.next(); } catch (e) { thm = e.message; }
+check([thm, th.next().done], ['x', true], 'a throw out of a generator, which is then finished');
 print('done');

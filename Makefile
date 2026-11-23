@@ -107,10 +107,19 @@ $(BUILD)/apps/%.app: $$(wildcard src/apps/%/*.c) $$(wildcard src/apps/%/*.h) \
 
 # The script room's engine (src/room/): its own program, linked to run in
 # the room's memory, never an app (there is no word that starts it).
+# Built for the floppy's room: no padding to align code (it buys a Pentium
+# next to nothing) except in vm.c, the interpreter's loop; and the compiler,
+# run once a script, inlines nothing on its own (12 KB less, 3% slower).
 ROOMSRC := $(wildcard src/room/*.c)
-$(BUILD)/room.bin: $(ROOMSRC) $(wildcard src/room/*.h) src/room/room.ld
-	@mkdir -p $(BUILD)
-	$(CC) $(APPCFLAGS) -m80387 -mhard-float -Isrc/room -static -Wl,-T,src/room/room.ld -Wl,--no-warn-rwx-segments -o $@ $(ROOMSRC)
+ROOMOBJ := $(patsubst src/room/%.c,$(BUILD)/room/%.o,$(ROOMSRC))
+ROOM_NOALIGN := -fno-align-functions -fno-align-jumps -fno-align-loops -fno-align-labels
+ROOMFLAGS_compile := $(ROOM_NOALIGN) -fno-inline-functions -fno-inline-small-functions
+ROOMFLAGS_vm :=
+$(BUILD)/room/%.o: src/room/%.c $(wildcard src/room/*.h)
+	@mkdir -p $(BUILD)/room
+	$(CC) $(APPCFLAGS) -m80387 -mhard-float -Isrc/room $(if $(filter undefined,$(origin ROOMFLAGS_$*)),$(ROOM_NOALIGN),$(ROOMFLAGS_$*)) -c -o $@ $<
+$(BUILD)/room.bin: $(ROOMOBJ) src/room/room.ld
+	$(CC) $(APPCFLAGS) -static -Wl,-T,src/room/room.ld -Wl,--no-warn-rwx-segments -o $@ $(ROOMOBJ)
 	@echo "   room.bin: $$(stat -c%s $@) bytes"
 
 # Test apps (test/walltest): built like any app, never put on the floppy.
