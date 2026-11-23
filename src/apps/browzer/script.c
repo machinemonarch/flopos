@@ -186,12 +186,23 @@ static int (*s_sink)(const u8 *p, int n);   /* set: web_get hands the body here,
  * answer is only for the script if the other site says so. */
 static int  s_cross;
 static char s_origin[80], s_extra[160];
+/* A fetch() answer longer than the door holds comes in pieces (s_chunked):
+ * when out is full the connection stays open, what was read past it waits
+ * where it is (s_wbuf, from s_carry_at), and web_more() goes on from there.  s_rhead: the answer's
+ * headers, for Response.headers (another site's: only those any page may
+ * read). */
+static int  s_chunked, s_paused, s_carry_n, s_carry_at;
+static u8   s_wbuf[2048];                 /* web_get's reads; the carry is what is left in it */
+static char s_rhead[512];               /* headers past this are left out */
+static u32  s_rhead_n;
+static int  head_safe(const char *ln);
+#define FETCH_PIECE 60000                 /* a fetch's body a door answer at most: the door holds 64 KB */
 static char s_acao[96], s_acam[96];      /* Access-Control-Allow-Origin, -Methods */
 
 int web_get(const char *url, const char *method, const u8 *body, int blen, const char *btype,
             char *out, int cap, int *status, char *ctype, int ccap)
 {
-    static u8 buf[2048];
+    u8 *buf = s_wbuf;
     char req[PAGE_HREF_MAX + 600], ck[512];
     Url u;
     int n, i, state = 0, got = 0, hops;
@@ -221,7 +232,7 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
         if (body && blen > 0 && method && method[0] == 'P') A->conn_write(body, blen);
         state = 0; got = 0; loc[0] = 0;
         for (;;) {
-            n = A->conn_read(buf, sizeof buf, 15000);
+            n = A->conn_read(buf, sizeof s_wbuf, 15000);
             if (n <= 0) break;
             for (i = 0; i < n; i++) {
                 if (!state) {
@@ -231,8 +242,15 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
                         for (end = ln; *end && *end != ' '; end++) { }
                         while (*end == ' ') end++;
                         while (*end >= '0' && *end <= '9') *status = *status * 10 + (*end++ - '0');
+                        s_rhead_n = 0;
                         for (ln = head; *ln; ) {
                             for (end = ln; *end && *end != '\n'; end++) { }
+                            if (ln != head && lower_cmp_n(ln, "set-cookie", 10) && (!s_cross || head_safe(ln)) &&
+                                s_rhead_n + (u32)(end - ln) + 1 < sizeof s_rhead) {
+                                char *c = ln;
+                                while (c < end && *c != '\r') s_rhead[s_rhead_n++] = *c++;
+                                s_rhead[s_rhead_n++] = '\n';
+                            }
                             if (((ln[0] | 32) == 'l') && ((ln[1] | 32) == 'o') && ((ln[8] | 32) == ':' || ln[8] == ':')) {
                                 char *v = ln + 9; int k = 0;
                                 while (*v == ' ') v++;
@@ -269,7 +287,15 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
                     got += n - i;
                     break;
                 }
-                if (!s_sink && got < cap) out[got++] = (char)buf[i];
+                if (!s_sink && got < cap) {
+                    out[got++] = (char)buf[i];
+                    if (got == cap && s_chunked && !(*status >= 300 && *status < 400)) {
+                        s_carry_n = n - i - 1;              /* full: the rest waits, the line stays open */
+                        s_carry_at = i + 1;
+                        s_paused = 1;
+                        return got;
+                    }
+                }
             }
             if (got < 0 || (!s_sink && got >= cap)) break;
             main_pump(0);
@@ -292,6 +318,43 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
     return -1;
 }
 
+/* The next piece of a fetch() answer left open (s_paused): what waited,
+ * then more from the line, up to cap.  The line is closed at its end. */
+static int web_more(char *out, int cap)
+{
+    int got = 0, n;
+    if (!s_paused) return 0;
+    if (s_carry_n) {
+        got = s_carry_n < cap ? s_carry_n : cap;
+        memcpy(out, s_wbuf + s_carry_at, (u32)got);
+        s_carry_at += got; s_carry_n -= got;
+    }
+    while (got < cap) {
+        n = A->conn_read((u8 *)out + got, cap - got, 15000);
+        if (n <= 0) { A->conn_close(); s_paused = 0; break; }
+        got += n;
+        main_pump(0);
+    }
+    return got;
+}
+
+/* A fetch left open, given up: by a new fetch, a new page, or a script's end. */
+static void web_end(void)
+{
+    if (s_paused) A->conn_close();
+    s_paused = 0; s_carry_n = 0;
+}
+
+/* Headers another site's answer may show a page's script (CORS's safe list). */
+static int head_safe(const char *ln)
+{
+    static const char *const ok[] = { "cache-control:", "content-language:", "content-length:", "content-type:",
+                                      "expires:", "last-modified:", "pragma:", 0 };
+    int i, k;
+    for (i = 0; ok[i]; i++) { for (k = 0; ok[i][k]; k++) { } if (!lower_cmp_n(ln, ok[i], k)) return 1; }
+    return 0;
+}
+
 /* ---- the room ------------------------------------------------------------------- */
 static void wire(const char *a, const char *b)
 {
@@ -306,6 +369,7 @@ static int door(u8 *buf, u32 len, u32 cap);
 static int task(u32 n, u32 ms, char *why, int whycap)
 {
     int r = A->room_task(s_task, n, s_ans, sizeof s_ans - 1, ms, door, s_doorbuf, sizeof s_doorbuf);
+    web_end();                                   /* a fetch it left half read */
     if (why && whycap) why[0] = 0;
     if (r < 0) {
         s_room = 0;
@@ -1624,6 +1688,7 @@ static int door(u8 *buf, u32 len, u32 cap)
         u32 ml, ul, bodyl, tl;
         int st, got;
         m = gstr(&ml); u = gstr(&ul); body = gstr(&bodyl); t = gstr(&tl);
+        web_end();
         if (++s_fetches > FETCHES) return refuse("it fetched too often");
         if (!url_resolve(s_pg->url, u, url, sizeof url)) return refuse("it fetched an address browzer cannot read");
         type[0] = 0;
@@ -1657,24 +1722,38 @@ static int door(u8 *buf, u32 len, u32 cap)
                 }
             }
             s_extra[0] = 0;
-            got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, sizeof s_scratch - 1, &st, type, sizeof type);
-            s_cross = 0;
-            if (got >= 0 && !cors_allows()) { got = -1; st = 0; type[0] = 0; wire("not allowed by the other site: ", url); }
+            s_chunked = 1;
+            got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, FETCH_PIECE, &st, type, sizeof type);
+            s_cross = 0; s_chunked = 0;
+            if (got >= 0 && !cors_allows()) { web_end(); got = -1; st = 0; type[0] = 0; wire("not allowed by the other site: ", url); }
             goto answer;
         }
         note_loading("what a script asked for");
-        got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, sizeof s_scratch - 1, &st, type, sizeof type);
+        s_chunked = 1;
+        got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, FETCH_PIECE, &st, type, sizeof type);
+        s_chunked = 0;
     answer:
         s_on_ = 0;
-        put(DK_STR);                          /* status, type, body          */
+        put(DK_STR);                          /* status, type, headers, body, more */
         put4((u32)(got < 0 ? 0 : st));
         for (k = 0; type[k]; k++) { }
         put4(k);
         { u32 i; for (i = 0; i < k; i++) put((u8)type[i]); }
-        if (got < 0) got = 0;
-        if ((u32)got + s_on_ + 4 > s_cap) got = (int)(s_cap - s_on_ - 4);
+        if (got < 0) { got = 0; s_rhead_n = 0; web_end(); }
+        put4(s_rhead_n);
+        { u32 i; for (i = 0; i < s_rhead_n; i++) put((u8)s_rhead[i]); }
         put4((u32)got);
         { int i; for (i = 0; i < got; i++) put((u8)s_scratch[i]); }
+        put4((u32)s_paused);
+        return (int)s_on_;
+    }
+    case D_FETCHMORE: {
+        int got = web_more(s_scratch, FETCH_PIECE), i;
+        s_on_ = 0;
+        put(DK_STR);
+        put4((u32)got);
+        for (i = 0; i < got; i++) put((u8)s_scratch[i]);
+        put4((u32)s_paused);
         return (int)s_on_;
     }
     case D_GO: {

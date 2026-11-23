@@ -884,20 +884,64 @@ NATIVE(w_byname)
     return rp_val(vm);
 }
 
+/* A fetch's answer: [status, type, body, headers].  A body longer than the
+ * door holds comes in pieces (D_FETCHMORE), gathered as bytes in one block
+ * and made a string once, at the end -- no sweep comes between, as nothing
+ * here runs a script.  Past FETCH_MAX it fails: the scripts have 2 MB in
+ * all, and a string takes two bytes a character. */
+#define FETCH_MAX (512u << 10)
+static const u8 *rp_raw(u32 *n)
+{
+    u32 k = rp_u32();
+    const u8 *p = s_rep + s_rp;
+    if (s_rp + k > s_rl) k = s_rl - s_rp;
+    s_rp += k;
+    *n = k;
+    return p;
+}
+
 NATIVE(w_fetch)                             /* __flopos_fetch(method, url, body, type) */
 {
     Obj *r;
+    u32 st, n, len = 0, cap = 0, more;
+    Str *type, *heads, *body = S_empty;
+    const u8 *p;
+    char *buf = 0;
     UNUSED;
     rq(D_FETCH); rq_str(vm, ARG(0)); rq_str(vm, ARG(1));
     if (IS_NULLISH(ARG(2))) rq_cstr(""); else rq_str(vm, ARG(2));
     if (IS_NULLISH(ARG(3))) rq_cstr(""); else rq_str(vm, ARG(3));
     if (!knock(vm)) return v_undef();
+    st = rp_u32(); type = rp_str(); heads = rp_str();
+    for (;;) {
+        p = rp_raw(&n);
+        more = rp_u32();
+        if (!more && !len) { body = str_utf8((const char *)p, n); break; }    /* one piece: as it is */
+        if (len + n > FETCH_MAX) { st = 0; body = S_empty; break; }         /* too long for the room */
+        if (len + n > cap) {
+            u32 nc = cap ? cap * 2 : 128u << 10;
+            char *nb;
+            while (nc < len + n) nc *= 2;
+            if (nc > FETCH_MAX) nc = FETCH_MAX;
+            nb = gc_alloc(nc + 8, K_BYTES);
+            if (!nb) { vm->out_of_room = 1; return v_undef(); }
+            if (len) memcpy(nb + 8, buf + 8, len);
+            buf = nb; cap = nc;
+        }
+        memcpy(buf + 8 + len, p, n);
+        len += n;
+        if (!more) { body = str_utf8(buf + 8, len); break; }
+        rq(D_FETCHMORE);
+        if (!knock(vm)) return v_undef();
+    }
+    if (!body) body = S_empty;
     r = arr_new(vm, 0);
     if (!r) return v_undef();
     TEMP(vm, v_obj(r));
-    arr_push(vm, r, v_num(rp_u32()));
-    arr_push(vm, r, v_str(rp_str()));
-    arr_push(vm, r, v_str(rp_str()));
+    arr_push(vm, r, v_num(st));
+    arr_push(vm, r, v_str(type ? type : S_empty));
+    arr_push(vm, r, v_str(body));
+    arr_push(vm, r, v_str(heads ? heads : S_empty));
     UNTEMP(vm, 1);
     return v_obj(r);
 }
@@ -1021,25 +1065,26 @@ static const char *s_prelude =
 "Headers.prototype.set=function(k,v){this._h[String(k).toLowerCase()]=String(v);};"
 "Headers.prototype.has=function(k){return String(k).toLowerCase() in this._h;};"
 "g.Headers=Headers;"
-"function Response(s,t,b,u){this.status=s;this.ok=s>=200&&s<300;this.statusText=s==200?'OK':'';this.url=u;this.headers=new Headers({'content-type':t});this._b=b;this.bodyUsed=false;}"
+"function __flopos_heads(t,h){var o={'content-type':t};String(h||'').split('\\n').forEach(function(l){var i=l.indexOf(':');if(i>0)o[l.slice(0,i).trim().toLowerCase()]=l.slice(i+1).trim();});return o;}"
+"function Response(s,t,b,u,h){this.status=s;this.ok=s>=200&&s<300;this.statusText=s==200?'OK':'';this.url=u;this.headers=new Headers(__flopos_heads(t,h));this._b=b;this.bodyUsed=false;}"
 "Response.prototype.text=function(){this.bodyUsed=true;return Promise.resolve(this._b);};"
 "Response.prototype.json=function(){var b=this._b;this.bodyUsed=true;return new Promise(function(ok){ok(JSON.parse(b));});};"
-"Response.prototype.clone=function(){return new Response(this.status,this.headers.get('content-type'),this._b,this.url);};"
+"Response.prototype.clone=function(){var r=new Response(this.status,'',this._b,this.url);r.headers=this.headers;return r;};"
 "g.Response=Response;"
 "g.fetch=function(u,o){o=o||{};var url=typeof u==='string'?u:(u&&u.url)||String(u);"
 " var h=o.headers||{},t=(h.get?h.get('content-type'):(h['Content-Type']||h['content-type']))||'';"
 " var b=o.body===undefined||o.body===null?'':(typeof o.body==='string'?o.body:(o.body instanceof URLSearchParams?(t=t||'application/x-www-form-urlencoded',o.body.toString()):JSON.stringify(o.body)));"
 " if(o.body instanceof FormData){t=t||'application/x-www-form-urlencoded';b=o.body.toString();}"
-" return new Promise(function(ok,no){if(o.signal&&o.signal.aborted){no(o.signal.reason);return;}var r=__flopos_fetch(o.method||'GET',url,b,t);if(!r[0]){no(new TypeError('Failed to fetch'));return;}ok(new Response(r[0],r[1],r[2],url));});};"
+" return new Promise(function(ok,no){if(o.signal&&o.signal.aborted){no(o.signal.reason);return;}var r=__flopos_fetch(o.method||'GET',url,b,t);if(!r[0]){no(new TypeError('Failed to fetch'));return;}ok(new Response(r[0],r[1],r[2],url,r[3]));});};"
 "function XMLHttpRequest(){this.readyState=0;this.status=0;this.responseText='';this.response='';this._h={};this.responseType='';}"
 "XMLHttpRequest.prototype.open=function(m,u,a){this._m=m;this._u=u;this._a=a!==false;this.readyState=1;};"
 "XMLHttpRequest.prototype.setRequestHeader=function(k,v){this._h[k.toLowerCase()]=v;};"
-"XMLHttpRequest.prototype.getResponseHeader=function(k){return String(k).toLowerCase()==='content-type'?this._t:null;};"
-"XMLHttpRequest.prototype.getAllResponseHeaders=function(){return 'content-type: '+this._t+'\\r\\n';};"
+"XMLHttpRequest.prototype.getResponseHeader=function(k){var v=this._hd&&this._hd[String(k).toLowerCase()];return v===undefined?null:v;};"
+"XMLHttpRequest.prototype.getAllResponseHeaders=function(){var s='',h=this._hd||{};for(var k in h)s+=k+': '+h[k]+'\\r\\n';return s;};"
 "XMLHttpRequest.prototype.abort=function(){};"
 "XMLHttpRequest.prototype.addEventListener=function(t,f){this['on'+t]=f;};"
 "XMLHttpRequest.prototype.send=function(b){var x=this;function go(){var r=__flopos_fetch(x._m,x._u,b==null?'':String(b),x._h['content-type']||'');"
-" x.status=r[0];x._t=r[1];x.responseText=r[2];x.response=x.responseType==='json'?(function(){try{return JSON.parse(r[2]);}catch(e){return null;}})():r[2];x.readyState=4;"
+" x.status=r[0];x._t=r[1];x._hd=__flopos_heads(r[1],r[3]);x.responseText=r[2];x.response=x.responseType==='json'?(function(){try{return JSON.parse(r[2]);}catch(e){return null;}})():r[2];x.readyState=4;"
 " if(x.onreadystatechange)x.onreadystatechange();if(x.onload&&x.status)x.onload();if(x.onerror&&!x.status)x.onerror();if(x.onloadend)x.onloadend();}"
 " if(this._a)setTimeout(go,0);else go();};"
 "XMLHttpRequest.DONE=4;g.XMLHttpRequest=XMLHttpRequest;"

@@ -43,6 +43,12 @@ without it. Each version's notes are also written next to its image, as
   - tagged templates, new X(...list), await at a module's top level
   - document.currentScript, which packed scripts use to find their
     other files
+- **fetch() answers of any size up to 512 KB** come whole: past what one
+  hand-over holds (64 KB), browzer passes them on in pieces as they
+  arrive, holding none of it. Before, they were cut at 64 KB.
+- **Response headers** reach scripts: response.headers.get() and
+  XMLHttpRequest's getResponseHeader(). Another site's answer shows only
+  the headers any page may read.
 - **Map and Set are built in**, as fast as other browsers' and as the
   standard says: WeakMap, WeakSet and groupBy too.
 - **Array.from** takes anything list-like (a Set, a generator).

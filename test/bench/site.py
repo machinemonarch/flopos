@@ -125,6 +125,11 @@ function part(n) {
 }
 part(0).catch(function (e) { document.getElementById('o').textContent = 'probe: failed ' + e; });
 </script>""",
+    "/js/bigfetch": """<title>js bigfetch</title><p id="o">not yet</p><script>
+fetch('/api/big').then(function (r) { return r.json().then(function (j) {
+  document.getElementById('o').textContent = 'bigfetch ' + j.items.length + ' ' + j.items[2999].slice(0, 10) + ' ' + r.headers.get('x-test');
+}); }, function (e) { document.getElementById('o').textContent = 'bigfetch failed ' + e; });
+</script>""",
     "/https/form": """<title>https form</title><form action="http://10.0.2.2:8150/collect"><input name="q" value="hi"><input type="submit" value="Send"></form>
 <form action="https://10.0.2.2.nip.io:8151/collect"><input name="r" value="ok"><input type="submit" value="Send safely"></form>""",
     "/collect": """<title>collected</title><p>COLLECTED</p>""",
@@ -429,6 +434,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cookie = self.headers.get("Cookie") or ""
             return self.send(200, "application/json", json.dumps({"ok": "yes", "cookie": cookie or "none", "origin": self.headers.get("Origin") or "none"}).encode(),
                              [("Access-Control-Allow-Origin", "*"), ("Set-Cookie", "THIRDPARTY=1; path=/")])
+        if p == "/api/big":                                 # past what one door answer holds: comes in pieces
+            body = json.dumps({"items": ["item %05d %s" % (i, "x" * 80) for i in range(3000)]}).encode()
+            return self.send(200, "application/json", body, [("X-Test", "yes")])
         if p == "/api/cors-no":
             return self.send(200, "application/json", b'{"secret": "SECRET LEAKED"}')
         if p.startswith("/m/"):
