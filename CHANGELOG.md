@@ -8,87 +8,97 @@ without it. Each version's notes are also written next to its image, as
 
 ### FEATURES
 
-- browzer's address (g) edits as scribe does: Shift with the arrows,
-  Home or End picks, Ctrl with the arrows goes a word at a time, and
-  Ctrl-C, Ctrl-X and Ctrl-V copy, cut and paste.
-- An HLS station that offers several versions starts on the leanest, as
-  before; + and - on the player screen step to a better or leaner one.
-- Scripts written the newer way now run in browzer, where before the
-  whole script was refused: class fields (private ones too), ...rest when
-  taking an object apart, defaults on such parameters, tagged templates,
-  getters with a worked-out name, static blocks and for await.
-- browzer reads JavaScript modules (import and export): their files are
-  fetched by the same rules as any script, with import maps, import()
-  and import.meta; a page's scripts for browsers without modules are
-  then left alone, as other browsers do.
-- Generators (function* and yield) run, and so do new X(...list),
-  taking a list or object apart into properties, await at a module's
-  top level, and document.currentScript, which many sites' packed
-  scripts use to find their other files.
-- Reading a big script takes a quarter of the memory it did: looking
-  ahead no longer copies every string it passes.
-- A page's scripts may be bigger: 256 KB each (was 100), 640 KB a page
-  (was 250). A fetched script now goes to the script room in pieces as it
-  arrives, so browzer keeps none of it whole.
-- A script's fetch() can read another site's answer when that site
-  allows it (CORS), as in other browsers; before, the script was stopped.
-- Of 568 scripts from 38 well-known sites, 34 are still refused before
-  they start, where 176 were. Most of those left are too big for the
-  memory scripts have.
-- Map and Set are built into the script engine, as fast as other
-  browsers' for the many keys frameworks keep, and behave as the standard
-  says: for-of over them, [...new Set(list)] to drop repeats, WeakMap and
-  WeakSet that take objects only, Map.groupBy and Object.groupBy.
-- Async generators (async function*) and for await over them run; Vite
-  builds, a common kind, check for them before they load the rest.
-- Array.from takes anything that can be gone through (a Set, a
-  generator); [a, b] = takes it apart the same way.
-- new Error(message, {cause}), URIError and AggregateError, which
-  polyfills look for; a missing method is named in the error
-  ("querySelector is not a function").
+#### browzer
 
-- On an allowed site, scripts from other sites now load (many sites keep
-  theirs under a second name: bcbits.com for bandcamp.com), over https
-  only and without cookies, so a tracker among them cannot follow you
-  from site to site. Before, only four library hosts were let through.
-- A form now goes wherever it says, as in other browsers, and a script
-  may point one at another site. Only a form from an https page to a
-  plain http address asks first: y sends it.
-
-- browzer tells servers who it is and where to read about it:
+- **Editing the address (g)** works as in scribe: Shift with the arrows
+  selects, Home and End jump, Ctrl with the arrows moves a word at a
+  time, and Ctrl-C, Ctrl-X and Ctrl-V copy, cut and paste.
+- **Radio in several qualities (HLS)** still starts on the leanest. On
+  the player screen, + and - now step up or down.
+- **Scripts from a site's other domains** load on allowed sites. Many
+  sites keep their scripts under a second name (bandcamp.com's are on
+  bcbits.com). Only over https, and without cookies, so a tracker among
+  them can't follow you from site to site. Before, only four library
+  hosts were let through.
+- **Forms** go wherever they say, as in other browsers, also when a
+  script points one at another site. One case asks first (y sends it):
+  an https page sending a form unencrypted, to a plain http address.
+- **Bigger scripts:** up to 256 KB each (was 100) and 640 KB a page (was
+  250). They go to the script room in pieces as they arrive, so browzer
+  never holds one whole.
+- **fetch() to other sites** works when that site allows it (CORS), as in
+  other browsers. Before, the script was stopped.
+- **browzer names itself** to every server, with a link, as crawlers do:
   "browzer/1.46.0 (FLOPOS; Running on a 1996 Toshiba Laptop;
-  +https://github.com/machinemonarch/flopos)", as crawlers do.
+  +https://github.com/machinemonarch/flopos)".
+
+#### Script room (JavaScript)
+
+- **Newer JavaScript runs**, where before the whole script was refused:
+  - class fields (private ones too) and static blocks
+  - modules: import and export, import maps, import() and import.meta;
+    scripts marked for old browsers are then skipped, as elsewhere
+  - generators, async generators and for await
+  - taking lists and objects apart: ...rest, defaults, into properties
+  - tagged templates, new X(...list), await at a module's top level
+  - document.currentScript, which packed scripts use to find their
+    other files
+- **Map and Set are built in**, as fast as other browsers' and as the
+  standard says: WeakMap, WeakSet and groupBy too.
+- **Array.from** takes anything list-like (a Set, a generator).
+- **Errors:** new Error(message, {cause}), URIError and AggregateError,
+  which polyfills look for. A missing method is named in the error
+  ("querySelector is not a function").
+- **Reading a big script** takes a quarter of the memory it did.
+- **The result:** of 568 scripts from 38 well-known sites, 34 are still
+  refused, down from 176. Most of those left are too big.
 
 ### BUG FIXES
 
-- Wikipedia's articles hung after the secure connection was made: their
-  headers run to 9 KB (two long security policies), browzer kept 8 KB,
-  and so never saw where the headers end. A header line too long to keep
-  is now left out, and the end is still found; the same for scripts and
-  fetch(), which kept 2 KB.
+#### browzer
 
-- browzer plays stations whose stream addresses are long, as signed
-  ones are (RTL's run past a thousand characters): it cut them at 200.
-- A station's playlist that is not there shows the station's own error
-  page, not "Not text, so not shown".
-- While a station plays in pieces (HLS), the status line stays put
-  instead of saying "agreeing on a key" for every piece.
-- j on a page without scripts says so, instead of loading the page again.
-- maelcum reading an encrypted tape takes one header that will not open
-  as damage, not a wrong passphrase, since each header comes twice.
+- **Wikipedia articles hung** after connecting. Their headers are 9 KB
+  and browzer kept 8 KB, so it never saw where they end. A header line
+  too long to keep is now left out, and the end is still found. Scripts
+  and fetch() had the same bug at 2 KB.
+- **Long stream addresses** play: signed ones (RTL's) run past a thousand
+  characters, and browzer cut them at 200.
+- **A missing station playlist** shows the station's own error page, not
+  "Not text, so not shown".
+- **Radio in pieces (HLS):** the status line stays put, instead of saying
+  "agreeing on a key" for every piece.
+- **j on a page without scripts** says so, instead of loading the page
+  again.
+
+#### Script room (JavaScript)
+
+- A script that threw an error inside a generator stopped the whole room.
+- A plain for-of over promises stops with an error, instead of going
+  round for ever.
+
+#### maelcum
+
+- Reading an encrypted tape, one header that won't open counts as damage,
+  not a wrong passphrase: each header is written twice.
+
+#### Clock
+
 - The clock menu wraps its longer lines instead of cutting them off.
+
+#### Sound
+
 - The serial wire no longer says "decoding took 0.0%" every ten seconds:
   twice a minute at most, and only when there is something to say.
-- A script that threw from inside a generator stopped the script room.
-- A plain for-of over something that gives promises stops with an error
-  instead of going round for ever.
 
 ### SECURITY FIXES
 
-- A script's fetch() to another site sends no cookies there and keeps
-  none it is given, says where it comes from, and is asked first when it
-  is not a plain request; and no public page's script can reach an
-  address on your own network (a router's pages, say).
+#### browzer
+
+- **fetch() to another site** sends no cookies there, keeps none it is
+  given, says where it comes from, and asks that site first when the
+  request is not a plain one.
+- **No public page's script can reach your own network** (a router's
+  pages, say).
 
 ## 1.46.0 — 2026-11-18
 
