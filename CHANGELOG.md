@@ -155,8 +155,8 @@ without it. Each version's notes are also written next to its image, as
 
 #### Script room (JavaScript)
 
-- **Proxy's ownKeys could hand the engine something not a name**, which
-  it trusted as one. Every name is now checked.
+- **A page's script could feed the script engine bad data** that it took
+  on trust (through Proxy, a newer JavaScript feature). It now checks.
 
 ## 1.46.0 — 2026-11-18
 
