@@ -8,9 +8,10 @@ stopped, a script that fills its memory is stopped.  Then with a rogue
 room in its place (rogueroom.c) that breaks one rule per task: each time
 it must be stopped with the right sentence, the app that drove it must
 carry on with its memory untouched, and FLOPOS must still answer.
-Prints ok or FAILED for each.
+Each task runs on its own machine, all at once.  Prints ok or FAILED for each.
 """
 import os, shutil, subprocess, sys, tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REAL = [(0, r"answer 0 "),
@@ -46,20 +47,28 @@ def main():
     tmp = tempfile.mkdtemp(prefix="flopos-roomtest.")
     ok = True
     try:
-        for tag, cases, room in (("real", REAL, None), ("rogue", ROGUE, "rogueroom.bin")):
-            work = os.path.join(tmp, tag + ".img")
+        imgs = {}
+        for tag, room in (("real", None), ("rogue", "rogueroom.bin")):
+            work = imgs[tag] = os.path.join(tmp, tag + ".img")
             shutil.copy(img, work)
             subprocess.run(["mcopy", "-i", work, os.path.join(ROOT, "build", "roomtest", "roomt.app"), "::ROOMT.APP"], check=True)
             if room:
                 subprocess.run(["mcopy", "-o", "-i", work, os.path.join(ROOT, "build", "roomtest", room), "::ROOM.BIN"], check=True)
-            lines, want = run(work, cases, tmp, tag)
-            print("\n".join(lines))
-            ok = ok and len(lines) == want and all(l.startswith("ok") for l in lines)
-            log = os.path.join(tmp, tag, "serial.log")
+        def one(job):
+            tag, case = job
+            name = "%s%d" % (tag, case[0])
+            lines, want = run(imgs[tag], [case], tmp, name)
+            good = len(lines) == want and all(l.startswith("ok") for l in lines)
+            log = os.path.join(tmp, name, "serial.log")
             if os.path.exists(log) and b"still running after breaking a rule" in open(log, "rb").read():
-                print("FAILED  the rogue room got past a wall"); ok = False
+                lines.append("FAILED  the rogue room got past a wall (task %d)" % case[0]); good = False
             if os.path.exists(log) and b"its memory was changed" in open(log, "rb").read():
-                print("FAILED  the room changed the app's memory"); ok = False
+                lines.append("FAILED  the room changed the app's memory (task %d)" % case[0]); good = False
+            return lines, good
+        jobs = [("real", c) for c in REAL] + [("rogue", c) for c in ROGUE]
+        with ThreadPoolExecutor(len(jobs)) as pool:
+            for lines, good in pool.map(one, jobs):
+                print("\n".join(lines)); ok = ok and good
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     sys.exit(0 if ok else 1)

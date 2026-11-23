@@ -14,12 +14,22 @@
  *   rogue 10  overwrite the system's own file (must be refused, not closed)
  *   rogue 11  fall down its stack for ever
  *   rogue 12  name a routine outside itself for the system to call
+ *   rogue 13  write past the end of a buffer on its own stack
  *   rogue 0   nothing wrong: says so
  */
 #include "app.h"
 
 static const Api *A;
 static volatile u32 sink;
+
+/* Writes 64 bytes into 16: the canary behind b must catch it on return. */
+static void __attribute__((noinline)) overrun(volatile int len)
+{
+    char b[16];
+    int i;
+    for (i = 0; i < len; i++) ((volatile char *)b)[i] = 'X';
+    sink = (u32)b[0];
+}
 
 static int deeper(int n) { volatile char pad[512]; pad[0] = (char)n; return deeper(n + 1) + pad[0]; }
 
@@ -48,6 +58,7 @@ int app_main(const Api *api, int argc, char **argv)
         A->newline();
         return 0;
     case 11: sink = (u32)deeper(0); break;
+    case 13: overrun(64); break;
     case 12: A->audio_open(22050); A->audio_feeder((void (*)(void))0x00010000); break;
     default:
         A->print("[rogue] behaving");

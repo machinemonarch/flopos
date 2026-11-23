@@ -15,11 +15,14 @@ typedef unsigned char u8;
 typedef unsigned int u32;
 extern char _room_ro_end[], _room_image_end[], _room_bss_end[];
 void room_main(u32 len);
+u32 __stack_chk_guard;                   /* its canary, which the kernel sets */
+void __stack_chk_fail(void) { __asm__ __volatile__("ud2" :: "a"(0x4B415453u)); for (;;) { } }
 
 __attribute__((section(".roomhdr"), used))
 const RoomHeader room_header = {
     { 'F', 'L', 'O', 'P', 'R', 'O', 'O', 'M' }, ROOM_VERSION, ROOM_BASE,
-    (unsigned)_room_ro_end, (unsigned)_room_image_end, (unsigned)_room_bss_end, (unsigned)room_main
+    (unsigned)_room_ro_end, (unsigned)_room_image_end, (unsigned)_room_bss_end, (unsigned)room_main,
+    (unsigned)&__stack_chk_guard
 };
 
 static volatile u32 sink;

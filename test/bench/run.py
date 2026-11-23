@@ -70,6 +70,7 @@ def main():
     ap.add_argument("image"); ap.add_argument("out"); ap.add_argument("addresses", nargs="+")
     ap.add_argument("--slow", action="store_true"); ap.add_argument("--listen", type=float, default=0)
     ap.add_argument("--shots", action="store_true")
+    ap.add_argument("--real", action="store_true", help="the guest's clock waits as long as a real one (FLOPOS_REAL=1 too)")
     ap.add_argument("--site", default=os.path.expanduser("~/.cache/flopos-songs"))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -87,7 +88,10 @@ def main():
            "-monitor", "stdio", "-audiodev", "wav,id=snd1,path=%s" % os.path.join(a.out, "sound.wav"),
            "-machine", "pcspk-audiodev=snd1", "-device", "sb16,audiodev=snd1", "-device", "adlib,audiodev=snd1", "-serial", "file:" + log,
            "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9"]
-    cmd[1:1] = ["-icount", "shift=4,sleep=on,align=" + ("on" if a.slow else "off")]
+    # sleep=off: when FLOPOS idles, its clock jumps to its next timer instead of
+    # waiting it out.  --slow and --real keep the real-time wait.
+    real = a.slow or a.real or os.environ.get("FLOPOS_REAL") == "1"
+    cmd[1:1] = ["-icount", "shift=4,sleep=%s,align=%s" % ("on" if real else "off", "on" if a.slow else "off")]
     q = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     mon, wire = Monitor(q), Wire(log)
     try:

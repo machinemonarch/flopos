@@ -4,12 +4,13 @@
     test/walltest/run.py [IMAGE]
 
 Builds test/walltest/rogue.c as an app, puts it on a scratch copy of the
-image (dist/flopos.img unless named) and runs it in the emulator once for
-each rule it breaks.  Each time the app must be closed with the right
-sentence, and FLOPOS must still answer afterwards.  Prints ok or FAILED
-for each.
+image (dist/flopos.img unless named) and runs it once for each rule it
+breaks, each on its own machine, all at once.  Each time the app must be
+closed with the right sentence, and FLOPOS must still answer afterwards.
+Prints ok or FAILED for each.
 """
 import os, shutil, subprocess, sys, tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CASES = [(0, r"\[rogue\] behaving"),
@@ -24,7 +25,8 @@ CASES = [(0, r"\[rogue\] behaving"),
          (9, "closed: it answered a call nobody made"),
          (10, r"\[rogue\] refused"),
          (11, "closed: it reached outside its own memory"),
-         (12, "closed: it handed over memory that is not its own")]
+         (12, "closed: it handed over memory that is not its own"),
+         (13, "closed: its stack was overrun")]
 
 def main():
     img = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "dist", "flopos.img")
@@ -35,19 +37,22 @@ def main():
         work = os.path.join(tmp, "t.img")
         shutil.copy(img, work)
         subprocess.run(["mcopy", "-i", work, os.path.join(ROOT, "build", "walltest", "rogue.app"), "::ROGUE.APP"], check=True)
-        steps = []
-        for n, want in CASES:
-            steps.append("type:rogue %d\\n=>%s" % (n, want))
-        steps.append(r"type:version\n=>FLOPOS \d")
-        steps.append(r"type:inventory\n=>\[inventory\] / \d+ things")
-        r = subprocess.run([sys.executable, os.path.join(ROOT, "test", "bench", "run.py"), work, os.path.join(tmp, "out")] + steps,
-                           capture_output=True, text=True)
-        lines = [l for l in r.stdout.splitlines() if l.startswith(("ok", "FAILED"))]
-        print("\n".join(lines))
-        log = os.path.join(tmp, "out", "serial.log")
-        if os.path.exists(log) and b"still here" in open(log, "rb").read():
-            print("FAILED  the app got past the wall"); sys.exit(1)
-        sys.exit(0 if lines and all(l.startswith("ok") for l in lines) and len(lines) == len(steps) else 1)
+        def one(case):
+            n, want = case
+            steps = ["type:rogue %d\\n=>%s" % (n, want), r"type:version\n=>FLOPOS \d", r"type:inventory\n=>\[inventory\] / \d+ things"]
+            out = os.path.join(tmp, "out%d" % n)
+            r = subprocess.run([sys.executable, os.path.join(ROOT, "test", "bench", "run.py"), work, out] + steps,
+                               capture_output=True, text=True)
+            lines = [l for l in r.stdout.splitlines() if l.startswith(("ok", "FAILED"))]
+            log = os.path.join(out, "serial.log")
+            if os.path.exists(log) and b"still here" in open(log, "rb").read():
+                lines.append("FAILED  rogue %d got past the wall" % n)
+            good = len(lines) == len(steps) and all(l.startswith("ok") for l in lines)
+            return ("ok      rogue %d" % n) if good else "\n".join(lines or ["FAILED  rogue %d: no answer" % n]), good
+        with ThreadPoolExecutor(len(CASES)) as pool:
+            res = list(pool.map(one, CASES))
+        print("\n".join(t for t, _ in res))
+        sys.exit(0 if all(g for _, g in res) else 1)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
