@@ -1347,7 +1347,12 @@ static void draw(void)
 
     /* Keys, let into the bottom of the frame. */
     {
-        const char *keys = s_finding ? " type  \1enter\1 find  \1esc\1 cancel "
+        /* A station with versions to choose: its keys, so they are seen. */
+        const char *keys = s_dl_state == DL_STREAM && s_hls_nvar > 1
+                             ? (s_hls_rank + 1 >= s_hls_nvar ? " \1-\1 leaner version  \1esc\1 stop "
+                                : s_hls_rank == 0 ? " \1+\1 better version  \1esc\1 stop "
+                                : " \1+\1 better version  \1-\1 leaner  \1esc\1 stop ")
+                         : s_finding ? " type  \1enter\1 find  \1esc\1 cancel "
                          : s_choosing >= 0 ? " \1up down\1 choose  \1enter\1 keep  \1esc\1 undo "
                          : s_editing ? (s_w >= 96 ? " type  \1shift\1 picks  \1ctrl-a\1 all  \1ctrl-c x v\1 copy, cut, paste  \1enter\1 go  \1esc\1 cancel "
                                                   : " type  \1shift\1 picks  \1ctrl-c x v\1  \1enter\1 go  \1esc\1 cancel ")
