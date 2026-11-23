@@ -25,12 +25,13 @@ what was found. Sizes are rough.
 2. **TLS and certificates** (about 5,000): `tls.c`, `x509.c`, the key exchanges and signatures. Checked against test vectors and the TLS bench.
 3. **browzer's reading of pages** (about 8,500): HTTP, HTML, CSS, cookies, addresses, playlists, HLS.
 4. **The JavaScript room** (about 10,500): the engine, the page objects, the wall around them.
-5. **Sound decoders** (about 7,000): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers. Already fuzzed; this round reads them.
-6. **The wall between apps and the system** (about 2,000): `wall.c`, `apps.c`, every call an app can make.
+5. **Sound decoders** (about 7,500): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers, and the small bit-reading and sound libraries under them. Already fuzzed; this round reads them.
+6. **The wall between apps and the system** (about 2,500): `wall.c`, `apps.c`, every call an app can make, and the apps' side of it (`src/apps/sdk`).
 7. **Disk and files** (about 2,500): FAT12 writing, STATE.BIN, the inventory.
 8. **maelcum and the tape** (about 2,500): reading tapes, sealing, packing.
-9. **The rest of the system** (about 8,000): boot, memory, the screen, keys, the shell and the small apps.
-10. **The build tools** (about 4,000): `tools/`, especially anything that writes to a disk.
+9. **The rest of the system** (about 8,500): the boot sector, memory, the screen, keys, the shell, scribe and the inventory.
+10. **The build** (about 4,000): `tools/` and the Makefile, especially anything that writes to a disk, and the generated tables checked against what made them.
+11. **The tests themselves** (about 4,300): `test/`. A test that cannot fail hides bugs.
 
 ## Security, waiting for a decision
 
