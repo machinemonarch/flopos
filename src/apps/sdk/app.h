@@ -39,6 +39,7 @@ typedef struct {
     u32  bss_end;                        /* where its zeroed memory stops  */
     u32  entry;                          /* int app_main(const Api *, ...) */
     char name[16];
+    u32  ro_end;                         /* code and constants end here: the whole pages before it are kept read-only */
 } AppHeader;
 
 typedef struct { u32 first, size; } AppFile;

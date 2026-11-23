@@ -16,7 +16,7 @@ static int serial_wait(void)
 {
     u32 until = ms_now() + 40;
     int b;
-    while ((b = serial_getc()) < 0 && ms_now() < until) { }
+    while ((b = serial_getc()) < 0 && (s32)(ms_now() - until) < 0) { }   /* safe across the 49-day wrap */
     return b;
 }
 

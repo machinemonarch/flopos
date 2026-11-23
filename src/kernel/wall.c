@@ -15,9 +15,11 @@
  *   - when it breaks one of these rules it is closed, with a sentence
  *     saying why, and FLOPOS carries on.
  *
- * The page table is as plain as it can be: 1024 four-megabyte pages, each
- * mapped to itself, so the system sees memory exactly as before.  Two of
- * them (the app's 8 MB) are marked as the app's; the rest are the
+ * The page table is as plain as it can be: four-megabyte pages, each
+ * mapped to itself, so the system sees memory exactly as before -- but
+ * only the memory there is (and the screen's, wall_map), so a stray
+ * pointer into nothing stops at once instead of reading air.  Three of
+ * them (the app's 12 MB) are marked as the app's; the rest are the
  * system's alone.  Four-megabyte pages need a Pentium (PSE); on a CPU
  * without them the wall is left down and apps run as they used to.
  *
@@ -53,6 +55,8 @@ extern u8 gdt[];
 #define NCALLS       ((sizeof(Api) - 4) / 4)
 
 static u32 s_pd[1024] __attribute__((aligned(4096)));
+static u32 s_apt[1024] __attribute__((aligned(4096)));   /* the app's first 4 MB, in 4 KB pages */
+static u32 s_ro_end;                     /* the app's code ends here (whole pages below are read-only) */
 static struct { u32 link, esp0, ss0, rest[23]; } s_tss;
 static int s_on;                         /* the wall is up                  */
 static int s_running;                    /* an app is behind it now         */
@@ -88,6 +92,43 @@ void wall_paging(int on)
     __asm__ __volatile__("movl %0, %%cr0" :: "r"(cr0));
 }
 
+/* Memory that is not RAM but is used (the screen's frame buffer), let in
+ * for the system alone.  Before the wall is up everything is reachable. */
+void wall_map(u32 addr, u32 len)
+{
+    u32 i;
+    if (!s_on || !len) return;
+    for (i = addr >> 22; i <= (addr + len - 1) >> 22 && i < 1024; i++)
+        if (!(s_pd[i] & 1)) s_pd[i] = (i << 22) | 0x83;
+    __asm__ __volatile__("movl %%cr3, %%eax; movl %%eax, %%cr3" ::: "eax", "memory");
+}
+
+/* While an app runs, the whole pages of its code and constants are
+ * read-only to it, so a bug cannot rewrite its own program.  The last,
+ * partial page stays writable: lining code up to a page would cost floppy. */
+void wall_protect(u32 ro_end)
+{
+    u32 i, a, top = ro_end & ~0xFFFu;
+    if (!s_on) return;
+    s_ro_end = 0;
+    if (ro_end <= APP_BASE || ro_end >= APP_BASE + 0x400000u) { wall_unprotect(); return; }
+    for (i = 0; i < 1024; i++) {
+        a = APP_BASE + (i << 12);
+        s_apt[i] = a | (a < top ? 5u : 7u);              /* present, user, read-only or writable */
+    }
+    s_ro_end = top;
+    s_pd[APP_BASE >> 22] = (u32)s_apt | 7u;
+    __asm__ __volatile__("movl %%cr3, %%eax; movl %%eax, %%cr3" ::: "eax", "memory");
+}
+
+void wall_unprotect(void)
+{
+    if (!s_on) return;
+    s_ro_end = 0;
+    s_pd[APP_BASE >> 22] = APP_BASE | 0x87u;
+    __asm__ __volatile__("movl %%cr3, %%eax; movl %%eax, %%cr3" ::: "eax", "memory");
+}
+
 void wall_init(void)
 {
     u32 a, b, c, d, i, cr4;
@@ -97,7 +138,11 @@ void wall_init(void)
     __asm__ __volatile__("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(1));
     if (!(d & 8)) return;                /* no four-megabyte pages: no wall */
 
-    for (i = 0; i < 1024; i++) s_pd[i] = (i << 22) | 0x83;       /* present, writable, 4 MB */
+    {                                    /* only the memory there is        */
+        u32 top = 0x00100000u + BOOTINFO_EXTKB * 1024u;
+        if (top < APP_END) top = APP_END;
+        for (i = 0; i < 1024; i++) s_pd[i] = i < ((top + 0x3FFFFFu) >> 22) ? (i << 22) | 0x83 : 0;
+    }
     for (i = APP_BASE >> 22; i < APP_END >> 22; i++) s_pd[i] |= 4;   /* the app's own      */
 
     /* The task state: all the CPU wants of it is where the system's stack
@@ -136,7 +181,11 @@ void wall_fault(Regs *r, const char *what)
     if (room_current()) { room_fault(r, what); return; }
     __asm__ __volatile__("movl %%cr2, %0" : "=r"(cr2));
     serial_printf("[wall] app fault: %s at %x, reaching for %x, err %x\n", what, r->eip, cr2, r->err);
-    if (r->vector == 14) fmt_str(why, sizeof why, "it reached outside its own memory");
+    /* A write into its own code -- unless it is the stack, run all the way
+     * down: that is the old story, told the old way. */
+    if (r->vector == 14 && (r->err & 3) == 3 && cr2 >= APP_BASE && cr2 < s_ro_end &&
+        !(cr2 + 64 >= r->useresp && cr2 < r->useresp + 1024)) fmt_str(why, sizeof why, "it wrote over its own program");
+    else if (r->vector == 14) fmt_str(why, sizeof why, "it reached outside its own memory");
     else if (r->vector == 13) fmt_str(why, sizeof why, "it tried something only the system may do");
     else if (r->vector == 6 && r->eax == STACK_SMASHED) fmt_str(why, sizeof why, "%s", what);
     else fmt_str(why, sizeof why, "it stumbled (%s)", what);

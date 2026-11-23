@@ -1702,12 +1702,38 @@ static int fetch_answer(int got, int st, const char *type)
     return (int)s_on_;
 }
 
+/* The shape of each request: n a number, t a text.  A request must be
+ * exactly its shape -- nothing missing, nothing left over -- or it is
+ * refused before anything reads it. */
+static const char *const door_shape[D_COUNT] = {
+    [D_LOG] = "nt", [D_ALERT] = "t", [D_GETID] = "t", [D_QUERY] = "ntn", [D_TAGS] = "nt", [D_CLASSES] = "nt",
+    [D_NAMES] = "t", [D_GET] = "nn", [D_SET] = "nnt", [D_ATTR] = "nt", [D_SETATTR] = "ntt", [D_DELATTR] = "nt",
+    [D_CREATE] = "t", [D_TEXT] = "t", [D_INSERT] = "nnn", [D_REMOVE] = "n", [D_STYLE] = "nt", [D_SETSTYLE] = "ntt",
+    [D_CLASS] = "nnt", [D_LISTEN] = "nt", [D_FETCH] = "ttttn", [D_GO] = "t", [D_WRITE] = "t", [D_HREF] = "",
+    [D_PATH] = "n", [D_SHOWN] = "n", [D_CLONE] = "nn", [D_IMPORT] = "tt", [D_FETCHMORE] = "", [D_SENDMORE] = "t",
+    [D_SENDDONE] = "", [D_FETCHEND] = "",
+};
+
+static int door_fits(const u8 *q, u32 len)
+{
+    const char *sh;
+    u32 i = 1, n;
+    if (len < 1 || q[0] < 1 || q[0] >= D_COUNT || !(sh = door_shape[q[0]])) return 0;
+    for (; *sh; sh++) {
+        if (len - i < 4) return 0;
+        n = (u32)q[i] | ((u32)q[i + 1] << 8) | ((u32)q[i + 2] << 16) | ((u32)q[i + 3] << 24);
+        i += 4;
+        if (*sh == 't') { if (n > len - i) return 0; i += n; }
+    }
+    return i == len;
+}
+
 static int door(u8 *buf, u32 len, u32 cap)
 {
     u32 op, n, k;
     char *a, *b;
     u32 al, bl;
-    if (len > sizeof s_req) return -1;
+    if (len > sizeof s_req || !door_fits(buf, len)) return -1;
     for (k = 0; k < len; k++) s_req[k] = buf[k];
     s_rl = len; s_ri = 1;
     s_out = buf; s_cap = cap; s_on_ = 0;

@@ -8,6 +8,7 @@ SECTIONS
     .apphdr : { KEEP(*(.apphdr)) }
     .text   : { *(.text) *(.text.*) }
     .rodata : { *(.rodata) *(.rodata.*) }
+    _app_ro_end = .;                     /* not page aligned: padding would cost floppy */
     .data   : { *(.data) *(.data.*) }
     . = ALIGN(16);
     _app_image_end = .;

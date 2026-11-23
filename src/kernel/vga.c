@@ -216,6 +216,7 @@ int vga_go_big(void)
         return 0;
     }
 
+    wall_map(m.lfb, (u32)m.pitch * m.height);
     s_lfb = (volatile u8 *)m.lfb;
     s_hmode = m.mode;
     s_composed = 0;

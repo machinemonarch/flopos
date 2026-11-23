@@ -220,6 +220,9 @@ void room_tick(Regs *r);
 /* --- wall.c: apps kept to their own memory ------------------------------- */
 void   wall_init(void);
 int    wall_on(void);
+void   wall_protect(u32 ro_end);      /* the app's code read-only while it runs */
+void   wall_unprotect(void);
+void   wall_map(u32 addr, u32 len);       /* let the system reach memory that is not RAM (the screen) */
 void   wall_paging(int on);              /* off and on again round a BIOS call */
 int    wall_trap(Regs *r);               /* 1 if it was one of an app's doors  */
 void   wall_fault(Regs *r, const char *what);

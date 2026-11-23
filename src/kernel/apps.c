@@ -459,7 +459,7 @@ static int run_one(const char *word, int argc, char **argv)
     /* Behind the wall, at its own privilege and on its own stack (the top
      * of its memory); or, on a CPU that cannot do that, as part of the
      * system, the way it used to be. */
-    if (wall_on()) r = wall_run(h->entry, argc, argv);
+    if (wall_on()) { wall_protect(h->ro_end); r = wall_run(h->entry, argc, argv); wall_unprotect(); }
     else           r = ((AppMain)h->entry)(&s_api, argc, argv);
     s_app_bytes = 0;
     mood_ember(0);                       /* frames back to neon, keys to pink */

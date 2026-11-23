@@ -15,12 +15,16 @@
  *   rogue 11  fall down its stack for ever
  *   rogue 12  name a routine outside itself for the system to call
  *   rogue 13  write past the end of a buffer on its own stack
+ *   rogue 14  write over its own program (its header, in a read-only page)
  *   rogue 0   nothing wrong: says so
  */
 #include "app.h"
 
 static const Api *A;
 static volatile u32 sink;
+/* Constants enough that the program fills a whole page (only whole pages
+ * are read-only). */
+static const u8 ballast[4096] = { 1 };
 
 /* Writes 64 bytes into 16: the canary behind b must catch it on return. */
 static void __attribute__((noinline)) overrun(volatile int len)
@@ -59,6 +63,7 @@ int app_main(const Api *api, int argc, char **argv)
         return 0;
     case 11: sink = (u32)deeper(0); break;
     case 13: overrun(64); break;
+    case 14: sink = ballast[(u32)argc * 1000u & 4095u]; *(volatile u32 *)(APP_BASE + 16) = 0; break;
     case 12: A->audio_open(22050); A->audio_feeder((void (*)(void))0x00010000); break;
     default:
         A->print("[rogue] behaving");

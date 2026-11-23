@@ -26,7 +26,8 @@ CASES = [(0, r"\[rogue\] behaving"),
          (10, r"\[rogue\] refused"),
          (11, "closed: it reached outside its own memory"),
          (12, "closed: it handed over memory that is not its own"),
-         (13, "closed: its stack was overrun")]
+         (13, "closed: its stack was overrun"),
+         (14, "closed: it wrote over its own program")]
 
 def main():
     img = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "dist", "flopos.img")

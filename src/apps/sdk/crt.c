@@ -6,7 +6,7 @@
  */
 #include "app.h"
 
-extern char _app_image_end[], _app_bss_end[];
+extern char _app_image_end[], _app_bss_end[], _app_ro_end[];
 int app_main(const Api *api, int argc, char **argv);
 static int app_start(const Api *api, int argc, char **argv);
 
@@ -15,7 +15,7 @@ const AppHeader app_header = {
     { 'F', 'L', 'O', 'P', 'A', 'P', 'P', 0 },
     APP_API_VERSION, APP_BASE,
     (u32)_app_image_end, (u32)_app_bss_end, (u32)app_start,
-    APP_NAME
+    APP_NAME, (u32)_app_ro_end
 };
 
 /* The stack's canary: a random word beside every return address that has
