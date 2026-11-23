@@ -49,6 +49,17 @@ without it. Each version's notes are also written next to its image, as
 - **Response headers** reach scripts: response.headers.get() and
   XMLHttpRequest's getResponseHeader(). Another site's answer shows only
   the headers any page may read.
+- **URL** follows the standard: ../ and ./ are worked out, an address
+  that is not one throws, every part (search, pathname, hash...) can be
+  read and set and the address follows, and searchParams stays linked.
+  URLSearchParams sorts, counts and goes through its pairs; URL.canParse
+  and URL.parse are there.
+- **Headers, Request and Response** are complete: Headers goes through
+  its entries, Request can be made and handed to fetch(), Response.json()
+  and Response.error() exist.
+- **XMLHttpRequest** has every event (progress, load, loadend...), many
+  listeners per event, status text, the response's address and headers,
+  and abort().
 - **Map and Set are built in**, as fast as other browsers' and as the
   standard says: WeakMap, WeakSet and groupBy too.
 - **Array.from** takes anything list-like (a Set, a generator).

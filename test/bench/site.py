@@ -107,10 +107,14 @@ function has(k) {
   if (k === 'javascript.builtins.globalThis') return typeof globalThis !== 'undefined';
   try {
     if (p[0] === 'javascript') { g = G[p[2]]; if (p.length === 3) return g !== undefined;
+      if (p[3] === p[2]) return typeof g === 'function';
+      if (p[3] === '@@iterator') return g !== undefined && g.prototype !== undefined && (typeof Symbol !== 'undefined' && Symbol.iterator in g.prototype || '@@iterator' in g.prototype);
       return g !== undefined && (p[3] in Object(g) || (g.prototype !== undefined && p[3] in g.prototype)); }
     g = G[p[1]];
     if (p.length === 2) return g !== undefined || sample[p[1]] !== undefined;
+    if (p[2] === p[1]) return typeof g === 'function';                       /* its constructor */
     base = sample[p[1]] || (g && g.prototype) || g;
+    if (p[2] === '@@iterator') return base != null && (typeof Symbol !== 'undefined' && Symbol.iterator in Object(base) || '@@iterator' in Object(base));
     return base !== undefined && base !== null && (p[2] in Object(base) || (g !== undefined && p[2] in Object(g)));
   } catch (e) { return false; }
 }
@@ -124,6 +128,20 @@ function part(n) {
   });
 }
 part(0).catch(function (e) { document.getElementById('o').textContent = 'probe: failed ' + e; });
+</script>""",
+    "/js/url": """<title>js url</title><p id="o">not yet</p><script>
+var r = [], u = new URL('../b/./c?x=1#h', 'https://Ex.COM:443/a/d/e');
+r.push(u.href);
+u.searchParams.append('y', 'a b'); r.push(u.search);
+u.pathname = '/z'; u.hash = ''; r.push(u.href);
+r.push(URL.canParse('nope') + '/' + URL.canParse('mailto:a@b'));
+try { new URL('http://'); r.push('no throw'); } catch (e) { r.push(e.name); }
+var q = new URLSearchParams([['b', '2'], ['a', '1']]); q.sort(); r.push(q + ' ' + q.size + ' ' + Array.from(q.keys()).join(''));
+var h = new Headers({ 'X-A': '1' }); h.append('x-a', '2'); r.push(h.get('X-A') + ' ' + [...h].length);
+var x = new XMLHttpRequest(), ev = [];
+x.addEventListener('load', function (e) { ev.push('load' + (e.loaded > 0 ? '+' : '')); });
+x.addEventListener('loadend', function () { ev.push('end'); document.getElementById('o').textContent = 'url: ' + r.join(' | ') + ' | ' + ev.join(',') + ' ' + x.status + ' ' + (x.getResponseHeader('content-type') || ''); });
+x.open('GET', '/api/cors-ok'); x.send();
 </script>""",
     "/js/bigfetch": """<title>js bigfetch</title><p id="o">not yet</p><script>
 fetch('/api/big').then(function (r) { return r.json().then(function (j) {
