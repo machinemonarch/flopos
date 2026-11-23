@@ -71,6 +71,14 @@ without it. Each version's notes are also written next to its image, as
   size goes out in pieces, with upload progress.
 - **Errors no script caught** in a timer now show on the serial wire, as
   browsers' consoles show them; a timer stopped for time says so.
+- **librespeed.org's speed test runs**, and with it every page that
+  starts a Worker or import() from a click or a timer (they were never
+  loaded); a Worker's own work may take 15 s, other timers 4 s.
+- **The script room has 7 MB** (was 4), at 24-31 MB: a page's scripts
+  get about 5 MB, enough for a speed test's 1 MB buffer.
+- **Fetches are rate-limited, not capped:** 60 at once, then six a
+  second, so a long-running page carries on and a runaway one is held.
+- **A timer stopped for time or memory says so,** naming its function.
 - **Map and Set are built in**, as fast as other browsers' and as the
   standard says: WeakMap, WeakSet and groupBy too.
 - **Array.from** takes anything list-like (a Set, a generator).
@@ -83,7 +91,7 @@ without it. Each version's notes are also written next to its image, as
 
 #### Kernel
 
-- **Apps get 12 MB** (was 8): the script room moved up to 24-28 MB, into
+- **Apps get 12 MB** (was 8): the script room moved up to 24-31 MB, into
   memory nothing used.
 
 - **Programs are packed on the floppy** and unpacked as they load: the
