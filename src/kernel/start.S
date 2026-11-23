@@ -296,12 +296,33 @@ pm_start:
         cmpl    $1024, 0x504             /* BOOTINFO_EXTKB: KB above 1MB */
         jb      halt
         cld
-        movl    $_high_lma, %esi
+        /* On the floppy the kernel proper is packed (tools/build/mkimage.py
+         * fills in kpack_bytes): unpack it up, with the copy of the
+         * unpacker kept down here.  Unpacked (straight from the build), copy
+         * it.  A kernel that does not unpack whole is damaged: stop. */
+        movl    kpack_bytes, %ecx
+        testl   %ecx, %ecx
+        jz      1f
+        movl    $_high_end, %eax
+        subl    $_high_start, %eax
+        pushl   %eax
+        pushl   $_high_start
+        pushl   %ecx
+        pushl   $_high_lma + 8
+        call    boot_inflate
+        addl    $16, %esp
+        movl    $_high_end, %ecx
+        subl    $_high_start, %ecx
+        cmpl    %ecx, %eax
+        jne     halt
+        jmp     2f
+1:      movl    $_high_lma, %esi
         movl    $_high_start, %edi
         movl    $_high_end, %ecx
         subl    %edi, %ecx
         shrl    $2, %ecx
         rep     movsl
+2:
 
         /* .bss is NOLOAD, so it is not in the disk image -- clear it. */
         movl    $_bss_start, %edi
@@ -318,3 +339,14 @@ pm_start:
 halt:   cli
         hlt
         jmp     halt
+
+/* What mkimage.py needs to pack the kernel: where the front part ends (the
+ * rest is packed, as zlib after "FLZ1" and its size) and, filled in by it,
+ * how many packed bytes follow. */
+        .section .lowdata, "aw"
+        .globl  kpack_bytes
+        .ascii  "FLOPOS-KPACK!\0\0\0"
+        .long   _high_lma - 0x10000
+kpack_bytes:
+        .long   0
+

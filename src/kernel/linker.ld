@@ -30,7 +30,7 @@ SECTIONS
      * 64K limit, so they have to be inside the first 64K of the image.
      * The ASSERT below is what stops that becoming a mystery later. */
     .lowtext : { *(.lowtext) }
-    .lowdata : { *(.lowdata) }
+    .lowdata : { *(.lowdata) *(.lowbss) }
     . = ALIGN(16);
     _low_end = .;
     _high_lma = .;                       /* where the high part is in the image */

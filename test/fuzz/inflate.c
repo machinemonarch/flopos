@@ -19,4 +19,6 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
     free(in); free(out);
 }
 
-int fs_read(const FsFile *f, u8 *b, u32 m) { (void)f; (void)b; (void)m; return -1; }   /* load_packed is not fuzzed here */
+int fs_read(const FsFile *f, u8 *b, u32 m) { (void)f; (void)b; (void)m; return -1; }   /* load_packed and load_whole are not fuzzed here */
+void *halloc(usize n) { return malloc(n ? n : 1); }
+void hgive_back(void *p, usize n) { (void)p; (void)n; }

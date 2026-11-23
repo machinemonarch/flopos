@@ -21,7 +21,7 @@ detail.
 - **12 MB to 24 MB:** The app area, the only memory an app can touch.
 - **24 MB to 31 MB:** The script room (`src/room/`), walled off from the app.
 
-ROOM.BIN and the apps are packed on the floppy (deflate in zlib's wrapper, behind "FLZ1" and the size; `tools/build/mkimage.py`). The kernel reads one into the top of its area and unpacks it from the bottom (`src/kernel/inflate.c`), checking the checksum; a plain file loads as before.
+ROOM.BIN, the apps, OZZY.PIX and ROOTS.DAT are packed on the floppy (deflate in zlib's wrapper, behind "FLZ1" and the size; `tools/build/mkimage.py`). The kernel reads one into the top of its area and unpacks it from the bottom (`src/kernel/inflate.c`), checking the checksum; a plain file loads as before. KERNEL.BIN keeps its front part plain (`.stub16`, `.lowtext`, `.lowdata`: the disk map and a second copy of the unpacker) and packs the rest, which `start.S` unpacks up to 1 MB. SAFFRAN.PIX stays plain: the boot sector draws it.
 - **0x7000000:** The video card's frame buffer.
 
 Paging is on, with 4 MB pages mapping every address to itself; only the

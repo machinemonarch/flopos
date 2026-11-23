@@ -194,6 +194,7 @@ int    glyph_index(int c);
 /* --- heap.c: a bump allocator over extended memory --------------------- */
 void   heap_init(void);
 void  *halloc(usize bytes);
+void   hgive_back(void *p, usize bytes);   /* only the last one   */
 u32    heap_used(void);
 u32    heap_total(void);
 int    heap_is_low(void);                /* using conventional memory?     */

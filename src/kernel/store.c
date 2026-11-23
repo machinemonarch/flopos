@@ -21,7 +21,9 @@
 
 /* mkimage.py finds this by its signature and fills in the numbers.  The
  * volatile stops the compiler deciding the zeroes are the final word. */
-volatile DiskMap g_diskmap = {
+/* In the kernel's front part, which the floppy keeps unpacked
+ * (linker.ld), so mkimage.py can still find and patch it. */
+volatile DiskMap g_diskmap __attribute__((section(".lowdata"))) = {
     { 'F','L','O','P','O','S','-','D','I','S','K','M','A','P','!',0 },
     0, 0, 0, 0
 };

@@ -28,6 +28,7 @@
  * ===========================================================================
  */
 #include "flopos.h"
+#include "inflate.h"
 #include "io.h"
 
 #define LINES_SHOWN 5
@@ -235,9 +236,10 @@ void boot_end(void)
 void leave_load(void)
 {
     FsFile f;
-    if (!fs_mount() || !fs_find("OZZY.PIX", &f) || f.size != 768 + SCR_PIX) return;
-    s_ozzy = (u8 *)halloc(f.size);
-    if (s_ozzy && fs_read(&f, s_ozzy, f.size) != (int)f.size) s_ozzy = 0;
+    u32 n = 0;
+    if (!fs_mount() || !fs_find("OZZY.PIX", &f)) return;
+    s_ozzy = load_whole(&f, 768 + SCR_PIX, &n);         /* packed on the floppy */
+    if (n != 768 + SCR_PIX) s_ozzy = 0;
 }
 
 int leave_begin(void)

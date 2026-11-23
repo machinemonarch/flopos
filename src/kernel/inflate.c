@@ -181,6 +181,32 @@ int inflate_zlib(const u8 *in, u32 n, u8 *out, u32 cap)
     return sum == ((b << 16) | a) ? (int)(z.out - out) : -1;
 }
 
+#ifndef BOOT_INFLATE
+/* A data file (OZZY.PIX, ROOTS.DAT), packed or plain, whole into memory of
+ * its own: what it holds unpacked, its size in *len, or 0.  The packed
+ * bytes go in a scratch buffer given straight back. */
+u8 *load_whole(const FsFile *f, u32 max, u32 *len)
+{
+    u8 head[8], *out, *tmp;
+    u32 size;
+    if (f->size < 8 || fs_read(f, head, 8) != 8) return 0;
+    if (head[0] != 'F' || head[1] != 'L' || head[2] != 'Z' || head[3] != '1') {
+        if (f->size > max) return 0;
+        out = (u8 *)halloc(f->size);
+        if (fs_read(f, out, f->size) != (int)f->size) return 0;
+        *len = f->size;
+        return out;
+    }
+    size = head[4] | ((u32)head[5] << 8) | ((u32)head[6] << 16) | ((u32)head[7] << 24);
+    if (f->size < 14 || size > max || f->size > max) return 0;
+    out = (u8 *)halloc(size);
+    tmp = (u8 *)halloc(f->size);
+    if (fs_read(f, tmp, f->size) != (int)f->size || inflate_zlib(tmp + 8, f->size - 8, out, size) != (int)size) out = 0;
+    hgive_back(tmp, f->size);
+    *len = size;
+    return out;
+}
+
 /* A program file into dest (room bytes there): packed or plain.  Its size
  * unpacked, or -1 with *why. */
 int load_packed(const FsFile *f, u8 *dest, u32 room, const char **why)
@@ -200,3 +226,4 @@ int load_packed(const FsFile *f, u8 *dest, u32 room, const char **why)
     if (inflate_zlib(at + 8, f->size - 8, dest, size) != (int)size) { *why = "it is damaged"; return -1; }
     return (int)size;
 }
+#endif

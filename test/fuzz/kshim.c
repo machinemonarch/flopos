@@ -17,6 +17,7 @@ static u32 s_rand = 1, s_now;
 void kshim_reset(void) { s_rand = 1; s_now = 1000; }
 
 void *halloc(usize bytes) { return calloc(1, bytes ? bytes : 1); }
+void hgive_back(void *p, usize bytes) { (void)p; (void)bytes; }   /* a leak, as halloc never frees */
 int fs_mount(void) { return 1; }
 int fs_find(const char *name, FsFile *f)
 {

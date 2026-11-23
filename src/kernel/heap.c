@@ -68,6 +68,13 @@ void *halloc(usize bytes)
     return (void *)p;
 }
 
+/* Give back the last buffer handed out, for a scratch buffer used once at
+ * boot (load_whole, inflate.c).  Anything but the last is left alone. */
+void hgive_back(void *p, usize bytes)
+{
+    if ((u32)p + ((bytes + 15u) & ~15u) == s_next && (u32)p >= s_base) s_next = (u32)p;
+}
+
 u32 heap_base(void)  { return s_base; }
 u32 heap_used(void)  { return s_next - heap_base(); }
 u32 heap_total(void) { return s_limit - heap_base(); }

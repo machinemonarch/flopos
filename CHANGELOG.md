@@ -143,6 +143,10 @@ without it. Each version's notes are also written next to its image, as
 - **Programs are packed on the floppy** and unpacked as they load: the
   script room and every app take about half the space (300 KB freed) and
   less of the floppy's slow reading. Your own files stay plain.
+- **The kernel, Ozzy's picture and the list of trusted authorities are
+  packed too,** 167 KB more free on the floppy (it was 82% full, now 71%),
+  and 131 KB less to read off the drive at boot. Saffran stays as he is:
+  the boot sector shows him before anything can unpack.
 
 ### BUG FIXES
 

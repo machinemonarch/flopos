@@ -57,7 +57,9 @@ cmp -s "$W/new3.img" "$NEW" || bad "a blank disk changed the image"
 # 4. too much to fit
 cp "$W/new.img" "$W/old4.img"; cp "$NEW" "$W/new4.img"; mkdir "$W/k4"
 mdel -i "$W/old4.img" ::WIZARD.WIZ ::BROWZER.APP 2>/dev/null
-head -c 200000 /dev/urandom > "$W/A.BIN"; head -c 200000 /dev/urandom > "$W/B.BIN"
+# Together a little more than the new floppy has free, whatever that is.
+FREE=$(mdir -i "$NEW" :: | sed -n 's/^ *\([0-9 ]*\) bytes free$/\1/p' | tr -d ' ')
+head -c $(( ${FREE:?} / 2 + 4096 )) /dev/urandom > "$W/A.BIN"; head -c $(( FREE / 2 + 4096 )) /dev/urandom > "$W/B.BIN"
 mcopy -n -i "$W/old4.img" "$W/A.BIN" "$W/B.BIN" ::INVENTORY/ || bad "could not prepare the fourth image"
 "$ROOT/tools/floppy/keepfiles.sh" "$W/old4.img" "$W/new4.img" "$W/k4" >/dev/null 2>&1 && bad "an inventory that cannot fit was not refused"
 

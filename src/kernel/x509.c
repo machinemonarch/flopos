@@ -22,6 +22,7 @@
  * ===========================================================================
  */
 #include "flopos.h"
+#include "inflate.h"
 #include "io.h"
 
 typedef struct { const u8 *p; int len; } Span;
@@ -482,14 +483,12 @@ static int  s_roots_len, s_nroots;
 static int roots_load(void)
 {
     FsFile f;
-    int n;
+    u32 n = 0;
     if (s_roots) return 1;
-    if (!fs_mount() || !fs_find("ROOTS.DAT", &f) || f.size < 10 || f.size > 400000) return 0;
-    s_roots = (u8 *)halloc(f.size);
-    if (!s_roots) return 0;
-    n = fs_read(&f, s_roots, f.size);
-    if (n < 10 || !same(&(Span){ s_roots, 8 }, (const u8 *)"FLOPROOT", 8)) { s_roots = 0; return 0; }
-    s_roots_len = n;
+    if (!fs_mount() || !fs_find("ROOTS.DAT", &f)) return 0;
+    s_roots = load_whole(&f, 400000, &n);               /* packed on the floppy */
+    if (!s_roots || n < 10 || !same(&(Span){ s_roots, 8 }, (const u8 *)"FLOPROOT", 8)) { s_roots = 0; return 0; }
+    s_roots_len = (int)n;
     s_nroots = (s_roots[8] << 8) | s_roots[9];
     return 1;
 }

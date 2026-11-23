@@ -43,7 +43,7 @@ AOBJ    := $(patsubst src/kernel/%.S,$(OBJDIR)/%.o,$(ASRC))
 KHDRS   := $(wildcard src/kernel/*.h src/kernel/gen/*.h)
 
 # start.o must come first: it owns physical 0x10000.
-KOBJ    := $(OBJDIR)/start.o $(OBJDIR)/isr.o $(OBJDIR)/bios.o $(COBJ)
+KOBJ    := $(OBJDIR)/start.o $(OBJDIR)/isr.o $(OBJDIR)/bios.o $(COBJ) $(OBJDIR)/bootinflate.o
 
 IMG     := $(DIST)/flopos.img
 
@@ -75,6 +75,16 @@ $(OBJDIR):
 # (src/apps/sdk/app.h) is laid out in more than one file, and a stale one misleads.
 $(OBJDIR)/%.o: src/kernel/%.c $(KHDRS) $(SDK)/app.h | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
+# A second copy of the unpacker, kept in the kernel's front part (linker.ld)
+# for start.S to unpack the rest with before any of it is in place: no
+# stack canary (its guard is in the part not yet unpacked).
+$(OBJDIR)/bootinflate.o: src/kernel/inflate.c $(KHDRS) | $(OBJDIR)
+	$(CC) $(CFLAGS) -fno-stack-protector -DBOOT_INFLATE -c $< -o $@.tmp
+	objcopy --redefine-sym inflate_zlib=boot_inflate --rename-section .text=.lowtext \
+	        --rename-section .rodata=.lowdata --rename-section .data=.lowdata --rename-section .bss=.lowbss $@.tmp $@
+	@rm -f $@.tmp
+	@objdump -h $@ | awk '$$2 ~ /^\./ && $$2 !~ /^\.low|^\.comment|^\.note/ { print "bootinflate.o has a section that would not be in the front part: " $$2; bad = 1 } END { exit bad }'
+	@! nm -u $@ | grep -q . || (echo "bootinflate.o calls out of the front part:"; nm -u $@; exit 1)
 $(OBJDIR)/%.o: src/kernel/gen/%.c $(KHDRS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 

@@ -56,17 +56,41 @@ SAFFRAN = "data/saffran.pix"
 SAFFRAN_BYTES = 768 + 64000
 
 
-def packed(path):
-    """The program at path, packed as the kernel unpacks it (src/kernel/inflate.c):
-    "FLZ1", its size, then a zlib stream.  Written beside it as path + ".flz";
-    a program that would not get smaller goes on as it is."""
+def packed(path, where=None):
+    """The file at path, packed as the kernel unpacks it (src/kernel/inflate.c):
+    "FLZ1", its size, then a zlib stream.  Written beside it as path + ".flz"
+    (in where, if named); a file that would not get smaller goes on as it is."""
     import zlib
     data = open(path, "rb").read()
     z = zlib.compress(data, 9)
     if len(z) + 8 >= len(data):
         return path
-    out = path + ".flz"
+    out = os.path.join(where, os.path.basename(path)) + ".flz" if where else path + ".flz"
     open(out, "wb").write(b"FLZ1" + struct.pack("<I", len(data)) + z)
+    return out
+
+
+KPACK_MAGIC = b"FLOPOS-KPACK!\x00\x00\x00"
+
+
+def packed_kernel(path):
+    """KERNEL.BIN as the floppy carries it: its front part as it is (it holds
+    the unpacker, src/kernel/start.S), then the rest packed like a program;
+    how many packed bytes follow is written into the front part.  Written
+    beside it as path + ".flz"."""
+    import zlib
+    kern = bytearray(open(path, "rb").read())
+    at = kern.find(KPACK_MAGIC)
+    if at < 0 or kern.find(KPACK_MAGIC, at + 1) >= 0:
+        sys.exit("the kernel should carry its packing signature exactly once")
+    low = struct.unpack_from("<I", kern, at + 16)[0]
+    if not at + 24 <= low < len(kern):
+        sys.exit("the kernel's front part does not make sense")
+    rest = bytes(kern[low:])
+    z = zlib.compress(rest, 9)
+    struct.pack_into("<I", kern, at + 20, len(z))
+    out = path + ".flz"
+    open(out, "wb").write(bytes(kern[:low]) + b"FLZ1" + struct.pack("<I", len(rest)) + z)
     return out
 
 
@@ -94,6 +118,8 @@ def main():
     app_paths = sys.argv[4:]
 
     boot = bytearray(open(boot_path, "rb").read())
+    room = os.path.join(os.path.dirname(kern_path), "room.bin")
+    kern_path = packed_kernel(kern_path)
     kern = open(kern_path, "rb").read()
     if len(boot) != SECTOR:
         sys.exit("boot sector is %d bytes, must be %d" % (len(boot), SECTOR))
@@ -134,7 +160,7 @@ def main():
         run("mcopy", "-i", out_path, readme, "::README.TXT")
 
     # The authorities secure sites are checked against (tools/build/mkroots.py).
-    run("mcopy", "-i", out_path, "data/roots.dat", "::ROOTS.DAT")
+    run("mcopy", "-i", out_path, packed("data/roots.dat", tmpdir), "::ROOTS.DAT")
 
     # The wizard's way with words (tools/wizard), read once at boot.
     run("mcopy", "-i", out_path, "data/wizard.wiz", "::WIZARD.WIZ")
@@ -147,9 +173,8 @@ def main():
     # Ozzy, who sees the machine off on bye and reboot (src/kernel/arrive.c).
     if os.path.getsize("data/ozzy.pix") != SAFFRAN_BYTES:
         sys.exit("data/ozzy.pix should be %d bytes" % SAFFRAN_BYTES)
-    run("mcopy", "-i", out_path, "data/ozzy.pix", "::OZZY.PIX")
+    run("mcopy", "-i", out_path, packed("data/ozzy.pix", tmpdir), "::OZZY.PIX")
     # The script room's engine (src/room/), for browzer's JavaScript.
-    room = os.path.join(os.path.dirname(kern_path), "room.bin")
     if os.path.exists(room):
         run("mcopy", "-i", out_path, packed(room), "::ROOM.BIN")
 
@@ -322,7 +347,7 @@ def main():
     print("   in use      %6d bytes  (%d%% of the disk)"
           % (used_bytes, 100 * used_bytes // (TOTAL_SECTORS * SECTOR)))
     print("   FAT12 free  %6d bytes" %
-          ((TOTAL_SECTORS * SECTOR) - (data_start * SECTOR) - used))
+          ((TOTAL_SECTORS - used) * SECTOR))
 
 
 if __name__ == "__main__":
