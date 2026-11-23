@@ -96,7 +96,7 @@ def type_text(mon, text, settle=0.06):
         elif ch.isdigit():
             key = ch
         elif ch.isalpha():
-            key = ch.lower()
+            key = ("shift-" if ch.isupper() else "") + ch.lower()
         else:
             continue
         mon.cmd("sendkey " + key, settle=settle)
