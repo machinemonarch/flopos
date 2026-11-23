@@ -66,12 +66,13 @@ it; Esc stops typing. Not yet: file uploads.
 
 ## Scripts
 
-Off until you press **j** on a site; allowed sites are kept in
-`SITES.TXT`. Scripts can change the page, react to clicks and forms, use
-timers, `async` and `await`, generators (async ones too) and modules,
-and fetch from their own site, or from another that allows it. jQuery
-works. A script can be 256 KB, a page's scripts 640 KB; the biggest
-modern sites won't fit.
+Off until you press **j** on a site. That is once per site: it is kept in
+`SITES.TXT` and covers the site's pages, reloads and anywhere its scripts
+send you on it; **j** again turns them off. Scripts can change the page,
+react to clicks and forms, use timers, `async` and `await`, generators
+(async ones too) and modules, and fetch from their own site, or from
+another that allows it (answers up to 512 KB). jQuery works. A script can
+be 256 KB, a page's scripts 640 KB; the biggest modern sites won't fit.
 
 How they are kept safe:
 
