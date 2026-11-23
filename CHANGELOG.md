@@ -56,7 +56,7 @@ without it. Each version's notes are also written next to its image, as
   plain http address asks first: y sends it.
 
 - browzer tells servers who it is and where to read about it:
-  "browzer/1.46.0 (FLOPOS; a 1996 Toshiba;
+  "browzer/1.46.0 (FLOPOS; Running on a 1996 Toshiba Laptop;
   +https://github.com/machinemonarch/flopos)", as crawlers do.
 
 ### BUG FIXES
