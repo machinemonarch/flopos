@@ -79,6 +79,13 @@ without it. Each version's notes are also written next to its image, as
 - **Fetches are rate-limited, not capped:** 60 at once, then six a
   second, so a long-running page carries on and a runaway one is held.
 - **A timer stopped for time or memory says so,** naming its function.
+- **The last of the JavaScript list is in:** modules from data: addresses
+  and import.meta.resolve (radio.garden's check), MutationObserver that
+  reports changes, Resize- and IntersectionObserver, Proxy and Reflect,
+  Intl (numbers, currencies, dates, plurals, "3 days ago", lists),
+  functions' own name and length, and iterators on arrays and strings.
+- **Big pages run their scripts:** a page may have 32,768 parts (was
+  6,144), so news sites such as BBC News no longer skip them.
 - **Map and Set are built in**, as fast as other browsers' and as the
   standard says: WeakMap, WeakSet and groupBy too.
 - **Array.from** takes anything list-like (a Set, a generator).

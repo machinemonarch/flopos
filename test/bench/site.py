@@ -165,6 +165,11 @@ x.addEventListener('load', function (e) { ev.push('load' + (e.loaded > 0 ? '+' :
 x.addEventListener('loadend', function () { ev.push('end'); document.getElementById('o').textContent = 'url: ' + r.join(' | ') + ' | ' + ev.join(',') + ' ' + x.status + ' ' + (x.getResponseHeader('content-type') || ''); });
 x.open('GET', '/api/cors-ok'); x.send();
 </script>""",
+    "/js/intl": """<title>js intl</title><p id="o">not yet</p><script>
+document.getElementById('o').textContent = 'intl ' + [new Intl.NumberFormat('en-US').format(1234567.891), new Intl.NumberFormat('de-DE', {style: 'currency', currency: 'EUR'}).format(12.5),
+  new Intl.PluralRules('en').select(1), new Intl.RelativeTimeFormat('en').format(-3, 'day'), new Intl.ListFormat('en').format(['a', 'b', 'c']),
+  new Intl.DateTimeFormat('sv-SE').format(new Date(2026, 10, 23)), (1234.5).toLocaleString('en-US')].join(' | ');
+</script>""",
     "/js/observe": """<title>js observe</title><p id="o">not yet</p><div id="d"></div><script>
 var seen = [];
 new MutationObserver(function (rs) { rs.forEach(function (r) { seen.push(r.type + ':' + (r.attributeName || r.addedNodes.length)); });

@@ -54,6 +54,7 @@ STEPS = [
     r"key:tab",
     r"key:ret=>\A(?![\s\S]*asks first)[\s\S]*links: collected",
     r"js/url=>url: https://ex.com/a/b/c\?x=1#h \| \?x=1&y=a\+b \| https://ex.com/z\?x=1&y=a\+b \| false/true(.|\n)*TypeError \| a=1&b=2 2 ab \| 1, 2 1 \| load\+,end 200 application/json\r?\n",
+    r"js/intl=>intl 1,234,567.891 \| 12,50.. \| one \| 3 days ago \| a, b, and c \| 2026-11-23 \| 1,234.5",
     r"js/observe=>\[shown\] observe childList:1 attributes:title",
     r"js/clickworker",
     r"key:j",
