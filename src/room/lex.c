@@ -246,14 +246,22 @@ void lex_next(Lex *L, Tok *t)
             while (L->pos < L->n && L->src[L->pos] >= '0' && L->src[L->pos] <= '7') v = v * 8 + (L->src[L->pos++] - '0');
             t->num = v;
         } else {
+            /* One point at most, and only before the exponent: 1..toString
+             * is the number 1. and then .toString. */
             u16 b[400]; u32 n = 0, used;
-            while (L->pos < L->n && n < 400) {
+            int dot = 0, ex = 0;
+            while (L->pos < L->n && n < 398) {
                 u32 d = L->src[L->pos];
                 if (d == '_') { L->pos++; continue; }
-                if ((d >= '0' && d <= '9') || d == '.') { b[n++] = (u16)d; L->pos++; continue; }
-                if ((d | 32) == 'e') {
+                if (d >= '0' && d <= '9') { b[n++] = (u16)d; L->pos++; continue; }
+                if (d == '.' && !dot && !ex) { dot = 1; b[n++] = (u16)d; L->pos++; continue; }
+                if ((d | 32) == 'e' && !ex) {
+                    u32 k = L->pos + 1;
+                    if (k < L->n && (L->src[k] == '+' || L->src[k] == '-')) k++;
+                    if (k >= L->n || L->src[k] < '0' || L->src[k] > '9') break;   /* not an exponent */
+                    ex = 1;
                     b[n++] = (u16)d; L->pos++;
-                    if (L->pos < L->n && (L->src[L->pos] == '+' || L->src[L->pos] == '-')) b[n++] = L->src[L->pos++];
+                    if (L->src[L->pos] == '+' || L->src[L->pos] == '-') b[n++] = L->src[L->pos++];
                     continue;
                 }
                 break;

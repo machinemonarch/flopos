@@ -711,29 +711,39 @@ static Val run(Vm *vm)
         case OP_OBJECT: { Obj *o = obj_new(vm, vm->object_proto, C_OBJECT); if (!o) { vm_check_time(vm); goto thrown; } PUSH(v_obj(o)); break; }
         case OP_INITPROP: case OP_INITHIDDEN: {
             u32 i = RD16();
+            if (AT(1).t != T_OBJ) { throw_err(vm, E_TYPE, "a field set on something that is not an object"); goto thrown; }
             if (!prop_put(vm, AT(1).u.o, k[i].u.s, AT(0), op == OP_INITHIDDEN ? P_HIDDEN : 0)) { vm_check_time(vm); goto thrown; }
             if (AT(0).t == T_OBJ && AT(0).u.o->cls == C_FUNC && !AT(0).u.o->u.fn.fn->name) { /* a method's name: from its key */ }
             vm->sp--;
             break;
         }
         case OP_INITELEM: {
-            Str *key = to_key(vm, AT(1));
+            Str *key;
+            if (AT(2).t != T_OBJ) { throw_err(vm, E_TYPE, "a field set on something that is not an object"); goto thrown; }
+            key = to_key(vm, AT(1));
             CHECK();
             if (!key || !prop_put(vm, AT(2).u.o, key, AT(0), 0)) { vm_check_time(vm); goto thrown; }
             vm->sp -= 2;
             break;
         }
-        case OP_INITGET: case OP_INITSET: {
-            u32 i = RD16();
-            Obj *o = AT(1).u.o;
-            Prop *q = prop_find(o, k[i].u.s);
+        case OP_INITGET: case OP_INITSET: case OP_INITGETELEM: case OP_INITSETELEM: {
+            /* get x() {} -- or get [key]() {}, the key on the stack below it */
+            int elem = op == OP_INITGETELEM || op == OP_INITSETELEM;
+            Str *key;
+            Obj *o;
+            Prop *q;
+            if (elem) { key = to_key(vm, AT(1)); CHECK(); if (!key) { vm_check_time(vm); goto thrown; } }
+            else key = k[RD16()].u.s;
+            if (AT(elem ? 2 : 1).t != T_OBJ) { throw_err(vm, E_TYPE, "a getter set on something that is not an object"); goto thrown; }
+            o = AT(elem ? 2 : 1).u.o;
+            q = prop_find(o, key);
             if (!q || !(q->flags & P_ACCESSOR)) {
-                if (!prop_put(vm, o, k[i].u.s, v_undef(), P_ACCESSOR | (o->cls == C_FUNC || o->proto != vm->object_proto ? P_HIDDEN : 0))) { vm_check_time(vm); goto thrown; }
-                q = prop_find(o, k[i].u.s);
+                if (!prop_put(vm, o, key, v_undef(), P_ACCESSOR | (o->cls == C_FUNC || o->proto != vm->object_proto ? P_HIDDEN : 0))) { vm_check_time(vm); goto thrown; }
+                q = prop_find(o, key);
                 q->set = v_undef();
             }
-            if (op == OP_INITGET) q->v = AT(0); else q->set = AT(0);
-            vm->sp--;
+            if (op == OP_INITGET || op == OP_INITGETELEM) q->v = AT(0); else q->set = AT(0);
+            vm->sp -= elem ? 2 : 1;
             break;
         }
         case OP_SETPROTO: {

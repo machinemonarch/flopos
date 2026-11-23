@@ -13,6 +13,12 @@ without it. Each version's notes are also written next to its image, as
   Ctrl-C, Ctrl-X and Ctrl-V copy, cut and paste.
 - An HLS station that offers several versions starts on the leanest, as
   before; + and - on the player screen step to a better or leaner one.
+- Scripts written the newer way now run in browzer, where before the
+  whole script was refused: class fields (private ones too), ...rest when
+  taking an object apart, defaults on such parameters, tagged templates,
+  getters with a worked-out name, static blocks and for await. Of 568
+  scripts from 38 well-known sites, 72 are still refused instead of 176;
+  most of those are modules, which browzer does not read yet.
 
 ### BUG FIXES
 

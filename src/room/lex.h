@@ -31,6 +31,7 @@ typedef struct {
     int  p;                              /* punctuation                      */
     int  kw;                             /* a name that is a keyword, or -1  */
     int  tail;                           /* a template piece ends the template */
+    u32  src_at;                         /* a tagged template piece: where its raw text starts */
 } Tok;
 
 typedef struct {

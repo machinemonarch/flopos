@@ -48,6 +48,31 @@ NATIVE(string_ctor)
     return v_str(s);
 }
 
+/* String.raw`a${x}b`, or String.raw({raw: [...]}, x): the pieces as typed, the values between. */
+NATIVE(string_raw)
+{
+    Val raw = IS_NULLISH(ARG(0)) ? v_undef() : get_prop(vm, ARG(0), atom("raw"));
+    Str *r = str_ascii("");
+    u32 n, i;
+    UNUSED;
+    if (raw.t != T_OBJ) return throw_err(vm, E_TYPE, "String.raw needs the pieces of a template");
+    n = (u32)to_num(vm, get_prop(vm, raw, atom("length")));
+    TEMP(vm, raw);
+    TEMP(vm, v_str(r));                  /* what is made so far, kept from the sweeper */
+    for (i = 0; i < n && !vm->throwing && r; i++) {
+        Str *piece = to_str(vm, get_elem(vm, raw, v_num(i)));
+        r = piece ? str_concat(vm->temps[vm->ntemps - 1].u.s, piece) : 0;
+        if (r) vm->temps[vm->ntemps - 1] = v_str(r);
+        if (r && i + 1 < n && (int)i + 1 < argc) {
+            piece = to_str(vm, args[i + 1]);
+            r = piece ? str_concat(vm->temps[vm->ntemps - 1].u.s, piece) : 0;
+            if (r) vm->temps[vm->ntemps - 1] = v_str(r);
+        }
+    }
+    UNTEMP(vm, 2);
+    return r ? v_str(r) : v_undef();
+}
+
 NATIVE(string_fromcharcode)
 {
     Str *s = str_new((u32)argc);
@@ -1125,6 +1150,7 @@ void lib2_init(Vm *vm)
     prop_put(vm, o, S_constructor, v_obj(c), P_HIDDEN);
     def_val(vm, g, "String", v_obj(c));
     def_native(vm, c, "fromCharCode", string_fromcharcode, 1, 0);
+    def_native(vm, c, "raw", string_raw, 1, 0);
     def_native(vm, c, "fromCodePoint", string_fromcharcode, 1, 1);
     def_native(vm, o, "toString", str_tostring, 0, 0);
     def_native(vm, o, "valueOf", str_tostring, 0, 0);

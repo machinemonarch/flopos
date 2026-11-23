@@ -76,6 +76,7 @@ typedef struct {
     Str  *super_name;                    /* the class whose super is in reach */
     int   static_ctx;
     u32   classes;
+    Str  *fields_name;                   /* compiling a constructor: its class's field-setting method */
     int   no_in;
     int   next_async;                    /* the next function() is async     */
 } C;
@@ -88,6 +89,9 @@ static void statement(C *c);
 static void function(C *c, Str *name, int arrow, int is_expr, int method);
 static void destructure(C *c, int decl, int kw);
 static void unary(C *c, Ex *e);
+static void prologue(C *c, Fs *f);
+static Proto *finish(C *c, Fs *f);
+static void fs_open(C *c, Fs *f, int arrow, int top);
 
 /* ---- trouble -------------------------------------------------------------------- */
 static void put(C *c, u32 *n, const char *s) { while (*s && *n + 1 < c->whycap) c->why[(*n)++] = *s++; }
@@ -352,6 +356,53 @@ static void template(C *c)
     next(c);
 }
 
+/* tag`a${x}b`: tag(["a", "b"] with .raw, x).  The pieces are read first
+ * (skipping what is between them), then the values, as arguments. */
+static void tagged_template(C *c, int method)
+{
+    State s0;
+    u32 raw_at[64], raw_n[64];
+    Str *cooked[64];
+    int n = 0, i, argc;
+    save(c, &s0);
+    for (;;) {
+        u32 from = c->tok.src_at;
+        if (n >= 64) fail(c, "a tagged template with too many pieces");
+        cooked[n] = c->tok.s;
+        raw_at[n] = from;
+        raw_n[n] = c->tok.end - (c->tok.tail ? 1 : 2) - from;
+        n++;
+        if (c->tok.tail) break;
+        next(c);
+        while (!is_p(c, '}')) { if (c->tok.t == TK_EOF) fail(c, "a template's ${ is never closed"); skip_one(c); }
+        lex_template_more(&c->L, &c->tok, c->tok.end);
+        if (c->L.err) fail(c, c->L.err);
+        c->tok.src_at = c->tok.pos;
+    }
+    load(c, &s0);
+    emit(c, OP_ARRAY);
+    for (i = 0; i < n; i++) { emit(c, OP_CONST); emit16(c, kstr(c, cooked[i])); emit(c, OP_APPEND); }
+    emit(c, OP_DUP);
+    emit(c, OP_ARRAY);
+    for (i = 0; i < n; i++) {
+        emit(c, OP_CONST); emit16(c, kstr(c, str_from16(c->L.src + raw_at[i], raw_n[i])));
+        emit(c, OP_APPEND);
+    }
+    emit(c, OP_SETPROP); emit16(c, kstr(c, atom("raw")));
+    emit(c, OP_POP);
+    argc = 1;
+    while (!c->tok.tail) {
+        next(c);
+        assign(c);
+        argc++;
+        if (!is_p(c, '}')) fail(c, "a template's ${ is never closed");
+        lex_template_more(&c->L, &c->tok, c->tok.end);
+        if (c->L.err) fail(c, c->L.err);
+    }
+    next(c);
+    emit(c, method ? OP_CALLM : OP_CALL); emit(c, (u32)argc);
+}
+
 static void array_literal(C *c)
 {
     next(c);
@@ -380,10 +431,9 @@ static void object_literal(C *c)
             if (c->tok.t == TK_IDENT || c->tok.t == TK_STR || c->tok.t == TK_NUM || is_p(c, '[')) {
                 if (is_p(c, '[')) { next(c); assign(c); want(c, ']', "expected ]"); computed = 1; }
                 else prop_name(c, &name);
-                if (computed) fail(c, "a computed getter is not supported");
                 function(c, name, 0, 1, 1);
-                emit(c, kind == KW_GET ? OP_INITGET : OP_INITSET);
-                emit16(c, kstr(c, name));
+                if (computed) emit(c, kind == KW_GET ? OP_INITGETELEM : OP_INITSETELEM);
+                else { emit(c, kind == KW_GET ? OP_INITGET : OP_INITSET); emit16(c, kstr(c, name)); }
                 goto sep;
             }
             load(c, &s);
@@ -421,13 +471,83 @@ static void object_literal(C *c)
     next(c);
 }
 
-/* A class: a constructor function with its methods on its prototype. */
-static void class_body(C *c, Str *name)
+/* The end of a function made here rather than from its source (a class's
+ * fields, a static block): its prologue, and it is made a kid of outer. */
+static u16 end_fn(C *c, Fs *f, Fs *outer)
 {
-    Str *keep_super = c->super_name, *sup = 0;
+    Proto *p;
+    u16 kid;
+    c->fs = f;
+    prologue(c, f);
+    p = finish(c, f);
+    c->fs = outer;
+    if (outer->nkids >= 65535) fail(c, "too many functions in one function");
+    if (outer->nkids == outer->ckids) outer->kids = grow(c, outer->kids, outer->nkids, &outer->ckids, sizeof(Proto *));
+    kid = (u16)outer->nkids;
+    outer->kids[outer->nkids++] = p;
+    return kid;
+}
+
+/* A member's name, private (#x: kept as a hidden "#x") or not.  0 if none. */
+static int member_name(C *c, Str **name, int *priv)
+{
+    *priv = 0;
+    if (accept(c, '#')) {
+        u16 b[130]; u32 i;
+        if (c->tok.t != TK_IDENT || !c->tok.s || c->tok.s->len > 128) fail(c, "expected a name after #");
+        b[0] = '#';
+        for (i = 0; i < c->tok.s->len; i++) b[i + 1] = c->tok.s->c[i];
+        *name = str_intern16(b, c->tok.s->len + 1);
+        *priv = 1;
+        next(c);
+        return 1;
+    }
+    return prop_name(c, name);
+}
+
+/* Do the class's members (from just inside its {) include a field of each
+ * instance (x = 1, or x;)?  Only looked at: the position is put back. */
+static int has_instance_fields(C *c)
+{
+    State s0;
+    int found = 0;
+    save(c, &s0);
+    while (!is_p(c, '}') && c->tok.t != TK_EOF) {
+        Str *n; int priv, stat = 0;
+        if (accept(c, ';')) continue;
+        if (is_kw(c, KW_STATIC)) {
+            State s; save(c, &s); next(c);
+            if (is_p(c, '(') || is_p(c, '=') || is_p(c, ';') || is_p(c, '}')) load(c, &s); else stat = 1;
+            if (stat && is_p(c, '{')) { skip_brackets(c); continue; }   /* static { } */
+        }
+        while ((is_kw(c, KW_GET) || is_kw(c, KW_SET) || is_kw(c, KW_ASYNC) || is_p(c, '*'))) {
+            State s; save(c, &s); next(c);
+            if (is_p(c, '(') || is_p(c, '=') || is_p(c, ';') || is_p(c, '}') || c->tok.nl) { load(c, &s); break; }
+        }
+        if (is_p(c, '[')) skip_brackets(c);
+        else if (!member_name(c, &n, &priv)) break;
+        if (is_p(c, '(')) { skip_brackets(c); skip_brackets(c); continue; }   /* a method */
+        (void)stat;
+        found = 1;                       /* a field, static or not: the method is made either way */
+        break;
+    }
+    load(c, &s0);
+    return found;
+}
+
+/* A class: a constructor function with its methods on its prototype.
+ * Fields of each instance are set by a hidden method on the prototype,
+ * which the constructor calls as it starts (or, in a class that extends
+ * another, as soon as super() returns); static fields are set on the
+ * class as it is made, static blocks run then too. */
+static void class_body(C *c, Str *name, int bind)
+{
+    Str *keep_super = c->super_name, *sup = 0, *keep_fields = c->fields_name, *fields = 0;
     int keep_static = c->static_ctx;
     State body, ctor;
     int have_ctor = 0;
+    Fs initf, *outer;
+    int init_open = 0;
     if (is_kw(c, KW_EXTENDS)) {
         /* the parent is kept in a hidden variable beside the class */
         char b[24]; int k = 0, j; u32 n = ++c->classes;
@@ -450,8 +570,18 @@ static void class_body(C *c, Str *name)
     }
     if (!is_p(c, '{')) fail(c, "expected { to start a class");
     save(c, &body);
-    /* find the constructor */
     next(c);
+    if (has_instance_fields(c)) {
+        char b[24]; int k = 0, j; u32 n = ++c->classes;
+        const char *pre = "__flopos_fields";
+        char t[12]; int tk = 0;
+        for (j = 0; pre[j]; j++) b[k++] = pre[j];
+        do { t[tk++] = (char)('0' + n % 10); n /= 10; } while (n);
+        while (tk) b[k++] = t[--tk];
+        b[k] = 0;
+        fields = str_intern(str_ascii(b));
+    }
+    /* find the constructor */
     while (!is_p(c, '}') && c->tok.t != TK_EOF) {
         if (c->tok.t == TK_IDENT && c->tok.s && str_eq_ascii(c->tok.s, "constructor")) {
             State s; save(c, &s);
@@ -463,25 +593,31 @@ static void class_body(C *c, Str *name)
     }
     c->super_name = sup;
     c->static_ctx = 0;
+    c->fields_name = fields;
     if (have_ctor) {
         load(c, &ctor);
         function(c, name, 0, 1, 2);
     } else {
-        /* function () { super.apply(this, arguments) } -- or nothing */
+        /* function () { super.apply(this, arguments) } -- or nothing; with
+         * fields, (...a) { super(...a) }, so they are set after it */
         static u16 src[80];
-        static const char *a = "(){", *b = ".apply(this,arguments)}";
+        static const char *a = "(){", *b = ".apply(this,arguments)}", *a2 = "(...a){super(...a)}";
         u32 n = 0, i;
         State s; save(c, &s);
-        for (i = 0; a[i]; i++) src[n++] = (u16)a[i];
-        if (sup) {
-            for (i = 0; i < sup->len && n < 40; i++) src[n++] = sup->c[i];
-            for (i = 0; b[i]; i++) src[n++] = (u16)b[i];
-        } else src[n++] = '}';
+        if (sup && fields) for (i = 0; a2[i]; i++) src[n++] = (u16)a2[i];
+        else {
+            for (i = 0; a[i]; i++) src[n++] = (u16)a[i];
+            if (sup) {
+                for (i = 0; i < sup->len && n < 40; i++) src[n++] = sup->c[i];
+                for (i = 0; b[i]; i++) src[n++] = (u16)b[i];
+            } else src[n++] = '}';
+        }
         lex_start(&c->L, src, n);
         next(c);
         function(c, name, 0, 1, 2);
         load(c, &s);
     }
+    c->fields_name = 0;
     /* [C] */
     if (sup) {
         emit(c, OP_DUP); emit(c, OP_GETPROP); emit16(c, kstr(c, S_prototype));
@@ -489,46 +625,112 @@ static void class_body(C *c, Str *name)
         emit(c, OP_SETPROTO); emit(c, OP_POP);
         ref(c, R_GET, sup); emit(c, OP_SETPROTO);
     }
+    if (bind) store_name(c, name);       /* its name, already, for static fields and blocks that use it */
     load(c, &body);
     next(c);
+    outer = c->fs;
     while (!is_p(c, '}')) {
         Str *mname = 0;
-        int kind = 0, stat = 0, computed = 0, is_async = 0;
+        int kind = 0, stat = 0, computed = 0, is_async = 0, priv = 0;
         if (accept(c, ';')) continue;
         if (is_kw(c, KW_STATIC)) {
             State s; save(c, &s);
             next(c);
-            if (is_p(c, '(') || is_p(c, '=')) load(c, &s); else stat = 1;
+            if (is_p(c, '(') || is_p(c, '=') || is_p(c, ';') || is_p(c, '}')) load(c, &s); else stat = 1;
+        }
+        if (stat && is_p(c, '{')) {          /* static { ... }: run as the class is made, this the class */
+            Fs bf;
+            u16 kid;
+            fs_open(c, &bf, 0, 0);
+            c->static_ctx = 1;
+            next(c);
+            while (!is_p(c, '}')) {
+                if (c->tok.t == TK_EOF) fail(c, "a static block is never closed");
+                statement(c);
+            }
+            next(c);
+            kid = end_fn(c, &bf, outer);
+            emit(c, OP_DUP); emit(c, OP_CLOSURE); emit16(c, kid);
+            emit(c, OP_CALLM); emit(c, 0); emit(c, OP_POP);
+            continue;
         }
         if ((is_kw(c, KW_GET) || is_kw(c, KW_SET))) {
             State s; save(c, &s);
             kind = c->tok.kw;
             next(c);
-            if (is_p(c, '(')) { load(c, &s); kind = 0; }
+            if (is_p(c, '(') || is_p(c, '=') || is_p(c, ';') || is_p(c, '}') || c->tok.nl) { load(c, &s); kind = 0; }
         }
         if (is_kw(c, KW_ASYNC)) {
             State s; save(c, &s);
             next(c);
-            if (is_p(c, '(') || c->tok.nl) load(c, &s);   /* a method called async */
+            if (is_p(c, '(') || is_p(c, '=') || is_p(c, ';') || is_p(c, '}') || c->tok.nl) load(c, &s);   /* a member called async */
             else is_async = 1;
         }
         if (is_p(c, '*')) fail(c, "generators are not supported yet");
-        if (is_p(c, '#')) fail(c, "private class fields are not supported yet");
         if (is_p(c, '[')) { computed = 1; }
-        else if (!prop_name(c, &mname)) fail(c, "expected a method name");
-        if (!computed && !stat && !kind && str_eq_ascii(mname, "constructor")) {
+        else if (!member_name(c, &mname, &priv)) fail(c, "expected a method name");
+        if (!computed && !stat && !kind && !priv && str_eq_ascii(mname, "constructor")) {
             skip_brackets(c);            /* its parameters */
             skip_brackets(c);            /* its body: made already */
             continue;
         }
-        if (!computed && !is_p(c, '(')) fail(c, "class fields are not supported yet");
+        if (!kind && !is_async && (computed ? 0 : !is_p(c, '('))) {
+            /* a field: x = value, or x; on each instance, or on the class (static) */
+            if (stat) {
+                emit(c, OP_DUP);
+                c->static_ctx = 1;
+                if (accept(c, '=')) assign(c); else emit(c, OP_UNDEF);
+                emit(c, priv ? OP_INITHIDDEN : OP_INITPROP); emit16(c, kstr(c, mname));
+                emit(c, OP_POP);
+            } else {
+                if (!fields) fail(c, "a field the class did not expect");
+                if (!init_open) { c->fs = outer; fs_open(c, &initf, 0, 0); init_open = 1; }
+                c->fs = &initf;
+                c->static_ctx = 0;
+                emit(c, OP_THIS);
+                if (accept(c, '=')) assign(c); else emit(c, OP_UNDEF);
+                emit(c, priv ? OP_INITHIDDEN : OP_INITPROP); emit16(c, kstr(c, mname));
+                emit(c, OP_POP);
+                c->fs = outer;
+            }
+            if (!accept(c, ';') && !is_p(c, '}') && !c->tok.nl) fail(c, "expected ; after a field");
+            continue;
+        }
+        if (computed) {
+            /* [key] = value: a computed field; or [key]() { }: a method */
+            State s; save(c, &s);
+            skip_brackets(c);
+            if (!is_p(c, '(')) {
+                load(c, &s);
+                if (stat) {
+                    emit(c, OP_DUP);
+                    c->static_ctx = 1;
+                    next(c); assign(c); want(c, ']', "expected ]");
+                    if (accept(c, '=')) assign(c); else emit(c, OP_UNDEF);
+                    emit(c, OP_INITELEM); emit(c, OP_POP);
+                } else {
+                    if (!fields) fail(c, "a field the class did not expect");
+                    if (!init_open) { c->fs = outer; fs_open(c, &initf, 0, 0); init_open = 1; }
+                    c->fs = &initf;
+                    c->static_ctx = 0;
+                    emit(c, OP_THIS);
+                    next(c); assign(c); want(c, ']', "expected ]");
+                    if (accept(c, '=')) assign(c); else emit(c, OP_UNDEF);
+                    emit(c, OP_INITELEM); emit(c, OP_POP);
+                    c->fs = outer;
+                }
+                if (!accept(c, ';') && !is_p(c, '}') && !c->tok.nl) fail(c, "expected ; after a field");
+                continue;
+            }
+            load(c, &s);
+        }
         emit(c, OP_DUP);                 /* [C C]                           */
         if (!stat) { emit(c, OP_GETPROP); emit16(c, kstr(c, S_prototype)); }
         c->static_ctx = stat;
         if (computed) { next(c); assign(c); want(c, ']', "expected ]"); }
         c->next_async = is_async;
         function(c, mname, 0, 1, 1);
-        if (computed) emit(c, OP_INITELEM);
+        if (computed) emit(c, kind == KW_GET ? OP_INITGETELEM : kind == KW_SET ? OP_INITSETELEM : OP_INITELEM);
         else {
             emit(c, kind == KW_GET ? OP_INITGET : kind == KW_SET ? OP_INITSET : OP_INITHIDDEN);
             emit16(c, kstr(c, mname));
@@ -536,8 +738,18 @@ static void class_body(C *c, Str *name)
         emit(c, OP_POP);
     }
     next(c);
+    if (fields) {                        /* the fields' method, on the prototype, hidden */
+        u16 kid;
+        if (!init_open) { fs_open(c, &initf, 0, 0); init_open = 1; }
+        kid = end_fn(c, &initf, outer);
+        emit(c, OP_DUP); emit(c, OP_GETPROP); emit16(c, kstr(c, S_prototype));
+        emit(c, OP_CLOSURE); emit16(c, kid);
+        emit(c, OP_INITHIDDEN); emit16(c, kstr(c, fields));
+        emit(c, OP_POP);
+    }
     c->super_name = keep_super;
     c->static_ctx = keep_static;
+    c->fields_name = keep_fields;
 }
 
 static void args_and_call(C *c, int method)
@@ -606,7 +818,7 @@ static void primary(C *c, Ex *e)
             Str *name = 0;
             next(c);
             if (c->tok.t == TK_IDENT && c->tok.kw != KW_EXTENDS) { name = c->tok.s; next(c); }
-            class_body(c, name);
+            class_body(c, name, 0);
             return;
         }
         case KW_ASYNC: {
@@ -648,6 +860,12 @@ static void primary(C *c, Ex *e)
                 ref(c, R_GET, c->super_name);
                 args_and_call(c, 1);
                 emit(c, OP_POP); emit(c, OP_THIS);
+                if (c->fields_name) {            /* this class's fields, once the parent has made this */
+                    emit(c, OP_DUP); emit(c, OP_DUP);
+                    emit(c, OP_GETPROP); emit16(c, kstr(c, c->fields_name));
+                    emit(c, OP_CALLM); emit(c, 0);
+                    emit(c, OP_POP);
+                }
                 return;
             }
             /* super.name: the parent's (prototype's) property, as a method of this */
@@ -730,7 +948,12 @@ static void primary(C *c, Ex *e)
         }
         if (is_p(c, '[')) { array_literal(c); return; }
         if (is_p(c, '{')) { object_literal(c); return; }
-        if (is_p(c, '#')) fail(c, "private class fields are not supported yet");
+        if (is_p(c, '#')) {                  /* #x in obj */
+            Str *n; int priv;
+            member_name(c, &n, &priv);
+            emit(c, OP_CONST); emit16(c, kstr(c, n));
+            return;
+        }
     }
     fail(c, t->t == TK_EOF ? "the script ends in the middle of something" : "something unexpected");
 }
@@ -744,8 +967,11 @@ static void postfix_chain(C *c, Ex *e)
             Str *n;
             next(c);
             value(c, e);
-            if (c->tok.t != TK_IDENT) { if (is_p(c, '#')) fail(c, "private class fields are not supported yet"); fail(c, "expected a name after ."); }
-            n = c->tok.s; next(c);
+            if (is_p(c, '#')) { int priv; member_name(c, &n, &priv); }   /* this.#x: kept as a hidden "#x" */
+            else {
+                if (c->tok.t != TK_IDENT) fail(c, "expected a name after .");
+                n = c->tok.s; next(c);
+            }
             e->k = X_PROP; e->idx = kstr(c, n);
         } else if (is_p(c, P2('?', '.'))) {
             next(c);
@@ -776,7 +1002,15 @@ static void postfix_chain(C *c, Ex *e)
             } else { value(c, e); args_and_call(c, 0); }
             e->k = X_VAL;
         } else if (c->tok.t == TK_TEMPLATE) {
-            fail(c, "tagged templates are not supported yet");
+            c->tok.src_at = c->tok.pos + 1;          /* after the ` */
+            if (e->k == X_PROP) {
+                emit(c, OP_DUP); emit(c, OP_GETPROP); emit16(c, e->idx);
+                tagged_template(c, 1);
+            } else if (e->k == X_ELEM) {
+                emit(c, OP_DUP2); emit(c, OP_GETELEM); emit(c, OP_SWAP); emit(c, OP_POP);
+                tagged_template(c, 1);
+            } else { value(c, e); tagged_template(c, 0); }
+            e->k = X_VAL;
         } else break;
     }
     if (nopt) {
@@ -1104,15 +1338,31 @@ static void destructure(C *c, int decl, int kw)
         return;
     }
     if (accept(c, '{')) {
+        Str *named[64];                  /* the keys taken, for a ...rest after them */
+        int nnamed = 0, any_computed = 0;
         while (!is_p(c, '}')) {
             Str *key = 0;
             int computed = 0;
-            if (is_p(c, P3('.', '.', '.'))) fail(c, "...rest in an object pattern is not supported yet");
+            if (accept(c, P3('.', '.', '.'))) {          /* ...rest: the keys not named */
+                int k;
+                if (any_computed || nnamed > 64) fail(c, "...rest after a computed key is not supported yet");
+                emit(c, OP_DUP);
+                ref(c, R_GET, atom("__flopos_rest"));
+                emit(c, OP_SWAP);
+                emit(c, OP_ARRAY);
+                for (k = 0; k < nnamed; k++) { emit(c, OP_CONST); emit16(c, kstr(c, named[k])); emit(c, OP_APPEND); }
+                emit(c, OP_CALL); emit(c, 2);
+                target(c, decl, kw);
+                if (!is_p(c, '}')) fail(c, "...rest must come last in a pattern");
+                break;
+            }
             emit(c, OP_DUP);
-            if (accept(c, '[')) { assign(c); want(c, ']', "expected ]"); computed = 1; emit(c, OP_GETELEM); }
+            if (accept(c, '[')) { assign(c); want(c, ']', "expected ]"); computed = 1; any_computed = 1; emit(c, OP_GETELEM); }
             else {
                 int was_ident = c->tok.t == TK_IDENT;
                 if (!prop_name(c, &key)) fail(c, "expected a property name");
+                if (nnamed < 64) named[nnamed] = key;
+                nnamed++;
                 emit(c, OP_GETPROP); emit16(c, kstr(c, key));
                 if (was_ident && !is_p(c, ':')) {          /* { a } or { a = 1 } */
                     with_default(c);
@@ -1274,9 +1524,12 @@ static void for_statement(C *c, Str *label)
 {
     Loop lp;
     State s;
-    int kw = -1, of = 0, in = 0;
+    int kw = -1, of = 0, in = 0, wait = 0;
     next(c);
-    if (is_kw(c, KW_AWAIT)) fail(c, "for await is not supported");
+    if (is_kw(c, KW_AWAIT)) {                   /* for await (x of list): each awaited in turn */
+        if (!c->fs->async_fn) fail(c, "for await outside an async function");
+        next(c); wait = 1;
+    }
     want(c, '(', "expected ( after for");
     save(c, &s);
     if (is_kw(c, KW_VAR) || is_kw(c, KW_LET) || is_kw(c, KW_CONST)) { kw = c->tok.kw; next(c); }
@@ -1287,6 +1540,7 @@ static void for_statement(C *c, Str *label)
     }
     of = is_kw(c, KW_OF); in = is_kw(c, KW_IN);
     load(c, &s);
+    if (wait && !of) fail(c, "for await needs of");
     if (of || in) {
         State tgt, after;
         u32 top, exit;
@@ -1301,6 +1555,7 @@ static void for_statement(C *c, Str *label)
         loop_begin(c, &lp, label, 1);
         top = here(c);
         exit = jump(c, OP_ITERNEXT);
+        if (wait) emit(c, OP_AWAIT);
         save(c, &after);
         load(c, &tgt);
         target(c, kw >= 0, kw);
@@ -1538,7 +1793,7 @@ static void statement(C *c)
             if (c->tok.t != TK_IDENT) fail(c, "expected a class's name");
             name = c->tok.s; next(c);
             declare(c, name);
-            class_body(c, name);
+            class_body(c, name, 1);
             store_name(c, name);
             emit(c, OP_POP);
             return;
@@ -1702,8 +1957,8 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
     Proto *p;
     u16 kid;
     int keep_no_in = c->no_in;
-    State pats[16]; int npat = 0; int pat_slot[16];
-    int ndef = 0; State defs[32]; int def_slot[32];
+    /* Defaults and patterns, done in the parameters' order as the body starts. */
+    State acts[48]; int act_slot[48], act_pat[48], nact = 0, npat = 0;
 
     fs_open(c, &f, arrow, 0);
     f.async_fn = c->next_async;
@@ -1730,12 +1985,25 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
                 b[k++] = '%'; b[k++] = 'p';
                 do { b[k++] = (char)('0' + n % 10); n /= 10; } while (n);
                 b[k] = 0;
-                if (npat >= 16) fail(c, "too many patterns in the parameters");
-                pat_slot[npat] = declare_local(c, &f, str_intern(str_ascii(b)));
-                save(c, &pats[npat++]);
+                if (npat >= 16 || nact >= 46) fail(c, "too many patterns in the parameters");
+                npat++;
+                act_slot[nact] = declare_local(c, &f, str_intern(str_ascii(b)));
+                act_pat[nact] = 1;
+                save(c, &acts[nact++]);
                 skip_brackets(c);
                 f.nparams++;
-                if (is_p(c, '=')) fail(c, "a default for a pattern parameter is not supported yet");
+                if (is_p(c, '=')) {                  /* ({a} = {}): the default, then the pattern */
+                    next(c);
+                    acts[nact] = acts[nact - 1];
+                    act_slot[nact] = act_slot[nact - 1]; act_pat[nact] = 1;
+                    save(c, &acts[nact - 1]);
+                    act_pat[nact - 1] = 0;
+                    nact++;
+                    while (!is_p(c, ',') && !is_p(c, ')')) {
+                        if (c->tok.t == TK_EOF) fail(c, "the parameters never end");
+                        skip_one(c);
+                    }
+                }
             } else {
                 Str *n;
                 int slot;
@@ -1751,10 +2019,10 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
                 }
                 f.nparams++;
                 if (is_p(c, '=')) {
-                    if (ndef >= 32) fail(c, "too many defaults");
+                    if (nact >= 46) fail(c, "too many defaults");
                     next(c);
-                    def_slot[ndef] = slot;
-                    save(c, &defs[ndef++]);
+                    act_slot[nact] = slot; act_pat[nact] = 0;
+                    save(c, &acts[nact++]);
                     /* skip the default expression: up to , or ) at this depth */
                     while (!is_p(c, ',') && !is_p(c, ')')) {
                         if (c->tok.t == TK_EOF) fail(c, "the parameters never end");
@@ -1776,23 +2044,25 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
         int i;
         State after;
         save(c, &after);
-        for (i = 0; i < ndef; i++) {
+        for (i = 0; i < nact; i++) {
             u32 j;
-            load(c, &defs[i]);
-            emit(c, OP_GETVAR); emit(c, 0); emit16(c, (u32)def_slot[i]);
+            load(c, &acts[i]);
+            emit(c, OP_GETVAR); emit(c, 0); emit16(c, (u32)act_slot[i]);
+            if (act_pat[i]) { destructure(c, 1, KW_LET); continue; }
             emit(c, OP_UNDEF); emit(c, OP_SEQ);
             j = jump(c, OP_JF);
             assign(c);
-            emit(c, OP_SETVAR); emit(c, 0); emit16(c, (u32)def_slot[i]);
+            emit(c, OP_SETVAR); emit(c, 0); emit16(c, (u32)act_slot[i]);
             emit(c, OP_POP);
             patch(c, j);
         }
-        for (i = 0; i < npat; i++) {
-            load(c, &pats[i]);
-            emit(c, OP_GETVAR); emit(c, 0); emit16(c, (u32)pat_slot[i]);
-            destructure(c, 1, KW_LET);
-        }
         load(c, &after);
+    }
+    if (method == 2 && c->fields_name && !c->super_name) {   /* a class's fields, as it starts */
+        emit(c, OP_THIS); emit(c, OP_DUP);
+        emit(c, OP_GETPROP); emit16(c, kstr(c, c->fields_name));
+        emit(c, OP_CALLM); emit(c, 0);
+        emit(c, OP_POP); emit(c, OP_POP);
     }
     if (arrow && !is_p(c, '{')) {
         assign(c);

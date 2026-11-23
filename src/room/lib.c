@@ -108,6 +108,33 @@ NATIVE(object_assign)
     return v_obj(t);
 }
 
+/* const {a, b, ...rest} = o: rest is o's own keys but those named before
+ * it, in a new plain object.  (The compiler calls this for the pattern.) */
+NATIVE(object_rest)
+{
+    Obj *keys, *r, *skip = ARG(1).t == T_OBJ ? ARG(1).u.o : 0;
+    u32 j, k;
+    UNUSED;
+    r = obj_new(vm, vm->object_proto, C_OBJECT);
+    if (!r || IS_NULLISH(ARG(0)) || ARG(0).t != T_OBJ) return r ? v_obj(r) : v_undef();
+    TEMP(vm, v_obj(r));
+    keys = own_keys(vm, ARG(0).u.o, 0);
+    if (!keys) { UNTEMP(vm, 1); return v_obj(r); }
+    TEMP(vm, v_obj(keys));
+    for (j = 0; j < keys->u.arr.len && !vm->throwing; j++) {
+        Val kv = arr_get(keys, j);
+        int named = 0;
+        if (skip && kv.t == T_STR)
+            for (k = 0; k < skip->u.arr.len && !named; k++) {
+                Val sv = arr_get(skip, k);
+                named = sv.t == T_STR && str_eq(sv.u.s, kv.u.s);
+            }
+        if (!named) set_elem(vm, v_obj(r), kv, get_elem(vm, ARG(0), kv));
+    }
+    UNTEMP(vm, 2);
+    return v_obj(r);
+}
+
 NATIVE(object_create)
 {
     Val p = ARG(0);
@@ -1361,6 +1388,7 @@ void lib_init(Vm *vm)
     def_native(vm, g, "isFinite", g_isnan, 1, 1);
     def_native(vm, g, "parseFloat", g_parsefloat, 1, 0);
     def_native(vm, g, "parseInt", g_parseint, 2, 0);
+    def_native(vm, g, "__flopos_rest", object_rest, 2, 0);
     def_native(vm, g, "encodeURIComponent", g_encode, 1, 0);
     def_native(vm, g, "encodeURI", g_encode, 1, 1);
     def_native(vm, g, "escape", g_encode, 1, 0);
