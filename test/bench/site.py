@@ -115,7 +115,8 @@ document.getElementById('f').insertAdjacentHTML('beforeend', '<p>form points els
     # fails it is given the old build, or told it is too old.
     "/js/vite": """<title>js vite</title><p id="o">the check did not run</p>
 <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
-<script type="module">document.getElementById('o').textContent = window.__vite_is_modern_browser ? 'vite: modern' : 'vite: too old';</script>""",
+<script type="module">import "data:text/javascript,if(!import.meta.resolve)throw Error('import.meta.resolve not supported');window.__res=import.meta.resolve('https://a.test/x.js')";</script>
+<script type="module">document.getElementById('o').textContent = (window.__vite_is_modern_browser ? 'vite: modern' : 'vite: too old') + ' ' + (window.__res ? 'resolves' : 'no resolve');</script>""",
     # test/bench/webprobe.py: looks for each web feature's interface and members
     "/js/probe": """<title>js probe</title><p id="o">probing</p><script>
 var el = document.createElement('div'), sample = { Window: window, Document: document, Element: el, HTMLElement: el, Node: el,

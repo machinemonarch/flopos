@@ -60,7 +60,7 @@ STEPS = [
     r"key:ret=>\[shown\] clickworker 42",
     r"js/speed=>speed: down true up 1310720 said 1310720 typed true fetched (no|RangeError)",
     r"js/bigfetch=>\[shown\] bigfetch 3000 item 02999 yes",
-    r"js/vite=>\[shown\] vite: modern",
+    r"js/vite=>\[shown\] vite: modern resolves",
     r"table/basic=>\[shown\] Name +City +Kind\r?\n\[shown\] Radio One +Sofia +Talk",
     r"radio/feed=>\[shown\] MAIN\r?\n\[shown\] Listen live",
     r"type:qy",

@@ -16,6 +16,7 @@
 #include "engine.h"
 
 #define ARG(i) ((i) < argc ? args[i] : v_undef())
+static Val meta_resolve(Vm *vm, Val self, Val *args, int argc, u32 magic);
 #define NATIVE(name) static Val name(Vm *vm, Val self, Val *args, int argc, u32 magic)
 #define UNUSED (void)self; (void)args; (void)argc; (void)magic
 
@@ -90,6 +91,7 @@ int engine_module_scan(Vm *vm, const char *src, u32 len, const char *url, char *
     if (!ns || !meta) return ENGINE_ROOM;
     prop_put(vm, rec, atom("ns"), v_obj(ns), 0);
     prop_put(vm, meta, atom("url"), v_str(k), 0);
+    def_native(vm, meta, "resolve", meta_resolve, 1, 0);
     prop_put(vm, rec, atom("meta"), v_obj(meta), 0);
     return ENGINE_OK;
 }
@@ -136,6 +138,17 @@ NATIVE(mod_ns)                               /* __flopos_modns(i) */
     deps = get_prop(vm, cur, atom("deps"));
     if (deps.t != T_OBJ) return v_undef();
     return get_elem(vm, deps, ARG(0));
+}
+
+/* import.meta.resolve(name): the full address, against the module's own
+ * (dom.c's __flopos_mresolve, which knows addresses; the name as it is without it). */
+static Val meta_resolve(Vm *vm, Val self, Val *args, int argc, u32 magic)
+{
+    Val f = get_prop(vm, v_obj(vm->global), atom("__flopos_mresolve")), a[2];
+    UNUSED;
+    a[0] = ARG(0); a[1] = self.t == T_OBJ ? get_prop(vm, self, atom("url")) : v_undef();
+    if (!is_callable(f)) return v_str(to_str(vm, ARG(0)));
+    return vm_call(vm, f, v_undef(), a, 2);
 }
 
 NATIVE(mod_self)                             /* 0 its namespace, 1 import.meta */

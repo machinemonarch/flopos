@@ -651,9 +651,43 @@ static int imap_lookup(const char *spec, char *out, int cap)
 }
 
 /* Where an import's address leads, from the module at base. */
+/* A data: address's contents (percent-encoded or base64), into out: its
+ * length, or -1.  A module may be written into its own address. */
+static int data_decode(const char *url, char *out, int cap)
+{
+    const char *c = url;
+    int n = 0, b64 = 0, i;
+    while (*c && *c != ',') c++;
+    if (!*c) return -1;
+    for (i = 0; url + i < c; i++) if (!lower_cmp_n(url + i, ";base64", 7)) b64 = 1;
+    c++;
+    if (b64) {
+        u32 acc = 0, bits = 0;
+        for (; *c; c++) {
+            int v = *c >= 'A' && *c <= 'Z' ? *c - 'A' : *c >= 'a' && *c <= 'z' ? *c - 'a' + 26 : *c >= '0' && *c <= '9' ? *c - '0' + 52 :
+                    *c == '+' || *c == '-' ? 62 : *c == '/' || *c == '_' ? 63 : -1;
+            if (v < 0) continue;
+            acc = acc << 6 | (u32)v; bits += 6;
+            if (bits >= 8) { bits -= 8; if (n >= cap) return -1; out[n++] = (char)(acc >> bits); }
+        }
+        return n;
+    }
+    for (; *c; c++) {
+        int h = -1, l = -1;
+        if (*c == '%' && c[1] && c[2]) {
+            h = c[1] >= '0' && c[1] <= '9' ? c[1] - '0' : (c[1] | 32) >= 'a' && (c[1] | 32) <= 'f' ? (c[1] | 32) - 'a' + 10 : -1;
+            l = c[2] >= '0' && c[2] <= '9' ? c[2] - '0' : (c[2] | 32) >= 'a' && (c[2] | 32) <= 'f' ? (c[2] | 32) - 'a' + 10 : -1;
+        }
+        if (n >= cap) return -1;
+        if (h >= 0 && l >= 0) { out[n++] = (char)(h << 4 | l); c += 2; } else out[n++] = *c;
+    }
+    return n;
+}
+
 static int resolve_spec(const char *base, const char *spec, char *out, int cap)
 {
     char mapped[MOD_URL];
+    if (!lower_cmp_n(spec, "data:", 5)) { fmt_str(out, (u32)cap, "%s", spec); return out[cap - 2] == 0 || js_len(spec) < (u32)cap - 1; }
     if (spec[0] == '.' || spec[0] == '/' || !lower_cmp_n(spec, "http://", 7) || !lower_cmp_n(spec, "https://", 8))
         return url_resolve(base, spec, out, cap);
     if (!imap_lookup(spec, mapped, sizeof mapped)) return 0;     /* a bare name, not in the map */
@@ -682,6 +716,11 @@ static int load_module(int me, const char *given, u32 given_len, int depth)
     if (s_mod_state[me]) return s_mod_state[me] > 0;      /* read already (or a circle) */
     s_mod_state[me] = -1;
     if (depth > 24) { s_big++; return 0; }
+    if (!given && !lower_cmp_n(url, "data:", 5)) {      /* written into its own address */
+        int dn = data_decode(url, s_scratch, (int)sizeof s_scratch);
+        if (dn < 0) { s_failed++; return 0; }
+        given = s_scratch; given_len = (u32)dn;
+    }
     if (given) {
         int got = feed_text(given, given_len);
         if (got < 0) { s_failed++; return 0; }
