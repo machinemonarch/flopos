@@ -47,6 +47,14 @@ without it. Each version's notes are also written next to its image, as
   polyfills look for; a missing method is named in the error
   ("querySelector is not a function").
 
+- On an allowed site, scripts from other sites now load (many sites keep
+  theirs under a second name: bcbits.com for bandcamp.com), over https
+  only and without cookies, so a tracker among them cannot follow you
+  from site to site. Before, only four library hosts were let through.
+- A form now goes wherever it says, as in other browsers, and a script
+  may point one at another site. Only a form from an https page to a
+  plain http address asks first: y sends it.
+
 ### BUG FIXES
 
 - browzer plays stations whose stream addresses are long, as signed

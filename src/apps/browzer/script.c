@@ -8,9 +8,8 @@
  *
  * On an allowed site, each script goes through the gate, in browzer,
  * before anything is fetched:
- *   - a file from another site is not fetched at all -- except, on an
- *     allowed site, a library from one of four public library hosts,
- *     over https (library_host below);
+ *   - a file from another site only over https, with no cookies
+ *     (script_from_ok below);
  *   - a script over 100 KB, or past 250 KB for the page, or past the
  *     sixteenth, is not fetched either.
  * What passes runs in the script room (the kernel's second wall, src/room/),
@@ -18,7 +17,7 @@
  *
  * The room's requests come to door() below.  Each is checked: the element
  * must exist, a text must fit, and some things stop the script outright:
- * sending a form, fetching or going to another site, asking for anything
+ * fetching from or going to another site where that is not allowed, asking for anything
  * not on the list.  Text made into code by a script (an onclick attribute
  * it set, a <script> it wrote out) is never run.
  *
@@ -122,19 +121,21 @@ static int same_site(const char *a, const char *b)
     return !*x && !*y;
 }
 
-/* The public hosts pages load common libraries (jQuery and the like) from.
- * Without them most scripts that use one stop at once ("$ is not
- * defined").  Only these four, only over https, and only for a site that
- * is allowed: what they send runs in the same room, with the same limits
- * and tripwires as the site's own scripts.  Ad and tracker hosts are not
- * on it and never will be. */
-static int library_host(const Url *u)
+/* A script from another site, on a site that is allowed: most sites keep
+ * theirs under a second name of their own (bcbits.com for bandcamp.com),
+ * and nothing in the page says whose a name is -- so any site will do,
+ * but only over https, and with no cookies sent or kept (s_anon), so a
+ * tracker among them cannot follow anyone from site to site.  What comes
+ * runs in the same room, with the same limits and tripwires as the site's
+ * own scripts. */
+static int s_anon;
+static void wire(const char *a, const char *b);
+
+static int script_from_ok(const Url *u, const char *url)
 {
-    static const char *const hosts[] = { "cdn.jsdelivr.net", "cdnjs.cloudflare.com", "ajax.googleapis.com", "unpkg.com", 0 };
-    int i;
-    if (!u->secure) return 0;
-    for (i = 0; hosts[i]; i++) if (!lower_cmp(u->host, hosts[i])) return 1;
-    return 0;
+    if (same_site(u->host, s_host)) return 1;
+    if (!u->secure) { s_other++; wire("not fetched, another site without https: ", url); return 0; }
+    return 1;
 }
 
 /* SITES.TXT: the sites scripts are allowed on, a line each. */
@@ -207,7 +208,7 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
         ck[0] = 0;
         s_acao[0] = s_acam[0] = 0;
         if (s_cross) fmt_str(ck, sizeof ck, "Origin: %s\r\n%s", s_origin, s_extra);
-        else cookie_header(&u, ck, sizeof ck);
+        else if (!s_anon) cookie_header(&u, ck, sizeof ck);
         if (body && blen >= 0 && method && method[0] == 'P')
             fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: FLOPOS/%s (a 1996 Toshiba)\r\n"
                     "Content-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
@@ -242,7 +243,7 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
                             } else if (((ln[0] | 32) == 's') && ((ln[4] | 32) == '-') && ((ln[5] | 32) == 'c') && ln[10] == ':') {
                                 char save = *end;
                                 *end = 0;
-                                if (!s_cross) cookie_set(&u, ln + 11);   /* another site's: not kept */
+                                if (!s_cross && !s_anon) cookie_set(&u, ln + 11);   /* another site's: not kept */
                                 *end = save;
                             } else if (!lower_cmp_n(ln, "access-control-allow-", 21) && (end - ln) > 28) {
                                 char *v = ln + 21, *dst = 0;
@@ -404,10 +405,12 @@ static void feed_drop(void)
 static int feed_url(const char *url)
 {
     int st, got;
+    Url u;
     feed_start();
     s_sink = feed_bytes;
+    s_anon = url_parse(url, &u) && !same_site(u.host, s_host);   /* another site's: no cookies */
     got = web_get(url, "GET", 0, 0, 0, 0, 0, &st, 0, 0);
-    s_sink = 0;
+    s_sink = 0; s_anon = 0;
     if (got < 0 || st != 200 || s_feed_bad) {
         if (s_feed_bad == 1) { s_big++; fmt_str(s_fail, sizeof s_fail, "%s is too big (over %u KB)", base_name(url), (u32)SCRIPT_BIG >> 10); wire("too big: ", url); }
         else { s_failed++; fmt_str(s_fail, sizeof s_fail, "%s did not come", base_name(url)); }
@@ -600,7 +603,7 @@ static int load_module(int me, const char *given, u32 given_len, int depth)
         Url u;
         int got;
         if (!url_parse(url, &u)) return 0;
-        if (!same_site(u.host, s_host) && !library_host(&u)) { s_other++; wire("not fetched, another site: ", url); return 0; }
+        if (!script_from_ok(&u, url)) return 0;
         if (s_meter >= PAGE_SCRIPTS) { s_big++; return 0; }
         note_loading(base_name(url));
         if ((got = feed_url(url)) < 0) return 0;
@@ -744,8 +747,7 @@ static void run_scripts(void)
             Url u;
             int st, len;
             if (!url_resolve(s_pg->url, src, url, sizeof url) || !url_parse(url, &u)) continue;
-            if (!same_site(u.host, s_host) && !library_host(&u)) { s_other++; wire("not fetched, another site: ", url); continue; }
-            if (!same_site(u.host, s_host)) wire("a library from ", u.host);
+            if (!script_from_ok(&u, url)) continue;
             if (s_meter >= PAGE_SCRIPTS) { s_big++; continue; }
             note_loading(base_name(url));
             (void)st;
@@ -909,7 +911,7 @@ static void set_note(void)
     }
     {
         char extra[120] = "";
-        if (s_other) fmt_str(extra, sizeof extra, ", %u from another site not fetched", (u32)s_other);
+        if (s_other) fmt_str(extra, sizeof extra, ", %u from another site without https not fetched", (u32)s_other);
         if (s_big) { int k = 0; while (extra[k]) k++; fmt_str(extra + k, sizeof extra - (u32)k, ", %u too big or too many", (u32)s_big); }
         fmt_str(s_note, sizeof s_note, "Scripts: %u ran%s.%s%s", (u32)s_ran, extra, s_fail[0] ? " " : "", s_fail);
     }
@@ -1377,7 +1379,6 @@ static int set_prop(u32 n, u32 p, const char *v, u32 len)
     case DP_SRC: dom_set_attr(n, "src", v, len); break;
     case DP_METHOD: dom_set_attr(n, "method", v, len); break;
     case DP_ACTION:
-        if (elsewhere(v)) return refuse("it tried to send a form to another site");
         dom_set_attr(n, "action", v, len);
         break;
     }
@@ -1589,7 +1590,6 @@ static int door(u8 *buf, u32 len, u32 cap)
         n = g32(); a = gstr(&al); b = gstr(&bl);
         if (!is_el(n)) return ans_undef();
         if ((a[0] | 32) == 'o' && (a[1] | 32) == 'n') return ans_undef();   /* code from text: ignored */
-        if ((!lower_cmp(a, "action") || !lower_cmp(a, "formaction")) && elsewhere(b)) return refuse("it tried to send a form to another site");
         dom_set_attr(n, a, b, bl);
         g_dom_dirty = 1;
         return ans_undef();

@@ -1088,6 +1088,7 @@ static int  s_edit_anc = -1;             /* where a selection started, or -1 */
 static char s_clip[PAGE_HREF_MAX];       /* ctrl-c and ctrl-x keep it here, for ctrl-v */
 static int  s_clip_len;
 static int  s_leave_armed;               /* asked whether to leave          */
+static int  s_send_armed, s_send_ok;     /* asked whether to send a form in the clear: its field + 1 */
 
 /* Finding on the page, as less does it: / and a few letters, then n for
  * the next and N for the one before.  Letters are compared as the page
@@ -1300,6 +1301,8 @@ static void draw(void)
     /* Status: what is happening, or where the picked link goes. */
     if (s_leave_armed) {
         put_text_clipped(2, s_h - 2, "Leave browzer? \1y\1 leaves; any other key stays.", C_ACCENT, pp, s_w - 12);
+    } else if (s_send_armed) {
+        put_text_clipped(2, s_h - 2, "Unencrypted: anyone on the way can read this form. \1y\1 sends it; any other key keeps it.", C_ACCENT, pp, s_w - 12);
     } else if (s_finding) {
         int k, cx = 3;
         term_win_text(2, s_h - 2, "/", C_ACCENT, pp);
@@ -1892,6 +1895,18 @@ static void submit(PageField *by)
 {
     PageForm *form;
     if (by->form == FORM_NONE) return;                 /* nothing to send it to */
+    /* From an encrypted page to a plain http address: what was typed would
+     * travel where anyone on the way can read it, so ask first.  Anything
+     * else is sent as asked, to whatever site the form names. */
+    if (!s_send_ok && s_pg.url[4] == 's') {
+        char to[PAGE_HREF_MAX + 16];
+        const char *act = s_pg.forms[by->form].action;
+        Url u;
+        if (url_resolve(s_pg.url, act[0] ? act : s_pg.url, to, sizeof to) && url_parse(to, &u) && !u.secure) {
+            s_send_armed = (int)(by - s_pg.fields) + 1;
+            return;
+        }
+    }
     if (script_submit(&s_pg, by->form)) return;        /* a script took it      */
     form = &s_pg.forms[by->form];
     char url[PAGE_HREF_MAX + 16];
@@ -2341,6 +2356,15 @@ void browzer_run(const char *start)
                 edit_cut_sel();
                 edit_insert(&c, 1);
             }
+            continue;
+        }
+
+        /* An unencrypted form waits for y; anything else keeps it. */
+        if (s_send_armed) {
+            int f = s_send_armed - 1;
+            s_send_armed = 0;
+            if ((k == 'y' || k == 'Y') && f < s_pg.nfields) { s_send_ok = 1; submit(&s_pg.fields[f]); s_send_ok = 0; }
+            else say("Not sent.", C_DIM);
             continue;
         }
 

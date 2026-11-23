@@ -61,7 +61,7 @@ None of these was tried as a real attack.
 
 Rechecked 2026-11-14; still true unless their code changes.
 
-- **Scripts:** run only on allowed sites, in a 4 MB room with no network, files or cookies. Every request goes through one door browzer checks (`src/apps/browzer/script.c`); the kernel stops a room that faults or overruns. Other sites' scripts are never fetched, except libraries from four public hosts over https. A script's fetch() reaches another site only as that site allows (CORS: Origin sent, no cookies sent or kept, a preflight when not a plain request), and never a local-network address from a public page. The fuzzer plays a hostile room.
+- **Scripts:** run only on allowed sites, in a 4 MB room with no network, files or cookies. Every request goes through one door browzer checks (`src/apps/browzer/script.c`); the kernel stops a room that faults or overruns. Other sites' scripts are fetched only over https, with no cookies sent or kept. A form from an https page to a plain http address asks first. A script's fetch() reaches another site only as that site allows (CORS: Origin sent, no cookies sent or kept, a preflight when not a plain request), and never a local-network address from a public page. The fuzzer plays a hostile room.
 - **Memory exhaustion:** every buffer is fixed in size, allocated once, never freed.
 - **Network parsing:** every layer checks lengths before reading; HTTP headers are capped at 2 KB and redirects at 5.
 - **Decoders:** sizes from files are clamped; bit readers stop at the padded end; a codebook that is not a prefix code is refused.

