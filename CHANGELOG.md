@@ -57,6 +57,12 @@ without it. Each version's notes are also written next to its image, as
 
 ### BUG FIXES
 
+- Wikipedia's articles hung after the secure connection was made: their
+  headers run to 9 KB (two long security policies), browzer kept 8 KB,
+  and so never saw where the headers end. A header line too long to keep
+  is now left out, and the end is still found; the same for scripts and
+  fetch(), which kept 2 KB.
+
 - browzer plays stations whose stream addresses are long, as signed
   ones are (RTL's run past a thousand characters): it cut them at 200.
 - A station's playlist that is not there shows the station's own error

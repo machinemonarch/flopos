@@ -2013,6 +2013,23 @@ static u32 number_at(const char *v)
     while (*v >= '0' && *v <= '9') x = x * 10 + (u32)(*v++ - '0');
     return x;
 }
+/* One byte of a response's headers into buf (cap bytes); 1 at the blank
+ * line that ends them.  A line too long to keep -- a site's security policy
+ * can run to several KB, and browzer has no use for it -- is left out
+ * whole, but the end is still found: before, a page with 9 KB of headers
+ * (Wikipedia's) filled the buffer, its end was never seen, and the page
+ * never came. */
+#define HEAD_LINE 2048
+int head_byte(Head *h, char *buf, int cap, u8 b)
+{
+    h->last = (h->last << 8) | b;
+    if (h->skip) { if (b == '\n') h->skip = 0; }
+    else if (h->len >= cap - 1 || h->len - h->line >= HEAD_LINE) { h->len = h->line; h->skip = b != '\n'; }
+    else { buf[h->len++] = (char)b; if (b == '\n') h->line = h->len; }
+    if (h->last == 0x0D0A0D0Au || (h->last & 0xFFFF) == 0x0A0Au) { buf[h->len] = 0; return 1; }
+    return 0;
+}
+
 static int conn_write(const u8 *d, int n) { return A->conn_write(d, n); }
 static int conn_read(u8 *b, int n, int w) { return A->conn_read(b, n, w); }
 static void conn_close(void) { A->conn_close(); }
@@ -2024,6 +2041,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
 {
     static u8 buf[4096];
     static char head[8192];
+    Head hd = { 0, 0, 0, 0 };
     static char req[URL_PATH_MAX + 200];
     char line[96];
     int head_len = 0, in_body = 0, status = 0, n, i, html = 1, counting = 0, media = 0, stopped = 0, whole = 0, asked = 0;
@@ -2128,12 +2146,9 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
                 continue;
             }
 
-            if (head_len < (int)sizeof head - 1) head[head_len++] = (char)buf[i];
-            if (head_len >= 4 && head[head_len - 1] == '\n' &&
-                (head[head_len - 2] == '\n' ||
-                 (head[head_len - 2] == '\r' && head[head_len - 3] == '\n'))) {
+            head_len = 1;                                /* headers are coming */
+            if (head_byte(&hd, head, (int)sizeof head, buf[i])) {
                 char *ln = head, *end;
-                head[head_len] = 0;
                 in_body = 1;
 
                 for (end = ln; *end && *end != ' '; end++) { }   /* HTTP/1.1 */

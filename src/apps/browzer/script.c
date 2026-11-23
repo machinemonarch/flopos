@@ -202,7 +202,7 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
     where[i] = 0;
     for (hops = 0; hops < 3; hops++) {
         char head[2048];
-        int hl = 0;
+        Head hd = { 0, 0, 0, 0 };
         if (!url_parse(where, &u)) return -1;
         if (!A->conn_open(u.host, u.port, u.secure, 0)) return -1;
         ck[0] = 0;
@@ -225,10 +225,8 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
             if (n <= 0) break;
             for (i = 0; i < n; i++) {
                 if (!state) {
-                    if (hl < (int)sizeof head - 1) head[hl++] = (char)buf[i];
-                    if (hl >= 4 && head[hl - 1] == '\n' && (head[hl - 2] == '\n' || (head[hl - 2] == '\r' && head[hl - 3] == '\n'))) {
+                    if (head_byte(&hd, head, (int)sizeof head, buf[i])) {
                         char *ln = head, *end;
-                        head[hl] = 0;
                         state = 1;
                         for (end = ln; *end && *end != ' '; end++) { }
                         while (*end == ' ') end++;
