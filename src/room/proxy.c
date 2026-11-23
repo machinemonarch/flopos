@@ -62,7 +62,21 @@ Obj *proxy_keys(Vm *vm, Obj *p, int all)
     r = vm_call(vm, t, p->u.bound.self, a, 1);
     if (vm->throwing) return 0;
     if (r.t != T_OBJ || r.u.o->cls != C_ARRAY) { throw_err(vm, E_TYPE, "ownKeys must give a list"); return 0; }
-    return r.u.o;
+    {   /* the engine expects names: each one made a string, never trusted as one */
+        Obj *out = arr_new(vm, 0);
+        u32 i;
+        if (!out) return 0;
+        TEMP(vm, r); TEMP(vm, v_obj(out));
+        for (i = 0; i < r.u.o->u.arr.len && !vm->throwing; i++) {
+            Val k = arr_get(r.u.o, i);
+            Str *ks;
+            if (k.t != T_STR) { throw_err(vm, E_TYPE, "ownKeys gave something that is not a name"); break; }
+            ks = to_key(vm, k);
+            if (ks) arr_push(vm, out, v_str(ks));
+        }
+        UNTEMP(vm, 2);
+        return vm->throwing ? 0 : out;
+    }
 }
 
 /* apply or construct: the trap with (target, this, list) or (target, list, newTarget). */

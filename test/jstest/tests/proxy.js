@@ -18,4 +18,6 @@ var C = new Proxy(function () { this.v = 1; }, {});
 check(new C().v, 1, 'construct without a trap');
 var r = Proxy.revocable({}, {}); r.revoke(); var e; try { r.proxy.x; } catch (x) { e = x.name; } check(e, 'TypeError', 'revoked');
 check(log.join(','), 'get a,get b,set c,del c', 'the traps, in order');
+var bad = new Proxy({}, { ownKeys: function () { return [1, {}, 'x']; } }), e2;
+try { Object.keys(bad); e2 = 'no'; } catch (x) { e2 = x.name; } check(e2, 'TypeError', 'ownKeys that gives non-names is refused');
 print('done');

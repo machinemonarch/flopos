@@ -47,7 +47,7 @@ def tests(only):
             for f in sorted(fs):
                 if f.endswith(".js") and "_FIXTURE" not in f:
                     p = os.path.join(d, f)
-                    if not only or only in p: yield p
+                    if not only or any(o in p for o in only.split(",")): yield p
 
 
 def compose(path, tmp, harness):
@@ -80,9 +80,12 @@ def main():
     jobs = int(args[args.index("--jobs") + 1]) if "--jobs" in args else os.cpu_count() or 2
     if not os.path.isdir(SUITE):
         subprocess.run(["git", "clone", "-q", "--depth", "1", "https://github.com/tc39/test262", SUITE], check=True)
-    build()
+    global BIN
+    if os.environ.get("FLOPOS_T262_BIN"): BIN = os.environ["FLOPOS_T262_BIN"]   # e.g. the memory-checked build/jstest/jstest
+    else: build()
     harness = {f: open(os.path.join(SUITE, "harness", f), encoding="utf-8").read() for f in os.listdir(os.path.join(SUITE, "harness")) if f.endswith(".js")}
     os.makedirs(OUT, exist_ok=True)
+    if os.path.exists(os.path.join(OUT, "memory.txt")): os.remove(os.path.join(OUT, "memory.txt"))
     tmp = tempfile.mkdtemp(prefix="flopos-t262.")
     todo = list(tests(only))
     results, lock = {}, threading.Lock()
@@ -92,8 +95,11 @@ def main():
         made = [compose(p, tmp, harness) for p in paths]
         by_run = {run: (p, m) for p, (run, m) in zip(paths, made)}
         try:
-            out = subprocess.run([BIN, "-q", "-t262"] + [r for r, _ in made], capture_output=True, text=True,
-                                 errors="replace", timeout=60 + 5 * len(paths)).stdout
+            rr = subprocess.run([BIN, "-q", "-t262"] + [r for r, _ in made], capture_output=True, text=True,
+                                errors="replace", timeout=60 + 5 * len(paths))
+            out = rr.stdout
+            if "AddressSanitizer" in rr.stderr or "runtime error" in rr.stderr:   # the memory checker's finds, kept
+                with lock: open(os.path.join(OUT, "memory.txt"), "a").write(rr.stderr[-4000:] + "\n----\n")
         except subprocess.TimeoutExpired as e:
             out = (e.stdout or b"").decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
         got = {}
@@ -139,6 +145,7 @@ def main():
     open(os.path.join(OUT, "report.txt"), "w").write("\n".join(lines) + "\n")
     json.dump({os.path.relpath(p, SUITE): r for p, r in results.items()}, open(os.path.join(OUT, "results.json"), "w"))
     print(lines[0])
+    if os.path.exists(os.path.join(OUT, "memory.txt")): print("FAILED  the memory checker found something: %s" % os.path.join(OUT, "memory.txt"))
     print("   by feature, worst first: %s" % os.path.join(OUT, "report.txt"))
 
 
