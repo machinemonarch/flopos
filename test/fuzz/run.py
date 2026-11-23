@@ -232,6 +232,16 @@ text</pre></table>
 {"title":"\\u0420\\u0430\\u0434\\u0438\\u043e","listen_url":"http://b.test:8000/stream"},{"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","mp3":"/m.mp3"},
 {"name":"left open</script><p>&larr; back &rarr; &laquo;x&raquo; &times;</p></body></html>""")
 
+def seeds_inflate(d):
+    """The floppy's programs as the build packs them, in pieces of up to 48 KB."""
+    import zlib
+    os.makedirs(d, exist_ok=True)
+    for p in glob("build/apps", ".app") + [os.path.join(ROOT, "build", "room.bin"), os.path.join(ROOT, "build", "kernel.bin")]:
+        if not os.path.isfile(p): continue
+        data = open(p, "rb").read()
+        for i, at in enumerate(range(0, min(len(data), 4 << 16), 48 << 10)):
+            open(os.path.join(d, "%s-%d" % (os.path.basename(p), i)), "wb").write(zlib.compress(data[at:at + (48 << 10)], 9))
+
 def seeds_nts(d):
     """A key exchange's answer (the records a real server sends: protocol,
     cipher, eight cookies, a server and a port, the end) and a time
@@ -316,6 +326,8 @@ TARGETS = {
                 {"FUZZ_ROOTS": os.path.join(OUT, "made", "tls", "roots.dat")},
                 # The seals' checks are renamed, and tls.c (the target) puts its own in front of them.
                 {"src/kernel/chacha.c": "-Daead_open=real_aead_open", "src/kernel/aes.c": "-Daesgcm_open=real_aesgcm_open"}),
+    "inflate": (files("test/fuzz/inflate.c", "src/kernel/inflate.c"), ["src/kernel"],
+                os.path.join(OUT, "made", "inflate"), lambda: seeds_inflate(os.path.join(OUT, "made", "inflate")), {}),
     "nts":     (files("test/fuzz/nts.c", "test/fuzz/kshim.c", "src/kernel/nts.c", "src/kernel/fmt.c"), ["src/kernel"],
                 os.path.join(OUT, "made", "nts"), lambda: seeds_nts(os.path.join(OUT, "made", "nts")), {},
                 # the signature's check is renamed, and nts.c (the target) puts its own in front of it

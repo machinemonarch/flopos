@@ -56,6 +56,20 @@ SAFFRAN = "data/saffran.pix"
 SAFFRAN_BYTES = 768 + 64000
 
 
+def packed(path):
+    """The program at path, packed as the kernel unpacks it (src/kernel/inflate.c):
+    "FLZ1", its size, then a zlib stream.  Written beside it as path + ".flz";
+    a program that would not get smaller goes on as it is."""
+    import zlib
+    data = open(path, "rb").read()
+    z = zlib.compress(data, 9)
+    if len(z) + 8 >= len(data):
+        return path
+    out = path + ".flz"
+    open(out, "wb").write(b"FLZ1" + struct.pack("<I", len(data)) + z)
+    return out
+
+
 def run(*cmd):
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
@@ -137,7 +151,7 @@ def main():
     # The script room's engine (src/room/), for browzer's JavaScript.
     room = os.path.join(os.path.dirname(kern_path), "room.bin")
     if os.path.exists(room):
-        run("mcopy", "-i", out_path, room, "::ROOM.BIN")
+        run("mcopy", "-i", out_path, packed(room), "::ROOM.BIN")
 
     # Apps, each its own file: SCRIBE.APP for `scribe`.  The kernel finds
     # them by name when they are asked for, so where they land is theirs.
@@ -145,7 +159,7 @@ def main():
     # name, and FAT12 gives it a short one beside it (INVENT~1.APP).
     for app in app_paths:
         name = os.path.splitext(os.path.basename(app))[0].upper() + ".APP"
-        run("mcopy", "-i", out_path, app, "::" + name)
+        run("mcopy", "-i", out_path, packed(app), "::" + name)
 
     # The inventory: the one folder that is the user's.  Everything they
     # make lives in it, as ordinary files any computer can read, and the

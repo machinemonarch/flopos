@@ -19,6 +19,8 @@ detail.
 - **1 MB:** The kernel: code, data and variables (`linker.ld`).
 - **After the kernel:** The heap: screen buffers, tables, network buffers, the wizard's model. It only ever grows.
 - **12 MB to 20 MB:** The app area, the only memory an app can touch.
+
+ROOM.BIN and the apps are packed on the floppy (deflate in zlib's wrapper, behind "FLZ1" and the size; `tools/build/mkimage.py`). The kernel reads one into the top of its area and unpacks it from the bottom (`src/kernel/inflate.c`), checking the checksum; a plain file loads as before.
 - **0x7000000:** The video card's frame buffer.
 
 Paging is on, with 4 MB pages mapping every address to itself; only the

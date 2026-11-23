@@ -22,6 +22,7 @@
  * ===========================================================================
  */
 #include "flopos.h"
+#include "inflate.h"
 #include "io.h"
 #include "../apps/sdk/app.h"
 #include "../room/room.h"
@@ -107,9 +108,14 @@ int room_open(void)
     if (!wall_on()) { s_why = "this machine cannot keep scripts apart from the rest (no 4 MB pages)"; return 0; }
     if (!memory_for_room()) { s_why = "scripts need 24 MB of memory; this machine has less"; return 0; }
     if (!fs_mount() || !fs_find("ROOM.BIN", &f)) { s_why = "ROOM.BIN is not on the floppy"; return 0; }
-    if (f.size < sizeof(RoomHeader) || f.size > ROOM_GAP1 - ROOM_BASE) { s_why = "ROOM.BIN is not the script room"; return 0; }
     map(0);
-    if (fs_read(&f, (u8 *)ROOM_BASE, f.size) != (int)f.size) { s_why = "the floppy would not give up ROOM.BIN"; return 0; }
+    {
+        const char *why = "";
+        int got = load_packed(&f, (u8 *)ROOM_BASE, ROOM_GAP1 - ROOM_BASE, &why);   /* packed or not */
+        if (got < 0) { s_why = "ROOM.BIN did not load"; serial_printf("[room] ROOM.BIN: %s\n", why); return 0; }
+        if (got < (int)sizeof(RoomHeader)) { s_why = "ROOM.BIN is not the script room"; return 0; }
+        f.size = (u32)got;
+    }
     if (h->magic[0] != 'F' || h->magic[4] != 'R' || h->magic[7] != 'M' || h->version != ROOM_VERSION ||
         h->load_addr != ROOM_BASE || (h->ro_end & 0xFFF) || h->ro_end < ROOM_BASE || h->ro_end > h->image_end ||
         h->image_end > h->bss_end || h->bss_end > ROOM_GAP1 || h->entry < ROOM_BASE || h->entry >= h->ro_end) {

@@ -70,6 +70,12 @@ without it. Each version's notes are also written next to its image, as
 - **The result:** of 568 scripts from 38 well-known sites, 34 are still
   refused, down from 176. Most of those left are too big.
 
+#### Kernel
+
+- **Programs are packed on the floppy** and unpacked as they load: the
+  script room and every app take about half the space (300 KB freed) and
+  less of the floppy's slow reading. Your own files stay plain.
+
 ### BUG FIXES
 
 #### browzer

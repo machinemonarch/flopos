@@ -15,6 +15,7 @@
  */
 #include "flopos.h"
 #include "io.h"
+#include "inflate.h"
 #include "../apps/sdk/app.h"
 #include "gen/version.h"
 
@@ -424,15 +425,15 @@ static int run_one(const char *word, int argc, char **argv)
         term_newline();
         return 1;
     }
-    if (f.size < sizeof(AppHeader) || f.size > APP_MAX) {
-        term_printf("%s is not an app I can load.", file);
-        term_newline();
-        return 1;
-    }
-    if (fs_read(&f, (u8 *)APP_BASE, f.size) != (int)f.size) {
-        term_printf("The floppy would not give up %s.", file);
-        term_newline();
-        return 1;
+    {
+        const char *why = "";
+        int got = load_packed(&f, (u8 *)APP_BASE, APP_MAX - APP_STACK, &why);   /* packed or not */
+        if (got < (int)sizeof(AppHeader)) {
+            term_printf("%s did not load: %s.", file, got < 0 ? why : "it is too short");
+            term_newline();
+            return 1;
+        }
+        f.size = (u32)got;                       /* from here on, as unpacked */
     }
     if (h->magic[0] != 'F' || h->magic[1] != 'L' || h->magic[2] != 'O' ||
         h->magic[3] != 'P' || h->magic[4] != 'A' || h->magic[5] != 'P' ||
