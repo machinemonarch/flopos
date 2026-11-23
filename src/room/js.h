@@ -95,8 +95,11 @@ enum {
     C_ASYNC,                             /* an async function, paused at an await */
     C_GEN,                               /* a generator, paused at a yield (u.co too) */
     C_MAP,                               /* Map, Set, WeakMap, WeakSet (u.map; pad: which) */
-    C_MAPITER                            /* an iterator over one (u.iter; pad: keys, values, entries) */
+    C_MAPITER,                           /* an iterator over one (u.iter; pad: keys, values, entries) */
+    C_ABUF,                              /* an ArrayBuffer (u.ta: its bytes)  */
+    C_TARRAY                             /* a typed array or DataView (u.ta; pad: the kind, TA_VIEW a DataView) */
 };
+#define TA_VIEW 9
 
 typedef Val (*NativeFn)(Vm *vm, Val self, Val *args, int argc, u32 magic);
 
@@ -118,6 +121,7 @@ struct Obj {
         struct { Val of; u32 i; Vals *keys; } iter;
         struct { Val prom; Vals *stack; void *fr; } co;    /* fr: its Frame, kept in a K_BYTES block */
         struct { Vals *kv; u32 n, live; u32 *idx; u32 icap; } map;   /* idx: a K_BYTES block (mapset.c) */
+        struct { Obj *buf; u8 *data; u32 len; } ta;        /* typed.c: data a K_BYTES block's, or into buf's */
     } u;
 };
 
@@ -199,12 +203,14 @@ struct Vm {
     Obj   *err_ctor[8];                  /* Error, TypeError, RangeError, SyntaxError,
                                           * ReferenceError, EvalError, URIError, AggregateError */
     Obj   *coll_proto[5];                /* Map, Set, WeakMap, WeakSet, their iterators */
+    Obj   *typed_proto[TA_VIEW + 6];     /* typed.c's prototypes, kept from the sweep */
     Obj   *agen_proto;                   /* what an async generator gives (vm.c)  */
     int    gen_awaited;                  /* the generator just paused was an async one, awaiting */
     Obj   *element_proto, *document_obj, *style_proto, *classlist_proto, *event_proto;
 
     int    throwing;                     /* an exception is on its way out   */
     Val    exception;
+    void (*uncaught)(Vm *vm, Val e);     /* one nobody caught, in a timer: said (dom.c) */
 
     u32    steps;                        /* instructions run, this task      */
     u32    deadline;                     /* host_ms() at which to stop       */
@@ -280,6 +286,11 @@ u32   to_uint32(f64 x);
 /* ---- objects (obj.c) -------------------------------------------------------- */
 Obj  *obj_new(Vm *vm, Obj *proto, int cls);
 Obj  *arr_new(Vm *vm, u32 len);
+void  typed_init(Vm *vm);
+Val   ta_get(Obj *o, u32 i);
+int   ta_put(Vm *vm, Obj *o, u32 i, Val v);
+Obj  *ta_bytes(Vm *vm, const u8 *p, u32 n);
+Obj  *ta_adopt(Vm *vm, u8 *data, u32 len);
 int   arr_push(Vm *vm, Obj *a, Val v);
 Val   arr_get(Obj *a, u32 i);
 int   arr_set(Vm *vm, Obj *a, u32 i, Val v);

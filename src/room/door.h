@@ -33,7 +33,7 @@ enum {
     D_SETSTYLE,     /* node, name, text                                    */
     D_CLASS,        /* node, op (0 add 1 remove 2 toggle 3 contains), name -> bool */
     D_LISTEN,       /* node, type: a script listens here                   */
-    D_FETCH,        /* method, url, body, type -> status, type, headers, body, more */
+    D_FETCH,        /* method, url, body, type, whole body's length -> status, type, headers, body, more (2: send the rest) */
     D_GO,           /* url: location.href =                                */
     D_WRITE,        /* html: document.write                                */
     D_HREF,         /*                         -> text   the page's address */
@@ -42,6 +42,9 @@ enum {
     D_CLONE,        /* node, deep              -> node   cloneNode         */
     D_IMPORT,       /* address, base           -> num    import(): a ticket, or -1 */
     D_FETCHMORE,    /*                         -> body, more: a long fetch's next piece */
+    D_SENDMORE,     /* bytes                   -> ok:   a body's next piece */
+    D_SENDDONE,     /*                         -> as D_FETCH: all sent, the answer */
+    D_FETCHEND,     /*                         -> 0:    a stream given up (abort) */
     D_COUNT
 };
 

@@ -38,7 +38,9 @@
 #define LOAD_MS      2000                /* each script, as the page loads  */
 #define LOAD_PER_KB  60                  /* and this much more for each KB of it: a */
 #define LOAD_MAX     15000               /* library takes time just to read (jQuery, 87 KB: 3 s) */
-#define EVENT_MS     500                 /* each click, each timer          */
+#define EVENT_MS     500                 /* each click                      */
+#define TIMER_MS     4000                /* each turn of timers: work a page does in the
+                                          * background (a Worker filling a buffer) */
 #define FETCHES      30                  /* a page's fetches                */
 
 int g_dom_dirty;
@@ -192,10 +194,18 @@ static char s_origin[80], s_extra[160];
  * headers, for Response.headers (another site's: only those any page may
  * read). */
 static int  s_chunked, s_paused, s_carry_n, s_carry_at;
+/* A body sent in pieces (XMLHttpRequest's uploads): web_get writes the
+ * head and what it has, says -2, and leaves the line open (s_up_open); the
+ * room's pieces follow (D_SENDMORE), then D_SENDDONE reads the answer
+ * (web_get again with s_resume). */
+static int  s_resume, s_up_open, s_up_cross;
+static u32  s_up_total;
+static char s_up_url[PAGE_HREF_MAX + 16], s_up_method[12];
 static u8   s_wbuf[2048];                 /* web_get's reads; the carry is what is left in it */
 static char s_rhead[512];               /* headers past this are left out */
 static u32  s_rhead_n;
 static int  head_safe(const char *ln);
+static void web_end(void);
 #define FETCH_PIECE 60000                 /* a fetch's body a door answer at most: the door holds 64 KB */
 static char s_acao[96], s_acam[96];      /* Access-Control-Allow-Origin, -Methods */
 
@@ -215,21 +225,27 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
         char head[2048];
         Head hd = { 0, 0, 0, 0 };
         if (!url_parse(where, &u)) return -1;
-        if (!A->conn_open(u.host, u.port, u.secure, 0)) return -1;
-        ck[0] = 0;
         s_acao[0] = s_acam[0] = 0;
-        if (s_cross) fmt_str(ck, sizeof ck, "Origin: %s\r\n%s", s_origin, s_extra);
-        else if (!s_anon) cookie_header(&u, ck, sizeof ck);
-        if (body && blen >= 0 && method && method[0] == 'P')
-            fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
-                    "Content-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
-                    method, u.path, u.host, A->os_version(), btype && btype[0] ? btype : "text/plain", (u32)blen, ck);
-        else
-            fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
-                    "Accept: */*\r\n%sConnection: close\r\n\r\n", method && method[0] ? method : "GET", u.path, u.host, A->os_version(), ck);
-        for (n = 0; req[n]; n++) { }
-        A->conn_write((const u8 *)req, n);
-        if (body && blen > 0 && method && method[0] == 'P') A->conn_write(body, blen);
+        if (!s_resume) {
+            u32 total = s_up_total > (u32)blen ? s_up_total : (u32)blen;
+            web_end();                               /* a stream left open: ended */
+            if (!A->conn_open(u.host, u.port, u.secure, 0)) return -1;
+            ck[0] = 0;
+            if (s_cross) fmt_str(ck, sizeof ck, "Origin: %s\r\n%s", s_origin, s_extra);
+            else if (!s_anon) cookie_header(&u, ck, sizeof ck);
+            if (body && blen >= 0 && method && method[0] == 'P')
+                fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
+                        "Content-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
+                        method, u.path, u.host, A->os_version(), btype && btype[0] ? btype : "text/plain", total, ck);
+            else
+                fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
+                        "Accept: */*\r\n%sConnection: close\r\n\r\n", method && method[0] ? method : "GET", u.path, u.host, A->os_version(), ck);
+            for (n = 0; req[n]; n++) { }
+            A->conn_write((const u8 *)req, n);
+            if (body && blen > 0 && method && method[0] == 'P') A->conn_write(body, blen);
+            if (total > (u32)blen && method && method[0] == 'P') { s_up_open = 1; return -2; }   /* the rest in pieces */
+        }
+        s_resume = 0;
         state = 0; got = 0; loc[0] = 0;
         for (;;) {
             n = A->conn_read(buf, sizeof s_wbuf, 15000);
@@ -341,8 +357,8 @@ static int web_more(char *out, int cap)
 /* A fetch left open, given up: by a new fetch, a new page, or a script's end. */
 static void web_end(void)
 {
-    if (s_paused) A->conn_close();
-    s_paused = 0; s_carry_n = 0;
+    if (s_paused || s_up_open) A->conn_close();
+    s_paused = 0; s_carry_n = 0; s_up_open = 0; s_up_total = 0;
 }
 
 /* Headers another site's answer may show a page's script (CORS's safe list). */
@@ -369,7 +385,6 @@ static int door(u8 *buf, u32 len, u32 cap);
 static int task(u32 n, u32 ms, char *why, int whycap)
 {
     int r = A->room_task(s_task, n, s_ans, sizeof s_ans - 1, ms, door, s_doorbuf, sizeof s_doorbuf);
-    web_end();                                   /* a fetch it left half read */
     if (why && whycap) why[0] = 0;
     if (r < 0) {
         s_room = 0;
@@ -464,15 +479,22 @@ static void feed_drop(void)
 
 /* The fetched script at url, fed to the room.  Its length, or -1 (and
  * s_fail says why). */
+static const char *s_feed_pre, *s_feed_post;     /* a worker's wrapping (drain_imports) */
+static u32 js_len(const char *t) { u32 n = 0; while (t[n]) n++; return n; }
 static int feed_url(const char *url)
 {
     int st, got;
     Url u;
     feed_start();
+    if (s_feed_pre && !feed_bytes((const u8 *)s_feed_pre, (int)js_len(s_feed_pre))) return -1;
     s_sink = feed_bytes;
     s_anon = url_parse(url, &u) && !same_site(u.host, s_host);   /* another site's: no cookies */
     got = web_get(url, "GET", 0, 0, 0, 0, 0, &st, 0, 0);
     s_sink = 0; s_anon = 0;
+    if (got >= 0 && st == 200 && !s_feed_bad && s_feed_post) {
+        if (!feed_bytes((const u8 *)s_feed_post, (int)js_len(s_feed_post))) s_feed_bad = 1;
+        got = (int)s_feed_total;
+    } else if (got >= 0 && s_feed_pre) got = (int)s_feed_total;
     if (got < 0 || st != 200 || s_feed_bad) {
         if (s_feed_bad == 1) { s_big++; fmt_str(s_fail, sizeof s_fail, "%s is too big (over %u KB)", base_name(url), (u32)SCRIPT_BIG >> 10); wire("too big: ", url); }
         else { s_failed++; fmt_str(s_fail, sizeof s_fail, "%s did not come", base_name(url)); }
@@ -750,7 +772,26 @@ static void drain_imports(void)
         int got = -1, i;
         u32 n, k, ticket = s_dyn[0].ticket;
         why[0] = 0;
-        if (!resolve_spec(s_dyn[0].base[0] ? s_dyn[0].base : s_pg->url, s_dyn[0].spec, to, sizeof to))
+        if (s_dyn[0].spec[0] == 1) {
+            /* a Worker: its file run inside a function that is its world
+             * (dom.c's __flopos_wrun gives it self, postMessage, onmessage) */
+            static char pre[160];
+            Url wu;
+            int len;
+            got = -2;
+            fmt_str(pre, sizeof pre, "__flopos_wrun(%u,function(self,postMessage,close,importScripts,onmessage,onerror,addEventListener,removeEventListener){", ticket);
+            if (!url_resolve(s_pg->url, s_dyn[0].spec + 1, to, sizeof to) || !url_parse(to, &wu)) fmt_str(why, sizeof why, "browzer cannot find %s", s_dyn[0].spec + 1);
+            else if (!script_from_ok(&wu, to)) fmt_str(why, sizeof why, "the Worker %s is on another site without https", base_name(to));
+            else {
+                s_feed_pre = pre; s_feed_post = "\n;return function(){return onmessage;};});";
+                len = feed_url(to);
+                s_feed_pre = s_feed_post = 0;
+                if (len < 0) fmt_str(why, sizeof why, "%s", s_fail[0] ? s_fail : "the Worker did not load");
+                else if (s_meter + (u32)len > PAGE_SCRIPTS) { feed_drop(); fmt_str(why, sizeof why, "the Worker would pass the scripts' room for the page"); }
+                else { s_meter += (u32)len; run_fed((u32)len, "a Worker", 0); }
+            }
+            to[0] = 0;
+        } else if (!resolve_spec(s_dyn[0].base[0] ? s_dyn[0].base : s_pg->url, s_dyn[0].spec, to, sizeof to))
             fmt_str(why, sizeof why, "browzer cannot find %s", s_dyn[0].spec);
         else if ((got = module_slot(to)) < 0 || !load_module(got, 0, 0, 0)) {
             got = -1;
@@ -762,6 +803,7 @@ static void drain_imports(void)
         put32(s_task + 1, ticket);
         n = 5;
         if (got >= 0) for (k = 0; s_mod_url[got][k]; k++) s_task[n++] = (u8)s_mod_url[got][k];
+        if (got == -2 && !why[0]) s_task[n++] = (u8)'w';     /* a Worker, started */
         s_task[n++] = 0;
         for (k = 0; why[k]; k++) s_task[n++] = (u8)why[k];
         s_task[n++] = 0;
@@ -1034,11 +1076,13 @@ void script_tick(Page *pg)
     char why[200];
     if (pg != s_pg || !s_on || !s_room) return;
     if (s_next_timer && (s32)(ms_now() - s_next_timer) >= 0) {
+        int r;
         s_task[0] = T_TIMERS;
-        put32(s_task + 1, EVENT_MS);
+        put32(s_task + 1, TIMER_MS);
         fields_to_tree();
-        if (task(5, EVENT_MS + 500, why, sizeof why) < 0) {
-            fmt_str(s_fail, sizeof s_fail, "a timer was stopped: %s", why);
+        r = task(5, TIMER_MS + 500, why, sizeof why);
+        if (r < 0 || r == A_TIME) {                  /* said, never silent */
+            fmt_str(s_fail, sizeof s_fail, "a timer was stopped: %s", r == A_TIME ? "it ran out of time" : why);
             wire(s_fail, "");
             set_note();
         }
@@ -1591,6 +1635,25 @@ static int insert_node(u32 parent, u32 child, u32 before)
     return dom_append(parent, child, before);
 }
 
+/* A fetch's answer through the door: status, type, headers, body, more. */
+static int fetch_answer(int got, int st, const char *type)
+{
+    u32 k;
+    s_on_ = 0;
+    put(DK_STR);
+    put4((u32)(got < 0 ? 0 : st));
+    for (k = 0; type[k]; k++) { }
+    put4(k);
+    { u32 i; for (i = 0; i < k; i++) put((u8)type[i]); }
+    if (got < 0) { got = 0; s_rhead_n = 0; web_end(); }
+    put4(s_rhead_n);
+    { u32 i; for (i = 0; i < s_rhead_n; i++) put((u8)s_rhead[i]); }
+    put4((u32)got);
+    { int i; for (i = 0; i < got; i++) put((u8)s_scratch[i]); }
+    put4((u32)s_paused);
+    return (int)s_on_;
+}
+
 static int door(u8 *buf, u32 len, u32 cap)
 {
     u32 op, n, k;
@@ -1687,7 +1750,9 @@ static int door(u8 *buf, u32 len, u32 cap)
         char *m, *u, *body, *t, url[PAGE_HREF_MAX + 16], type[64];
         u32 ml, ul, bodyl, tl;
         int st, got;
+        u32 total;
         m = gstr(&ml); u = gstr(&ul); body = gstr(&bodyl); t = gstr(&tl);
+        total = g32();                        /* the whole body: more than came here follows in pieces */
         web_end();
         if (++s_fetches > FETCHES) return refuse("it fetched too often");
         if (!url_resolve(s_pg->url, u, url, sizeof url)) return refuse("it fetched an address browzer cannot read");
@@ -1722,29 +1787,54 @@ static int door(u8 *buf, u32 len, u32 cap)
                 }
             }
             s_extra[0] = 0;
-            s_chunked = 1;
+            s_chunked = 1; s_up_total = total; s_up_cross = 1;
             got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, FETCH_PIECE, &st, type, sizeof type);
             s_cross = 0; s_chunked = 0;
+            if (got == -2) goto upload;
             if (got >= 0 && !cors_allows()) { web_end(); got = -1; st = 0; type[0] = 0; wire("not allowed by the other site: ", url); }
             goto answer;
         }
         note_loading("what a script asked for");
-        s_chunked = 1;
+        s_chunked = 1; s_up_total = total; s_up_cross = 0;
         got = web_get(url, m[0] ? m : "GET", (const u8 *)body, (int)bodyl, t, s_scratch, FETCH_PIECE, &st, type, sizeof type);
         s_chunked = 0;
+        if (got == -2) {
+    upload:                                   /* the head is sent: the room sends the rest */
+            fmt_str(s_up_url, sizeof s_up_url, "%s", url);
+            fmt_str(s_up_method, sizeof s_up_method, "%s", m[0] ? m : "POST");
+            s_on_ = 0;
+            put(DK_STR); put4(0); put4(0); put4(0); put4(0); put4(2);
+            return (int)s_on_;
+        }
+        return fetch_answer(got, st, type);
     answer:
+        return fetch_answer(got, st, type);
+    }
+    case D_SENDMORE: {                        /* a piece of a body being sent */
+        u32 bl;
+        char *b = gstr(&bl);
+        int ok = s_up_open && A->conn_write((const u8 *)b, (int)bl) >= 0;
         s_on_ = 0;
-        put(DK_STR);                          /* status, type, headers, body, more */
-        put4((u32)(got < 0 ? 0 : st));
-        for (k = 0; type[k]; k++) { }
-        put4(k);
-        { u32 i; for (i = 0; i < k; i++) put((u8)type[i]); }
-        if (got < 0) { got = 0; s_rhead_n = 0; web_end(); }
-        put4(s_rhead_n);
-        { u32 i; for (i = 0; i < s_rhead_n; i++) put((u8)s_rhead[i]); }
-        put4((u32)got);
-        { int i; for (i = 0; i < got; i++) put((u8)s_scratch[i]); }
-        put4((u32)s_paused);
+        put(DK_STR); put4((u32)ok);
+        return (int)s_on_;
+    }
+    case D_SENDDONE: {                        /* all sent: the answer, as D_FETCH's */
+        char type[64];
+        int st = 0, got = -1;
+        type[0] = 0;
+        if (s_up_open) {
+            s_up_open = 0; s_resume = 1; s_chunked = 1; s_cross = s_up_cross;
+            got = web_get(s_up_url, s_up_method, 0, 0, 0, s_scratch, FETCH_PIECE, &st, type, sizeof type);
+            s_resume = 0; s_chunked = 0;
+            if (got >= 0 && s_cross && !cors_allows()) { web_end(); got = -1; wire("not allowed by the other site: ", s_up_url); }
+            s_cross = 0;
+        }
+        return fetch_answer(got, st, type);
+    }
+    case D_FETCHEND: {                        /* a stream given up: abort() */
+        web_end();
+        s_on_ = 0;
+        put(DK_STR); put4(0);
         return (int)s_on_;
     }
     case D_FETCHMORE: {

@@ -40,6 +40,27 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8150
 SONGS = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser("~/.cache/flopos-songs")
 HOST = "http://10.0.2.2:%d" % PORT
 
+# A Worker that does what a speed test does (librespeed's worker, in short):
+# a download read through onprogress and cut short, an upload of a Blob
+# made from an ArrayBuffer, the results posted back.
+WORKER = """var got = 0;
+this.addEventListener('message', function (e) {       // as librespeed's worker listens
+  if (e.data !== 'start') return;
+  var x = new XMLHttpRequest(), seen = 0;
+  x.onprogress = function (ev) { seen = ev.loaded; if (seen > 1000000) x.abort(); };
+  x.onabort = function () {
+    var buf = new ArrayBuffer(65536), f = new Float32Array(buf), parts = [], u = new XMLHttpRequest(), up = 0;
+    for (var i = 0; i < f.length; i++) f[i] = Math.random();
+    for (i = 0; i < 20; i++) parts.push(buf);
+    u.upload.onprogress = function (ev) { up = ev.loaded; };
+    u.onload = function () { postMessage({ down: seen > 1000000, up: up, said: u.responseText, typed: f instanceof Float32Array }); };
+    u.open('POST', '/api/upload'); u.send(new Blob(parts));
+  };
+  x.responseType = 'arraybuffer';
+  x.open('GET', '/api/stream?r=' + Math.random()); x.send();
+});
+"""
+
 PAGES = {
     "/plain": "<title>plain</title><h1>The plain page</h1><p>Arrived by the refresh.</p>",
     "/code": ("<title>radio page</title><h1>A station</h1><p>Its stream address:</p>"
@@ -142,6 +163,17 @@ var x = new XMLHttpRequest(), ev = [];
 x.addEventListener('load', function (e) { ev.push('load' + (e.loaded > 0 ? '+' : '')); });
 x.addEventListener('loadend', function () { ev.push('end'); document.getElementById('o').textContent = 'url: ' + r.join(' | ') + ' | ' + ev.join(',') + ' ' + x.status + ' ' + (x.getResponseHeader('content-type') || ''); });
 x.open('GET', '/api/cors-ok'); x.send();
+</script>""",
+    "/js/speed": """<title>js speed</title><p id="o">not yet</p><script>
+var w = new Worker('/js/worker.js'), o = document.getElementById('o');
+w.onmessage = function (e) {
+  var d = e.data;
+  fetch('/api/stream').then(function (r) { return r.arrayBuffer(); }, function () { return null; }).then(function (b) {
+    o.textContent = 'speed: down ' + d.down + ' up ' + d.up + ' said ' + d.said + ' typed ' + d.typed + ' fetched ' + (b ? b.byteLength : 'no');
+  }, function (x) { o.textContent = 'speed: fetch said ' + x; });
+};
+w.onerror = function (e) { o.textContent = 'speed: worker error ' + e.message; };
+w.postMessage('start');
 </script>""",
     "/js/bigfetch": """<title>js bigfetch</title><p id="o">not yet</p><script>
 fetch('/api/big').then(function (r) { return r.json().then(function (j) {
@@ -437,6 +469,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         got = self.rfile.read(n) if n else b""
+        if self.path == "/api/upload":                     # a speed test's upload: counted, answered
+            return self.send(200, "text/plain", str(len(got)).encode(), [("Access-Control-Allow-Origin", "*")])
         if self.path.startswith("/api/probe?part="):
             out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "build", "webprobe", "got.txt")
             open(out, "wb" if self.path.endswith("=0") else "ab").write(got)
@@ -452,6 +486,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cookie = self.headers.get("Cookie") or ""
             return self.send(200, "application/json", json.dumps({"ok": "yes", "cookie": cookie or "none", "origin": self.headers.get("Origin") or "none"}).encode(),
                              [("Access-Control-Allow-Origin", "*"), ("Set-Cookie", "THIRDPARTY=1; path=/")])
+        if p.startswith("/api/stream"):                   # a speed test's download: 3 MB, read as it comes
+            return self.send(200, "application/octet-stream", bytes(range(256)) * 12288)
+        if p == "/js/worker.js":
+            return self.send(200, "application/javascript", WORKER.encode())
         if p == "/api/big":                                 # past what one door answer holds: comes in pieces
             body = json.dumps({"items": ["item %05d %s" % (i, "x" * 80) for i in range(3000)]}).encode()
             return self.send(200, "application/json", body, [("X-Test", "yes")])

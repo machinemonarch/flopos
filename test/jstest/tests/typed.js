@@ -1,0 +1,23 @@
+// ArrayBuffer, typed arrays, DataView, TextEncoder / TextDecoder (src/room/typed.c)
+var b = new ArrayBuffer(8), u8 = new Uint8Array(b), f = new Float32Array(2);
+check(b.byteLength, 8, 'byteLength');
+u8[0] = 300; u8[1] = -1; check(u8[0] + ',' + u8[1], '44,255', 'Uint8 wraps');
+var c = new Uint8ClampedArray([300, -5, 1.5, 2.5]); check(c.join(), '255,0,2,2', 'clamped, half to even');
+f[0] = 0.1; check(f[0] !== 0.1 && Math.abs(f[0] - 0.1) < 1e-7, true, 'Float32 rounds');
+var i16 = new Int16Array(b, 2, 2); i16[0] = -2; check(u8[2] + ',' + u8[3], '254,255', 'a view shares its buffer');
+check(new Int32Array([1, 2, 3]).map(function (x) { return x * 2; }).join(), '2,4,6', 'map keeps the kind');
+check(new Int32Array([1, 2, 3]).map(function (x) { return x; }) instanceof Int32Array, true, 'map is a typed array');
+check(new Uint8Array([3, 10, 1]).sort().join(), '1,3,10', 'sort is numeric');
+var s = new Uint8Array([1, 2, 3, 4]).subarray(1, 3); s[0] = 9; check(s.length + ' ' + s.buffer.byteLength, '2 4', 'subarray shares');
+check(Array.from(new Uint8Array([5, 6])).join(), '5,6', 'Array.from');
+var got = []; for (var x of new Uint16Array([7, 8])) got.push(x); check(got.join(), '7,8', 'for-of');
+check([...new Uint8Array(3).fill(4)].join(), '4,4,4', 'fill and spread');
+var t = new Uint8Array(4); t.set([1, 2], 1); check(t.join(), '0,1,2,0', 'set with offset');
+var d = new DataView(new ArrayBuffer(4)); d.setUint16(0, 0x1234); check(d.getUint8(0) + ',' + d.getUint16(0, true), '18,13330', 'DataView big and little');
+check(new TextDecoder().decode(new TextEncoder().encode('här ✓')), 'här ✓', 'UTF-8 both ways');
+check(new TextEncoder().encode('ä').length, 2, 'encode is UTF-8');
+check(ArrayBuffer.isView(u8) + ' ' + ArrayBuffer.isView(b), 'true false', 'isView');
+check(Uint8Array.of(1, 2).length + Uint8Array.BYTES_PER_ELEMENT, 3, 'of and BYTES_PER_ELEMENT');
+var big; try { new Uint8Array(1e9); big = 'no'; } catch (e) { big = e.name; } check(big, 'RangeError', 'too big is a RangeError');
+check(Object.prototype.toString.call(u8), '[object Uint8Array]', 'toStringTag');
+print('done');

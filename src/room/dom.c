@@ -911,6 +911,7 @@ NATIVE(w_fetch)                             /* __flopos_fetch(method, url, body,
     rq(D_FETCH); rq_str(vm, ARG(0)); rq_str(vm, ARG(1));
     if (IS_NULLISH(ARG(2))) rq_cstr(""); else rq_str(vm, ARG(2));
     if (IS_NULLISH(ARG(3))) rq_cstr(""); else rq_str(vm, ARG(3));
+    rq_u32(0);                                   /* the whole body is here */
     if (!knock(vm)) return v_undef();
     st = rp_u32(); type = rp_str(); heads = rp_str();
     for (;;) {
@@ -944,6 +945,126 @@ NATIVE(w_fetch)                             /* __flopos_fetch(method, url, body,
     arr_push(vm, r, v_str(heads ? heads : S_empty));
     UNTEMP(vm, 1);
     return v_obj(r);
+}
+
+/* XMLHttpRequest's stream: started with its body's first piece and the
+ * whole length (the rest sent with __flopos_xsend, then __flopos_xdone),
+ * read a piece at a time (__flopos_xmore), given up (__flopos_xend).
+ * Bytes go both ways as Uint8Arrays. */
+static void rq_view(Val v)
+{
+    if (v.t == T_OBJ && v.u.o->cls == C_TARRAY && v.u.o->pad == 1) rq_bytes((const char *)v.u.o->u.ta.data, v.u.o->u.ta.len);
+    else rq_bytes("", 0);
+}
+
+static Val x_answer(Vm *vm)                    /* [status, type, headers, bytes, more] */
+{
+    Obj *r, *b;
+    u32 st = rp_u32(), n, more;
+    Str *type = rp_str(), *heads = rp_str();
+    const u8 *p = rp_raw(&n);
+    more = rp_u32();
+    r = arr_new(vm, 0);
+    if (!r) return v_undef();
+    TEMP(vm, v_obj(r));
+    arr_push(vm, r, v_num(st));
+    arr_push(vm, r, v_str(type ? type : S_empty));
+    arr_push(vm, r, v_str(heads ? heads : S_empty));
+    b = ta_bytes(vm, p, n);
+    arr_push(vm, r, b ? v_obj(b) : v_undef());
+    arr_push(vm, r, v_num(more));
+    UNTEMP(vm, 1);
+    return v_obj(r);
+}
+
+NATIVE(w_xopen)                              /* method, url, type, whole length, first piece */
+{
+    UNUSED;
+    rq(D_FETCH); rq_str(vm, ARG(0)); rq_str(vm, ARG(1)); rq_view(ARG(4));
+    if (IS_NULLISH(ARG(2))) rq_cstr(""); else rq_str(vm, ARG(2));
+    rq_u32((u32)to_num(vm, ARG(3)));
+    if (!knock(vm)) return v_undef();
+    return x_answer(vm);
+}
+
+NATIVE(w_xsend)                              /* a piece of the body */
+{
+    UNUSED;
+    rq(D_SENDMORE); rq_view(ARG(0));
+    if (!knock(vm)) return v_undef();
+    return v_bool(rp_u32() != 0);
+}
+
+NATIVE(w_xdone)
+{
+    UNUSED;
+    rq(D_SENDDONE);
+    if (!knock(vm)) return v_undef();
+    return x_answer(vm);
+}
+
+NATIVE(w_xmore)                              /* -> [bytes, more] */
+{
+    Obj *r, *b;
+    u32 n, more;
+    const u8 *p;
+    UNUSED;
+    rq(D_FETCHMORE);
+    if (!knock(vm)) return v_undef();
+    p = rp_raw(&n);
+    more = rp_u32();
+    r = arr_new(vm, 0);
+    if (!r) return v_undef();
+    TEMP(vm, v_obj(r));
+    b = ta_bytes(vm, p, n);
+    arr_push(vm, r, b ? v_obj(b) : v_undef());
+    arr_push(vm, r, v_num(more));
+    UNTEMP(vm, 1);
+    return v_obj(r);
+}
+
+/* The rest of a long answer, after its first piece: gathered in one block,
+ * handed over as one Uint8Array without a copy; null past FETCH_MAX. */
+NATIVE(w_xrest)
+{
+    Val f = ARG(0);
+    u32 n = 0, cap = 128u << 10, more = 1, k;
+    const u8 *p;
+    char *buf;
+    UNUSED;
+    buf = gc_alloc(cap + sizeof(GcHdr), K_BYTES);
+    if (!buf) { vm->out_of_room = 1; return v_undef(); }
+    if (f.t == T_OBJ && f.u.o->cls == C_TARRAY && f.u.o->pad == 1) { n = f.u.o->u.ta.len; if (n > cap) n = cap; memcpy(buf + sizeof(GcHdr), f.u.o->u.ta.data, n); }
+    while (more) {
+        rq(D_FETCHMORE);
+        if (!knock(vm)) return v_undef();
+        p = rp_raw(&k);
+        more = rp_u32();
+        if (n + k > FETCH_MAX) { rq(D_FETCHEND); knock(vm); return v_null(); }
+        if (n + k > cap) {
+            char *nb;
+            while (cap < n + k) cap *= 2;
+            if (cap > FETCH_MAX) cap = FETCH_MAX;
+            nb = gc_alloc(cap + sizeof(GcHdr), K_BYTES);
+            if (!nb) { vm->out_of_room = 1; return v_undef(); }
+            memcpy(nb + sizeof(GcHdr), buf + sizeof(GcHdr), n);
+            buf = nb;
+        }
+        memcpy(buf + sizeof(GcHdr) + n, p, k);
+        n += k;
+    }
+    {
+        Obj *o = ta_adopt(vm, (u8 *)buf + sizeof(GcHdr), n);
+        return o ? v_obj(o) : v_undef();
+    }
+}
+
+NATIVE(w_xend)
+{
+    UNUSED;
+    rq(D_FETCHEND);
+    if (!knock(vm)) return v_undef();
+    return v_undef();
 }
 
 NATIVE(w_shown)
@@ -1162,6 +1283,61 @@ static const char *s_prelude =
 "AbortSignal.timeout=function(ms){var c=new AbortController();setTimeout(function(){c.abort(abortErr('TimeoutError'));},ms);return c.signal;};"
 "AbortSignal.any=function(a){var c=new AbortController();a.forEach(function(s){if(s.aborted)c.abort(s.reason);else s.addEventListener('abort',function(){c.abort(s.reason);});});return c.signal;};"
 "g.AbortController=AbortController;g.AbortSignal=AbortSignal;"
+"function bytesOf(x){if(x instanceof Uint8Array)return x;if(x instanceof ArrayBuffer)return new Uint8Array(x);if(ArrayBuffer.isView(x))return new Uint8Array(x.buffer,x.byteOffset,x.byteLength);if(x instanceof Blob)return blobBytes(x);return new TextEncoder().encode(String(x));}"
+"function blobBytes(b){if(b._p.length===1)return b._p[0];var o=new Uint8Array(b.size),at=0;b._p.forEach(function(u){o.set(u,at);at+=u.length;});return o;}"
+"function Blob(parts,o){this._p=[];this.size=0;this.type=o&&o.type?String(o.type).toLowerCase():'';"
+" Array.from(parts||[]).forEach(function(x){(x instanceof Blob?x._p:[bytesOf(x)]).forEach(function(u){this._p.push(u);this.size+=u.length;},this);},this);}"
+"var BP=Blob.prototype;"
+"BP.slice=function(s,e,t){var n=this.size,r=new Blob([],{type:t||''}),at=0;s=s===undefined?0:s<0?Math.max(n+s,0):Math.min(s,n);e=e===undefined?n:e<0?Math.max(n+e,0):Math.min(e,n);"
+" this._p.forEach(function(u){var a=Math.max(s-at,0),z=Math.min(e-at,u.length);if(z>a){r._p.push(u.subarray(a,z));r.size+=z-a;}at+=u.length;});return r;};"
+"BP.arrayBuffer=function(){return Promise.resolve(blobBytes(this).slice().buffer);};"
+"BP.bytes=function(){return Promise.resolve(blobBytes(this).slice());};"
+"BP.text=function(){return Promise.resolve(new TextDecoder().decode(blobBytes(this)));};"
+"BP[Symbol.toStringTag]='Blob';g.Blob=Blob;"
+"function File(parts,name,o){Blob.call(this,parts,o);this.name=String(name);this.lastModified=o&&o.lastModified||Date.now();}"
+"File.prototype=Object.create(BP);File.prototype.constructor=File;File.prototype[Symbol.toStringTag]='File';g.File=File;"
+"function bodyParts(b,m){if(b==null||m==='GET'||m==='HEAD')return [[],0,''];if(b instanceof Blob)return [b._p,b.size,b.type];"
+" if(b instanceof ArrayBuffer||ArrayBuffer.isView(b)){var u=bytesOf(b);return [[u],u.length,''];}var x=bodyOf(b),e=new TextEncoder().encode(x[0]);return [[e],e.length,x[1]];}"
+"function pieces(parts,size){var o=[];parts.forEach(function(u){for(var a=0;a<u.length;a+=size)o.push(u.subarray(a,Math.min(a+size,u.length)));});return o;}"
+"function joinBytes(l,n){if(l.length===1)return l[0];var o=new Uint8Array(n),at=0;l.forEach(function(u){o.set(u,at);at+=u.length;});return o;}"
+"function __flopos_sync(m,u,t,b){var bp=bodyParts(b,m),p=pieces(bp[0],16384),i=0,r=__flopos_xopen(m,u,t||bp[2],bp[1],p[i++]||new Uint8Array(0));"
+" if(r[4]===2){while(i<p.length)if(!__flopos_xsend(p[i++])){__flopos_xend();return null;}r=__flopos_xdone();}"
+" if(!r[0])return null;var b=r[4]?__flopos_xrest(r[3]):r[3];if(b===null)throw new RangeError('the answer is more than the room holds');return [r[0],r[1],r[2],b];}"
+"function MessageEvent(t,i){i=i||{};this.type=String(t);this.data=i.data;this.origin=i.origin||'';this.lastEventId='';this.source=null;this.ports=[];this.target=this.currentTarget=null;}"
+"MessageEvent.prototype.preventDefault=MessageEvent.prototype.stopPropagation=function(){};g.MessageEvent=MessageEvent;"
+"function sclone(d,seen){if(d===null||typeof d!=='object'){if(typeof d==='function'||typeof d==='symbol')throw new TypeError('could not be cloned');return d;}"
+" seen=seen||new Map();if(seen.has(d))return seen.get(d);var o;"
+" if(d instanceof Date)o=new Date(d.getTime());else if(d instanceof RegExp)o=new RegExp(d.source,d.flags);else if(d instanceof ArrayBuffer)o=d.slice(0);"
+" else if(ArrayBuffer.isView(d))o=d.slice?d.slice():new DataView(d.buffer.slice(0),d.byteOffset,d.byteLength);else if(d instanceof Blob)o=d;"
+" else if(d instanceof Map){o=new Map();seen.set(d,o);d.forEach(function(v,k){o.set(sclone(k,seen),sclone(v,seen));});return o;}"
+" else if(d instanceof Set){o=new Set();seen.set(d,o);d.forEach(function(v){o.add(sclone(v,seen));});return o;}"
+" else{o=Array.isArray(d)?[]:{};seen.set(d,o);for(var k in d)if(Object.prototype.hasOwnProperty.call(d,k))o[k]=sclone(d[k],seen);return o;}"
+" seen.set(d,o);return o;}"
+"g.structuredClone=function(v){return sclone(v);};"
+"function evts(o){o.addEventListener=function(t,f){if(f)(this._ls[t]=this._ls[t]||[]).push(f);};o.removeEventListener=function(t,f){var l=this._ls[t];if(l)this._ls[t]=l.filter(function(x){return x!==f;});};"
+" o._emit=function(e,on){e.target=e.currentTarget=on||this;var h=this['on'+e.type];if(typeof h==='function')h.call(on||this,e);(this._ls[e.type]||[]).slice().forEach(function(f){typeof f==='function'?f.call(on||this,e):f.handleEvent(e);},this);};"
+" o.dispatchEvent=function(e){this._emit(e);return true;};}"
+"var wk={};"
+"function Worker(u,o){if(!(this instanceof Worker))throw new TypeError('Worker needs new');if(o&&o.type==='module')throw new TypeError('module Workers are not supported here');"
+" var w=this,url=new URL(String(u),__flopos_href()).href,t;w._q=[];w._ls={};w._dead=0;w._ready=0;w._sc={_ls:{},get:null,self:null};"
+" t=__flopos_dynask('\\u0001'+url,'');if(typeof t!=='number'||t<0)throw new TypeError('the Worker '+url+' was not allowed');"
+" wk[t]=w;pend[t]={w:1,ok:function(){},no:function(e){w._fail(e);}};}"
+"var WP=Worker.prototype;evts(WP);WP.onmessage=WP.onerror=WP.onmessageerror=null;"
+"WP.postMessage=function(d){if(this._dead)return;var w=this,c=sclone(d);setTimeout(function(){w._in(c);},0);};"
+"WP.terminate=function(){this._dead=1;this._q=[];};"
+"WP._in=function(c){if(this._dead)return;if(!this._ready){this._q.push(c);return;}var sc=this._sc,e=new MessageEvent('message',{data:c}),h=sc.get&&sc.get();"
+" e.target=e.currentTarget=sc.self;try{if(typeof h==='function')h.call(sc.self,e);else if(typeof sc.self.onmessage==='function')sc.self.onmessage(e);"
+"  (sc._ls.message||[]).slice().forEach(function(f){f.call(sc.self,e);});}catch(x){this._fail(x);}};"
+"WP._fail=function(x){var e={type:'error',message:String(x&&x.message||x),filename:'',lineno:0,colno:0,error:x,preventDefault:function(){}};this._emit(e);};"
+"g.Worker=Worker;"
+"g.__flopos_wrun=function(t,fn){var w=wk[t],sc,self;if(!w)return;sc=w._sc;self={};sc.self=self;self.self=self;self.onmessage=self.onerror=null;"
+" ['location','navigator','console','performance','crypto','fetch','XMLHttpRequest','setTimeout','setInterval','clearTimeout','clearInterval','queueMicrotask',"
+"  'TextEncoder','TextDecoder','Blob','File','URL','URLSearchParams','atob','btoa','structuredClone','Headers','Request','Response','Promise'].forEach(function(n){if(g[n]!==undefined)self[n]=g[n];});"
+" self.postMessage=function(d){if(w._dead)return;var c=sclone(d);setTimeout(function(){if(!w._dead)w._emit(new MessageEvent('message',{data:c}));},0);};"
+" self.close=function(){w._dead=1;};self.importScripts=function(){throw new TypeError('importScripts is not supported here');};"
+" self.addEventListener=function(ty,f){if(f)(sc._ls[ty]=sc._ls[ty]||[]).push(f);};self.removeEventListener=function(ty,f){var l=sc._ls[ty];if(l)sc._ls[ty]=l.filter(function(x){return x!==f;});};"
+" try{sc.get=fn.call(self,self,self.postMessage,self.close,self.importScripts,null,null,self.addEventListener,self.removeEventListener);}catch(x){w._fail(x);return;}"
+" w._ready=1;var q=w._q;w._q=[];q.forEach(function(c){w._in(c);});};"
 "function Headers(h){this._l=[];if(h instanceof Headers)h=h._l;"
 " if(h&&typeof h==='object'){if(Array.isArray(h)||typeof h[Symbol.iterator]==='function')Array.from(h).forEach(function(p){p=Array.from(p);if(p.length!==2)throw new TypeError('Each header needs a name and a value');this.append(p[0],p[1]);},this);"
 "  else for(var k in h)if(Object.prototype.hasOwnProperty.call(h,k))this.append(k,h[k]);}}"
@@ -1180,12 +1356,13 @@ static const char *s_prelude =
 "HP.values=function(){return this._sorted().map(function(p){return p[1];}).values();};"
 "g.Headers=Headers;"
 "function __flopos_heads(t,h){var o=new Headers();if(t)o.set('content-type',t);String(h||'').split('\\n').forEach(function(l){var i=l.indexOf(':');if(i>0&&l.slice(0,i).trim().toLowerCase()!=='content-type')try{o.append(l.slice(0,i).trim(),l.slice(i+1).trim());}catch(e){}});return o;}"
-"function bodyOf(b){if(b==null)return ['',''];if(typeof b==='string')return [b,'text/plain;charset=UTF-8'];"
+"function bodyOf(b){if(b==null)return ['',''];if(typeof b==='string')return [b,'text/plain;charset=UTF-8'];if(b instanceof Blob)return [blobBytes(b),b.type];if(b instanceof ArrayBuffer||ArrayBuffer.isView(b))return [bytesOf(b),''];"
 " if(b instanceof URLSearchParams)return [b.toString(),'application/x-www-form-urlencoded;charset=UTF-8'];"
 " if(typeof FormData!=='undefined'&&b instanceof FormData)return [b.toString(),'application/x-www-form-urlencoded'];"
 " if(typeof b==='object'&&Object.getPrototypeOf(b)===Object.prototype)return [JSON.stringify(b),'text/plain;charset=UTF-8'];"
 " return [String(b),'text/plain;charset=UTF-8'];}"
-"function bodyText(){if(this.bodyUsed)return Promise.reject(new TypeError('Body has already been read'));this.bodyUsed=true;return Promise.resolve(this._b);}"
+"function bodyRaw(r){if(r.bodyUsed)throw new TypeError('Body has already been read');r.bodyUsed=true;var b=r._b;r._b=null;return typeof b==='string'?new TextEncoder().encode(b):b||new Uint8Array(0);}"
+"function bodyText(){try{var b=bodyRaw(this);return Promise.resolve(new TextDecoder().decode(b));}catch(e){return Promise.reject(e);}}"
 "function bodyJson(){return bodyText.call(this).then(function(t){return JSON.parse(t);});}"
 "function Response(b,i){i=i||{};var s=i.status===undefined?200:+i.status;if(s<200||s>599)throw new RangeError('Response status must be 200 to 599');"
 " var x=bodyOf(b);this._b=x[0];this.status=s;this.statusText=i.statusText===undefined?'':String(i.statusText);this.headers=new Headers(i.headers);"
@@ -1193,6 +1370,10 @@ static const char *s_prelude =
 "var RP=Response.prototype;RP.status=0;RP.statusText='';RP.url='';RP.headers=null;RP.redirected=false;RP.type='default';RP.bodyUsed=false;RP.body=null;"
 "Object.defineProperty(RP,'ok',{get:function(){return this.status>=200&&this.status<300;},configurable:true});"
 "RP.text=bodyText;RP.json=bodyJson;"
+"function bodyBuf(){try{return Promise.resolve(bodyRaw(this).slice().buffer);}catch(e){return Promise.reject(e);}}"
+"function bodyBytes(){try{return Promise.resolve(bodyRaw(this).slice());}catch(e){return Promise.reject(e);}}"
+"function bodyBlob(){var t=this.headers&&this.headers.get('content-type')||'';try{return Promise.resolve(new Blob([bodyRaw(this)],{type:t}));}catch(e){return Promise.reject(e);}}"
+"RP.arrayBuffer=bodyBuf;RP.bytes=bodyBytes;RP.blob=bodyBlob;"
 "RP.clone=function(){if(this.bodyUsed)throw new TypeError('Body has already been read');var r=Object.create(RP);for(var k in this)if(Object.prototype.hasOwnProperty.call(this,k))r[k]=this[k];r.headers=new Headers(this.headers);return r;};"
 "Response.json=function(d,i){i=i||{};var h=new Headers(i.headers);if(!h.has('content-type'))h.set('content-type','application/json');return new Response(JSON.stringify(d),{status:i.status,statusText:i.statusText,headers:h});};"
 "Response.error=function(){var r=Object.create(RP);r._b='';r.status=0;r.headers=new Headers();r.type='error';return r;};"
@@ -1206,11 +1387,11 @@ static const char *s_prelude =
 " this.credentials=i.credentials||'same-origin';this.mode=i.mode||'cors';this.cache=i.cache||'default';this.redirect=i.redirect||'follow';this.bodyUsed=false;}"
 "var QR=Request.prototype;QR.url='';QR.method='GET';QR.headers=null;QR.signal=null;QR.credentials='same-origin';QR.mode='cors';QR.cache='default';QR.redirect='follow';"
 "QR.referrer='about:client';QR.referrerPolicy='';QR.integrity='';QR.keepalive=false;QR.destination='';QR.bodyUsed=false;QR.body=null;QR.duplex='half';QR.isHistoryNavigation=false;"
-"QR.text=bodyText;QR.json=bodyJson;QR.clone=function(){return new Request(this);};"
+"QR.text=bodyText;QR.json=bodyJson;QR.arrayBuffer=bodyBuf;QR.bytes=bodyBytes;QR.blob=bodyBlob;QR.clone=function(){return new Request(this);};"
 "g.Request=Request;"
 "g.fetch=function(u,o){var q;try{q=new Request(u,o);}catch(e){return Promise.reject(e);}"
 " return new Promise(function(ok,no){var s=q.signal;if(s&&s.aborted){no(s.reason);return;}"
-"  var r=__flopos_fetch(q.method,q.url,q._b,q.headers.get('content-type')||'');if(!r[0]){no(new TypeError('Failed to fetch'));return;}ok(__resp(r[0],r[1],r[2],q.url,r[3]));});};"
+"  var r;try{r=__flopos_sync(q.method,q.url,q.headers.get('content-type')||'',q._b);}catch(e){no(e);return;}if(!r){no(new TypeError('Failed to fetch'));return;}ok(__resp(r[0],r[1],r[3],q.url,r[2]));});};"
 "function ProgressEvent(t,i){i=i||{};this.type=String(t);this.lengthComputable=!!i.lengthComputable;this.loaded=i.loaded||0;this.total=i.total||0;this.target=this.currentTarget=null;}"
 "var PE=ProgressEvent.prototype;PE.lengthComputable=false;PE.loaded=0;PE.total=0;PE.preventDefault=PE.stopPropagation=function(){};g.ProgressEvent=ProgressEvent;"
 "function xon(o){o.addEventListener=function(t,f){if(typeof f==='function'||(f&&f.handleEvent))(this._ls[t]=this._ls[t]||[]).push(f);};"
@@ -1232,13 +1413,24 @@ static const char *s_prelude =
 "XP.getAllResponseHeaders=function(){var s='';if(this._hd)this._hd.forEach(function(v,k){s+=k+': '+v+'\\r\\n';});return s;};"
 "XP.abort=function(){this._x=1;};"
 "XP.send=function(b){var x=this;if(x.readyState!==1)throw new Error('InvalidStateError: open() it first');"
-" var bb=b==null||x._m==='GET'||x._m==='HEAD'?['','']:bodyOf(b),t=x._h['content-type']||bb[1];"
+" var bp=bodyParts(b,x._m),t=x._h['content-type']||bp[2],p=pieces(bp[0],16384),pi=0,sent=0,keep=[],kept=0,drop=false,loaded=0;"
+" function next(f){if(x._a)setTimeout(f,0);else f();}"
+" function take(u){if(!u||!u.length)return;loaded+=u.length;if(!drop){if(kept+u.length>524288){drop=true;keep=[];}else{keep.push(u);kept+=u.length;}}x._fire('progress',loaded);}"
+" function stop(){__flopos_xend();keep=[];kept=0;x.readyState=4;x.status=0;x._fire('readystatechange',0);x._fire('abort',0);x._fire('loadend',0);x.readyState=0;}"
+" function fail(){__flopos_xend();x.status=0;x.readyState=4;x._fire('readystatechange',0);x._fire('error',0);x._fire('loadend',0);}"
+" function finish(){var all=joinBytes(keep.length?keep:[new Uint8Array(0)],kept),rt=x.responseType,s;"
+"  if(drop){x.response=null;x.responseText='';}else if(rt==='arraybuffer')x.response=all.slice().buffer;else if(rt==='blob')x.response=new Blob([all],{type:x._hd.get('content-type')||''});"
+"  else{s=new TextDecoder().decode(all);x.responseText=rt===''||rt==='text'?s:'';x.response=rt==='json'?(function(){try{return JSON.parse(s);}catch(e){return null;}})():rt===''||rt==='text'?s:null;}"
+"  x.readyState=4;x._fire('readystatechange',0);x._fire(x.status?'load':'error',loaded);x._fire('loadend',loaded);}"
+" function more(){if(x._x)return stop();var q=__flopos_xmore();take(q[0]);if(q[1])next(more);else finish();}"
+" function got(r){if(!r[0])return fail();x._hd=__flopos_heads(r[1],r[2]);x.status=r[0];x.statusText=r[0]===200?'OK':'';x.responseURL=x._u;"
+"  x.readyState=2;x._fire('readystatechange',0);x.readyState=3;x._fire('readystatechange',0);take(r[3]);if(r[4])next(more);else finish();}"
+" function up(){if(x._x)return stop();if(pi<p.length){var u=p[pi++];if(!__flopos_xsend(u))return fail();sent+=u.length;x.upload._fire('progress',sent);next(up);return;}"
+"  x.upload._fire('load',sent);x.upload._fire('loadend',sent);got(__flopos_xdone());}"
 " function go(){if(x._x){x.readyState=4;x._fire('abort',0);x._fire('loadend',0);x.readyState=0;return;}"
-"  var r=__flopos_fetch(x._m,x._u,bb[0],t),n=r[2].length,rt=x.responseType;x._hd=__flopos_heads(r[1],r[3]);x.status=r[0];x.statusText=r[0]===200?'OK':'';x.responseURL=r[0]?x._u:'';"
-"  x.readyState=2;x._fire('readystatechange',0);x.readyState=3;x._fire('readystatechange',0);"
-"  x.responseText=rt===''||rt==='text'?r[2]:'';x.response=rt==='json'?(function(){try{return JSON.parse(r[2]);}catch(e){return null;}})():rt===''||rt==='text'?r[2]:null;"
-"  x._fire('progress',n);x.readyState=4;x._fire('readystatechange',0);if(r[0])x._fire('load',n);else x._fire('error',0);x._fire('loadend',n);}"
-" x._fire('loadstart',0);if(x._a)setTimeout(go,0);else go();};"
+"  var u=p[pi++]||new Uint8Array(0),r=__flopos_xopen(x._m,x._u,t,bp[1],u);sent=u.length;"
+"  if(r[4]===2){x.upload._fire('loadstart',0);x.upload._fire('progress',sent);next(up);}else got(r);}"
+" x._fire('loadstart',0);next(go);};"
 "g.XMLHttpRequest=XMLHttpRequest;"
 "function FormData(f){this._p=[];if(f&&f.querySelectorAll){var els=f.querySelectorAll('input,select,textarea');for(var i=0;i<els.length;i++){var el=els[i],n=el.name,t=(el.type||'').toLowerCase();if(!n||el.disabled)continue;if((t==='checkbox'||t==='radio')&&!el.checked)continue;if(t==='submit'||t==='button'||t==='reset'||t==='file'||t==='image')continue;this._p.push([n,String(el.value==null?'':el.value)]);}}}"
 "['get','getAll','has','set','append','delete','forEach','toString'].forEach(function(k){FormData.prototype[k]=URLSearchParams.prototype[k];});"
@@ -1246,12 +1438,6 @@ static const char *s_prelude =
 "FormData.prototype.keys=function(){return this._p.map(function(p){return p[0];});};"
 "FormData.prototype.values=function(){return this._p.map(function(p){return p[1];});};"
 "g.FormData=FormData;"
-"function TextEncoder(){this.encoding='utf-8';}"
-"TextEncoder.prototype.encode=function(s){s=String(s===undefined?'':s);var o=[];for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);if(c>=0xD800&&c<0xDC00&&i+1<s.length){c=0x10000+((c-0xD800)<<10)+(s.charCodeAt(++i)-0xDC00);}"
-" if(c<0x80)o.push(c);else if(c<0x800)o.push(0xC0|c>>6,0x80|c&63);else if(c<0x10000)o.push(0xE0|c>>12,0x80|c>>6&63,0x80|c&63);else o.push(0xF0|c>>18,0x80|c>>12&63,0x80|c>>6&63,0x80|c&63);}return o;};"
-"function TextDecoder(){this.encoding='utf-8';}"
-"TextDecoder.prototype.decode=function(b){var s='',i=0;b=b||[];while(i<b.length){var c=b[i++];if(c>=0xF0){c=(c&7)<<18|(b[i++]&63)<<12|(b[i++]&63)<<6|(b[i++]&63);}else if(c>=0xE0){c=(c&15)<<12|(b[i++]&63)<<6|(b[i++]&63);}else if(c>=0xC0){c=(c&31)<<6|(b[i++]&63);}s+=String.fromCodePoint(c);}return s;};"
-"g.TextEncoder=TextEncoder;g.TextDecoder=TextDecoder;"
 "g.structuredClone=function(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));};"
 "g.customElements={define:function(){},get:function(){return undefined;},whenDefined:function(){return Promise.resolve();},upgrade:function(){}};"
 "g.CSS={supports:function(){return false;},escape:function(s){return String(s).replace(/[^a-zA-Z0-9_ -￿-]/g,function(c){return '\\\\'+c;});}};"
@@ -1266,7 +1452,7 @@ static const char *s_prelude =
 "var pend={};"
 "g.__flopos_import=function(spec,meta){return new Promise(function(ok,no){var t=__flopos_dynask(String(spec),meta&&meta.url?meta.url:'');"
 " if(typeof t!=='number'||t<0){no(new TypeError('import() of '+spec+' was not allowed'));return;}pend[t]={ok:ok,no:no};});};"
-"g.__flopos_dyndone=function(t,url,why){var p=pend[t];delete pend[t];if(!p)return;if(why)p.no(new TypeError(why));else p.ok(__flopos_modns_url(url));};"
+"g.__flopos_dyndone=function(t,url,why){var p=pend[t];delete pend[t];if(!p)return;if(why)p.no(new TypeError(why));else if(!p.w)p.ok(__flopos_modns_url(url));};"
 "})(this);";
 
 static void defs(Vm *vm)
@@ -1425,6 +1611,12 @@ static void defs(Vm *vm)
     def_native(vm, g, "btoa", w_btoa, 1, 0);
     def_native(vm, g, "atob", w_btoa, 1, 1);
     def_native(vm, g, "__flopos_fetch", w_fetch, 4, 0);
+    def_native(vm, g, "__flopos_xopen", w_xopen, 5, 0);
+    def_native(vm, g, "__flopos_xsend", w_xsend, 1, 0);
+    def_native(vm, g, "__flopos_xdone", w_xdone, 0, 0);
+    def_native(vm, g, "__flopos_xmore", w_xmore, 0, 0);
+    def_native(vm, g, "__flopos_xend", w_xend, 0, 0);
+    def_native(vm, g, "__flopos_xrest", w_xrest, 1, 0);
     def_native(vm, g, "__flopos_href", w_href, 0, 0);
     def_native(vm, g, "__flopos_go", w_go, 1, 0);
     def_native(vm, g, "__flopos_shown", w_shown, 1, 0);
@@ -1435,10 +1627,25 @@ static void defs(Vm *vm)
     for (i = 0; ons[i]; i++) def_accessor(vm, g, ons[i], on_get, on_set, 0);
 }
 
+/* An error no script caught, in a timer: on the wire, as browsers' consoles show it. */
+static void dom_uncaught(Vm *vm, Val e)
+{
+    static char line[300];
+    Str *s = to_str(vm, e);
+    u32 n = 0;
+    if (vm->throwing) { vm->throwing = 0; s = 0; }
+    n = (u32)js_strlen("Uncaught ");
+    memcpy(line, "Uncaught ", n);
+    if (s) n += str_to_utf8(s, line + n, sizeof line - n - 1);
+    rq(D_LOG); rq_u32(2); rq_bytes(line, n);
+    knock(vm);
+}
+
 void host_init(Vm *vm)
 {
     char why[200];
     defs(vm);
+    vm->uncaught = dom_uncaught;
     if (engine_run(vm, s_prelude, (u32)js_strlen(s_prelude), "prelude", 5000, why, sizeof why) != ENGINE_OK) {
         rq(D_LOG); rq_u32(2); rq_cstr("the room's prelude failed: "); knock(vm);
         rq(D_LOG); rq_u32(2); rq_bytes(why, (u32)js_strlen(why)); knock(vm);

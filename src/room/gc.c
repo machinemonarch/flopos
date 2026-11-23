@@ -170,6 +170,8 @@ static void scan(GcHdr *h)
         case C_ITER: grey_val(o->u.iter.of); grey(o->u.iter.keys); break;
         case C_MAPITER: grey_val(o->u.iter.of); break;
         case C_MAP: grey(o->u.map.kv); if (o->u.map.idx) grey((GcHdr *)o->u.map.idx - 1); break;
+        case C_ABUF: grey((GcHdr *)o->u.ta.data - 1); break;
+        case C_TARRAY: grey(o->u.ta.buf); break;
         case C_ASYNC: case C_GEN:
             grey_val(o->u.co.prom); grey(o->u.co.stack);
             if (o->u.co.fr) {
@@ -259,6 +261,7 @@ void gc_collect(Vm *vm)
     grey(vm->promise_proto); grey(vm->iter_proto); grey(vm->gen_proto);
     for (i = 0; i < 8; i++) grey(vm->err_ctor[i]);
     for (i = 0; i < 5; i++) grey(vm->coll_proto[i]);
+    for (i = 0; i < TA_VIEW + 6; i++) grey(vm->typed_proto[i]);
     grey(vm->agen_proto);
     grey(vm->element_proto); grey(vm->document_obj); grey(vm->style_proto);
     grey(vm->classlist_proto); grey(vm->event_proto);

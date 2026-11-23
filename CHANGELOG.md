@@ -60,6 +60,17 @@ without it. Each version's notes are also written next to its image, as
 - **XMLHttpRequest** has every event (progress, load, loadend...), many
   listeners per event, status text, the response's address and headers,
   and abort().
+- **Web Workers:** a page's background script runs beside it, with
+  postMessage both ways, as speed tests (librespeed) and many apps use.
+- **Typed arrays:** ArrayBuffer, Uint8Array to Float64Array, DataView,
+  TextEncoder and TextDecoder, built into the engine.
+- **Blob and File**, and fetch() and XMLHttpRequest send and receive
+  bytes: arrayBuffer(), blob(), and responseType "arraybuffer" and "blob".
+- **XMLHttpRequest streams:** a download is read as it arrives, with
+  progress as it comes, and can be stopped part way; an upload of any
+  size goes out in pieces, with upload progress.
+- **Errors no script caught** in a timer now show on the serial wire, as
+  browsers' consoles show them; a timer stopped for time says so.
 - **Map and Set are built in**, as fast as other browsers' and as the
   standard says: WeakMap, WeakSet and groupBy too.
 - **Array.from** takes anything list-like (a Set, a generator).
@@ -71,6 +82,9 @@ without it. Each version's notes are also written next to its image, as
   refused, down from 176. Most of those left are too big.
 
 #### Kernel
+
+- **Apps get 12 MB** (was 8): the script room moved up to 24-28 MB, into
+  memory nothing used.
 
 - **Programs are packed on the floppy** and unpacked as they load: the
   script room and every app take about half the space (300 KB freed) and

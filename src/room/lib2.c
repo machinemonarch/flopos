@@ -1119,7 +1119,11 @@ int timers_run(Vm *vm, u32 slice_ms)
         }
         vm->deadline = host_ms() - vm->door_ms + slice_ms;
         vm_call(vm, fn, v_undef(), args->u.arr.items ? args->u.arr.items->v : 0, (int)args->u.arr.len);
-        if (vm->throwing && !vm->fatal) vm->throwing = 0;
+        if (vm->throwing && !vm->fatal) {
+            Val e = vm->exception;
+            vm->throwing = 0;
+            if (vm->uncaught) { TEMP(vm, e); vm->uncaught(vm, e); UNTEMP(vm, 1); vm->throwing = 0; }
+        }
         vm_run_microtasks(vm);
         UNTEMP(vm, 1);
         ran++;

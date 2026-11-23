@@ -272,7 +272,14 @@ static Val get_from(Vm *vm, Obj *o, Str *k, Val self)
 Val get_prop(Vm *vm, Val o, Str *k)
 {
     switch (o.t) {
-    case T_OBJ: return get_from(vm, o.u.o, k, o);
+    case T_OBJ: {
+        u32 i;
+        if (o.u.o->cls == C_TARRAY && o.u.o->pad != TA_VIEW) {
+            if (k == S_length) return v_num(o.u.o->u.ta.len);      /* the loop's test, quickly */
+            if (str_is_index(k, &i)) return i < o.u.o->u.ta.len ? ta_get(o.u.o, i) : v_undef();
+        }
+        return get_from(vm, o.u.o, k, o);
+    }
     case T_STR: {
         u32 i;
         if (k == S_length) return v_num(o.u.s->len);
@@ -292,6 +299,10 @@ Val get_prop(Vm *vm, Val o, Str *k)
 
 Val get_elem(Vm *vm, Val o, Val k)
 {
+    if (o.t == T_OBJ && o.u.o->cls == C_TARRAY && o.u.o->pad != TA_VIEW && k.t == T_NUM) {
+        f64 d = k.u.n;
+        if (d >= 0 && d == (f64)(u32)d) return (u32)d < o.u.o->u.ta.len ? ta_get(o.u.o, (u32)d) : v_undef();
+    }
     if (o.t == T_OBJ && (o.u.o->cls == C_ARRAY || o.u.o->cls == C_ARGS) && k.t == T_NUM) {
         f64 d = k.u.n;
         if (d >= 0 && d < 4294967295.0 && d == (f64)(u32)d) {
@@ -343,6 +354,10 @@ int set_prop(Vm *vm, Val ov, Str *k, Val v)
         }
         if (str_is_index(k, &i) && i < o->u.arr.len + 65536) return o->sealed ? 1 : arr_set(vm, o, i, v);
     }
+    if (o->cls == C_TARRAY && o->pad != TA_VIEW) {
+        u32 i;
+        if (str_is_index(k, &i)) return ta_put(vm, o, i, v);
+    }
     if (o->cls == C_STYLE || o->cls == C_CLASSLIST) return dom_set_hook(vm, o, k, v);
     /* A setter anywhere up the chain is called; an own value is replaced. */
     for (p = o; p && guard++ < 1000; p = p->proto) {
@@ -362,6 +377,10 @@ int set_prop(Vm *vm, Val ov, Str *k, Val v)
 int set_elem(Vm *vm, Val o, Val k, Val v)
 {
     Str *ks;
+    if (o.t == T_OBJ && o.u.o->cls == C_TARRAY && o.u.o->pad != TA_VIEW && k.t == T_NUM) {
+        f64 d = k.u.n;
+        if (d >= 0 && d == (f64)(u32)d) return ta_put(vm, o.u.o, (u32)d, v);
+    }
     if (o.t == T_OBJ && o.u.o->cls == C_ARRAY && k.t == T_NUM) {
         f64 d = k.u.n;
         if (d >= 0 && d == (f64)(u32)d && d < o.u.o->u.arr.len + 65536.0) {
@@ -380,6 +399,7 @@ int has_prop(Vm *vm, Obj *o, Str *k)
     for (; o && guard++ < 1000; o = o->proto) {
         u32 i;
         if ((o->cls == C_ARRAY || o->cls == C_ARGS) && (k == S_length || (str_is_index(k, &i) && i < o->u.arr.len))) return 1;
+        if (o->cls == C_TARRAY && o->pad != TA_VIEW && str_is_index(k, &i)) return i < o->u.ta.len;
         if (prop_find(o, k)) return 1;
         if ((o->cls == C_FUNC && k == S_prototype && !(o->flags & OF_ARROW))) return 1;
     }

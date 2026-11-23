@@ -54,6 +54,7 @@ STEPS = [
     r"key:tab",
     r"key:ret=>\A(?![\s\S]*asks first)[\s\S]*links: collected",
     r"js/url=>url: https://ex.com/a/b/c\?x=1#h \| \?x=1&y=a\+b \| https://ex.com/z\?x=1&y=a\+b \| false/true(.|\n)*TypeError \| a=1&b=2 2 ab \| 1, 2 1 \| load\+,end 200 application/json\r?\n",
+    r"js/speed=>speed: down true up 1310720 said 1310720 typed true fetched (no|RangeError)",
     r"js/bigfetch=>\[shown\] bigfetch 3000 item 02999 yes",
     r"js/vite=>\[shown\] vite: modern",
     r"table/basic=>\[shown\] Name +City +Kind\r?\n\[shown\] Radio One +Sofia +Talk",
