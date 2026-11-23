@@ -10,9 +10,9 @@
 typedef signed char s8;
 typedef signed short s16;
 
-#define DOM_NODES  6144
-#define DOM_ATTRS  12288
-#define DOM_POOL   (320 * 1024)
+#define DOM_NODES  32768                 /* apps have 12 MB: big news pages fit */
+#define DOM_ATTRS  65000                 /* under 65536: Attr.next and Node.attr are 16 bits */
+#define DOM_POOL   (1536 * 1024)
 
 enum { N_ELEM = 1, N_TEXT = 3, N_COMMENT = 8, N_DOC = 9 };
 

@@ -9,7 +9,7 @@
  * what is hidden left out and the styles turned into marks the reader
  * understands.
  *
- * Everything lives in fixed tables: 6144 nodes, their attributes, and one
+ * Everything lives in fixed tables: 32768 nodes, their attributes, and one
  * pool of text.  A page that does not fit is drawn as it streamed in,
  * without styles or scripts.
  *

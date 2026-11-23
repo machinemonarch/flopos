@@ -257,14 +257,15 @@ NATIVE(object_getowndesc)
     if (!k) return v_undef();
     q = prop_find(o, k);
     if (!q) {
-        if (o->cls == C_ARRAY && (k == S_length || has_prop(vm, o, k))) {
+        int fn = (o->cls == C_FUNC || o->cls == C_NATIVE || o->cls == C_BOUND) && (k == S_name || k == S_length);
+        if ((o->cls == C_ARRAY && (k == S_length || has_prop(vm, o, k))) || fn) {
             d = obj_new(vm, vm->object_proto, C_OBJECT);
             if (!d) return v_undef();
             TEMP(vm, v_obj(d));
             prop_put(vm, d, S_value, get_prop(vm, v_obj(o), k), 0);
-            prop_put(vm, d, S_writable, v_bool(1), 0);
-            prop_put(vm, d, S_enumerable, v_bool(k != S_length), 0);
-            prop_put(vm, d, S_configurable, v_bool(k != S_length), 0);
+            prop_put(vm, d, S_writable, v_bool(!fn), 0);
+            prop_put(vm, d, S_enumerable, v_bool(!fn && k != S_length), 0);
+            prop_put(vm, d, S_configurable, v_bool(fn || k != S_length), 0);
             UNTEMP(vm, 1);
             return v_obj(d);
         }
@@ -331,6 +332,7 @@ NATIVE(objproto_hasown)
         if (k == S_length || (str_is_index(k, &i) && i < o->u.arr.len)) return v_bool(1);
     }
     if (o->cls == C_FUNC && k == S_prototype) return v_bool(1);
+    if ((o->cls == C_FUNC || o->cls == C_NATIVE || o->cls == C_BOUND) && (k == S_name || k == S_length)) return v_bool(1);   /* a function's own */
     return v_bool(prop_find(o, k) != 0);
 }
 
@@ -477,8 +479,11 @@ NATIVE(array_of)
 NATIVE(array_from)
 {
     Val src = ARG(0), fn = ARG(1);
-    Obj *a = arr_new(vm, 0);
+    Obj *a;
     UNUSED;
+    if (IS_NULLISH(src)) return throw_err(vm, E_TYPE, "Array.from needs something to make it from");
+    if (!IS_NULLISH(fn) && !is_callable(fn)) return throw_err(vm, E_TYPE, "Array.from: the second argument is not a function");
+    a = arr_new(vm, 0);
     if (!a) return v_undef();
     TEMP(vm, v_obj(a));
     if (src.t == T_STR || (src.t == T_OBJ && src.u.o->cls != C_ARRAY && src.u.o->cls != C_ARGS &&
