@@ -53,6 +53,7 @@ STEPS = [
     r"key:tab",
     r"key:tab",
     r"key:ret=>\A(?![\s\S]*asks first)[\s\S]*links: collected",
+    r"js/vite=>\[shown\] vite: modern",
     r"table/basic=>\[shown\] Name +City +Kind\r?\n\[shown\] Radio One +Sofia +Talk",
     r"radio/feed=>\[shown\] MAIN\r?\n\[shown\] Listen live",
     r"type:qy",

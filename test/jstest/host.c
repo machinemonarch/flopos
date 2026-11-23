@@ -117,12 +117,13 @@ static int load_module(const char *path, char *err, unsigned cap)
 
 int main(int argc, char **argv)
 {
-    int i, failed = 0, quiet = 0, a0 = 1, scan = 0;
+    int i, failed = 0, quiet = 0, a0 = 1, scan = 0, t262 = 0;
     extern int g_gc_stress;
     while (a0 < argc && argv[a0][0] == '-') {
         if (!strcmp(argv[a0], "-q")) quiet = 1;
         if (!strcmp(argv[a0], "-stress")) g_gc_stress = 1;
         if (!strcmp(argv[a0], "-module")) scan = 1;      /* read each as a module, run nothing */
+        if (!strcmp(argv[a0], "-t262")) t262 = 1;        /* test262: one line a file, for test/jstest/test262.py */
         a0++;
     }
     s_echo = !quiet;
@@ -147,7 +148,7 @@ int main(int argc, char **argv)
             s_nseen = 0;
             r = realpath(argv[i], full) ? load_module(full, err, sizeof err) : 9;
         } else
-            r = engine_run(&s_vm, src, (u32)n, name, 20000, err, sizeof err);
+            r = engine_run(&s_vm, src, (u32)n, name, t262 ? 3000 : 20000, err, sizeof err);
         /* timers and promises left to run */
         {
             int guard = 0;
@@ -158,6 +159,15 @@ int main(int argc, char **argv)
             }
         }
         s_out[s_outn] = 0;
+        if (t262) {                                      /* file, stopped?, why, async outcome */
+            char *e;
+            for (e = err; *e; e++) if (*e == '\t' || *e == '\n') *e = ' ';
+            printf("T262\t%s\t%d\t%s\t%s\n", argv[i], r, r ? err : "",
+                   strstr(s_out, "Test262:AsyncTestComplete") ? "complete" : strstr(s_out, "Test262:AsyncTestFailure") ? "failure" : "");
+            fflush(stdout);
+            free(src);
+            continue;
+        }
         pass = !r && !strstr(s_out, "FAIL") && s_outn >= 5 && !strcmp(s_out + s_outn - 5, "done\n");
         if (r && strstr(name, "expect-")) {
             /* a test that should be stopped: its first line says how */

@@ -89,6 +89,42 @@ document.getElementById('h').textContent = 'built by app.js';""",
     "/js/form": """<title>js form</title><form id="f" action="/ok"><input name="q"></form>
 <script>document.getElementById('f').setAttribute('action', 'http://10.0.2.3:8150/collect');
 document.getElementById('f').insertAdjacentHTML('beforeend', '<p>form points elsewhere</p>');</script>""",
+    # Vite's check for a modern browser, as its legacy plugin writes it into
+    # every page it builds (radio.garden's among them); a browser that
+    # fails it is given the old build, or told it is too old.
+    "/js/vite": """<title>js vite</title><p id="o">the check did not run</p>
+<script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
+<script type="module">document.getElementById('o').textContent = window.__vite_is_modern_browser ? 'vite: modern' : 'vite: too old';</script>""",
+    # test/bench/webprobe.py: looks for each web feature's interface and members
+    "/js/probe": """<title>js probe</title><p id="o">probing</p><script>
+var el = document.createElement('div'), sample = { Window: window, Document: document, Element: el, HTMLElement: el, Node: el,
+  EventTarget: el, HTMLDivElement: el, HTMLInputElement: document.createElement('input'), HTMLFormElement: document.createElement('form'),
+  HTMLAnchorElement: document.createElement('a'), HTMLImageElement: document.createElement('img'), Location: location, Navigator: navigator,
+  Storage: window.localStorage, CSSStyleDeclaration: el.style, DOMTokenList: el.classList, History: window.history, Screen: window.screen };
+var G = typeof globalThis !== 'undefined' ? globalThis : (function () { return this; })();    /* globalThis itself is probed below */
+function has(k) {
+  var p = k.split('.'), base, g;
+  if (k === 'javascript.builtins.globalThis') return typeof globalThis !== 'undefined';
+  try {
+    if (p[0] === 'javascript') { g = G[p[2]]; if (p.length === 3) return g !== undefined;
+      return g !== undefined && (p[3] in Object(g) || (g.prototype !== undefined && p[3] in g.prototype)); }
+    g = G[p[1]];
+    if (p.length === 2) return g !== undefined || sample[p[1]] !== undefined;
+    base = sample[p[1]] || (g && g.prototype) || g;
+    return base !== undefined && base !== null && (p[2] in Object(base) || (g !== undefined && p[2] in Object(g)));
+  } catch (e) { return false; }
+}
+function part(n) {
+  return fetch('/api/probe-list?part=' + n).then(function (r) { return r.json(); }).then(function (keys) {
+    if (!keys.length) { document.getElementById('o').textContent = 'probe: done'; return; }
+    var out = ''; for (var i = 0; i < keys.length; i++) out += has(keys[i]) ? '1' : '0';
+    return fetch('/api/probe?part=' + n, { method: 'POST', body: out }).then(function () {
+      setTimeout(function () { part(n + 1).catch(function (e) { document.getElementById('o').textContent = 'probe: failed ' + e; }); }, 10);
+    });   /* each part its own turn: one script may only run so long */
+  });
+}
+part(0).catch(function (e) { document.getElementById('o').textContent = 'probe: failed ' + e; });
+</script>""",
     "/https/form": """<title>https form</title><form action="http://10.0.2.2:8150/collect"><input name="q" value="hi"><input type="submit" value="Send"></form>
 <form action="https://10.0.2.2.nip.io:8151/collect"><input name="r" value="ok"><input type="submit" value="Send safely"></form>""",
     "/collect": """<title>collected</title><p>COLLECTED</p>""",
@@ -374,6 +410,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(204, "text/plain", b"", [("Access-Control-Allow-Origin", "*"),
                                                       ("Access-Control-Allow-Methods", "GET, PUT")])
         return self.send(204, "text/plain", b"")
+    # test/bench/webprobe.py: the list of what to look for, and what was found
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        got = self.rfile.read(n) if n else b""
+        if self.path.startswith("/api/probe?part="):
+            out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "build", "webprobe", "got.txt")
+            open(out, "wb" if self.path.endswith("=0") else "ab").write(got)
+            return self.send(200, "application/json", b'{"ok": true}')
+        return self.send(404, "text/plain", b"not here")
     def do_PUT(self):
         n = int(self.headers.get("Content-Length") or 0)
         got = self.rfile.read(n) if n else b""
@@ -424,6 +469,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if p in JS:
             ctype = "application/javascript" if p.endswith(".js") else "application/json" if p.startswith("/api/") else "text/html; charset=UTF-8"
             return self.send(200, ctype, JS[p].encode())
+        if p.startswith("/api/probe-list?part="):          # in parts: browzer's fetch() holds 64 KB
+            keys = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "build", "webprobe", "keys.json")
+            allk, n = (json.load(open(keys)) if os.path.exists(keys) else []), int(p.split("=")[1])
+            return self.send(200, "application/json", json.dumps(allk[n * 1000:(n + 1) * 1000]).encode())
         if p in PAGES: return self.send(200, "text/html", PAGES[p].encode())
         if p.startswith("/collect?"): return self.send(200, "text/html", JS["/collect"].encode())   # a form sent here
         self.send(404, "text/plain", b"not here")

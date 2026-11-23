@@ -44,6 +44,8 @@ might; `ip drop 0` stops it.
 - **`test/bench/testca.py`:** The test bench's own authority, and copies of an image that trust it (never the image itself).
 - **`test/bench/tlstest.py IMAGE WORKDIR`:** A test authority and six local OpenSSL servers, every TLS form FLOPOS takes and one it must refuse.
 - **`test/roomtest/run.py`, `test/scripttest/run.py`:** The script room, and scripts and forms on the test site's pages, in pieces on many machines at once (about half a minute).
+- **`test/jstest/test262.py`:** The engine against test262, the official JavaScript test suite (fetched once into `~/.cache`), on every core in about 20 seconds; pass rates by feature in `build/test262/report.txt`.
+- **`test/bench/webprobe.py`:** Which Baseline web features (the `web-features` data) browzer's scripts have, looked for inside browzer, ranked by how many sites use the missing ones (`test/sites/corpus.py` fetches their scripts).
 - **`test/sites/run.py`:** The scoreboard: browzer's scripts on common sites, graded, one machine a site (`--jobs N`, `--only a,b`).
 - **`test/walltest/run.py`:** An app that breaks each of the wall's rules (`rogue.c`); FLOPOS must close it and carry on.
 - **`test/wiretest.py`, `test/persisttest.py`:** The serial line, and that saved things survive a reboot.
