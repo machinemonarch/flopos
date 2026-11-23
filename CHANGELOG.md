@@ -6,6 +6,35 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+### SECURITY FIXES
+
+#### Network
+
+- **A web server could make FLOPOS read memory it had no business
+  reading.** One piece of a download, given a carefully wrong number,
+  slipped past the checks, and FLOPOS copied up to 64 KB from far
+  outside the piece into the page. On the laptop nothing lives there, so
+  it was junk rather than secrets, but it is now refused.
+- **A name's answer must repeat the question.** Before, any answer with
+  the right number was taken, whatever name it was about. Now the name
+  has to match too, as the rules for name servers ask, so a faked
+  answer is harder to slip in.
+- **The time server's answer must come from its own port,** not just its
+  address.
+- **Pings sent to everybody on the network are no longer answered,** so
+  FLOPOS can't be used to multiply someone else's traffic.
+- **Pieces of a split-up packet are dropped** instead of being read as
+  if whole.
+
+### BUG FIXES
+
+#### Network
+
+- **A name too long to ask for** is refused, instead of FLOPOS quietly
+  looking up a shortened name.
+- **With no way out set,** packets for other networks are no longer sent
+  to a made-up card address.
+
 ## 1.47.0 — 2026-11-23
 
 ### FEATURES

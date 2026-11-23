@@ -122,6 +122,7 @@ void ip_configure(u32 addr, u32 mask, u32 gw)
 static const u8 *arp_lookup(u32 ip)
 {
     int i;
+    if (!ip) return 0;                   /* an empty slot is not anybody's */
     for (i = 0; i < ARP_N; i++)
         if (s_arp[i].ip == ip) return s_arp[i].mac;
     return 0;
@@ -451,6 +452,8 @@ int ip_dhcp(void)
 static u16 s_dns_id, s_dns_port;
 static u32 s_dns_got;
 static int s_dns_done;
+static const u8 *s_dns_q;                /* the question asked, as sent    */
+static int s_dns_qlen;
 
 static int skip_name(const u8 *p, int i, int len)
 {
@@ -468,13 +471,25 @@ static void take_dns(const u8 *p, int len)
     int i, q, a;
 
     if (len < 12 || get16(p) != s_dns_id || !(p[2] & 0x80)) return;
-    s_dns_done = 1;
-    if ((p[3] & 0x0F) != 0) return;      /* the server said no              */
-
     q = get16(p + 4);
     a = get16(p + 6);
-    i = 12;
-    while (q-- > 0 && i < len) i = skip_name(p, i, len) + 4;
+    /* A server that could not read the question may leave it out. */
+    if (q == 0 && (p[3] & 0x0F) != 0) { s_dns_done = 1; return; }
+
+    /* Otherwise the answer must repeat the very question asked (RFC
+     * 5452): the name, letter for letter bar case, and "an address,
+     * please".  One that does not is ignored, and the real answer is
+     * still waited for. */
+    if (q != 1 || 12 + s_dns_qlen > len) return;
+    for (i = 0; i < s_dns_qlen; i++) {
+        u8 x = p[12 + i], y = s_dns_q[i];
+        if (x >= 'A' && x <= 'Z') x += 32;
+        if (y >= 'A' && y <= 'Z') y += 32;
+        if (x != y) return;
+    }
+    s_dns_done = 1;
+    if ((p[3] & 0x0F) != 0) return;      /* the server said no              */
+    i = 12 + s_dns_qlen;
     while (a-- > 0 && i < len) {
         u16 type, rdlen;
         i = skip_name(p, i, len);
@@ -491,7 +506,7 @@ static void take_dns(const u8 *p, int len)
 /* Returns the address, or 0. */
 u32 ip_lookup(const char *name)
 {
-    u8 q[300];
+    static u8 q[300];                    /* kept: take_dns compares the answer with it */
     int n = 12, i, start;
     u32 until;
 
@@ -518,9 +533,11 @@ u32 ip_lookup(const char *name)
         q[start] = (u8)(n - start - 1);
         if (*name == '.') name++;
     }
+    if (*name) return 0;                 /* too long: never ask for a shortened name */
     q[n++] = 0;
     put16(q + n, 1); n += 2;             /* an address                     */
     put16(q + n, 1); n += 2;             /* on the internet                */
+    s_dns_q = q + 12; s_dns_qlen = n - 12;
 
     for (i = 0; i < 2; i++) {
         s_dns_got = 0;
@@ -537,15 +554,16 @@ u32 ip_lookup(const char *name)
 /* ---- a question over UDP ----------------------------------------------
  * One datagram out to a server, and its answer back (nts.c asks the time
  * this way).  The answer is believed only if it comes from the address
- * asked, to the random port it was asked from, while the question is open. */
-static u16 s_ask_port;
+ * asked and the port asked, to the random port it was asked from, while
+ * the question is open. */
+static u16 s_ask_port, s_ask_rport;
 static u32 s_ask_to;
 static u8 *s_ask_buf;
 static int s_ask_max, s_ask_len;
 
-static void take_answer(const u8 *ip_hdr, const u8 *p, int len)
+static void take_answer(const u8 *ip_hdr, u16 sport, const u8 *p, int len)
 {
-    if (get32(ip_hdr + 12) != s_ask_to || s_ask_len) return;
+    if (get32(ip_hdr + 12) != s_ask_to || sport != s_ask_rport || s_ask_len) return;
     if (len > s_ask_max) len = s_ask_max;
     { int i; for (i = 0; i < len; i++) s_ask_buf[i] = p[i]; }
     s_ask_len = len ? len : -1;
@@ -557,7 +575,7 @@ int ip_udp_ask(u32 to, u16 port, const u8 *q, int qlen, u8 *ans, int max, int wa
     u32 until;
     if (!net_ready() || !s_ip || !to) return 0;
     rand_bytes((u8 *)&r, 2);
-    s_ask_to = to; s_ask_buf = ans; s_ask_max = max; s_ask_len = 0;
+    s_ask_to = to; s_ask_rport = port; s_ask_buf = ans; s_ask_max = max; s_ask_len = 0;
     s_ask_port = (u16)(49152 + (r & 0x3FFF));
     if (!udp_send(to, s_ask_port, port, q, qlen)) { s_ask_port = 0; return 0; }
     until = ms_now() + (u32)wait_ms;
@@ -582,7 +600,7 @@ static void take_udp(const u8 *ip_hdr, const u8 *u, int len)
         if (get32(ip_hdr + 12) == s_dns && get16(u) == s_dns_srv_port)
             take_dns(u + 8, ulen - 8);
     }
-    else if (dport == s_ask_port && s_ask_port) take_answer(ip_hdr, u + 8, ulen - 8);
+    else if (dport == s_ask_port && s_ask_port) take_answer(ip_hdr, get16(u), u + 8, ulen - 8);
 }
 
 /* ---- everything that arrives ------------------------------------------
@@ -636,7 +654,10 @@ static void poll_frames(void)
             int hl;
             if (len < 34) break;
             hl = (h[0] & 0x0F) * 4;
-            if (hl < 20 || 14 + hl > len) break;
+            if ((h[0] >> 4) != 4 || hl < 20 || 14 + hl > len) break;
+            /* A piece of a bigger packet is not put back together here; read
+             * as if whole, its middle would pass for a header.  Dropped. */
+            if (get16(h + 6) & 0x3FFF) break;
             {
                 /* Ours, or everybody's.  Before DHCP has finished we have
                  * no address at all, and the reply that gives us one is
@@ -656,7 +677,9 @@ static void poll_frames(void)
                 if (s_ip && dst == s_ip && get32(h + 12) != s_gw &&
                     !((get32(h + 12) ^ s_ip) & s_mask))
                     arp_learn(get32(h + 12), f + 6);
-                if (h[9] == PROTO_ICMP && mine)
+                /* Pings only to us: one sent to everybody would have every
+                 * machine answer at once (RFC 1122 3.2.2.6). */
+                if (h[9] == PROTO_ICMP && s_ip && dst == s_ip)
                     take_icmp(h, h + hl, tot - hl);
                 else if (h[9] == PROTO_UDP)
                     take_udp(h, h + hl, tot - hl);

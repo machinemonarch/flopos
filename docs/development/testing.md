@@ -27,7 +27,7 @@ might; `ip drop 0` stops it.
 ## On this PC
 
 - **`test/jstest/run.sh`:** The JavaScript engine, on every test in `test/jstest/tests`, then again under memory stress.
-- **`test/fuzz/run.py [--runs N]`:** Damaged inputs for the readers, under the compiler's memory checker: `audio`, `tracker`, `x509`, `tls` (recorded conversations played back damaged), `nts` (signed time's key exchange and answers) `browzer` (the whole app on a pretend system) and `inflate` (the kernel's unpacker for packed programs). Finds are kept in `build/fuzz/finds`. Songs come from `~/.cache/flopos-songs`, recordings from `~/.cache/flopos-fuzz/audio`. Run after changing a decoder, page reading, or TLS.
+- **`test/fuzz/run.py [--runs N]`:** Damaged inputs for the readers, under the compiler's memory checker: `audio`, `tracker`, `x509`, `tls` (recorded conversations played back damaged), `nts` (signed time's key exchange and answers), `net` (frames from the network: DHCP, names, ARP, pings, TCP), `browzer` (the whole app on a pretend system) and `inflate` (the kernel's unpacker for packed programs). Finds are kept in `build/fuzz/finds`. Songs come from `~/.cache/flopos-songs`, recordings from `~/.cache/flopos-fuzz/audio`. Run after changing a decoder, page reading, TLS, or the network.
 - **`test/fstest/run.py`:** `src/kernel/fs.c` on a copy of the image: thousands of random changes judged by `fsck.fat` and mtools, then random power cuts. Run after changing `fs.c`.
 - **`test/keytest/run.sh`:** Every keyboard layout, dead keys, Alt+Shift, Ctrl shortcuts, that the font has every letter, and Hebrew's drawing order.
 - **`test/tapetest/run.sh`:** Cassette sound through a pretend tape (off speed, wavering, quiet, noisy, dull, upside down, a dropout) and back.

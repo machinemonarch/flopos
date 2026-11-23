@@ -332,12 +332,16 @@ void tcp_input(u32 from, const u8 *seg, int len)
      * if something before it went missing, it is kept, and the answer
      * says what is missing. */
     if (dlen > 0) {
-        u32 a = seq, b = seq + (u32)dlen, lim = s_rcv_nxt + rx_free();
-        if (before(a, s_rcv_nxt)) a = s_rcv_nxt;
-        if (before(lim, b)) b = lim;
-        if (before(a, b)) {
-            u32 off = a - s_rcv_nxt, n = b - a, i;
-            const u8 *src = data + (a - seq);
+        /* Worked in distances, never by comparing wrapped numbers: a
+         * piece numbered half the number space away once got past both
+         * clamps and was copied from two gigabytes beyond the packet. */
+        u32 skip = before(seq, s_rcv_nxt) ? s_rcv_nxt - seq : 0;   /* already held */
+        u32 room = rx_free(), off = seq + skip - s_rcv_nxt;
+        if (skip < (u32)dlen && off < room) {
+            u32 n = (u32)dlen - skip, a = s_rcv_nxt + off, b, i;
+            const u8 *src = data + skip;
+            if (n > room - off) n = room - off;
+            b = a + n;
             for (i = 0; i < n; i++)
                 s_rx[(s_rx_in + off + i) & (RX_SIZE - 1)] = src[i];
             if (a == s_rcv_nxt) {
