@@ -130,11 +130,15 @@ void wall_fault(Regs *r, const char *what)
 {
     static char why[96];
     u32 cr2;
+    /* An overrun stack caught by its canary (crt.c, room.c) stops with
+     * this word in eax, so it can be told apart from any other stumble. */
+    if (r->vector == 6 && r->eax == STACK_SMASHED) what = "its stack was overrun, and it was stopped before that could be used";
     if (room_current()) { room_fault(r, what); return; }
     __asm__ __volatile__("movl %%cr2, %0" : "=r"(cr2));
     serial_printf("[wall] app fault: %s at %x, reaching for %x, err %x\n", what, r->eip, cr2, r->err);
     if (r->vector == 14) fmt_str(why, sizeof why, "it reached outside its own memory");
     else if (r->vector == 13) fmt_str(why, sizeof why, "it tried something only the system may do");
+    else if (r->vector == 6 && r->eax == STACK_SMASHED) fmt_str(why, sizeof why, "%s", what);
     else fmt_str(why, sizeof why, "it stumbled (%s)", what);
     wall_kill(why);
 }

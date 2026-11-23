@@ -333,6 +333,27 @@ def seeds_net(d):
     ntp = eth(ipv4(17, "10.0.2.3", "10.0.2.15", udp(123, 50000, bytes([0x24, 2]) + bytes(46))))
     open(os.path.join(d, "misc.bin"), "wb").write(b"".join(frame(f) for f in (arp, ping, pong, ntp)))
 
+def seeds_card(d):
+    """A card's memory and registers: an NE2000 ring holding a run of
+    frames (one wrapping round its end), and a 3C589's status words, each
+    followed by its frame."""
+    if os.path.isdir(d) and os.listdir(d): return
+    os.makedirs(d, exist_ok=True)
+    rnd = random.Random(8390)
+    for k, sizes in enumerate(([60, 1514, 342], [1514] * 9, [64, 60, 60, 1000, 1514, 77])):
+        ring, page = bytearray(0x3A00), 0x47
+        for n in sizes:
+            pages = (n + 4 + 255) >> 8
+            nxt = page + pages
+            if nxt >= 0x80: nxt -= 0x80 - 0x46
+            frame = struct.pack("<BBH", 1, nxt, n + 4) + bytes(rnd.getrandbits(8) for _ in range(n))
+            for i, b in enumerate(frame):
+                ring[((page << 8) + i - 0x4600) % 0x3A00] = b
+            page = nxt
+        open(os.path.join(d, "ring%d.bin" % k), "wb").write(bytes(ring))
+        el = b"".join(struct.pack("<H", n) + bytes(rnd.getrandbits(8) for _ in range(n + (n & 1))) for n in sizes)
+        open(os.path.join(d, "el3-%d.bin" % k), "wb").write(el + struct.pack("<H", 0x8000) + struct.pack("<H", 0x4000))
+
 def seeds_tls(d):
     """Real conversations: an authority and two sites' certificates are
     made, openssl serves them on this PC in each form FLOPOS takes, and
@@ -399,8 +420,12 @@ TARGETS = {
                 os.path.join(OUT, "made", "nts"), lambda: seeds_nts(os.path.join(OUT, "made", "nts")), {},
                 # the signature's check is renamed, and nts.c (the target) puts its own in front of it
                 {"src/kernel/aes.c": "-Daessiv_open=real_aessiv_open"}),
-    "net":     (files("test/fuzz/net.c", "src/kernel/net.c", "src/kernel/ip.c", "src/kernel/tcp.c", "src/kernel/fmt.c"), ["src/kernel"],
+    "net":     (files("test/fuzz/net.c", "src/kernel/net.c", "src/kernel/ip.c", "src/kernel/fmt.c"), ["src/kernel"],   # tcp.c is inside net.c
                 os.path.join(OUT, "made", "net"), lambda: seeds_net(os.path.join(OUT, "made", "net")), {}),
+    "card":    (files("test/fuzz/card.c", "src/kernel/fmt.c"), ["src/kernel"],
+                os.path.join(OUT, "made", "card"), lambda: seeds_card(os.path.join(OUT, "made", "card")), {},
+                # the drivers, built with their ports handed to the pretend card
+                {"src/kernel/ne2000.c": "-DFLOPOS_HOST_IO", "src/kernel/el3.c": "-DFLOPOS_HOST_IO"}),
     "browzer": (files("test/fuzz/browzer.c", "src/kernel/fmt.c") + glob("src/apps/browzer") + glob("src/apps/lib/audio")
                 + glob("src/apps/lib/dsp") + glob("src/apps/lib/bits"), ["src/apps/sdk", "src/apps/browzer", "src/kernel"] + LIB,
                 os.path.join(OUT, "made", "browzer"), lambda: seeds_browzer(os.path.join(OUT, "made", "browzer")), {}),

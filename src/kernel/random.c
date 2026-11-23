@@ -56,6 +56,48 @@ static void gather(void)
     rand_add(g_ticks);
 }
 
+/* How unpredictable the jitter is on this machine, measured once at boot
+ * and said down the wire: 1024 samples of how long a read of the timer
+ * chip takes, in cycles; the most common low byte among them gives a
+ * floor on the surprise each holds (NIST SP 800-90B's most-common-value
+ * estimate), and the longest run of one value shows a counter that is
+ * stuck.  Thin jitter is not fatal -- keys and frames add more later --
+ * but it is said, and more is gathered.  Returns the estimate, in eighths
+ * of a bit per sample. */
+int rand_health(void)
+{
+    static u16 seen[256];
+    u32 prev = 0, a, d, top = 0, x;
+    int i, run = 0, longest = 0, eighths = 0;
+
+    for (i = 0; i < 256; i++) seen[i] = 0;
+    for (i = 0; i < 1024; i++) {
+        a = cycles();
+        outb(0x43, 0x00);
+        (void)inb(0x40); (void)inb(0x40);
+        d = cycles() - a;
+        rand_add(d);
+        seen[d & 255]++;
+        if (i && (d & 255) == prev) { if (++run > longest) longest = run; } else run = 0;
+        prev = d & 255;
+    }
+    for (i = 0; i < 256; i++) if (seen[i] > top) top = seen[i];
+    /* log2(1024 / top), in eighths: whole bits by halving, then three
+     * more by squaring. */
+    x = (1024u << 16) / top;                 /* the ratio, 16 bits after the point */
+    while (x >= (2u << 16)) { x >>= 1; eighths += 8; }
+    for (i = 4; i >= 1; i >>= 1) {
+        x = (u32)(((u64)x * x) >> 16);
+        if (x >= (2u << 16)) { x >>= 1; eighths += i; }
+    }
+    serial_printf("[random] jitter: about %u.%u bits a sample (the commonest of 1024 came %u times, at most %u in a row)%s\n",
+                  (u32)eighths / 8, (u32)(eighths % 8) * 125, top, (u32)longest + 1,
+                  g_cpu_mhz ? "" : "; no cycle counter, so weak");
+    if (eighths < 4)                         /* under half a bit: gather much more */
+        for (i = 0; i < 32; i++) gather();
+    return eighths;
+}
+
 void rand_bytes(u8 *out, int n)
 {
     u8 block[32], seed[36];

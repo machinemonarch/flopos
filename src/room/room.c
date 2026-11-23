@@ -15,13 +15,24 @@
 extern char _room_ro_end[], _room_image_end[], _room_bss_end[];
 void room_main(u32 len);
 
+/* The stack's canary: random, written here by the kernel when the room is
+ * loaded (room.c there), before any of the room's code runs. */
+u32 __stack_chk_guard;
+
 __attribute__((section(".roomhdr"), used))
 const RoomHeader room_header = {
     { 'F', 'L', 'O', 'P', 'R', 'O', 'O', 'M' },
     ROOM_VERSION, ROOM_BASE,
     (unsigned)_room_ro_end, (unsigned)_room_image_end, (unsigned)_room_bss_end,
-    (unsigned)room_main
+    (unsigned)room_main, (unsigned)&__stack_chk_guard
 };
+
+/* An overrun caught: stopped at once, with a word the kernel recognises. */
+void __stack_chk_fail(void)
+{
+    __asm__ __volatile__("ud2" :: "a"(0x4B415453u));   /* STACK_SMASHED */
+    for (;;) { }
+}
 
 void *memset(void *d, int c, __SIZE_TYPE__ n) { u8 *p = d; while (n--) *p++ = (u8)c; return d; }
 void *memcpy(void *d, const void *s, __SIZE_TYPE__ n) { u8 *p = d; const u8 *q = s; while (n--) *p++ = *q++; return d; }

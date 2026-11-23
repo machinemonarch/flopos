@@ -272,6 +272,16 @@ void kmain(void)
     boot_step("Negotiating with the silicone...");
     cpu_measure_mhz();                   /* needs the timer running        */
     if (g_cpu_mhz) boot_result("%u MHz", g_cpu_mhz);
+    {
+        /* The stack's canary (idt.c), from the random pool once it has
+         * something in it.  Here in kmain, which never returns, so no
+         * function waiting to check the old value is left on the stack. */
+        extern u32 __stack_chk_guard;
+        u32 g;
+        (void)rand_health();
+        rand_bytes((u8 *)&g, 4);
+        __stack_chk_guard = (g & ~0xFFu) ? (g & ~0xFFu) : 0x2A2A2A00u;
+    }
 
     boot_step("Schnipskiing the Schnoodlz");
     snd_init();

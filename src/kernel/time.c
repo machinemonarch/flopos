@@ -167,6 +167,17 @@ void clock_watch(void)
  * arrived when the counter says the whole wait is over and then some, the
  * timer is restarted and the wait ends anyway: a delay that is a little
  * long is a nuisance, and one that never ends is the whole machine. */
+/* For waits on hardware, which may run inside an interrupt, where the
+ * tick stands still: whether `us` microseconds have passed since `start`
+ * (tsc32()), by the cycle counter.  On a processor without one, by the
+ * number of turns taken instead (`turn`), about one bus read each, which
+ * is near enough a microsecond on the ISA bus. */
+int spun(u32 start, u32 turn, u32 us)
+{
+    if (g_cpu_mhz) return tsc32() - start >= us * g_cpu_mhz;
+    return turn >= us;
+}
+
 void delay_ms(u32 ms)
 {
     u32 target = g_ticks + (ms + 3) / 4;

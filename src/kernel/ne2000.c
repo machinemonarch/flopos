@@ -95,6 +95,7 @@ static void dma_in(u16 addr, void *buf, int len)
 static void dma_out(u16 addr, const void *buf, int len)
 {
     int guard;
+    u32 t0;
 
     wr(R_ISR, ISR_RDC);
     wr(R_RBCR0, (u8)(len & 0xFF));
@@ -102,9 +103,10 @@ static void dma_out(u16 addr, const void *buf, int len)
     wr(R_RSAR0, (u8)(addr & 0xFF));
     wr(R_RSAR1, (u8)(addr >> 8));
     wr(R_CMD, CMD_RD_WRITE | CMD_START);
-    outsw((u16)(NE_BASE + R_DATA), buf, (len + 1) / 2);
+    outsw((u16)(NE_BASE + R_DATA), buf, len / 2);
+    if (len & 1) outw((u16)(NE_BASE + R_DATA), ((const u8 *)buf)[len - 1]);   /* never a byte past it */
 
-    for (guard = 0; guard < 100000; guard++)
+    for (guard = 0, t0 = tsc32(); !spun(t0, (u32)guard, 100000); guard++)   /* 100 ms */
         if (rd(R_ISR) & ISR_RDC) break;
 }
 
@@ -115,6 +117,7 @@ static int ne_start(void)
 {
     u8 prom[32];
     int i, guard;
+    u32 t0;
 
     s_up = 0;
 
@@ -122,9 +125,10 @@ static int ne_start(void)
      * to start again.  An absent card floats the bus, so the bit that is
      * supposed to come up never does and we leave quickly. */
     outb(NE_BASE + R_RESET, inb(NE_BASE + R_RESET));
-    for (guard = 0; guard < 10000; guard++)
+    for (guard = 0, t0 = tsc32(); ; guard++) {
         if (rd(R_ISR) & ISR_RST) break;
-    if (guard >= 10000) { s_why = "nothing answers at 300"; return 0; }
+        if (spun(t0, (u32)guard, 10000)) { s_why = "nothing answers at 300"; return 0; }   /* 10 ms */
+    }
 
     /* An empty address floats, and a floating bus reads as all ones --
      * which has the reset bit set, so the check above passes on a machine
@@ -206,6 +210,7 @@ static void ne_stop(void)
 static int ne_send(const u8 *frame, int len)
 {
     int guard;
+    u32 t0;
 
     if (!s_up) return 0;
 
@@ -214,7 +219,7 @@ static int ne_send(const u8 *frame, int len)
     wr(R_TBCR1, (u8)(len >> 8));
     wr(R_CMD, CMD_RD_ABORT | CMD_TXP | CMD_START);
 
-    for (guard = 0; guard < 100000; guard++) {
+    for (guard = 0, t0 = tsc32(); !spun(t0, (u32)guard, 100000); guard++) {   /* 100 ms */
         if (rd(R_ISR) & ISR_PTX) { wr(R_ISR, ISR_PTX); return len; }
     }
     return 0;
@@ -288,7 +293,7 @@ static int ne_recv(u8 *frame, int max)
             return 0;
         }
     }
-    if (len <= max) dma_in((u16)((s_next << 8) + 4), frame, len);
+    if (len + (len & 1) <= max) dma_in((u16)((s_next << 8) + 4), frame, len);   /* in words */
     else len = 0;
 
     s_next = hdr[1];

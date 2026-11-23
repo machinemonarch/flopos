@@ -43,6 +43,10 @@ typedef struct {
 
 typedef struct { u32 first, size; } AppFile;
 
+/* In eax when an app or the script room stops on an overrun stack (its
+ * canary): "STAK".  The kernel says so instead of "invalid opcode". */
+#define STACK_SMASHED 0x4B415453u
+
 /* A thing in the inventory, as inv_list and inv_stat give it.  The date
  * and time are as FAT12 keeps them: year-1980 in the top 7 bits of date,
  * then month (4 bits) and day (5); hours in the top 5 of time, then

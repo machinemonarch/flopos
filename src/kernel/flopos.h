@@ -246,7 +246,9 @@ void   mood_neon(u32 t);               /* turns the frames' colours (mood.c) */
 extern u32 g_irq_cycles;              /* cycles spent in interrupts (idt.c) */
 void   time_init(void);
 u32    ms_now(void);
+int    rand_health(void);             /* the jitter, measured and said on the wire */
 void   delay_ms(u32 ms);
+int    spun(u32 start, u32 turn, u32 us);   /* a hardware wait's limit, by cycles */
 
 /* --- kbd.c ------------------------------------------------------------- *
  * Events are a scancode in the low byte plus the modifier state at the

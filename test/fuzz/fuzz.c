@@ -52,6 +52,8 @@ static void keep(const char *why)
     fprintf(stderr, "kept %s\n", name);
 }
 void __asan_on_error(void) { keep("crash"); }
+/* A target's own rules broken (a state that must never be): kept like a crash. */
+void fuzz_fail(const char *why) { fprintf(stderr, "ERROR: broken rule: %s\n", why); keep("rule"); abort(); }
 static void on_alarm(int sig) { (void)sig; keep("hang"); _exit(3); }
 
 static void load_seeds(const char *dir)

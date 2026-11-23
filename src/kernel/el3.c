@@ -143,8 +143,9 @@ static int ee_read(int addr, u16 *out)
 static void el3_discard(void)
 {
     int guard;
+    u32 t0 = tsc32();
     outw((u16)(s_io + EL3_CMD), C_RX_DISCARD);
-    for (guard = 0; guard < 10000; guard++)
+    for (guard = 0; !spun(t0, (u32)guard, 10000); guard++)   /* 10 ms, from the timer too */
         if (!(st() & S_CMD_BUSY)) return;
 }
 
@@ -371,20 +372,22 @@ static int el3_send(const u8 *frame, int len)
 {
     int words = (len + 1) / 2;
     int i, guard;
+    u32 t0;
 
     if (!s_up) return 0;
     win(1);
 
     /* Room for the frame and its preamble, or wait until there is.  The
      * card frees space as the wire drains, so this is short or never. */
-    for (guard = 0; guard < 10000; guard++) {
+    for (guard = 0, t0 = tsc32(); ; guard++) {   /* a frame drains in 1.2 ms at 10 Mbit */
         if (inw((u16)(s_io + W1_TX_FREE)) >= len + 4) break;
-        if (guard > 2000) return 0;
+        if (spun(t0, (u32)guard, 3000)) return 0;
     }
 
     outw((u16)(s_io + W1_TX_FIFO), (u16)len);
     outw((u16)(s_io + W1_TX_FIFO), 0);
-    outsw((u16)(s_io + W1_TX_FIFO), frame, words);
+    outsw((u16)(s_io + W1_TX_FIFO), frame, len / 2);
+    if (len & 1) outw((u16)(s_io + W1_TX_FIFO), frame[len - 1]);      /* never a byte past it */
     /* Pad to a whole number of four-byte units, which is what the FIFO
      * counts in whatever the length said. */
     for (i = words * 2; i & 3; i += 2) outw((u16)(s_io + W1_TX_FIFO), 0);
@@ -412,7 +415,7 @@ static int el3_send(const u8 *frame, int len)
 static int el3_recv(u8 *frame, int max)
 {
     u16 rs;
-    int len, guard;
+    int len;
 
     if (!s_up) return 0;
     win(1);
@@ -423,11 +426,11 @@ static int el3_recv(u8 *frame, int max)
     if (rs & RX_ERROR) { el3_discard(); return 0; }
 
     len = rs & 0x7FF;
-    if (len <= 0 || len > max) { el3_discard(); return 0; }
+    /* It comes out in two-byte words, so an odd length needs one more. */
+    if (len <= 0 || len + (len & 1) > max) { el3_discard(); return 0; }
 
     insw((u16)(s_io + W1_RX_FIFO), frame, (len + 1) / 2);
     el3_discard();
-    (void)guard;
     return len;
 }
 

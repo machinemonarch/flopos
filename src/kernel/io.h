@@ -3,6 +3,18 @@
 #define IO_H
 #include "flopos.h"
 
+#ifdef FLOPOS_HOST_IO
+/* Built on the PC for testing (test/fuzz/card.c): the ports are a pretend
+ * card's, given by the test. */
+void outb(u16 port, u8 v);
+u8   inb(u16 port);
+void outw(u16 port, u16 v);
+void outsw(u16 port, const void *buf, int n);
+void insw(u16 port, void *buf, int n);
+void outsl(u16 port, const void *buf, int n);
+void insl(u16 port, void *buf, int n);
+u16  inw(u16 port);
+#else
 static inline void outb(u16 port, u8 v)
 { __asm__ __volatile__("outb %0, %1" :: "a"(v), "Nd"(port)); }
 
@@ -30,6 +42,7 @@ static inline void insl(u16 port, void *buf, int n)
 
 static inline u16 inw(u16 port)
 { u16 v; __asm__ __volatile__("inw %1, %0" : "=a"(v) : "Nd"(port)); return v; }
+#endif
 
 /* ~1us on anything this old: a dummy read of an unused port. */
 static inline void io_wait(void)

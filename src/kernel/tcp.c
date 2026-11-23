@@ -73,6 +73,45 @@ static u32 s_rtx_at, s_rto;
 static int s_tries;
 static u32 s_probe_at, s_probe_gap;      /* asking a shut window: when next, how often */
 
+/* Not more than the way there can carry (RFC 5681): the congestion
+ * window starts at three segments' worth, doubles each round trip while
+ * nothing is lost (slow start), then grows by a segment a round trip; a
+ * loss halves it.  And the time to wait before sending again is measured,
+ * not guessed (RFC 6298): one segment at a time is timed, never one sent
+ * twice (Karn), and the wait is the smoothed time plus four times its
+ * wobble.  At least 200 ms, as Linux does -- the RFC's second is for
+ * slower clocks than this one. */
+static u32 s_cwnd, s_ssthresh;
+static int s_dupacks, s_recovering;
+static u32 s_recover;                    /* fast recovery lasts until this is acknowledged */
+static u32 s_srtt, s_rttvar;             /* in ms; 0 until the first sample */
+static int s_timing;
+static u32 s_time_seq, s_time_at;
+#define RTO_MIN 200
+#define RTO_MAX 8000
+
+static void rtt_sample(u32 r)
+{
+    u32 d;
+    if (!s_srtt) { s_srtt = r ? r : 1; s_rttvar = r / 2; }
+    else {
+        d = s_srtt > r ? s_srtt - r : r - s_srtt;
+        s_rttvar = (3 * s_rttvar + d) / 4;
+        s_srtt = (7 * s_srtt + r) / 8;
+        if (!s_srtt) s_srtt = 1;
+    }
+    s_rto = s_srtt + (4 * s_rttvar > 4 ? 4 * s_rttvar : 4);
+    if (s_rto < RTO_MIN) s_rto = RTO_MIN;
+    if (s_rto > RTO_MAX) s_rto = RTO_MAX;
+}
+
+/* Half of what is on the way, but never under two segments. */
+static u32 half_flight(void)
+{
+    u32 h = (s_snd_nxt - s_snd_una) / 2;
+    return h > 2 * s_peer_mss ? h : 2 * s_peer_mss;
+}
+
 const char *tcp_why(void) { return s_why; }
 int tcp_open(void) { return s_state == ESTAB || s_state == CLOSE_WAIT; }
 
@@ -169,7 +208,8 @@ static void output(void)
 {
     for (;;) {
         u32 flight = s_snd_nxt - s_snd_una;
-        u32 room = s_peer_win > flight ? s_peer_win - flight : 0;
+        u32 win = s_peer_win < s_cwnd ? s_peer_win : s_cwnd;
+        u32 room = win > flight ? win - flight : 0;
         int unsent = s_tx_len - (int)flight;
         int n = unsent;
 
@@ -180,12 +220,13 @@ static void output(void)
         if (flight == 0) s_rtx_at = ms_now() + s_rto;
         segment(F_ACK | F_PSH, s_snd_nxt, s_tx + flight, n);
         s_snd_nxt += (u32)n;
+        if (!s_timing) { s_timing = 1; s_time_seq = s_snd_nxt; s_time_at = ms_now(); }
     }
 }
 
 /* Anything sent and not acknowledged in time is sent again, from the
- * oldest byte -- everything after it too, which is wasteful and simple
- * and on a single cable almost never needed. */
+ * oldest byte -- everything after it too, which is wasteful and simple;
+ * one gap with the rest arrived is caught sooner by fast retransmit. */
 static void tick(void)
 {
     if (s_state == CLOSED) return;
@@ -213,8 +254,14 @@ static void tick(void)
         return;
     }
     s_rto *= 2;
-    if (s_rto > 8000) s_rto = 8000;
+    if (s_rto > RTO_MAX) s_rto = RTO_MAX;
     s_rtx_at = ms_now() + s_rto;
+    /* A loss by silence: back to one segment, and nothing sent twice is
+     * timed. */
+    s_ssthresh = half_flight();
+    s_cwnd = s_peer_mss;
+    s_dupacks = s_recovering = 0;
+    s_timing = 0;
 
     if (s_state == SYN_SENT) {
         segment(F_SYN, s_iss, 0, 0);
@@ -318,8 +365,10 @@ void tcp_input(u32 from, const u8 *seg, int len)
         s_snd_una = ack;
         s_peer_win = get16(seg + 14);
         s_state = ESTAB;
+        if (!s_tries) rtt_sample(ms_now() - s_time_at);   /* the hello, if sent once */
         s_tries = 0;
-        s_rto = 1000;
+        s_cwnd = (s_peer_mss > 1095 ? 3 : 4) * s_peer_mss;   /* RFC 5681's first window */
+        s_ssthresh = 65535;
         ack_now();
         return;
     }
@@ -333,13 +382,37 @@ void tcp_input(u32 from, const u8 *seg, int len)
             for (i = 0; i + data_done < s_tx_len; i++) s_tx[i] = s_tx[i + data_done];
             s_tx_len -= data_done;
             s_snd_una = ack;
+            if (s_timing && !before(ack, s_time_seq)) { rtt_sample(ms_now() - s_time_at); s_timing = 0; }
+            if (s_recovering) {
+                if (!before(ack, s_recover)) { s_recovering = 0; s_cwnd = s_ssthresh; }
+                else segment(F_ACK | F_PSH, s_snd_una, s_tx, s_tx_len < (int)s_peer_mss ? s_tx_len : (int)s_peer_mss);   /* the next hole */
+            } else if (s_cwnd < s_ssthresh) s_cwnd += (u32)done < s_peer_mss ? (u32)done : s_peer_mss;
+            else {
+                u32 grow = s_peer_mss * s_peer_mss / s_cwnd;
+                s_cwnd += grow ? grow : 1;
+            }
+            if (s_cwnd > 65535) s_cwnd = 65535;
+            s_dupacks = 0;
             s_tries = 0;
-            s_rto = 1000;
             s_rtx_at = ms_now() + s_rto;
             if (s_snd_una == s_snd_nxt && s_tx_len == 0) {
                 if (s_state == FIN_WAIT1) s_state = FIN_WAIT2;
                 else if (s_state == LAST_ACK) s_state = CLOSED;
             }
+        } else if (ack == s_snd_una && dlen == 0 && s_snd_nxt != s_snd_una && s_tx_len > 0 &&
+                   get16(seg + 14) == s_peer_win && !(flags & (F_SYN | F_FIN))) {
+            /* The same acknowledgement again: something after the gap
+             * came, the gap did not.  At the third, the gap is sent at
+             * once rather than after the wait (fast retransmit), and the
+             * window halved rather than shut (fast recovery). */
+            if (++s_dupacks == 3 && !s_recovering) {
+                s_ssthresh = half_flight();
+                s_cwnd = s_ssthresh + 3 * s_peer_mss;
+                s_recovering = 1;
+                s_recover = s_snd_nxt;
+                s_timing = 0;
+                segment(F_ACK | F_PSH, s_snd_una, s_tx, s_tx_len < (int)s_peer_mss ? s_tx_len : (int)s_peer_mss);
+            } else if (s_recovering) s_cwnd += s_peer_mss;
         }
         s_peer_win = get16(seg + 14);
     }
@@ -425,7 +498,10 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
     s_tx_len = 0;
     s_tries = 0;
     s_probe_at = 0;
-    s_rto = 1000;
+    s_rto = 1000;                        /* RFC 6298's first guess, until measured */
+    s_srtt = s_rttvar = 0;
+    s_cwnd = MSS; s_ssthresh = 65535;
+    s_dupacks = s_recovering = s_timing = 0;
     s_why = "";
     s_state = SYN_SENT;
 
@@ -435,6 +511,7 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
         return 0;
     }
     s_rtx_at = ms_now() + s_rto;
+    s_time_at = ms_now();
     segment(F_SYN, s_iss, 0, 0);
 
     until = ms_now() + (u32)wait_ms;

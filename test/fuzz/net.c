@@ -61,6 +61,34 @@ void main_pump(int now) { (void)now; }
 int  pcic_probe(void) { return 0; }
 const char *ne2000_state(void) { return "fuzz"; }
 
+/* TCP is built into this file, so its state can be checked against its
+ * rules after every frame: what it holds fits, what it has sent is what
+ * it has, the pieces kept ahead are in order, apart, and inside the
+ * buffer, and the numbers it sends by stay in their bounds. */
+#include "../../src/kernel/tcp.c"
+void fuzz_fail(const char *why);
+
+static void tcp_rules(void)
+{
+    int k;
+    u32 held = s_rx_in - s_rx_out;
+    if (s_state == CLOSED || s_state == SYN_SENT) return;
+    if (held > RX_SIZE) fuzz_fail("more held than the buffer");
+    if (s_tx_len < 0 || s_tx_len > TX_SIZE) fuzz_fail("send buffer count out of bounds");
+    if (before(s_snd_nxt, s_snd_una)) fuzz_fail("sent before acknowledged");
+    if (s_snd_nxt - s_snd_una > (u32)s_tx_len + 2) fuzz_fail("more on the way than was written");
+    if (s_nooo < 0 || s_nooo > OOO_MAX) fuzz_fail("too many pieces ahead");
+    for (k = 0; k < s_nooo; k++) {
+        if (!before(s_ooo[k].start, s_ooo[k].end)) fuzz_fail("an empty or backwards piece");
+        if (!before(s_rcv_nxt, s_ooo[k].start)) fuzz_fail("a piece ahead that is not ahead");
+        if (s_ooo[k].end - s_rcv_nxt > RX_SIZE - held) fuzz_fail("a piece past the buffer");
+        if (k && !before(s_ooo[k - 1].end, s_ooo[k].start)) fuzz_fail("pieces touching or out of order");
+    }
+    if (s_peer_mss < 64 || s_peer_mss > MSS) fuzz_fail("their segment size out of bounds");
+    if (s_rto < RTO_MIN || s_rto > RTO_MAX) fuzz_fail("resend wait out of bounds");
+    if (!s_cwnd || s_cwnd > 65535 + 3 * MSS + 65535) fuzz_fail("congestion window out of bounds");
+}
+
 static u16 g16(const u8 *p) { return (u16)(p[0] << 8 | p[1]); }
 static void p16(u8 *p, u32 v) { p[0] = (u8)(v >> 8); p[1] = (u8)v; }
 static u32 g32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3]; }
@@ -164,6 +192,7 @@ static void helpful(u8 *f, int len)
 static int c_recv(u8 *f, int max)
 {
     u32 n;
+    tcp_rules();
     if (s_arp_len) { memcpy(f, s_arp, 42); s_arp_len = 0; return 42; }
     if (s_at + 2 > s_len || s_credit <= 0) return 0;
     s_credit--;
@@ -190,10 +219,6 @@ u32 ip_lookup(const char *name);
 void ip_set_dns(u32 addr, u16 port);
 int  ip_dhcp(void);
 int  ip_ping(u32 to, int seq, int wait_ms);
-int  tcp_connect(u32 to, u16 port, int wait_ms);
-int  tcp_write(const u8 *data, int len);
-int  tcp_read(u8 *buf, int max, int wait_ms);
-void tcp_close(void);
 
 void fuzz_one(const u8 *data, u32 len, u32 mode)
 {
@@ -243,4 +268,5 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
     }
     s_credit = 1 << 30;
     while (s_at + 2 <= s_len) ip_poll();                /* whatever is left, read anyway */
+    tcp_rules();
 }

@@ -30,7 +30,7 @@
 #define ROOM_STACK_SIZE 0x40000u
 #define ROOM_STACK  (ROOM_GAP2 - ROOM_STACK_SIZE)
 #define ROOM_GAP1   (ROOM_STACK - 0x1000u)
-#define ROOM_VERSION 1
+#define ROOM_VERSION 2
 
 typedef struct {
     char magic[8];                       /* "FLOPROOM"                      */
@@ -40,6 +40,7 @@ typedef struct {
     unsigned image_end;
     unsigned bss_end;
     unsigned entry;                      /* void room_main(unsigned len)    */
+    unsigned guard;                      /* its stack canary, which the kernel sets */
 } RoomHeader;
 
 /* What the room asks the kernel: eax the number, ebx ecx edx esi. */

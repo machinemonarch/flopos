@@ -18,7 +18,7 @@ CFLAGS  := -m32 -std=gnu99 -ffreestanding -nostdlib -nostdinc \
            -O2 -march=i386 -mtune=pentium \
            -mno-mmx -mno-sse -mno-sse2 -mno-80387 -msoft-float \
            -fno-asynchronous-unwind-tables -fno-unwind-tables \
-           -fno-stack-protector -fomit-frame-pointer \
+           -fstack-protector-strong -mstack-protector-guard=global -fomit-frame-pointer \
            -fno-tree-loop-distribute-patterns \
            -Wall -Wextra -Wno-unused-parameter -Wno-array-bounds -Isrc/kernel \
            $(EXTRA_CFLAGS)

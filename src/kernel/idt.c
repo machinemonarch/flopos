@@ -149,6 +149,20 @@ static int s_in_panic = 0;
  * stack's tripwire in time.c) rather than stumbled into. */
 const char *g_panic_note;
 
+/* The stack's canary (-fstack-protector-strong): a word every function
+ * with an array on its stack keeps beside its return address and checks
+ * on the way out, so an overrun stops here instead of jumping wherever it
+ * was steered.  Random, set once at boot (main.c), with its low byte zero
+ * so a runaway string ends on it.  Apps and the script room have their own
+ * (crt.c, room.c). */
+u32 __stack_chk_guard;
+void __stack_chk_fail(void)
+{
+    g_panic_note = "the system's stack was overrun: stopped before it could be used";
+    __asm__ __volatile__("ud2");
+    for (;;) { }
+}
+
 static void panic(Regs *r)
 {
     static u8 pal[768];

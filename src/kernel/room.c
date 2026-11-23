@@ -120,11 +120,17 @@ int room_open(void)
     }
     if (h->magic[0] != 'F' || h->magic[4] != 'R' || h->magic[7] != 'M' || h->version != ROOM_VERSION ||
         h->load_addr != ROOM_BASE || (h->ro_end & 0xFFF) || h->ro_end < ROOM_BASE || h->ro_end > h->image_end ||
-        h->image_end > h->bss_end || h->bss_end > ROOM_GAP1 || h->entry < ROOM_BASE || h->entry >= h->ro_end) {
+        h->image_end > h->bss_end || h->bss_end > ROOM_GAP1 || h->entry < ROOM_BASE || h->entry >= h->ro_end ||
+        h->guard < h->ro_end || h->guard > h->bss_end - 4) {
         s_why = "ROOM.BIN is not the script room";
         return 0;
     }
     memset8((void *)h->image_end, 0, h->bss_end - h->image_end);
+    {                                    /* its stack canary: random, low byte zero */
+        u32 g;
+        rand_bytes((u8 *)&g, 4);
+        *(u32 *)h->guard = (g & ~0xFFu) ? (g & ~0xFFu) : 0x2A2A2A00u;
+    }
     s_entry = h->entry;
     s_ro_end = h->ro_end;
     /* The pages: code read-only; the gaps not there; the rest the room's. */
@@ -229,7 +235,9 @@ void room_fault(Regs *r, const char *what)
     u32 cr2;
     __asm__ __volatile__("movl %%cr2, %0" : "=r"(cr2));
     serial_printf("[room] fault: %s at %x, reaching for %x\n", what, r->eip, cr2);
-    stop(r->vector == 14 ? "it reached outside its own memory" : "it tried something only the system may do");
+    stop(r->vector == 14 ? "it reached outside its own memory" :
+         r->vector == 6 && r->eax == STACK_SMASHED ? "its stack was overrun, and it was stopped before that could be used" :
+         "it tried something only the system may do");
 }
 
 /* From the timer, after the interrupt is acknowledged: a room that has run
