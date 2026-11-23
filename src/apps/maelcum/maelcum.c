@@ -116,6 +116,7 @@ static char s_pass[64];                  /* the passphrase, for as long as one w
 static u8  s_key[32], s_salt[16];
 static int s_have_key;
 static int s_locked, s_wrong;            /* a sealed tape and no passphrase; or the wrong one */
+static int s_unopened;                   /* sealed headers in a row that would not open */
 static int s_cursor, s_top;
 static const char *s_note = "";          /* a line about what happened last */
 static u8  s_note_c;
@@ -708,7 +709,13 @@ static void heard(void *ctx, int type, int seq, const u8 *d, int len)
                 s_have_key = 1;
             }
             nonce_for(nonce, 'H', d[2]);
-            if (!A->crypt_open(d[1], s_key, nonce, d, SEAL_PRE, d + SEAL_PRE, HEAD_LEN, d + SEAL_PRE + HEAD_LEN, plain)) { s_wrong = 1; return; }
+            /* Each header comes twice: one spoiled in a way the block's
+             * check missed is not yet a wrong passphrase. */
+            if (!A->crypt_open(d[1], s_key, nonce, d, SEAL_PRE, d + SEAL_PRE, HEAD_LEN, d + SEAL_PRE + HEAD_LEN, plain)) {
+                if (++s_unopened >= 2) s_wrong = 1;
+                return;
+            }
+            s_unopened = 0;
             sealed = 1; alg = d[1];
             d = plain; len = HEAD_LEN;
         }
@@ -805,7 +812,7 @@ static int read_percent(void)
 static void read_go(int verifying)
 {
     int i;
-    s_locked = s_wrong = 0;
+    s_locked = s_wrong = s_unopened = 0;
     if (!verifying) {
         forget_key();
         if (s_crypt && (!ask_line("Passphrase for this tape:", s_pass, (int)sizeof s_pass, 1) || !s_pass[0])) { forget_key(); return; }

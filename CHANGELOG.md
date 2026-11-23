@@ -11,6 +11,8 @@ without it. Each version's notes are also written next to its image, as
 - browzer's address (g) edits as scribe does: Shift with the arrows,
   Home or End picks, Ctrl with the arrows goes a word at a time, and
   Ctrl-C, Ctrl-X and Ctrl-V copy, cut and paste.
+- An HLS station that offers several versions starts on the leanest, as
+  before; + and - on the player screen step to a better or leaner one.
 
 ### BUG FIXES
 
@@ -21,6 +23,8 @@ without it. Each version's notes are also written next to its image, as
 - While a station plays in pieces (HLS), the status line stays put
   instead of saying "agreeing on a key" for every piece.
 - j on a page without scripts says so, instead of loading the page again.
+- maelcum reading an encrypted tape takes one header that will not open
+  as damage, not a wrong passphrase, since each header comes twice.
 - The clock menu wraps its longer lines instead of cutting them off.
 - The serial wire no longer says "decoding took 0.0%" every ten seconds:
   twice a minute at most, and only when there is something to say.

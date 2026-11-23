@@ -36,7 +36,9 @@ Icecast radio with their playlists, and stations that stream in short
 pieces (HLS, `.m3u8`), live or not, sealed with AES-128 or in MP4
 pieces, adverts spliced in included. A file under 2 MB plays while you
 browse; radio plays on a player screen with the station and song, and Esc
-stops it.
+stops it. An HLS station offering several versions starts on the
+leanest; + steps to a better one and - back, which costs the laptop more
+work and more network.
 
 A page's streams are found even without scripts: "Listen live" buttons
 play, and streams named only in the page's data are listed at the top.

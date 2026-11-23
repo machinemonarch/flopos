@@ -33,7 +33,7 @@ from shots import Monitor, type_text
 
 # Keys for an address on FLOPOS's Swedish layout, by QEMU's (US) key names.
 SE = {":": "shift-dot", "/": "shift-7", "?": "shift-minus", "=": "shift-0", "&": "shift-6",
-      "-": "slash", "_": "shift-slash", ".": "dot"}
+      "-": "slash", "_": "shift-slash", ".": "dot", "+": "minus"}
 
 class Wire:
     """The serial log as it grows."""

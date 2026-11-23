@@ -14,6 +14,24 @@ CHANGELOG.
 - **A chat app:** Like Discord, IRC, WhatsApp or Signal; which is open. IRC is easiest for this machine, given a channel worth being in.
 - **A mystical protocol for sharing data:** A client on the Toshiba and a server elsewhere, doing what SFTP, NFS or SMB do without reinventing netcat. It should feel obscure and enticing, like a forgotten metro tunnel, all the way down to how it checks data and starts a session. What it is for is undecided, so it starts with an interview of its product owner.
 
+## Audit, one part at a time
+
+A full read of the code for bugs and holes, too big for one go, so a part
+per round, most exposed first. Each round: read every line of the part,
+fuzz what takes outside input, check on the bench, fix, and note here
+what was found. Sizes are rough.
+
+1. **The network's front door** (about 6,000 lines): network card drivers, IP, TCP, DNS, NTP and NTS. Everything a stranger's packet touches first.
+2. **TLS and certificates** (about 5,000): `tls.c`, `x509.c`, the key exchanges and signatures. Checked against test vectors and the TLS bench.
+3. **browzer's reading of pages** (about 8,500): HTTP, HTML, CSS, cookies, addresses, playlists, HLS.
+4. **The JavaScript room** (about 10,500): the engine, the page objects, the wall around them.
+5. **Sound decoders** (about 7,000): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers. Already fuzzed; this round reads them.
+6. **The wall between apps and the system** (about 2,000): `wall.c`, `apps.c`, every call an app can make.
+7. **Disk and files** (about 2,500): FAT12 writing, STATE.BIN, the inventory.
+8. **maelcum and the tape** (about 2,500): reading tapes, sealing, packing.
+9. **The rest of the system** (about 8,000): boot, memory, the screen, keys, the shell and the small apps.
+10. **The build tools** (about 4,000): `tools/`, especially anything that writes to a disk.
+
 ## Security, waiting for a decision
 
 Nothing at the moment. What was fixed is in Security[^1].

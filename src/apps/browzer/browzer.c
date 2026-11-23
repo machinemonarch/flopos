@@ -484,11 +484,18 @@ static int playlist_url(char *out, int cap, int nth)
 #define UK_SELALL 1                      /* ctrl-a                         */
 
 static int s_ui_mods;                    /* what was held with the last key */
+static int s_hls_nvar, s_hls_rank;       /* an HLS station's versions, and which plays (0 leanest) */
+static u32 s_hls_bw;                     /* the one playing: what the playlist says it takes */
+static int s_hls_step;                   /* + or - pressed: a better or leaner one wanted */
 static int s_ui_ctrl_ok;                 /* the address is being edited: ctrl keys wanted */
 int ui_key(void)
 {
     int mods, k = A->key(&mods);
     s_ui_mods = k >= 0 ? mods : 0;
+    if (s_hls_nvar > 1 && !(mods & (M_CTRL | M_ALT)) && (k == '+' || k == '-')) {
+        s_hls_step = k == '+' ? 1 : -1;  /* taken up between pieces (hls_play) */
+        return -1;
+    }
     if (k >= 0 && (mods & M_CTRL) && (k == 'a' || k == 'A')) return UK_SELALL;
     if (k >= 0 && (mods & M_CTRL) && !(mods & M_ALT) && s_ui_ctrl_ok) return k;
     if (k >= 0 && (mods & (M_CTRL | M_ALT))) return -1;
@@ -853,9 +860,82 @@ static int hls_wait(u32 ms)
     u32 t0 = A->ms();
     while (A->ms() - t0 < ms) {
         if (ui_key() == UK_ESC) { s_esc = 1; return 0; }
+        if (s_hls_step) return 1;
         stream_draw();
         A->pump(0);
     }
+    return 1;
+}
+
+/* The master playlist in s_pl: its versions ranked by the bandwidth each
+ * says it takes; the address of the one at s_hls_rank into uri. */
+static int hls_variant(const char *base, char *uri, int cap)
+{
+    u32 bws[16], t;
+    int n = 0, i, j;
+    const char *l;
+    for (l = s_pl; *l; ) {
+        if (tag(l, "#EXT-X-STREAM-INF") && n < 16) {
+            u32 bw = num_in(l, "BANDWIDTH=", 0);
+            for (i = 0; i < n && bws[i] != bw; i++) { }
+            if (i == n) bws[n++] = bw;           /* the same bandwidth twice is one choice */
+        }
+        while (*l && *l != '\n') l++;
+        if (*l) l++;
+    }
+    for (i = 1; i < n; i++)                      /* leanest first */
+        for (j = i; j > 0 && bws[j - 1] > bws[j]; j--) { t = bws[j]; bws[j] = bws[j - 1]; bws[j - 1] = t; }
+    s_hls_nvar = n;
+    if (!n) return 0;
+    if (s_hls_rank >= n) s_hls_rank = n - 1;
+    if (s_hls_rank < 0) s_hls_rank = 0;
+    s_hls_bw = bws[s_hls_rank];
+    for (l = s_pl; *l; ) {
+        if (tag(l, "#EXT-X-STREAM-INF") && num_in(l, "BANDWIDTH=", 0) == s_hls_bw) {
+            const char *u = l;
+            while (*u && *u != '\n') u++;
+            while (*u == '\n' || *u == '\r') u++;
+            if (*u && *u != '#') {
+                static char rel[URL_MAX];
+                int k = 0;
+                while (u[k] && u[k] != '\r' && u[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = u[k]; k++; }
+                rel[k] = 0;
+                if (url_resolve(base, rel, uri, cap)) return 1;
+            }
+        }
+        while (*l && *l != '\n') l++;
+        if (*l) l++;
+    }
+    return 0;
+}
+
+/* + or - was pressed: the master playlist again, the next version up or
+ * down, and its playlist into s_pl.  What is in hand plays out first (the
+ * new one may be another rate).  Anything failing: the old one goes on.
+ * 0 if esc was pressed or nothing could be had. */
+static int hls_switch(char *base, char *uri, int cap)
+{
+    int was = s_hls_rank, want = s_hls_rank + s_hls_step;
+    u32 n;
+    s_hls_step = 0;
+    if (want < 0 || want >= s_hls_nvar) return 1;
+    if (hls_get(s_dl_url)) {
+        n = s_seg_len < PL_MAX - 1 ? s_seg_len : PL_MAX - 1;
+        memcpy(s_pl, s_seg, n); s_pl[n] = 0;
+        s_hls_rank = want;
+        if (hls_variant(s_dl_url, uri, cap) && hls_get(uri)) {
+            n = s_seg_len < PL_MAX - 1 ? s_seg_len : PL_MAX - 1;
+            memcpy(s_pl, s_seg, n); s_pl[n] = 0;
+            fmt_str(base, cap, "%s", uri);
+            A->wire("[browzer] HLS: another version\n");
+            return hls_break();
+        }
+        s_hls_rank = was;
+        (void)hls_variant(s_dl_url, uri, cap);  /* s_hls_bw as it was */
+    }
+    if (s_esc || !hls_get(base)) return 0;     /* the old one's playlist back */
+    n = s_seg_len < PL_MAX - 1 ? s_seg_len : PL_MAX - 1;
+    memcpy(s_pl, s_seg, n); s_pl[n] = 0;
     return 1;
 }
 
@@ -874,28 +954,11 @@ static int hls_play(void)
     memcpy(s_pl, s_dl, n); s_pl[n] = 0;
     fmt_str(base, sizeof base, "%s", s_dl_url);
 
-    /* A master playlist: the leanest version. */
+    /* A master playlist: the leanest version, until + asks for better. */
+    s_hls_nvar = 0; s_hls_rank = 0; s_hls_step = 0;
     if (has(s_pl, "#EXT-X-STREAM-INF")) {
-        u32 best = 0xFFFFFFFFu;
-        const char *l = s_pl;
         uri[0] = 0;
-        while (*l) {
-            if (tag(l, "#EXT-X-STREAM-INF")) {
-                u32 bw = num_in(l, "BANDWIDTH=", 0);
-                const char *u = l;
-                while (*u && *u != '\n') u++;
-                while (*u == '\n' || *u == '\r') u++;
-                if (*u && *u != '#' && bw < best) {
-                    static char rel[URL_MAX];
-                    int k = 0;
-                    while (u[k] && u[k] != '\r' && u[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = u[k]; k++; }
-                    rel[k] = 0;
-                    if (url_resolve(base, rel, uri, (int)sizeof uri)) best = bw;
-                }
-            }
-            while (*l && *l != '\n') l++;
-            if (*l) l++;
-        }
+        if (!hls_variant(base, uri, (int)sizeof uri)) uri[0] = 0;
         if (!uri[0] || !hls_get(uri)) {
             if (s_esc) return DL_STREAM_END;
             s_hls_why = uri[0] ? "The station would not hand over the stream it names."
@@ -950,6 +1013,7 @@ static int hls_play(void)
                 while (l[k] && l[k] != '\r' && l[k] != '\n' && k < (int)sizeof rel - 1) { rel[k] = l[k]; k++; }
                 rel[k] = 0;
                 if (seq + i >= next && url_resolve(base, rel, uri, (int)sizeof uri)) {
+                    if (s_hls_step) break;            /* another version wanted: from the next piece */
                     if (s_tags.seal < 0) {
                         s_hls_why = "It is sealed in a way browzer cannot open (AES-128 it can).";
                         st = DL_UNPLAYABLE; goto out;
@@ -980,17 +1044,23 @@ static int hls_play(void)
             while (*l && *l != '\n') l++;
             if (*l) l++;
         }
+        if (s_hls_step) {
+            if (!hls_switch(base, uri, (int)sizeof uri)) goto out;
+            continue;
+        }
         if (ended) break;
         /* Live: read the playlist again after half a segment's length; a
          * station that gives nothing new for a while has stopped. */
         tries = got ? 0 : tries + 1;
         if (tries > 6) break;
         if (!hls_wait((target ? target : 6) * 500)) goto out;
+        if (s_hls_step) continue;                     /* switched at the top of the next round */
         if (!hls_get(base)) { if (s_esc) goto out; break; }
         n = s_seg_len < PL_MAX - 1 ? s_seg_len : PL_MAX - 1;
         memcpy(s_pl, s_seg, n); s_pl[n] = 0;
     }
 out:
+    s_hls_nvar = 0;                      /* + and - are letters again */
     media_end(s_esc ? -1 : 1);
     if (s_hls_why && !s_esc) {
         char t[120];
@@ -1183,7 +1253,14 @@ static void draw(void)
             }
         } else
             term_win_text(4, 8, "listening for the first of it...", C_DIM, pp);
-        put_text_clipped(4, 14, "\1esc\1 stops it", C_DIM, pp, s_w - 2);
+        if (s_hls_nvar > 1) {            /* an HLS station with versions to choose from */
+            fmt_str(t, sizeof t, "version %u of %u (%u kbps)%s%s", (u32)s_hls_rank + 1, (u32)s_hls_nvar,
+                    (s_hls_bw + 500) / 1000, s_hls_rank + 1 < s_hls_nvar ? "  \1+\1 better" : "",
+                    s_hls_rank > 0 ? "  \1-\1 leaner" : "");
+            put_text_clipped(4, 14, t, C_DIM, pp, s_w - 2);
+            put_text_clipped(4, 16, "\1esc\1 stops it", C_DIM, pp, s_w - 2);
+        } else
+            put_text_clipped(4, 14, "\1esc\1 stops it", C_DIM, pp, s_w - 2);
     } else
     /* The page. */
     for (y = 0; y < s_vh; y++) {
