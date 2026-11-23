@@ -122,6 +122,26 @@ document.getElementById('c').addEventListener('click', async e => {
   e.target.textContent = 'clicked, after a wait';
 });
 </script>""",
+    "/js/modules": """<title>js modules</title><p id="o">not yet</p><p id="d">not loaded</p>
+<script type="importmap">{"imports": {"tools": "/js/mod/tools.js", "lib/": "/js/mod/"}}</script>
+<script nomodule>document.getElementById('o').textContent = 'NOMODULE RAN';</script>
+<p id="cs">no script</p><script>document.getElementById('cs').textContent = 'current ' + document.currentScript.tagName.toLowerCase();</script>
+<script type="module" src="/js/mod/main.js"></script>
+<script type="module">
+import { twice } from 'tools';
+import { name } from 'lib/name.js';
+document.getElementById('d').textContent = 'inline ' + twice(name);
+import('./mod/late.js').then(m => { document.getElementById('d').textContent += ', ' + m.default(); });
+</script>""",
+    "/js/mod/main.js": """import { twice, counter, bump } from './tools.js';
+import * as N from './name.js';
+bump();
+document.getElementById('o').textContent = 'modules: ' + twice(N.name) + ' ' + counter + ' ' + typeof import.meta.url;""",
+    "/js/mod/tools.js": """export let counter = 0;
+export function bump() { counter++; }
+export const twice = s => s + s;""",
+    "/js/mod/name.js": """export const name = 'ab';""",
+    "/js/mod/late.js": """export default function () { return 'late'; }""",
     "/table/basic": """<title>table basic</title><h1>Stations</h1>
 <table><caption>Three stations</caption>
 <thead><tr><th>Name</th><th>City</th><th>Kind</th></tr></thead>

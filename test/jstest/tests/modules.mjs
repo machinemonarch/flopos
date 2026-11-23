@@ -1,0 +1,21 @@
+// Modules: imports, exports, live bindings, re-exports, namespaces, circles.
+import make, { seen, bump, one, uno, all, Renamed, viaNs, p, queue } from './mod/b.js';
+import { fromC } from './mod/c.js';
+import './mod/d.js';
+check(one, 1, 'a named import');
+check(uno, 1, 'renamed export');
+check(viaNs, 2, 'namespace import');
+check(make(), 'thing1', 'a default import, an anonymous default export');
+check(seen(), 1, 'live: the importer sees the counter move');
+bump();
+check(seen(), 2, 'live again');
+check(all.counter, 2, 'export * as');
+check(new Renamed().hi(), 'thing', 'export { default as X } from');
+check(p + queue, 'PQ', 'exported patterns, with a default');
+check(fromC(), 'cdC', 'a circle of imports');
+check(typeof import.meta.url, 'string', 'import.meta.url');
+check(Object.keys(all).indexOf('one') >= 0, true, 'a namespace lists its exports');
+check(this, undefined, 'this at the top of a module');
+var shadow = (function (one) { return one; })(7);
+check(shadow, 7, 'a parameter hides an import');
+print('done');

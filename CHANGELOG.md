@@ -16,9 +16,20 @@ without it. Each version's notes are also written next to its image, as
 - Scripts written the newer way now run in browzer, where before the
   whole script was refused: class fields (private ones too), ...rest when
   taking an object apart, defaults on such parameters, tagged templates,
-  getters with a worked-out name, static blocks and for await. Of 568
-  scripts from 38 well-known sites, 72 are still refused instead of 176;
-  most of those are modules, which browzer does not read yet.
+  getters with a worked-out name, static blocks and for await.
+- browzer reads JavaScript modules (import and export): their files are
+  fetched by the same rules as any script, with import maps, import()
+  and import.meta; a page's scripts for browsers without modules are
+  then left alone, as other browsers do.
+- Generators (function* and yield) run, and so do new X(...list),
+  taking a list or object apart into properties, await at a module's
+  top level, and document.currentScript, which many sites' packed
+  scripts use to find their other files.
+- Reading a big script takes a quarter of the memory it did: looking
+  ahead no longer copies every string it passes.
+- Of 568 scripts from 38 well-known sites, 34 are still refused before
+  they start, where 176 were. Most of those left are too big for the
+  memory scripts have.
 
 ### BUG FIXES
 

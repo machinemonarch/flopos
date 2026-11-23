@@ -32,12 +32,13 @@ STEPS = [
     r"js/async=>\[shown\] \* async alpha\r?\n\[shown\] \* async beta",
     r"key:tab",
     r"key:ret=>\[shown\] clicked, after a wait",
+    r"js/modules=>\[shown\] modules: abab 1 string(.|\n)*\[shown\] current script(.|\n)*\[shown\] inline abab, late",
     r"table/basic=>\[shown\] Name +City +Kind\r?\n\[shown\] Radio One +Sofia +Talk",
     r"radio/feed=>\[shown\] MAIN\r?\n\[shown\] Listen live",
     r"type:qy",
     r"type:version\n=>FLOPOS \d",
 ]
-NEVER = ["EVIL RAN", "STOLE", "STILL RUNNING", "AN ADVERT", "SUBSCRIBE NOW", "SCREEN READER ONLY",
+NEVER = ["EVIL RAN", "NOMODULE RAN", "STOLE", "STILL RUNNING", "AN ADVERT", "SUBSCRIBE NOW", "SCREEN READER ONLY",
          "PHONE MENU", "HOVER MENU", "HIDDEN ATTR", "the script did not run"]
 
 def main():

@@ -88,6 +88,13 @@ static Str *string_body(Lex *L, u32 quote, int *tail)
         if (quote == '`' && c == '$' && i + 1 < L->n && L->src[i + 1] == '{') break;
         if (quote != '`' && c == '\n') break;
     }
+    if (L->skipping) {                    /* looking ahead: where it ends is enough */
+        while (L->pos < i) { if (L->src[L->pos] == '\n') L->line++; L->pos++; }
+        if (L->pos < L->n && L->src[L->pos] == quote) { L->pos++; if (tail) *tail = 1; }
+        else if (quote == '`' && L->pos + 1 < L->n && L->src[L->pos] == '$') { L->pos += 2; if (tail) *tail = 0; }
+        else if (quote != '`') fail(L, "a string has no end");
+        return S_empty;
+    }
     s = str_new(i - start);
     if (!s) { fail(L, "out of memory"); return 0; }
     buf = s->c;
@@ -186,11 +193,11 @@ static void regex_word(Lex *L, Tok *t)
         L->pos++;
     }
     t->t = TK_REGEX;
-    t->s = str_from16(L->src + start, L->pos - start);
+    t->s = L->skipping ? S_empty : str_from16(L->src + start, L->pos - start);
     L->pos++;
     fstart = L->pos;
     while (L->pos < L->n && id_part(L->src[L->pos])) L->pos++;
-    t->flags = str_from16(L->src + fstart, L->pos - fstart);
+    t->flags = L->skipping ? S_empty : str_from16(L->src + fstart, L->pos - fstart);
 }
 
 void lex_next(Lex *L, Tok *t)

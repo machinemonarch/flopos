@@ -22,6 +22,15 @@
 #include "js.h"
 #include "lex.h"
 
+#define MOD_SPECS   64
+#define MOD_IMPORTS 256
+#define MOD_EXPORTS 256
+enum { EX_LOCAL, EX_FROM, EX_NS_FROM, EX_STAR };   /* export kinds */
+
+/* A module's addresses, for whoever compiled it (engine.c). */
+Str *g_mod_spec[MOD_SPECS];
+int  g_mod_nspec;
+
 typedef struct { int k; u16 idx; Str *name; } Ex;
 enum { X_VAL, X_NAME, X_PROP, X_ELEM };
 enum { R_GET, R_SET, R_TYPEOF };
@@ -57,6 +66,7 @@ typedef struct Fs {
     u16  nparams;
     int  arrow, top, rest;
     int  async_fn;                       /* an async function: await is allowed */
+    int  gen_fn;                         /* a generator: yield is allowed    */
     int  args_slot, self_slot;
     Str *name;
     Loop *loop;
@@ -79,6 +89,13 @@ typedef struct {
     Str  *fields_name;                   /* compiling a constructor: its class's field-setting method */
     int   no_in;
     int   next_async;                    /* the next function() is async     */
+    int   next_gen;                      /* the next function() is a generator */
+    /* a module (js_compile's as_function 2): what it imports and exports */
+    int   module;
+    Fs   *mod_top;
+    Str  *mspec[MOD_SPECS]; int nspec;   /* the addresses it names, in order */
+    struct { Str *local, *name; int spec; } imp[MOD_IMPORTS]; int nimp;   /* name 0: the whole namespace */
+    struct { Str *name, *local; int spec, kind; } exp[MOD_EXPORTS]; int nexp;
 } C;
 
 typedef struct { Lex L; Tok tok; } State;
@@ -91,6 +108,10 @@ static void destructure(C *c, int decl, int kw);
 static void unary(C *c, Ex *e);
 static void prologue(C *c, Fs *f);
 static Proto *finish(C *c, Fs *f);
+static int  import_name(C *c, Str *n, Ex *e);
+static void import_statement(C *c);
+static void export_statement(C *c);
+static void import_expr(C *c, Ex *e);
 static void fs_open(C *c, Fs *f, int arrow, int top);
 
 /* ---- trouble -------------------------------------------------------------------- */
@@ -143,7 +164,8 @@ static void load(C *c, State *s) { c->L = s->L; c->tok = s->tok; }
 static void skip_brackets(C *c)
 {
     char st[256];
-    int d = 0;
+    int d = 0, keep = c->L.skipping;
+    c->L.skipping = 1;                       /* inside: only where it ends matters */
     do {
         if (c->tok.t == TK_EOF) fail(c, "a bracket is never closed");
         if (c->tok.t == TK_TEMPLATE && !c->tok.tail) { if (d >= 255) fail(c, "brackets too deep"); st[d++] = '$'; next(c); continue; }
@@ -155,13 +177,16 @@ static void skip_brackets(C *c)
                 d--;
                 lex_template_more(&c->L, &c->tok, c->tok.end);
                 if (!c->tok.tail) st[d++] = '$';
+                if (!d) c->L.skipping = keep;    /* what follows is read in full */
                 next(c);
                 continue;
             }
             d--;
         }
+        if (!d) c->L.skipping = keep;
         next(c);
     } while (d > 0);
+    c->L.skipping = keep;
 }
 
 static void skip_one(C *c)
@@ -422,7 +447,7 @@ static void object_literal(C *c)
     emit(c, OP_OBJECT);
     while (!is_p(c, '}')) {
         Str *name = 0;
-        int computed = 0, is_async = 0;
+        int computed = 0, is_async = 0, is_gen = 0;
         if (accept(c, P3('.', '.', '.'))) { assign(c); emit(c, OP_SPREAD); goto sep; }
         if (c->tok.t == TK_IDENT && (c->tok.kw == KW_GET || c->tok.kw == KW_SET)) {
             int kind = c->tok.kw;
@@ -446,7 +471,7 @@ static void object_literal(C *c)
                 is_async = 1;                    /* async m() { } */
             } else load(c, &s);
         }
-        if (is_p(c, '*')) fail(c, "generators are not supported yet");
+        if (accept(c, '*')) is_gen = 1;      /* *m() { } */
         if (is_p(c, '[')) {
             next(c); assign(c); want(c, ']', "expected ]");
             computed = 1;
@@ -454,13 +479,16 @@ static void object_literal(C *c)
             int was_ident = c->tok.t == TK_IDENT;
             if (!prop_name(c, &name)) fail(c, "expected a property name");
             if (was_ident && (is_p(c, ',') || is_p(c, '}'))) {   /* { a } */
-                ref(c, R_GET, name);
+                Ex im;
+                if (c->module && import_name(c, name, &im)) value(c, &im);
+                else ref(c, R_GET, name);
                 emit(c, OP_INITPROP); emit16(c, kstr(c, name));
                 goto sep;
             }
             if (was_ident && is_p(c, '=')) fail(c, "a default here is only for destructuring");
         }
-        if (is_p(c, '(')) { c->next_async = is_async; function(c, name, 0, 1, 1); }   /* a method */
+        if (is_p(c, '(')) { c->next_async = is_async; c->next_gen = is_gen; function(c, name, 0, 1, 1); }   /* a method */
+        else if (is_gen) fail(c, "expected ( after a generator's name");
         else if (is_async) fail(c, "expected ( after an async method's name");
         else { want(c, ':', "expected : after a property name"); assign(c); }
         if (computed) emit(c, OP_INITELEM);
@@ -631,7 +659,7 @@ static void class_body(C *c, Str *name, int bind)
     outer = c->fs;
     while (!is_p(c, '}')) {
         Str *mname = 0;
-        int kind = 0, stat = 0, computed = 0, is_async = 0, priv = 0;
+        int kind = 0, stat = 0, computed = 0, is_async = 0, priv = 0, is_gen = 0;
         if (accept(c, ';')) continue;
         if (is_kw(c, KW_STATIC)) {
             State s; save(c, &s);
@@ -666,7 +694,7 @@ static void class_body(C *c, Str *name, int bind)
             if (is_p(c, '(') || is_p(c, '=') || is_p(c, ';') || is_p(c, '}') || c->tok.nl) load(c, &s);   /* a member called async */
             else is_async = 1;
         }
-        if (is_p(c, '*')) fail(c, "generators are not supported yet");
+        if (accept(c, '*')) is_gen = 1;
         if (is_p(c, '[')) { computed = 1; }
         else if (!member_name(c, &mname, &priv)) fail(c, "expected a method name");
         if (!computed && !stat && !kind && !priv && str_eq_ascii(mname, "constructor")) {
@@ -729,6 +757,7 @@ static void class_body(C *c, Str *name, int bind)
         c->static_ctx = stat;
         if (computed) { next(c); assign(c); want(c, ']', "expected ]"); }
         c->next_async = is_async;
+        c->next_gen = is_gen;
         function(c, mname, 0, 1, 1);
         if (computed) emit(c, kind == KW_GET ? OP_INITGETELEM : kind == KW_SET ? OP_INITSETELEM : OP_INITELEM);
         else {
@@ -802,14 +831,20 @@ static void primary(C *c, Ex *e)
         return;
     case TK_IDENT:
         switch (t->kw) {
-        case KW_THIS: emit(c, OP_THIS); next(c); return;
+        case KW_THIS: {                      /* at a module's top level (or in its arrows): undefined */
+            Fs *f = c->fs;
+            while (c->module && f && f != c->mod_top && f->arrow) f = f->up;
+            emit(c, c->module && f == c->mod_top ? OP_UNDEF : OP_THIS);
+            next(c);
+            return;
+        }
         case KW_NULL: emit(c, OP_NULL); next(c); return;
         case KW_TRUE: emit(c, OP_TRUE); next(c); return;
         case KW_FALSE: emit(c, OP_FALSE); next(c); return;
         case KW_FUNCTION: {
             Str *name = 0;
             next(c);
-            if (is_p(c, '*')) fail(c, "generators are not supported yet");
+            if (accept(c, '*')) c->next_gen = 1;
             if (c->tok.t == TK_IDENT && !is_p(c, '(')) { name = c->tok.s; next(c); }
             function(c, name, 0, 1, 0);
             return;
@@ -905,9 +940,26 @@ static void primary(C *c, Ex *e)
             }
             value(c, &f);
             if (is_p(c, '(')) {
+                State s;
+                int spread = 0;
                 next(c);
+                save(c, &s);
+                while (!is_p(c, ')') && c->tok.t != TK_EOF) { if (is_p(c, P3('.', '.', '.'))) { spread = 1; break; } skip_one(c); }
+                load(c, &s);
+                if (spread) {                    /* new F(...xs): the arguments as a list, then made */
+                    ref(c, R_GET, atom("__flopos_construct"));
+                    emit(c, OP_SWAP);
+                    emit(c, OP_ARRAY);
+                    while (!is_p(c, ')')) {
+                        if (accept(c, P3('.', '.', '.'))) { assign(c); emit(c, OP_SPREAD); }
+                        else { assign(c); emit(c, OP_APPEND); }
+                        if (!is_p(c, ')')) want(c, ',', "expected , or )");
+                    }
+                    next(c);
+                    emit(c, OP_CALL); emit(c, 2);
+                    return;
+                }
                 while (!is_p(c, ')')) {
-                    if (is_p(c, P3('.', '.', '.'))) fail(c, "... in new is not supported yet");
                     assign(c); argc++;
                     if (!is_p(c, ')')) want(c, ',', "expected , or )");
                 }
@@ -919,7 +971,7 @@ static void primary(C *c, Ex *e)
         case KW_YIELD: case KW_AWAIT:
             if (t->kw == KW_AWAIT) { State s; save(c, &s); next(c); if (c->tok.t != TK_PUNCT || is_p(c, '(') || is_p(c, '[')) fail(c, "await is not supported yet"); load(c, &s); }
             break;
-        case KW_IMPORT: fail(c, "modules are not supported");
+        case KW_IMPORT: import_expr(c, e); return;
         default:
             if (KW_RESERVED(t->kw)) fail(c, "a word that is not allowed here");
         }
@@ -930,6 +982,7 @@ static void primary(C *c, Ex *e)
                 function(c, n, 1, 1, 3);
                 return;
             }
+            if (c->module && import_name(c, n, e)) return;
             e->k = X_NAME; e->name = n;
         }
         return;
@@ -1202,6 +1255,30 @@ static int pattern_ahead(C *c)
 static void assign(C *c)
 {
     Ex e;
+    if (is_kw(c, KW_YIELD) && c->fs->gen_fn) {
+        int star;
+        next(c);
+        star = !c->tok.nl && accept(c, '*');
+        if (star) {                          /* yield* x: each of x's, yielded in turn */
+            u32 top, exit;
+            assign(c);
+            emit(c, OP_FOROF);
+            top = here(c);
+            exit = jump(c, OP_ITERNEXT);
+            emit(c, OP_YIELD);
+            emit(c, OP_POP);
+            jump_to(c, OP_JMP, top);
+            patch(c, exit);
+            emit(c, OP_POP);
+            emit(c, OP_UNDEF);
+            return;
+        }
+        if (c->tok.nl || c->tok.t == TK_EOF || is_p(c, ')') || is_p(c, ']') || is_p(c, '}') || is_p(c, ',') ||
+            is_p(c, ';') || is_p(c, ':')) emit(c, OP_UNDEF);
+        else assign(c);
+        emit(c, OP_YIELD);                   /* its value: what next() is given */
+        return;
+    }
     if ((is_p(c, '[') || is_p(c, '{')) && pattern_ahead(c)) {
         /* [a, b] = value: the value first, then the pattern */
         State pat, after;
@@ -1293,6 +1370,32 @@ static void with_default(C *c)
     }
 }
 
+/* In a pattern: is what comes a property (a.b, a[0]) rather than a name? */
+static int prop_target_ahead(C *c)
+{
+    State s;
+    int r;
+    save(c, &s);
+    next(c);
+    r = is_p(c, '.') || is_p(c, '[');
+    load(c, &s);
+    return r;
+}
+
+/* The value on top, given its default, stored into the property the
+ * pattern names at ts: read past the target, take any default, then go
+ * back and store. */
+static void into_target(C *c, State *ts)
+{
+    State after;
+    while (!is_p(c, ',') && !is_p(c, ']') && !is_p(c, '}') && !is_p(c, '=') && c->tok.t != TK_EOF) skip_one(c);
+    with_default(c);
+    save(c, &after);
+    load(c, ts);
+    target(c, 0, 0);
+    load(c, &after);
+}
+
 static void destructure(C *c, int decl, int kw)
 {
     if (accept(c, '[')) {
@@ -1312,9 +1415,14 @@ static void destructure(C *c, int decl, int kw)
             emit(c, OP_GETELEM);
             if (!is_p(c, '[') && !is_p(c, '{')) {
                 Str *n;
-                if (c->tok.t != TK_IDENT || KW_RESERVED(c->tok.kw)) fail(c, "destructuring into a property is not supported yet");
+                State ts;
+                save(c, &ts);
+                if (!decl && (c->tok.t != TK_IDENT || KW_RESERVED(c->tok.kw) || prop_target_ahead(c))) {
+                    into_target(c, &ts);             /* [a.b, c[0]] = ... */
+                    goto next_item;
+                }
+                if (c->tok.t != TK_IDENT || KW_RESERVED(c->tok.kw)) fail(c, "expected a name");
                 n = c->tok.s; next(c);
-                if (is_p(c, '.') || is_p(c, '[')) fail(c, "destructuring into a property is not supported yet");
                 with_default(c);
                 if (decl) declare(c, n);
                 store_name(c, n);
@@ -1330,6 +1438,7 @@ static void destructure(C *c, int decl, int kw)
                     load(c, &after);
                 }
             }
+        next_item:
             i++;
             if (!is_p(c, ']')) want(c, ',', "expected , or ]");
         }
@@ -1392,9 +1501,10 @@ static void destructure(C *c, int decl, int kw)
                 emit(c, OP_POP);
             } else {
                 Str *n;
-                if (c->tok.t != TK_IDENT || KW_RESERVED(c->tok.kw)) fail(c, "destructuring into a property is not supported yet");
+                State ts;
+                save(c, &ts);
+                if (c->tok.t != TK_IDENT || KW_RESERVED(c->tok.kw) || prop_target_ahead(c)) { into_target(c, &ts); goto sep; }
                 n = c->tok.s; next(c);
-                if (is_p(c, '.') || is_p(c, '[')) fail(c, "destructuring into a property is not supported yet");
                 with_default(c);
                 store_name(c, n);
                 emit(c, OP_POP);
@@ -1765,7 +1875,7 @@ static void statement(C *c)
         case KW_FUNCTION: {
             Str *name;
             next(c);
-            if (is_p(c, '*')) fail(c, "generators are not supported yet");
+            if (accept(c, '*')) c->next_gen = 1;
             if (c->tok.t != TK_IDENT) fail(c, "expected a function's name");
             name = c->tok.s; next(c);
             function(c, name, 0, 0, 0);
@@ -1839,7 +1949,18 @@ static void statement(C *c)
             return;
         case KW_TRY: try_statement(c); return;
         case KW_DEBUGGER: next(c); semi(c); return;
-        case KW_IMPORT: case KW_EXPORT: fail(c, "modules are not supported");
+        case KW_IMPORT: {
+            State s; save(c, &s);
+            next(c);
+            if (is_p(c, '(') || is_p(c, '.')) { load(c, &s); break; }   /* import(...) or import.meta: an expression */
+            if (!c->module) fail(c, "import in a script that is not a module");
+            import_statement(c);
+            return;
+        }
+        case KW_EXPORT:
+            if (!c->module) fail(c, "export in a script that is not a module");
+            export_statement(c);
+            return;
         case KW_WITH: fail(c, "with is not supported");
         default:
             if (t->kw < 0 || !KW_RESERVED(t->kw)) {   /* a label?       */
@@ -1913,6 +2034,7 @@ static Proto *finish(C *c, Fs *f)
     p->arrow = (u8)f->arrow;
     p->pad[0] = (u8)f->rest;
     p->pad[1] = (u8)f->async_fn;
+    p->gen = (u8)f->gen_fn;
     p->name = f->name;
     return p;
 }
@@ -1962,7 +2084,10 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
 
     fs_open(c, &f, arrow, 0);
     f.async_fn = c->next_async;
+    f.gen_fn = c->next_gen;
     c->next_async = 0;
+    c->next_gen = 0;
+    if (f.gen_fn && f.async_fn) fail(c, "async generators are not supported yet");
     f.name = (method == 3) ? 0 : name;
     c->no_in = 0;
     if (method == 3) {
@@ -2069,6 +2194,7 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
         emit(c, OP_RET);
     } else {
         want(c, '{', "expected { to start a function's body");
+        if (f.gen_fn) { emit(c, OP_GENSTART); emit(c, OP_POP); }   /* made, not run: next() runs it */
         while (!is_p(c, '}')) {
             if (c->tok.t == TK_EOF) fail(c, "a function is never closed");
             statement(c);
@@ -2102,6 +2228,349 @@ static void function(C *c, Str *name, int arrow, int is_expr, int method)
     emit(c, OP_CLOSURE); emit16(c, kid);
 }
 
+/* ---- modules -------------------------------------------------------------------------
+ * A module is compiled as one function.  Before its body, a quick pass
+ * over its top level finds every import and export.  Its start then
+ * takes each module it imports from (already run, in browzer's order)
+ * into a hidden local, __flopos_m0.., and defines each export on its own
+ * namespace as a getter, ()=>local, so an importer always sees the
+ * current value (imports are live, as in a browser).  A name imported is
+ * read as __flopos_mN.name wherever it is used.  The import and export
+ * statements themselves then compile to nothing, or to the declaration
+ * they carry. */
+static int word_is(C *c, const char *w) { return c->tok.t == TK_IDENT && c->tok.s && str_eq_ascii(c->tok.s, w); }
+
+static Str *mod_local(int i)
+{
+    char b[24] = "__flopos_m";
+    int k = 10, t = 0; char d[8];
+    do { d[t++] = (char)('0' + i % 10); i /= 10; } while (i);
+    while (t) b[k++] = d[--t];
+    b[k] = 0;
+    return str_intern(str_ascii(b));
+}
+
+static int spec_index(C *c, Str *spec)
+{
+    int i;
+    spec = str_intern(spec);
+    for (i = 0; i < c->nspec; i++) if (c->mspec[i] == spec || str_eq(c->mspec[i], spec)) return i;
+    if (c->nspec >= MOD_SPECS) fail(c, "a module that imports from too many places");
+    c->mspec[c->nspec] = spec;
+    return c->nspec++;
+}
+
+static Str *export_name(C *c)                /* a name, or "a string" */
+{
+    Str *n;
+    if (c->tok.t != TK_IDENT && c->tok.t != TK_STR) fail(c, "expected a name in an import or export");
+    n = str_intern(c->tok.s);
+    next(c);
+    return n;
+}
+
+static void skip_attributes(C *c)            /* with { type: "json" } */
+{
+    if ((is_kw(c, KW_WITH) || word_is(c, "assert")) && !c->tok.nl) { next(c); if (is_p(c, '{')) skip_brackets(c); }
+}
+
+static int from_spec(C *c)                   /* from "x" */
+{
+    int i;
+    if (!word_is(c, "from")) fail(c, "expected from");
+    next(c);
+    if (c->tok.t != TK_STR) fail(c, "expected the address to import from");
+    i = spec_index(c, c->tok.s);
+    next(c);
+    skip_attributes(c);
+    return i;
+}
+
+/* After `import`: its bindings, noted when record is set. */
+static void import_clause(C *c, int record)
+{
+    Str *loc[256], *nm[256];
+    int n = 0, i, sp;
+    if (c->tok.t == TK_STR) {                /* import "x": run it, take nothing */
+        spec_index(c, c->tok.s);
+        next(c);
+        skip_attributes(c);
+        return;
+    }
+    if (c->tok.t == TK_IDENT) {              /* import X ... */
+        loc[n] = str_intern(c->tok.s); nm[n++] = atom("default");
+        next(c);
+        accept(c, ',');
+    }
+    if (accept(c, '*')) {
+        if (!word_is(c, "as")) fail(c, "expected as after import *");
+        next(c);
+        if (c->tok.t != TK_IDENT) fail(c, "expected a name");
+        loc[n] = str_intern(c->tok.s); nm[n++] = 0;
+        next(c);
+    } else if (accept(c, '{')) {
+        while (!is_p(c, '}')) {
+            Str *name = export_name(c), *local = name;
+            if (word_is(c, "as")) { next(c); if (c->tok.t != TK_IDENT) fail(c, "expected a name"); local = str_intern(c->tok.s); next(c); }
+            if (n >= 256) fail(c, "too many names in one import");
+            loc[n] = local; nm[n++] = name;
+            if (!is_p(c, '}')) want(c, ',', "expected , or } in an import");
+        }
+        next(c);
+    }
+    sp = from_spec(c);
+    if (!record) return;
+    for (i = 0; i < n; i++) {
+        if (c->nimp >= MOD_IMPORTS) fail(c, "a module that imports too many names");
+        c->imp[c->nimp].local = loc[i]; c->imp[c->nimp].name = nm[i]; c->imp[c->nimp].spec = sp;
+        c->nimp++;
+    }
+}
+
+static void add_export(C *c, Str *name, Str *local, int spec, int kind)
+{
+    if (c->nexp >= MOD_EXPORTS) fail(c, "a module that exports too many names");
+    c->exp[c->nexp].name = name; c->exp[c->nexp].local = local;
+    c->exp[c->nexp].spec = spec; c->exp[c->nexp].kind = kind;
+    c->nexp++;
+}
+
+/* The names a declaration after `export` makes: var a = 1, {b, c: d} = o, ... */
+static void declared_names(C *c)
+{
+    for (;;) {
+        if (is_p(c, '{') || is_p(c, '[')) {          /* a pattern: the names bound in it */
+            int depth = 0;
+            do {
+                if (is_p(c, '{') || is_p(c, '[')) depth++;
+                else if (is_p(c, '}') || is_p(c, ']')) depth--;
+                else if (c->tok.t == TK_IDENT && c->tok.kw < 0) {
+                    Str *n = c->tok.s;
+                    next(c);
+                    if (is_p(c, ',') || is_p(c, '}') || is_p(c, ']') || is_p(c, '='))
+                        add_export(c, str_intern(n), str_intern(n), 0, EX_LOCAL);
+                    continue;
+                }
+                next(c);
+            } while (depth > 0 && c->tok.t != TK_EOF);
+        } else if (c->tok.t == TK_IDENT) {
+            add_export(c, str_intern(c->tok.s), str_intern(c->tok.s), 0, EX_LOCAL);
+            next(c);
+        } else return;
+        /* its value: to the next , at this level, or the end of the statement */
+        while (c->tok.t != TK_EOF && !is_p(c, ',') && !is_p(c, ';')) {
+            if (c->tok.nl && (is_kw(c, KW_EXPORT) || is_kw(c, KW_IMPORT) || is_kw(c, KW_CONST) || is_kw(c, KW_LET) ||
+                              is_kw(c, KW_VAR) || is_kw(c, KW_FUNCTION) || is_kw(c, KW_CLASS))) return;
+            skip_one(c);
+        }
+        if (!accept(c, ',')) return;
+    }
+}
+
+/* After `export`, in the first pass: what it exports. */
+static void export_clause(C *c)
+{
+    if (accept(c, '*')) {
+        if (word_is(c, "as")) { Str *n; next(c); n = export_name(c); add_export(c, n, 0, from_spec(c), EX_NS_FROM); }
+        else add_export(c, 0, 0, from_spec(c), EX_STAR);
+        return;
+    }
+    if (accept(c, '{')) {
+        Str *loc[256], *nm[256];
+        int n = 0, i;
+        while (!is_p(c, '}')) {
+            Str *local = export_name(c), *name = local;
+            if (word_is(c, "as")) { next(c); name = export_name(c); }
+            if (n >= 256) fail(c, "too many names in one export");
+            loc[n] = local; nm[n++] = name;
+            if (!is_p(c, '}')) want(c, ',', "expected , or } in an export");
+        }
+        next(c);
+        if (word_is(c, "from")) { int sp = from_spec(c); for (i = 0; i < n; i++) add_export(c, nm[i], loc[i], sp, EX_FROM); }
+        else for (i = 0; i < n; i++) add_export(c, nm[i], loc[i], 0, EX_LOCAL);
+        return;
+    }
+    if (is_kw(c, KW_DEFAULT)) {
+        next(c);
+        if (is_kw(c, KW_ASYNC)) next(c);
+        if (is_kw(c, KW_FUNCTION) || is_kw(c, KW_CLASS)) {
+            next(c);
+            accept(c, '*');
+            if (c->tok.t == TK_IDENT && c->tok.kw < 0) { add_export(c, atom("default"), str_intern(c->tok.s), 0, EX_LOCAL); return; }
+        }
+        add_export(c, atom("default"), atom("__flopos_default"), 0, EX_LOCAL);
+        return;
+    }
+    if (is_kw(c, KW_VAR) || is_kw(c, KW_LET) || is_kw(c, KW_CONST)) { next(c); declared_names(c); return; }
+    if (is_kw(c, KW_ASYNC)) next(c);
+    if (is_kw(c, KW_FUNCTION) || is_kw(c, KW_CLASS)) {
+        next(c);
+        accept(c, '*');
+        if (c->tok.t == TK_IDENT) add_export(c, str_intern(c->tok.s), str_intern(c->tok.s), 0, EX_LOCAL);
+        return;
+    }
+    fail(c, "expected what to export");
+}
+
+/* The first pass: every import and export at the top level. */
+static void module_scan(C *c)
+{
+    State s0;
+    int after_dot = 0;
+    save(c, &s0);
+    while (c->tok.t != TK_EOF) {
+        if (!after_dot && is_kw(c, KW_IMPORT)) {
+            next(c);
+            if (is_p(c, '(') || is_p(c, '.')) continue;
+            import_clause(c, 1);
+            continue;
+        }
+        if (!after_dot && is_kw(c, KW_EXPORT)) { next(c); export_clause(c); continue; }
+        after_dot = is_p(c, '.');
+        skip_one(c);
+    }
+    load(c, &s0);
+}
+
+/* Is n imported here, and not hidden by a name of the function using it?
+ * Then e reads it: __flopos_mN.name, or the namespace itself. */
+static int import_name(C *c, Str *n, Ex *e)
+{
+    int i;
+    Fs *f;
+    for (i = 0; i < c->nimp; i++) if (c->imp[i].local == n || str_eq(c->imp[i].local, n)) break;
+    if (i == c->nimp) return 0;
+    for (f = c->fs; f && f != c->mod_top; f = f->up) if (find_var(f, n) >= 0) return 0;
+    if (c->mod_top && find_var(c->mod_top, n) >= 0) return 0;
+    ref(c, R_GET, mod_local(c->imp[i].spec));
+    if (c->imp[i].name) { e->k = X_PROP; e->idx = kstr(c, c->imp[i].name); }
+    else e->k = X_VAL;
+    return 1;
+}
+
+static void import_statement(C *c)          /* the binding was noted in the first pass */
+{
+    import_clause(c, 0);
+    semi(c);
+}
+
+static void export_statement(C *c)
+{
+    next(c);
+    if (is_p(c, '*') || is_p(c, '{')) {
+        int keep = c->nexp;
+        export_clause(c);                    /* noted already: read past it */
+        c->nexp = keep;
+        semi(c);
+        return;
+    }
+    if (is_kw(c, KW_DEFAULT)) {
+        State s; int named = 0;
+        next(c);
+        save(c, &s);
+        if (is_kw(c, KW_ASYNC)) next(c);
+        if (is_kw(c, KW_FUNCTION) || is_kw(c, KW_CLASS)) {
+            next(c);
+            accept(c, '*');
+            named = c->tok.t == TK_IDENT && c->tok.kw < 0;
+        }
+        load(c, &s);
+        if (named) { statement(c); return; }
+        assign(c);
+        store_name(c, atom("__flopos_default"));
+        emit(c, OP_POP);
+        semi(c);
+        return;
+    }
+    statement(c);                            /* var, let, const, function, class */
+}
+
+/* import(x) or import.meta, in any script. */
+static void import_expr(C *c, Ex *e)
+{
+    next(c);
+    if (accept(c, '.')) {
+        if (!word_is(c, "meta")) fail(c, "expected import.meta");
+        next(c);
+        ref(c, R_GET, atom("__flopos_meta"));
+        e->k = X_VAL;
+        return;
+    }
+    if (!is_p(c, '(')) fail(c, "expected ( after import");
+    next(c);
+    ref(c, R_GET, atom("__flopos_import"));
+    assign(c);
+    if (accept(c, ',') && !is_p(c, ')')) { assign(c); emit(c, OP_POP); accept(c, ','); }
+    want(c, ')', "expected ) after import(");
+    if (c->module) ref(c, R_GET, atom("__flopos_meta")); else emit(c, OP_UNDEF);
+    emit(c, OP_CALL); emit(c, 2);
+    e->k = X_VAL;
+}
+
+/* A getter, ()=>what or ()=>what["prop"], compiled from text made here. */
+static void getter_of(C *c, Str *what, Str *prop)
+{
+    static u16 src[700];
+    u32 n = 0, i;
+    State s;
+    src[n++] = '('; src[n++] = ')'; src[n++] = '='; src[n++] = '>';
+    for (i = 0; i < what->len && n < 300; i++) src[n++] = what->c[i];
+    if (prop) {
+        src[n++] = '['; src[n++] = '"';
+        for (i = 0; i < prop->len && n < 690; i++) {
+            if (prop->c[i] == '"' || prop->c[i] == '\\') src[n++] = '\\';
+            src[n++] = prop->c[i];
+        }
+        src[n++] = '"'; src[n++] = ']';
+    }
+    save(c, &s);
+    lex_start(&c->L, src, n);
+    next(c);
+    function(c, 0, 1, 1, 0);
+    load(c, &s);
+}
+
+/* The module's start: its imports, then its exports as getters. */
+static void module_start(C *c)
+{
+    int i;
+    Fs *top = c->fs;
+    for (i = 0; i < c->nspec; i++) {
+        declare_local(c, top, mod_local(i));
+        ref(c, R_GET, atom("__flopos_modns"));
+        push_num(c, i);
+        emit(c, OP_CALL); emit(c, 1);
+        store_name(c, mod_local(i));
+        emit(c, OP_POP);
+    }
+    declare_local(c, top, atom("__flopos_default"));
+    declare_local(c, top, atom("__flopos_meta"));
+    ref(c, R_GET, atom("__flopos_modmeta"));
+    emit(c, OP_CALL); emit(c, 0);
+    store_name(c, atom("__flopos_meta"));
+    emit(c, OP_POP);
+    ref(c, R_GET, atom("__flopos_modself"));
+    emit(c, OP_CALL); emit(c, 0);            /* [ns] */
+    for (i = 0; i < c->nexp; i++) {
+        int k = c->exp[i].kind, j;
+        if (k == EX_STAR) continue;
+        if (k == EX_LOCAL) {
+            for (j = 0; j < c->nimp; j++) if (str_eq(c->imp[j].local, c->exp[i].local)) break;
+            if (j < c->nimp) getter_of(c, mod_local(c->imp[j].spec), c->imp[j].name);   /* passed on */
+            else getter_of(c, c->exp[i].local, 0);
+        } else getter_of(c, mod_local(c->exp[i].spec), k == EX_FROM ? c->exp[i].local : 0);
+        emit(c, OP_INITGET); emit16(c, kstr(c, c->exp[i].name));
+    }
+    emit(c, OP_POP);
+    for (i = 0; i < c->nexp; i++) {
+        if (c->exp[i].kind != EX_STAR) continue;
+        ref(c, R_GET, atom("__flopos_star"));
+        push_num(c, c->exp[i].spec);
+        emit(c, OP_CALL); emit(c, 1);
+        emit(c, OP_POP);
+    }
+}
+
 Proto *js_compile(Vm *vm, const char *src, u32 len, const char *name, char *why, u32 whycap, int as_function)
 {
     static C cs;
@@ -2120,12 +2589,24 @@ Proto *js_compile(Vm *vm, const char *src, u32 len, const char *name, char *why,
     fs_open(c, &top, 0, 1);
     top.name = name ? str_ascii(name) : 0;
     next(c);
-    if (as_function) {                       /* an onclick="..." handler: one function, event in hand */
+    if (as_function == 2) {                  /* a module: its own scope, imports and exports */
+        top.top = 0;
+        top.async_fn = 1;                    /* await at its top level */
+        c->module = 1;
+        c->mod_top = &top;
+        module_scan(c);
+        module_start(c);
+    } else if (as_function) {                /* an onclick="..." handler: one function, event in hand */
         Str *ev = atom("event");
         declare_local(c, &top, ev);
         top.top = 0; top.nparams = 1;
     }
     while (c->tok.t != TK_EOF) statement(c);
+    {
+        int i;
+        g_mod_nspec = c->nspec;
+        for (i = 0; i < c->nspec; i++) g_mod_spec[i] = c->mspec[i];
+    }
     prologue(c, &top);
     p = finish(c, &top);
     (void)text;

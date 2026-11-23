@@ -158,6 +158,98 @@ static Val async_step(Vm *vm, Val self, Val *args, int argc, u32 magic)
     return v_undef();
 }
 
+/* ---- generators -----------------------------------------------------------------
+ * Calling a generator function runs only its parameters; then (OP_GENSTART)
+ * its frame is packed into a C_GEN object, the way await packs an async
+ * function's, and the caller gets that object.  next(v) unpacks the frame
+ * and runs it until a yield packs it again ({value, done: false}) or it
+ * returns ({value, done: true}).  u.co.prom holds where it is: 0 paused,
+ * 1 running, 2 finished. */
+static int gen_pack(Vm *vm, Obj *g, u32 above)
+{
+    Frame *f = &vm->frames[vm->nframes - 1], *saved;
+    u32 n = vm->sp - above - f->base, i;
+    Vals *st;
+    GcHdr *raw;
+    st = gc_alloc(sizeof(Vals) + n * sizeof(Val), K_VALS);
+    if (!st) { vm->out_of_room = 1; return 0; }
+    st->n = n;
+    for (i = 0; i < n; i++) st->v[i] = vm->stack[f->base + i];
+    g->u.co.stack = st;
+    raw = gc_alloc(sizeof(GcHdr) + sizeof(Frame), K_BYTES);
+    if (!raw) { vm->out_of_room = 1; return 0; }
+    f = &vm->frames[vm->nframes - 1];
+    saved = (Frame *)(raw + 1);
+    *saved = *f;
+    for (i = 0; i < saved->ntry; i++) saved->tries[i].sp -= f->base;
+    saved->co = 0;
+    g->u.co.fr = saved;
+    return 1;
+}
+
+static Val iter_result(Vm *vm, Val v, int done)
+{
+    Obj *r;
+    TEMP(vm, v);
+    r = obj_new(vm, vm->object_proto, C_OBJECT);
+    UNTEMP(vm, 1);
+    if (!r) return v_undef();
+    prop_put(vm, r, S_value, v, 0);
+    prop_put(vm, r, S_done, v_bool(done), 0);
+    return v_obj(r);
+}
+
+static Val gen_step(Vm *vm, Val self, Val *args, int argc, u32 magic)   /* 0 next, 1 throw, 2 return */
+{
+    Obj *g;
+    Frame *f, *saved;
+    Vals *st;
+    u32 base, i, n;
+    Val arg = argc ? args[0] : v_undef(), r;
+    if (self.t != T_OBJ || self.u.o->cls != C_GEN) return throw_err(vm, E_TYPE, "next() on something that is not a generator");
+    g = self.u.o;
+    if (g->u.co.prom.u.n == 1) return throw_err(vm, E_TYPE, "a generator asked for more while it runs");
+    if (g->u.co.prom.u.n == 2 || magic == 2) {
+        g->u.co.prom = v_num(2); g->u.co.fr = 0; g->u.co.stack = 0;
+        if (magic == 1) { throw_val(vm, arg); return v_undef(); }
+        return iter_result(vm, magic == 2 ? arg : v_undef(), 1);
+    }
+    saved = (Frame *)g->u.co.fr;
+    st = g->u.co.stack;
+    n = st ? st->n : 0;
+    if (!saved) return iter_result(vm, v_undef(), 1);
+    if (vm->nframes >= VM_FRAMES - 1 || vm->sp + n + 64 > VM_STACK) return throw_err(vm, E_RANGE, "too much recursion");
+    base = vm->sp;
+    for (i = 0; i < n; i++) vm->stack[base + i] = st->v[i];
+    vm->sp = base + n;
+    f = &vm->frames[vm->nframes++];
+    *f = *saved;
+    f->base = base;
+    f->stop = 1;
+    f->co = g;
+    for (i = 0; i < f->ntry; i++) f->tries[i].sp += base;
+    g->u.co.fr = 0;
+    g->u.co.stack = 0;
+    g->u.co.prom = v_num(1);
+    if (magic == 0) vm->stack[vm->sp++] = arg;           /* what yield gives back */
+    else { vm->throwing = 1; vm->exception = arg; }      /* thrown at the yield   */
+    r = run(vm);
+    if (vm->throwing || vm->fatal) { g->u.co.prom = v_num(2); g->u.co.fr = 0; g->u.co.stack = 0; return v_undef(); }
+    return r;
+}
+
+static Val gen_self(Vm *vm, Val self, Val *args, int argc, u32 magic) { (void)vm; (void)args; (void)argc; (void)magic; return self; }
+
+void gen_init(Vm *vm)
+{
+    vm->gen_proto = obj_new(vm, vm->iter_proto ? vm->iter_proto : vm->object_proto, C_OBJECT);
+    if (!vm->gen_proto) return;
+    def_native(vm, vm->gen_proto, "next", gen_step, 1, 0);
+    def_native(vm, vm->gen_proto, "throw", gen_step, 1, 1);
+    def_native(vm, vm->gen_proto, "return", gen_step, 1, 2);
+    def_native(vm, vm->gen_proto, "@@iterator", gen_self, 0, 0);
+}
+
 /* From C: call fn with these arguments. */
 Val vm_call(Vm *vm, Val fnv, Val self, Val *args, int argc)
 {
@@ -300,7 +392,17 @@ static Val get_global(Vm *vm, Str *k, int *found)
 /* An iterator for for-in and for-of. */
 static Obj *iter_new(Vm *vm, Val of, int keys)
 {
-    Obj *it = obj_new(vm, vm->iter_proto, C_ITER);
+    Obj *it;
+    /* for-of over an object that says how ([Symbol.iterator]): its iterator */
+    if (!keys && of.t == T_OBJ && of.u.o->cls != C_ARRAY && of.u.o->cls != C_ARGS && of.u.o->cls != C_GEN) {
+        Val mk = get_prop(vm, of, atom("@@iterator"));
+        if (vm->throwing) return 0;
+        if (is_callable(mk) && !is_callable(get_prop(vm, of, S_next))) {
+            of = vm_call(vm, mk, of, 0, 0);
+            if (vm->throwing) return 0;
+        }
+    }
+    it = obj_new(vm, vm->iter_proto, C_ITER);
     if (!it) return 0;
     it->u.iter.of = of;
     it->u.iter.i = 0;
@@ -682,6 +784,20 @@ static Val run(Vm *vm)
             Val r = op == OP_RET ? TOP : v_undef();
             int stop = f->stop;
             if (f->is_new && r.t != T_OBJ) r = f->self;
+            if (f->co && f->co->cls == C_GEN) {   /* a generator, finished */
+                Obj *g = f->co;
+                g->u.co.prom = v_num(2);
+                vm->sp = f->base;
+                vm->nframes--;
+                TEMP(vm, v_obj(g));
+                r = iter_result(vm, r, 1);
+                UNTEMP(vm, 1);
+                if (vm->fatal) return v_undef();
+                if (stop) return r;
+                PUSH(r);
+                LOAD();
+                break;
+            }
             if (f->co) {                     /* async: the value settles its promise */
                 Obj *co = f->co;
                 TEMP(vm, v_obj(co)); TEMP(vm, r);
@@ -798,7 +914,7 @@ static Val run(Vm *vm)
             Val v = TOP;
             u32 n, i;
             int stop;
-            if (!co) { throw_err(vm, E_SYNTAX, "await outside an async function"); goto thrown; }
+            if (!co || co->cls != C_ASYNC) { throw_err(vm, E_SYNTAX, "await outside an async function"); goto thrown; }
             n = vm->sp - 1 - f->base;        /* what it had on the stack, below v */
             st = gc_alloc(sizeof(Vals) + n * sizeof(Val), K_VALS);
             if (!st) { vm->out_of_room = 1; vm_check_time(vm); goto thrown; }
@@ -836,6 +952,33 @@ static Val run(Vm *vm)
                 if (stop) return r;
                 PUSH(r);
             }
+            LOAD();
+            break;
+        }
+        case OP_GENSTART: case OP_YIELD: {
+            Obj *g;
+            Val r, v = op == OP_YIELD ? TOP : v_undef();
+            int stop;
+            if (op == OP_GENSTART) {
+                g = obj_new(vm, vm->gen_proto, C_GEN);
+                if (!g) { vm_check_time(vm); goto thrown; }
+                g->u.co.prom = v_num(0); g->u.co.stack = 0; g->u.co.fr = 0;
+            } else {
+                g = f->co;
+                if (!g || g->cls != C_GEN) { throw_err(vm, E_SYNTAX, "yield outside a generator"); goto thrown; }
+            }
+            TEMP(vm, v_obj(g)); TEMP(vm, v);
+            if (!gen_pack(vm, g, op == OP_YIELD ? 1 : 0)) { UNTEMP(vm, 2); vm_check_time(vm); goto thrown; }
+            g->u.co.prom = v_num(0);
+            r = op == OP_YIELD ? iter_result(vm, v, 0) : v_obj(g);
+            UNTEMP(vm, 2);
+            if (vm->throwing || vm->fatal) goto thrown;
+            f = &vm->frames[vm->nframes - 1];
+            stop = f->stop;
+            vm->sp = f->base;
+            vm->nframes--;
+            if (stop) return r;
+            PUSH(r);
             LOAD();
             break;
         }

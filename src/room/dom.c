@@ -914,6 +914,48 @@ NATIVE(w_shown)
 
 NATIVE(w_now) { UNUSED; return v_num(host_ms()); }
 
+/* document.currentScript: the <script> running now (room.c sets it as
+ * each starts), or null -- in a module, an event or a timer. */
+u32 g_current_script;
+NATIVE(w_curscript) { UNUSED; return g_current_script ? wrap(vm, g_current_script) : v_null(); }
+
+/* import(): asks browzer to load the module (after this task), for a
+ * ticket; browzer settles it with T_DYNDONE, below. */
+NATIVE(w_dynask)                            /* __flopos_dynask(address, base) */
+{
+    UNUSED;
+    rq(D_IMPORT); rq_str(vm, ARG(0)); rq_str(vm, ARG(1));
+    if (!knock(vm)) return v_undef();
+    return rp_val(vm);
+}
+
+NATIVE(w_modns_url)                         /* __flopos_modns_url(address) */
+{
+    static char u[1024];
+    Str *s = to_str(vm, ARG(0));
+    u32 n;
+    UNUSED;
+    if (!s) return v_undef();
+    n = str_to_utf8(s, u, sizeof u - 1);
+    u[n] = 0;
+    return module_ns(vm, u);
+}
+
+int room_dyn_done(Vm *vm, u32 ticket, const char *url, const char *why, char *err, u32 errcap)
+{
+    Val fn = get_prop(vm, v_obj(vm->global), atom("__flopos_dyndone")), a[3];
+    Str *su = str_utf8(url, js_strlen(url)), *sw;
+    if (!su) return ENGINE_ROOM;
+    a[1] = v_str(su);
+    TEMP(vm, a[1]);
+    sw = str_utf8(why, js_strlen(why));
+    UNTEMP(vm, 1);
+    if (!sw) return ENGINE_ROOM;
+    a[0] = v_num(ticket); a[2] = v_str(sw);
+    if (!is_callable(fn)) return ENGINE_OK;
+    return engine_call(vm, fn, v_undef(), a, 3, 500, err, errcap);
+}
+
 NATIVE(w_btoa)                             /* 0 btoa, 1 atob */
 {
     static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1097,6 +1139,10 @@ static const char *s_prelude =
 "g.Node=Node;"
 "['Element','HTMLElement','HTMLDivElement','HTMLInputElement','HTMLFormElement','HTMLAnchorElement','HTMLButtonElement','HTMLSelectElement','HTMLTextAreaElement','HTMLImageElement','HTMLScriptElement','HTMLDocument','Document','Text','DocumentFragment'].forEach(function(n){var f=function(){throw new TypeError('Illegal constructor');};f.prototype=EP;g[n]=f;});"
 "document.implementation={hasFeature:function(){return true;},createHTMLDocument:function(t){var h=document.createElement('html'),hd=document.createElement('head'),b=document.createElement('body');h.appendChild(hd);h.appendChild(b);return{nodeType:9,title:t||'',documentElement:h,head:hd,body:b,implementation:document.implementation,createElement:function(x){return document.createElement(x);},createTextNode:function(x){return document.createTextNode(x);},createComment:function(x){return document.createComment(x);},createDocumentFragment:function(){return document.createDocumentFragment();},getElementById:function(i){return h.querySelector('#'+i);},querySelector:function(q){return h.querySelector(q);},querySelectorAll:function(q){return h.querySelectorAll(q);}};}};"
+"var pend={};"
+"g.__flopos_import=function(spec,meta){return new Promise(function(ok,no){var t=__flopos_dynask(String(spec),meta&&meta.url?meta.url:'');"
+" if(typeof t!=='number'||t<0){no(new TypeError('import() of '+spec+' was not allowed'));return;}pend[t]={ok:ok,no:no};});};"
+"g.__flopos_dyndone=function(t,url,why){var p=pend[t];delete pend[t];if(!p)return;if(why)p.no(new TypeError(why));else p.ok(__flopos_modns_url(url));};"
 "})(this);";
 
 static void defs(Vm *vm)
@@ -1216,6 +1262,7 @@ static void defs(Vm *vm)
     def_accessor(vm, d, "head", el_get, 0, DP_HEAD);
     def_accessor(vm, d, "documentElement", el_get, 0, DP_ROOT);
     def_accessor(vm, d, "URL", w_href, 0, 0);
+    def_accessor(vm, d, "currentScript", w_curscript, 0, 0);
     def_accessor(vm, d, "documentURI", w_href, 0, 0);
     def_accessor(vm, d, "cookie", doc_cookie, el_nothing, 0);
     def_val(vm, d, "readyState", v_str(atom("complete")));
@@ -1258,6 +1305,8 @@ static void defs(Vm *vm)
     def_native(vm, g, "__flopos_go", w_go, 1, 0);
     def_native(vm, g, "__flopos_shown", w_shown, 1, 0);
     def_native(vm, g, "__flopos_now", w_now, 0, 0);
+    def_native(vm, g, "__flopos_dynask", w_dynask, 2, 0);
+    def_native(vm, g, "__flopos_modns_url", w_modns_url, 1, 0);
     def_val(vm, g, "__flopos_ua", v_str(atom("Mozilla/5.0 (compatible; FLOPOS; a 1996 Toshiba)")));
     for (i = 0; ons[i]; i++) def_accessor(vm, g, ons[i], on_get, on_set, 0);
 }

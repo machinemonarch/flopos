@@ -52,15 +52,27 @@ static u32   s_meter, s_page_nodes, s_cur_script, s_next_timer, s_last_draw;
 static int   s_loading, s_fetches;
 static char  s_go[PAGE_HREF_MAX];        /* where a script asked to go      */
 static u8    s_task[ROOM_MAIL_SIZE];
-static u8    s_ans[512];
+static u8    s_ans[8200];              /* a module's list of imports is the longest answer */
 static u8    s_doorbuf[65536];
-static u8    s_req[65536];
+static u8    s_req[32768];             /* the room asks in at most 32 KB (dom.c) */
 static char  s_fetched[SCRIPT_MAX + 1];
 static char  s_scratch[65536];
 
 const char *script_note(void) { return s_note; }
 
 /* 0 if a and b are the same letters, whatever their case (strcmp's way) */
+static int lower_cmp_n(const char *a, const char *b, int n)
+{
+    while (n--) {
+        char x = *a++, y = *b++;
+        if (x >= 'A' && x <= 'Z') x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z') y = (char)(y + 32);
+        if (x != y) return 1;
+        if (!x) return 0;
+    }
+    return 0;
+}
+
 static int lower_cmp(const char *a, const char *b)
 {
     while (*a && *b && ((*a | 32) == (*b | 32) || (*a == *b))) { a++; b++; }
@@ -385,6 +397,225 @@ static u32 next_script(void)
     return 0;
 }
 
+/* ---- modules ------------------------------------------------------------------------
+ * <script type="module">: browzer fetches the module (by the same rules as
+ * any script: this site, or a library host), has the room read it
+ * (T_MODSCAN), which answers the addresses it imports from; those are
+ * fetched and read the same way, then each module is run after the ones
+ * it imports from (T_MODRUN).  A module is read and run once a page,
+ * however many import it.  Addresses are relative to the module, or
+ * names the page's import map gives (<script type="importmap">).  The
+ * room's import() asks through the door (D_IMPORT): it is loaded the
+ * same way once the task that asked is over, then settled (T_DYNDONE). */
+#define MOD_MAX  48
+#define MOD_URL  (PAGE_HREF_MAX + 16)
+static char s_mod_url[MOD_MAX][MOD_URL];
+static signed char s_mod_state[MOD_MAX];         /* 0 being read, 1 ran, -1 failed */
+static int  s_nmod;
+static char s_imap[4096];                /* the page's import map, as JSON  */
+static struct { u32 ticket; char spec[MOD_URL]; char base[MOD_URL]; } s_dyn[8];
+static int  s_ndyn;
+static u32  s_dyn_ticket;
+
+/* "key": "value" pairs inside the import map's "imports": the value for
+ * spec, the longest key ending in / that spec starts with, or none. */
+static int imap_lookup(const char *spec, char *out, int cap)
+{
+    const char *p = s_imap, *best_v = 0;
+    int best_k = -1, sl = 0;
+    while (spec[sl]) sl++;
+    while (*p && !(p[0] == '"' && !lower_cmp_n(p + 1, "imports\"", 8))) p++;
+    if (!*p) return 0;
+    while (*p && *p != '{') p++;
+    if (!*p) return 0;
+    p++;
+    for (;;) {
+        const char *k, *v;
+        int kl = 0, i;
+        while (*p && *p != '"' && *p != '}') p++;
+        if (*p != '"') break;
+        k = ++p;
+        while (*p && *p != '"') { if (*p == '\\' && p[1]) p++; p++; kl++; }
+        if (!*p) break;
+        kl = (int)(p - k);
+        p++;
+        while (*p && *p != '"' && *p != '}' && *p != '{') p++;
+        if (*p != '"') break;                    /* a scope or something else: stop */
+        v = ++p;
+        while (*p && *p != '"') { if (*p == '\\' && p[1]) p++; p++; }
+        if (!*p) break;
+        p++;
+        if (kl == sl) { for (i = 0; i < kl && k[i] == spec[i]; i++) { } if (i == kl) { best_v = v; best_k = 100000; break; } }
+        if (kl > best_k && kl < sl && k[kl - 1] == '/') {
+            for (i = 0; i < kl && k[i] == spec[i]; i++) { }
+            if (i == kl) { best_v = v; best_k = kl; }
+        }
+    }
+    if (!best_v) return 0;
+    {
+        int n = 0;
+        const char *q = best_v;
+        while (*q && *q != '"' && n < cap - 1) out[n++] = *q++;
+        if (best_k != 100000) { const char *r = spec + best_k; while (*r && n < cap - 1) out[n++] = *r++; }
+        out[n] = 0;
+    }
+    return 1;
+}
+
+/* Where an import's address leads, from the module at base. */
+static int resolve_spec(const char *base, const char *spec, char *out, int cap)
+{
+    char mapped[MOD_URL];
+    if (spec[0] == '.' || spec[0] == '/' || !lower_cmp_n(spec, "http://", 7) || !lower_cmp_n(spec, "https://", 8))
+        return url_resolve(base, spec, out, cap);
+    if (!imap_lookup(spec, mapped, sizeof mapped)) return 0;     /* a bare name, not in the map */
+    return url_resolve(s_pg->url, mapped, out, cap);
+}
+
+/* The place of the module at url: found, or a new one, not yet read. */
+static int module_slot(const char *url)
+{
+    int i;
+    for (i = 0; i < s_nmod; i++) if (!lower_cmp(s_mod_url[i], url)) return i;
+    if (s_nmod >= MOD_MAX) return -1;
+    fmt_str(s_mod_url[s_nmod], MOD_URL, "%s", url);
+    s_mod_state[s_nmod] = 0;
+    return s_nmod++;
+}
+
+/* The module in place me, fetched (or given, for one written in the
+ * page), read, its own imports loaded, and run.  0 if it failed. */
+static int load_module(int me, const char *given, u32 given_len, int depth)
+{
+    int i, ndep = 0, dep[64];
+    u32 len, at = 0, ms, k, n, t0 = A->ms();
+    const char *url = s_mod_url[me];
+    char why[200];
+    if (s_mod_state[me]) return s_mod_state[me] > 0;      /* read already (or a circle) */
+    s_mod_state[me] = -1;
+    if (depth > 24) { s_big++; return 0; }
+    if (given) {
+        len = given_len;
+        for (k = 0; k < len; k++) s_fetched[k] = given[k];
+    } else {
+        Url u;
+        int st, got;
+        if (!url_parse(url, &u)) return 0;
+        if (!same_site(u.host, s_host) && !library_host(&u)) { s_other++; wire("not fetched, another site: ", url); return 0; }
+        if (s_meter >= PAGE_SCRIPTS) { s_big++; return 0; }
+        note_loading(base_name(url));
+        got = web_get(url, "GET", 0, 0, 0, s_fetched, SCRIPT_MAX + 1, &st, 0, 0);
+        if (got < 0 || st != 200) { s_failed++; fmt_str(s_fail, sizeof s_fail, "%s did not come", base_name(url)); return 0; }
+        if (got > SCRIPT_MAX || s_meter + (u32)got > PAGE_SCRIPTS) {
+            s_big++;
+            fmt_str(s_fail, sizeof s_fail, "%s is too big (%u KB)", base_name(url), (u32)got >> 10);
+            wire("too big: ", url);
+            return 0;
+        }
+        len = (u32)got;
+    }
+    s_meter += len;
+    /* read it: the text in pieces, then the last with the address */
+    while (len - at > 60000) {
+        s_task[0] = T_SRC;
+        for (k = 0; k < 60000; k++) s_task[1 + k] = (u8)s_fetched[at + k];
+        at += 60000;
+        if (task(60001, 1000, why, sizeof why) != A_OK) { fmt_str(s_fail, sizeof s_fail, "%s: %s", base_name(url), why); s_failed++; return 0; }
+    }
+    ms = LOAD_MS + (len >> 10) * LOAD_PER_KB;
+    if (ms > LOAD_MAX) ms = LOAD_MAX;
+    s_task[0] = T_MODSCAN;
+    put32(s_task + 1, ms);
+    n = 5;
+    for (k = 0; url[k]; k++) s_task[n++] = (u8)url[k];
+    s_task[n++] = 0;
+    for (k = at; k < len && n < ROOM_MAIL_SIZE; k++) s_task[n++] = (u8)s_fetched[k];
+    if (task(n, ms, why, sizeof why) != A_OK) {
+        char t[260];
+        s_failed++;
+        fmt_str(s_fail, sizeof s_fail, "%s was stopped: %s", base_name(url), why);
+        fmt_str(t, sizeof t, "%s: %s", base_name(url), why);
+        wire("stopped: ", t);
+        return 0;
+    }
+    /* its imports, a line each in the answer: each given its place first,
+     * since loading them uses the answer again */
+    {
+        const char *line = (const char *)s_ans + 6;
+        char spec[MOD_URL], to[MOD_URL];
+        while (*line && ndep < 64) {
+            int sl = 0;
+            while (*line && *line != '\n') { if (sl < MOD_URL - 1) spec[sl++] = *line; line++; }
+            spec[sl] = 0;
+            if (*line) line++;
+            if (!resolve_spec(url, spec, to, sizeof to) || (dep[ndep] = module_slot(to)) < 0) {
+                s_failed++;
+                fmt_str(s_fail, sizeof s_fail, "%s imports %s, which browzer cannot find", base_name(url), spec);
+                wire("module: ", s_fail);
+                return 0;
+            }
+            ndep++;
+        }
+    }
+    for (i = 0; i < ndep; i++)
+        if (!load_module(dep[i], 0, 0, depth + 1) && s_mod_state[dep[i]] < 0) { s_failed++; return 0; }
+    /* run it, its imports having run (or, in a circle, being run) */
+    s_task[0] = T_MODRUN;
+    put32(s_task + 1, ms);
+    n = 5;
+    for (k = 0; url[k]; k++) s_task[n++] = (u8)url[k];
+    s_task[n++] = 0;
+    put32(s_task + n, (u32)ndep); n += 4;
+    for (i = 0; i < ndep; i++) {
+        for (k = 0; s_mod_url[dep[i]][k]; k++) s_task[n++] = (u8)s_mod_url[dep[i]][k];
+        s_task[n++] = 0;
+    }
+    if (task(n, ms, why, sizeof why) != A_OK) {
+        char t[260];
+        s_failed++;
+        fmt_str(s_fail, sizeof s_fail, "%s was stopped: %s", base_name(url), why);
+        fmt_str(t, sizeof t, "%s, %u KB, %u ms: %s", base_name(url), len >> 10, A->ms() - t0, why);
+        wire("stopped: ", t);
+        return 0;
+    }
+    {
+        char t[200];
+        fmt_str(t, sizeof t, "%s, a module, %u KB, %u ms", base_name(url), len >> 10, A->ms() - t0);
+        wire("ran ", t);
+    }
+    s_ran++;
+    s_mod_state[me] = 1;
+    return 1;
+}
+
+/* The import()s the last task asked for: each loaded, then settled. */
+static void drain_imports(void)
+{
+    int guard = 0;
+    while (s_ndyn && s_room && guard++ < 32) {
+        char to[MOD_URL], why[120];
+        int got = -1, i;
+        u32 n, k, ticket = s_dyn[0].ticket;
+        why[0] = 0;
+        if (!resolve_spec(s_dyn[0].base[0] ? s_dyn[0].base : s_pg->url, s_dyn[0].spec, to, sizeof to))
+            fmt_str(why, sizeof why, "browzer cannot find %s", s_dyn[0].spec);
+        else if ((got = module_slot(to)) < 0 || !load_module(got, 0, 0, 0)) {
+            got = -1;
+            fmt_str(why, sizeof why, "%s", s_fail[0] ? s_fail : "the module did not load");
+        }
+        for (i = 1; i < s_ndyn; i++) s_dyn[i - 1] = s_dyn[i];
+        s_ndyn--;
+        s_task[0] = T_DYNDONE;
+        put32(s_task + 1, ticket);
+        n = 5;
+        if (got >= 0) for (k = 0; s_mod_url[got][k]; k++) s_task[n++] = (u8)s_mod_url[got][k];
+        s_task[n++] = 0;
+        for (k = 0; why[k]; k++) s_task[n++] = (u8)why[k];
+        s_task[n++] = 0;
+        (void)task(n, EVENT_MS, 0, 0);
+    }
+}
+
 /* Run the scripts not yet run, in page order, each through the gate. */
 static void run_scripts(void)
 {
@@ -393,10 +624,32 @@ static void run_scripts(void)
     while ((n = next_script()) && guard++ < 200) {
         const char *src = dom_attr(n, "src"), *type = dom_attr(n, "type");
         g_node[n].flags |= NF_SCRIPT_DONE;
+        if (type && !lower_cmp(type, "importmap") && !s_imap[0] && (!src || !src[0])) {   /* the page's import map */
+            u32 l = dom_text(n, s_imap, sizeof s_imap);
+            if (l >= sizeof s_imap) s_imap[0] = 0;
+            continue;
+        }
         if (!is_js(n)) continue;
+        if (dom_attr(n, "nomodule")) continue;   /* for browsers without modules: not this one */
         s_count++;
         if (!s_on || !s_room) continue;
-        if (type && !lower_cmp(type, "module")) { s_failed++; fmt_str(s_fail, sizeof s_fail, "modules are not supported yet"); continue; }
+        if (type && !lower_cmp(type, "module")) {
+            char url[MOD_URL];
+            if (src && src[0]) {
+                int at;
+                if (url_resolve(s_pg->url, src, url, sizeof url) && (at = module_slot(url)) >= 0) (void)load_module(at, 0, 0, 0);
+            } else if (n < s_page_nodes) {
+                u32 len = dom_text(n, s_scratch, sizeof s_scratch);
+                if (len < sizeof s_scratch && len <= SCRIPT_MAX) {
+                    int at;
+                    fmt_str(url, sizeof url, "%s#module-%u", s_pg->url, n);   /* its own address, for its imports */
+                    if ((at = module_slot(url)) >= 0) (void)load_module(at, s_scratch, len, 0);
+                } else s_big++;
+            } else s_textmade++;
+            drain_imports();
+            if (!s_room) break;
+            continue;
+        }
         if (s_ran + s_failed >= MAX_SCRIPTS) { s_big++; continue; }
         if (src && src[0]) {
             char url[PAGE_HREF_MAX + 16];
@@ -417,6 +670,7 @@ static void run_scripts(void)
             }
             s_meter += (u32)len;
             run_text(s_fetched, (u32)len, base_name(url), n);
+            drain_imports();
         } else {
             u32 len;
             if (n >= s_page_nodes) { s_textmade++; continue; }   /* text a script made into a script: no */
@@ -424,6 +678,7 @@ static void run_scripts(void)
             if (len >= SCRIPT_MAX || s_meter + len > PAGE_SCRIPTS) { s_big++; continue; }
             s_meter += len;
             run_text(s_fetched, len, "a script in the page", n);
+            drain_imports();
         }
         if (!s_room && s_on) {
             /* the room was stopped: nothing more on this page */
@@ -581,6 +836,7 @@ void script_page(Page *pg, const Url *u)
     s_on = script_site_on(s_host);
     s_count = s_ran = s_other = s_big = s_failed = s_textmade = 0;
     s_meter = 0; s_fetches = 0;
+    s_nmod = 0; s_ndyn = 0; s_imap[0] = 0;
     s_fail[0] = 0;
     s_go[0] = 0;
     s_next_timer = 0;
@@ -1234,6 +1490,15 @@ static int door(u8 *buf, u32 len, u32 cap)
             g_dom_dirty = 1;
         }
         return ans_undef();
+    case D_IMPORT: {                         /* import(): queued, loaded after this task */
+        a = gstr(&al); b = gstr(&bl);
+        if (s_ndyn >= 8 || al >= MOD_URL || bl >= MOD_URL) return ans_num(-1);
+        s_dyn[s_ndyn].ticket = ++s_dyn_ticket;
+        fmt_str(s_dyn[s_ndyn].spec, MOD_URL, "%s", a);
+        fmt_str(s_dyn[s_ndyn].base, MOD_URL, "%s", b);
+        s_ndyn++;
+        return ans_num((s32)s_dyn_ticket);
+    }
     case D_FETCH: {
         char *m, *u, *body, *t, url[PAGE_HREF_MAX + 16], type[64];
         u32 ml, ul, bodyl, tl;

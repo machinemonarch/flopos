@@ -40,6 +40,7 @@ enum {
     D_PATH,         /* node                    -> list   it and its ancestors */
     D_SHOWN,        /* node                    -> bool   drawn or hidden    */
     D_CLONE,        /* node, deep              -> node   cloneNode         */
+    D_IMPORT,       /* address, base           -> num    import(): a ticket, or -1 */
     D_COUNT
 };
 
@@ -58,5 +59,13 @@ enum { DK_UNDEF, DK_NULL, DK_BOOL, DK_NUM, DK_STR, DK_NODE, DK_LIST, DK_ERR };
 
 /* Tasks beyond room.h's: a script's text in pieces, then run. */
 #define T_SRC 6
+/* Modules (src/room/module.c), loaded by browzer (script.c):
+ *   T_MODSCAN  u32 ms, address\0, the text's last piece -> A_OK, then the
+ *              addresses it imports from, a line each, after the 6 bytes
+ *   T_MODRUN   u32 ms, address\0, u32 n, then n addresses\0: where its own led
+ *   T_DYNDONE  u32 ticket, address\0 (or empty), why\0: an import() settled */
+#define T_MODSCAN 7
+#define T_MODRUN  8
+#define T_DYNDONE 9
 
 #endif

@@ -135,6 +135,15 @@ NATIVE(object_rest)
     return v_obj(r);
 }
 
+/* new F(...xs), as the compiler writes it: __flopos_construct(F, [..xs]) */
+NATIVE(g_construct)
+{
+    Obj *a = ARG(1).t == T_OBJ && ARG(1).u.o->cls == C_ARRAY ? ARG(1).u.o : 0;
+    UNUSED;
+    if (!a) return throw_err(vm, E_TYPE, "new with arguments that are not a list");
+    return vm_construct(vm, ARG(0), a->u.arr.len ? a->u.arr.items->v : 0, (int)a->u.arr.len);
+}
+
 NATIVE(object_create)
 {
     Val p = ARG(0);
@@ -1389,6 +1398,7 @@ void lib_init(Vm *vm)
     def_native(vm, g, "parseFloat", g_parsefloat, 1, 0);
     def_native(vm, g, "parseInt", g_parseint, 2, 0);
     def_native(vm, g, "__flopos_rest", object_rest, 2, 0);
+    def_native(vm, g, "__flopos_construct", g_construct, 2, 0);
     def_native(vm, g, "encodeURIComponent", g_encode, 1, 0);
     def_native(vm, g, "encodeURI", g_encode, 1, 1);
     def_native(vm, g, "escape", g_encode, 1, 0);

@@ -41,6 +41,7 @@ typedef struct {
     const char *err;
     u32 err_line;
     int depth_tpl;
+    int skipping;                        /* only looking ahead: strings are not kept */
 } Lex;
 
 extern Str *g_kw[KW_COUNT];

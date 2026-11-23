@@ -92,7 +92,8 @@ typedef struct {
 enum {
     C_OBJECT, C_ARRAY, C_FUNC, C_NATIVE, C_BOUND, C_ERROR, C_REGEXP, C_DATE,
     C_ARGS, C_PROMISE, C_HOST, C_STYLE, C_CLASSLIST, C_BOXED, C_ITER,
-    C_ASYNC                              /* an async function, paused at an await */
+    C_ASYNC,                             /* an async function, paused at an await */
+    C_GEN                                /* a generator, paused at a yield (u.co too) */
 };
 
 typedef Val (*NativeFn)(Vm *vm, Val self, Val *args, int argc, u32 magic);
@@ -141,6 +142,7 @@ struct Proto {
     u16  args_slot;                      /* 0xFFFF: no `arguments`          */
     u16  self_slot;                      /* a named function expression's own name */
     u8   arrow, uses_this, pad[2];
+    u8   gen;                            /* a generator: a call makes one, next() runs it */
     Str *name;
     u8  *lines;                          /* not kept: kept small            */
 };
@@ -190,7 +192,7 @@ struct Vm {
     Obj   *global;
     Obj   *object_proto, *function_proto, *array_proto, *string_proto,
           *number_proto, *boolean_proto, *error_proto, *regexp_proto,
-          *date_proto, *promise_proto, *iter_proto;
+          *date_proto, *promise_proto, *iter_proto, *gen_proto;
     Obj   *err_ctor[6];                  /* Error, TypeError, RangeError,
                                           * SyntaxError, ReferenceError, EvalError */
     Obj   *element_proto, *document_obj, *style_proto, *classlist_proto, *event_proto;
@@ -354,7 +356,7 @@ enum {
     OP_THROW, OP_TRY, OP_ENDTRY,
     OP_FORIN, OP_FOROF, OP_ITERNEXT,
     OP_REGEXP, OP_TEMPLATE, OP_VOID, OP_DEBUG, OP_OPTCHAIN, OP_SETPROTO,
-    OP_INITHIDDEN, OP_AWAIT, OP_INITGETELEM, OP_INITSETELEM,
+    OP_INITHIDDEN, OP_AWAIT, OP_GENSTART, OP_YIELD, OP_INITGETELEM, OP_INITSETELEM,
     OP_COUNT
 };
 

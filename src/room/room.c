@@ -61,6 +61,7 @@ static u32 rd32(const u8 *p) { return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] 
 static void wr32(u8 *p, u32 v) { p[0] = (u8)v; p[1] = (u8)(v >> 8); p[2] = (u8)(v >> 16); p[3] = (u8)(v >> 24); }
 
 extern u32 g_door_limit;
+extern u32 g_current_script;             /* dom.c: document.currentScript */
 extern u8  g_answer_flags;
 static char s_src[256 * 1024];           /* a script's text, as it arrives in pieces */
 static u32  s_srclen;
@@ -78,7 +79,20 @@ static __attribute__((noreturn)) void answer(int code, const char *why)
     done(n);
 }
 
+/* An answer with a long text: a module's list of addresses. */
+static __attribute__((noreturn)) void answer_list(const char *list)
+{
+    u8 *m = (u8 *)ROOM_MAIL;
+    u32 n = 6;
+    m[0] = A_OK;
+    wr32(m + 1, s_ready ? engine_next_timer(&s_vm) : 0);
+    m[5] = 0;
+    while (*list && n < ROOM_MAIL_SIZE - 1) m[n++] = (u8)*list++;
+    done(n);
+}
+
 int room_dispatch(Vm *vm, const u8 *task, u32 len, char *err, u32 errcap);   /* dom.c */
+int room_dyn_done(Vm *vm, u32 ticket, const char *url, const char *why, char *err, u32 errcap);   /* dom.c */
 
 void room_main(u32 len)
 {
@@ -117,8 +131,57 @@ void room_main(u32 len)
         memcpy(s_src + s_srclen, m + n, len - n);
         s_srclen += len - n;
         g_door_limit = 20000;
+        g_current_script = rd32(m + 5);
         r = engine_run(&s_vm, s_src, s_srclen, name, ms, err, sizeof err);
+        g_current_script = 0;
         s_srclen = 0;
+        break;
+    }
+    case T_MODSCAN: {                    /* [ms][address\0][the last piece] */
+        static char list[8000];
+        u32 n = 5;
+        const char *url = (const char *)m + 5;
+        if (!s_ready) answer(A_THREW, "the room was not ready");
+        while (n < len && m[n]) n++;
+        n++;
+        if (n > len || s_srclen + (len - n) > sizeof s_src) { s_srclen = 0; answer(A_ROOM, "the module is too long for the room"); }
+        memcpy(s_src + s_srclen, m + n, len - n);
+        s_srclen += len - n;
+        r = engine_module_scan(&s_vm, s_src, s_srclen, url, list, sizeof list, err, sizeof err);
+        s_srclen = 0;
+        if (r == ENGINE_OK) answer_list(list);
+        break;
+    }
+    case T_MODRUN: {                     /* [ms][address\0][n][addresses\0] */
+        const char *dep[64];
+        u32 n = 5, k, cnt;
+        const char *url = (const char *)m + 5;
+        if (!s_ready) answer(A_THREW, "the room was not ready");
+        while (n < len && m[n]) n++;
+        n++;
+        if (n + 4 > len) answer(A_THREW, "a task the room did not understand");
+        cnt = rd32(m + n); n += 4;
+        if (cnt > 64) answer(A_THREW, "a task the room did not understand");
+        for (k = 0; k < cnt; k++) {
+            dep[k] = (const char *)m + n;
+            while (n < len && m[n]) n++;
+            if (n >= len) answer(A_THREW, "a task the room did not understand");
+            n++;
+        }
+        g_door_limit = 20000;
+        r = engine_module_run(&s_vm, url, dep, (int)cnt, rd32(m + 1), err, sizeof err);
+        break;
+    }
+    case T_DYNDONE: {                    /* [ticket][address\0][why\0] */
+        u32 n = 5;
+        const char *url = (const char *)m + 5, *why;
+        if (!s_ready) answer(A_OK, 0);
+        while (n < len && m[n]) n++;
+        if (n >= len) answer(A_THREW, "a task the room did not understand");
+        why = (const char *)m + ++n;
+        while (n < len && m[n]) n++;
+        if (n >= len) answer(A_THREW, "a task the room did not understand");
+        r = room_dyn_done(&s_vm, rd32(m + 1), url, why, err, sizeof err);
         break;
     }
     case T_TIMERS:

@@ -80,13 +80,49 @@ static char *slurp(const char *path, long *n)
     return b;
 }
 
+/* A module (a file ending in .mjs) and, first, what it imports: names
+ * are files beside it.  Each is read and kept once, and run after those
+ * it imports from, as browzer does it (script.c). */
+static char s_seen[64][4096];
+static int  s_nseen;
+static int load_module(const char *path, char *err, unsigned cap)
+{
+    char list[8192], dir[512], *line, *save = 0;
+    char (*dep)[4096]; const char *deps[64];
+    int n = 0, i, r;
+    long len;
+    char *src;
+    for (i = 0; i < s_nseen; i++) if (!strcmp(s_seen[i], path)) return 0;
+    if (s_nseen < 64) snprintf(s_seen[s_nseen++], 4096, "%s", path);
+    dep = malloc(64 * 4096);
+    src = slurp(path, &len);
+    if (!src) { snprintf(err, cap, "cannot read %s", path); free(dep); return 9; }
+    r = engine_module_scan(&s_vm, src, (u32)len, path, list, sizeof list, err, cap);
+    free(src);
+    if (r) { free(dep); return r; }
+    snprintf(dir, sizeof dir, "%s", path);
+    if (strrchr(dir, '/')) strrchr(dir, '/')[1] = 0;
+    for (line = strtok_r(list, "\n", &save); line && n < 64; line = strtok_r(0, "\n", &save)) {
+        char joined[1100];
+        snprintf(joined, sizeof joined, "%s%s", dir, line);
+        if (!realpath(joined, dep[n])) { snprintf(err, cap, "no module %s", line); free(dep); return 9; }
+        deps[n] = dep[n];
+        n++;
+    }
+    for (i = 0; i < n; i++) if ((r = load_module(deps[i], err, cap))) { free(dep); return r; }
+    r = engine_module_run(&s_vm, path, deps, n, 20000, err, cap);
+    free(dep);
+    return r;
+}
+
 int main(int argc, char **argv)
 {
-    int i, failed = 0, quiet = 0, a0 = 1;
+    int i, failed = 0, quiet = 0, a0 = 1, scan = 0;
     extern int g_gc_stress;
     while (a0 < argc && argv[a0][0] == '-') {
         if (!strcmp(argv[a0], "-q")) quiet = 1;
         if (!strcmp(argv[a0], "-stress")) g_gc_stress = 1;
+        if (!strcmp(argv[a0], "-module")) scan = 1;      /* read each as a module, run nothing */
         a0++;
     }
     s_echo = !quiet;
@@ -100,7 +136,18 @@ int main(int argc, char **argv)
         engine_init(&s_vm, s_heap, sizeof s_heap, 1700000000000.0);
         r = engine_run(&s_vm, PRELUDE, (u32)strlen(PRELUDE), "prelude", 1000, err, sizeof err);
         if (r) { printf("FAILED  the prelude: %s\n", err); return 1; }
-        r = engine_run(&s_vm, src, (u32)n, name, 20000, err, sizeof err);
+        if (scan) {
+            static char list[8192];
+            r = engine_module_scan(&s_vm, src, (u32)n, argv[i], list, sizeof list, err, sizeof err);
+            printf("%s\n", r ? err : "read");
+            free(src);
+            continue;
+        } else if (strstr(name, ".mjs")) {
+            static char full[4096];
+            s_nseen = 0;
+            r = realpath(argv[i], full) ? load_module(full, err, sizeof err) : 9;
+        } else
+            r = engine_run(&s_vm, src, (u32)n, name, 20000, err, sizeof err);
         /* timers and promises left to run */
         {
             int guard = 0;

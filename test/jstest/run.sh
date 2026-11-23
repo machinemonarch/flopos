@@ -13,6 +13,6 @@ gcc -O1 -g -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer \
     -fsanitize=address,undefined -fno-sanitize=float-cast-overflow,signed-integer-overflow,shift \
     -o "$root/build/jstest/jstest" "$here/host.c" "${src[@]}" -lm
 if [ "$#" -gt 0 ]; then exec "$root/build/jstest/jstest" "$@"; fi
-"$root/build/jstest/jstest" -q "$here"/tests/*.js
+"$root/build/jstest/jstest" -q "$here"/tests/*.js "$here"/tests/*.mjs
 echo "   again, sweeping memory at every chance:"
-exec "$root/build/jstest/jstest" -q -stress "$here"/tests/*.js
+exec "$root/build/jstest/jstest" -q -stress "$here"/tests/*.js "$here"/tests/*.mjs
