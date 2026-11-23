@@ -18,7 +18,8 @@ detail.
 - **0x70000:** The disk buffer, below 1 MB where the BIOS can reach it.
 - **1 MB:** The kernel: code, data and variables (`linker.ld`).
 - **After the kernel:** The heap: screen buffers, tables, network buffers, the wizard's model. It only ever grows.
-- **12 MB to 20 MB:** The app area, the only memory an app can touch.
+- **12 MB to 24 MB:** The app area, the only memory an app can touch.
+- **24 MB to 28 MB:** The script room (`src/room/`), walled off from the app.
 
 ROOM.BIN and the apps are packed on the floppy (deflate in zlib's wrapper, behind "FLZ1" and the size; `tools/build/mkimage.py`). The kernel reads one into the top of its area and unpacks it from the bottom (`src/kernel/inflate.c`), checking the checksum; a plain file loads as before.
 - **0x7000000:** The video card's frame buffer.

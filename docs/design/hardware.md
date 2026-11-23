@@ -6,7 +6,7 @@ FLOPOS was made for one machine: a **Toshiba Satellite Pro 430CDT** from
 ## The parts
 
 - **Processor:** Intel Pentium, 119 MHz measured, no MMX. FLOPOS uses no instruction newer than a 486; only the wizard, the audio decoders and the script room use the FPU.
-- **Memory:** 32 MB, measured at boot through the BIOS. 12–20 MB is kept for apps.
+- **Memory:** 32 MB, measured at boot through the BIOS. 12–24 MB is kept for apps, 24–28 MB for the script room.
 - **Video:** Chips & Technologies 65550, 2 MB, VESA 2.0. 800×600 in 256 colours (VESA mode 103), flat frame buffer at 0x7000000; VGA 320×200 if that fails. The BIOS sets the mode; FLOPOS draws every pixel.
 - **Screen:** 11.3" 800×600 TFT, run at its native size.
 - **Sound:** Sound Blaster Pro compatible, with a Yamaha OPL2 FM chip (port 0x388) for the music and the DSP for recordings, by DMA. The PC speaker plays the music if the FM chip doesn't answer.

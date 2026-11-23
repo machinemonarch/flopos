@@ -6,7 +6,7 @@
  * and the floppy in it.  Now an app runs at the CPU's lowest privilege
  * (ring 3) with paging on:
  *
- *   - it can touch its own 8 MB (APP_BASE up) and nothing else.  The rest
+ *   - it can touch its own 12 MB (APP_BASE up) and nothing else.  The rest
  *     of memory is the system's, and reaching for it is a page fault;
  *   - it cannot use I/O ports or switch interrupts off;
  *   - everything it wants from the system it asks for through one door,

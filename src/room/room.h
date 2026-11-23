@@ -21,7 +21,7 @@
 #ifndef ROOM_H
 #define ROOM_H
 
-#define ROOM_BASE   0x01400000u          /* 20 MB                           */
+#define ROOM_BASE   0x01800000u          /* 24 MB: above the apps' 12 MB      */
 #define ROOM_SIZE   0x00400000u          /* 4 MB                            */
 #define ROOM_END    (ROOM_BASE + ROOM_SIZE)
 #define ROOM_MAIL_SIZE 0x10000u

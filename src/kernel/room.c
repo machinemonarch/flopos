@@ -106,7 +106,7 @@ int room_open(void)
     u32 i;
     if (s_loaded) return 1;
     if (!wall_on()) { s_why = "this machine cannot keep scripts apart from the rest (no 4 MB pages)"; return 0; }
-    if (!memory_for_room()) { s_why = "scripts need 24 MB of memory; this machine has less"; return 0; }
+    if (!memory_for_room()) { s_why = "scripts need 28 MB of memory; this machine has less"; return 0; }
     if (!fs_mount() || !fs_find("ROOM.BIN", &f)) { s_why = "ROOM.BIN is not on the floppy"; return 0; }
     map(0);
     {
