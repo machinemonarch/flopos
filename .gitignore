@@ -39,3 +39,6 @@ photos/
 .vscode
 .claude/
 logs/
+
+# Python's compiled copies of the test tools.
+__pycache__/

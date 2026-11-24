@@ -29,8 +29,9 @@ they wouldn't fit, nothing is written.
 - **`--full`:** Write all 1.44 MB. Otherwise an empty inventory writes only the used part (about 16 seconds), and one with files writes it all.
 - **`--lowlevel`:** Low-level format a suspect disk first (slow).
 - **`--dev`:** Write your own build instead of the newest release.
+- **`--no-verify`:** Skip reading the disk back afterwards (saves about 50 seconds); nothing checks the disk then.
 
-**No password:** run this once, then replug the drive:
+**No password:** run this once, then replug the drive (it works with the drive plugged in empty, too):
 
     sudo cp tools/floppy/99-flopos-floppy.rules /etc/udev/rules.d/
     sudo udevadm control --reload

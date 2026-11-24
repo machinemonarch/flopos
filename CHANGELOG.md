@@ -15,6 +15,11 @@ without it. Each version's notes are also written next to its image, as
   single lost piece at once, and the resend timer is measured from real
   answers instead of guessed.
 
+#### Writing a floppy
+
+- **`--no-verify` skips the read-back,** about 50 seconds saved, when
+  checking the disk doesn't matter.
+
 ### SECURITY FIXES
 
 #### Network
@@ -97,6 +102,14 @@ without it. Each version's notes are also written next to its image, as
 
 - **The serial line's key wait no longer hangs after 49 days** switched
   on, the same clock wrap as the network's.
+
+#### Writing a floppy
+
+- **A drive plugged in empty no longer asks for a password,** once the
+  rule from the guide is in: it now knows the drive itself, not the disk.
+- **A drive it could not open is no longer called 0 bytes.** The size is
+  read without opening it, and the write asks for a password only if it
+  must.
 
 ## 1.47.0 — 2026-11-23
 
