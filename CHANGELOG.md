@@ -18,6 +18,11 @@ None in this release.
   TLS 1.3 lets a server move to a fresh key at any time, and ask the
   client to do the same. FLOPOS didn't follow, so the next piece failed
   its seal and the page or stream stopped. It now follows, both ways.
+- **A site that asks for your own certificate says so plainly.** Some
+  sites want the visitor to prove who they are with a certificate.
+  FLOPOS has none, so it now says that, and gets in where it's optional.
+  Where it isn't, the page gives the error code and what it means in
+  plain words, instead of "a handshake message out of turn".
 
 ### SECURITY FIXES
 
@@ -36,6 +41,14 @@ None in this release.
   share we offered, and send its messages in the order the standard
   gives. A shared secret of all zeros is refused, and so is a
   ChangeCipherSpec after the handshake.
+- **A certificate must be allowed to do what it is used for.** A site's
+  certificate that may not sign can't prove who the site is, and an
+  authority meant for something other than websites can't vouch for one.
+  Both are refused now.
+- **The older key exchange no longer gives away its key through timing.**
+  With servers that lack X25519, FLOPOS's secret for the P-256 or P-384
+  exchange shaped how long the sums took. They now take the same time
+  whatever the secret is.
 
 ## 1.48.0 — 2026-11-24
 

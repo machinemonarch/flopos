@@ -230,7 +230,7 @@ typedef struct {
     int  kind, hash, salt;
     u32  from_d, from_t, until_d, until_t;  /* YYYYMMDD, hhmmss            */
     int  ca, path_len;                   /* path_len -1: no limit           */
-    int  ku, ku_sign;                    /* keyUsage present / keyCertSign  */
+    int  ku, ku_sign, ku_dsig;           /* keyUsage present / keyCertSign / digitalSignature */
     int  eku, eku_server;
     int  strange;                        /* a critical extension we do not know */
 } Cert;
@@ -276,6 +276,7 @@ static void read_extension(Cert *c, const Span *ext)
         if (!want(&q, qend, 0x03, &x, 0) || x.len < 2) { c->strange = 1; return; }
         c->ku = 1;
         c->ku_sign = (x.p[1] & 0x04) != 0;       /* bit 5: keyCertSign      */
+        c->ku_dsig = (x.p[1] & 0x80) != 0;       /* bit 0: digitalSignature */
     } else if (IS(oid, OID_EKU)) {
         if (!want(&q, qend, 0x30, &inner, 0)) { c->strange = 1; return; }
         c->eku = 1;
@@ -567,6 +568,8 @@ int x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
         if (before(nd, nt, c->from_d, c->from_t)) { char d[12]; date_of(c->from_d, d); fmt_str(why, (usize)whycap, "its certificate is not valid until %s", d); return 0; }
         if (before(c->until_d, c->until_t, nd, nt)) { char d[12]; date_of(c->until_d, d); fmt_str(why, (usize)whycap, "its certificate ran out on %s", d); return 0; }
         if (c->eku && !c->eku_server) { fmt_str(why, (usize)whycap, "its certificate is not for websites"); return 0; }
+        /* Every way this machine lets a site prove itself is a signature. */
+        if (c->ku && !c->ku_dsig) { fmt_str(why, (usize)whycap, "its certificate is not allowed to sign, which proving who it is needs"); return 0; }
         if (c->strange) { fmt_str(why, (usize)whycap, "its certificate makes a demand this machine does not understand"); return 0; }
         if (!read_key(&c->spki, &s_leaf_key)) { fmt_str(why, (usize)whycap, "its key is of a kind this machine cannot check"); return 0; }
     }
@@ -591,6 +594,7 @@ int x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
             Cert *a = &s_c[i];
             if (i == cur || used[i] || !same_span(&a->subject, &c->issuer)) continue;
             if (!a->ca || (a->ku && !a->ku_sign) || a->strange) continue;
+            if (a->eku && !a->eku_server) continue;        /* an authority for something else */
             if (a->path_len >= 0 && a->path_len < depth) continue;
             if (before(nd, nt, a->from_d, a->from_t) || before(a->until_d, a->until_t, nd, nt)) continue;
             if (!read_key(&a->spki, &k)) continue;

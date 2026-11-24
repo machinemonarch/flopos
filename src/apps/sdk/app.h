@@ -205,6 +205,7 @@ static inline int a_from_unicode(unsigned cp)
 /* What a connection turned out to be (conn_info). */
 typedef struct {
     int  secure, pq, checked, untrusted;
+    int  wanted_cert;                    /* it asked for ours, then refused: its alert */
     char who[48];                        /* the authority that vouched      */
     char cipher[24];
 } ConnInfo;

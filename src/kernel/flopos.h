@@ -891,6 +891,7 @@ int    tls_pq_broke(void);
 const char *tls_cipher(void);
 void   tls_check(int on);                /* 0: go on without the proof      */
 int    tls_untrusted(void);              /* the failure: it could not prove */
+int    tls_wanted_cert(void);            /* it asked for our certificate, then refused: its alert, or 0 */
 int    tls_checked(void);                /* this connection was proved      */
 const char *tls_who(void);               /* the authority that vouched      */
 void   tls_set_note(void (*fn)(const char *));

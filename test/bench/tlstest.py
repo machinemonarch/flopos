@@ -16,11 +16,16 @@ of IMAGE that trusts that authority, and starts these servers:
   18451  TLS 1.2, ECDHE-RSA with AES-128-CBC and SHA-1 only
   18452  TLS 1.2, ECDHE-RSA with AES-256-CBC and SHA-1 only
   18453  TLS 1.3 that moves its key on mid-answer, and asks us to as well
+  18454  TLS 1.3 that asks for a certificate of ours but lets us in without
+  18455  TLS 1.3 that insists on one: the "not on the list" page
+  18456  TLS 1.2 that insists on one: the same page
+  18457  a site certificate not allowed to sign: refused
+  18458  an authority in the chain that is not for websites: refused
 (Ports high enough that nothing else on the PC uses them: 8443 is often a
 tunnel's.)  Then run.py fetches each and prints ok or FAILED, one line each.
 Needs openssl and mtools.
 """
-import os, socket, subprocess, sys, time
+import os, signal, socket, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NOEMS = r'''
@@ -61,7 +66,7 @@ def main():
     if len(sys.argv) < 3: sys.exit(__doc__)
     img, wd = os.path.abspath(sys.argv[1]), sys.argv[2]
     os.makedirs(wd, exist_ok=True); os.chdir(wd)
-    for port in range(18443, 18454):                 # another program on one would answer in its place
+    for port in range(18443, 18459):                 # another program on one would answer in its place
         with socket.socket() as c:
             if not c.connect_ex(("127.0.0.1", port)): sys.exit("FAILED  port %d is in use by another program" % port)
     sh("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "30",
@@ -74,12 +79,21 @@ def main():
         sh("openssl", "req", "-new", "-key", k + ".key", "-out", k + ".csr", "-subj", "/CN=10.0.2.2")
         sh("openssl", "x509", "-req", "-in", k + ".csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial",
            "-out", k + ".pem", "-days", "30", "-extfile", "ext.cnf")
+    open("nosign.cnf", "w").write("subjectAltName=DNS:10.0.2.2\nbasicConstraints=CA:FALSE\nkeyUsage=keyEncipherment\nextendedKeyUsage=serverAuth\n")
+    sh("openssl", "x509", "-req", "-in", "rsa.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial",
+       "-out", "nosign.pem", "-days", "30", "-extfile", "nosign.cnf")
+    open("mid.cnf", "w").write("basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign\nextendedKeyUsage=clientAuth\n")
+    sh("openssl", "req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", "mid.key", "-out", "mid.csr", "-subj", "/CN=FLOPOS client-only authority")
+    sh("openssl", "x509", "-req", "-in", "mid.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial",
+       "-out", "mid.pem", "-days", "30", "-extfile", "mid.cnf")
+    sh("openssl", "x509", "-req", "-in", "rsa.csr", "-CA", "mid.pem", "-CAkey", "mid.key", "-CAcreateserial",
+       "-out", "viamid.pem", "-days", "30", "-extfile", "ext.cnf")
     sys.path.insert(0, HERE); import testca
     testca.image(img, "test.img", ca="ca.pem")     # the floppy's own roots, and this authority
     open("noems.py", "w").write(NOEMS)
     open("keyupd.py", "w").write(KEYUPD)
     srv = lambda port, *a: subprocess.Popen(["openssl", "s_server", "-accept", str(port), "-www"] + list(a),
-                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     procs = [srv(18443, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-cipher", "ECDHE-RSA-CHACHA20-POLY1305", "-groups", "X25519", "-sigalgs", "RSA+SHA256"),
              srv(18444, "-tls1_2", "-cert", "ec.pem", "-key", "ec.key", "-cipher", "ECDHE-ECDSA-AES128-GCM-SHA256", "-groups", "P-256"),
              srv(18445, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-cipher", "ECDHE-RSA-AES128-GCM-SHA256", "-groups", "P-256", "-sigalgs", "RSA-PSS+SHA256"),
@@ -89,8 +103,13 @@ def main():
              srv(18450, "-tls1_2", "-cert", "ec384.pem", "-key", "ec384.key", "-cipher", "ECDHE-ECDSA-AES128-GCM-SHA256", "-groups", "P-384"),
              srv(18451, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-cipher", "ECDHE-RSA-AES128-SHA"),
              srv(18452, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-cipher", "ECDHE-RSA-AES256-SHA"),
-             subprocess.Popen([sys.executable, "-I", "noems.py", "rsa.pem", "rsa.key"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
-             subprocess.Popen([sys.executable, "-I", "keyupd.py", "rsa.pem", "rsa.key"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
+             subprocess.Popen([sys.executable, "-I", "noems.py", "rsa.pem", "rsa.key"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True),
+             srv(18454, "-tls1_3", "-cert", "rsa.pem", "-key", "rsa.key", "-verify", "1"),
+             srv(18455, "-tls1_3", "-cert", "rsa.pem", "-key", "rsa.key", "-Verify", "1"),
+             srv(18456, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-Verify", "1"),
+             srv(18457, "-tls1_3", "-cert", "nosign.pem", "-key", "rsa.key"),
+             srv(18458, "-tls1_3", "-cert", "viamid.pem", "-key", "rsa.key", "-cert_chain", "mid.pem"),
+             subprocess.Popen([sys.executable, "-I", "keyupd.py", "rsa.pem", "rsa.key"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)]
     time.sleep(1)
     try:
         steps = ["https://10.0.2.2:%d/=>%s" % (p, w) for p, w in
@@ -99,10 +118,15 @@ def main():
                   (18448, r"TLS 1.1 or older"), (18449, r"it asked for P-384(.|\n)*, P-384, "),
                   (18450, r"TLS 1.2, P-384"), (18451, r"AES-128-CBC with SHA-1(.|\n)*\[web\] 200"),
                   (18452, r"AES-256-CBC with SHA-1(.|\n)*\[web\] 200"),
-                  (18453, r"moved its key on, and ours(.|\n)*: key update"))]
+                  (18453, r"moved its key on, and ours(.|\n)*: key update"),
+                  (18454, r"\[web\] 200"), (18455, r"wants a certificate from us(.|\n)*not on the list"),
+                  (18456, r"wants a certificate from us(.|\n)*not on the list"),
+                  (18457, r"not allowed to sign"), (18458, r"nobody this machine trusts vouches"))]
         subprocess.run([sys.executable, os.path.join(HERE, "run.py"), "test.img", "out"] + sys.argv[3:] + steps)
     finally:
-        for p in procs: p.terminate()
+        for p in procs:                  # each with whatever it started (the KeyUpdate helper's openssl)
+            try: os.killpg(p.pid, signal.SIGTERM)
+            except ProcessLookupError: pass
 
 if __name__ == "__main__":
     main()

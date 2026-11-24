@@ -437,8 +437,25 @@ static const char *alert_name(int d)
     case 80:  return "it had an internal problem";
     case 109: return "it needs an extension we did not send";
     case 112: return "it does not know that name";
+    case 116: return "it wants a certificate from us, and we have none";
     default:  return "it refused";
     }
+}
+
+/* A server may ask for a certificate of ours, to prove who we are.  There
+ * is none here, so the answer is an empty one; some servers let us in all
+ * the same, and the rest refuse with one of these. */
+static int s_asked_cert;                 /* this connection: it asked       */
+static int s_cert_alert;                 /* and then refused, with this     */
+static u8  s_cr_ctx[256];                /* 1.3: its request's own label    */
+static int s_cr_ctx_len;
+
+int tls_wanted_cert(void) { return s_cert_alert; }
+
+static void alert(int d)
+{
+    if (s_asked_cert && (d == 40 || d == 42 || d == 116)) { s_cert_alert = d; d = 116; }
+    why(alert_name(d));
 }
 
 /* ---- the handshake ------------------------------------------------------ */
@@ -747,7 +764,7 @@ static int more_handshake(void)
     for (;;) {
         if (!read_record(&type, &len)) return 0;
         if (type == CT_CCS) continue;
-        if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+        if (type == CT_ALERT && len >= 2) { alert(s_rec[6]); return 0; }
         if (type != CT_APPDATA) { why("it sent something unencrypted mid-handshake"); return 0; }
         break;
     }
@@ -757,7 +774,7 @@ static int more_handshake(void)
         if (s_group == GROUP_HYBRID) s_pq_broke = 1;
         return 0;
     }
-    if (ct == CT_ALERT) { why(alert_name(plen >= 2 ? s_plain[1] : 0)); return 0; }
+    if (ct == CT_ALERT) { alert(plen >= 2 ? s_plain[1] : 0); return 0; }
     if (ct != CT_HANDSHAKE) { why("it sent data before finishing its hello"); return 0; }
     if (s_hsbuf_len + plen > HS_MAX) { why("its certificates were too big for us"); return 0; }
     for (i = 0; i < plen; i++) s_hsbuf[s_hsbuf_len + i] = s_plain[i];
@@ -792,7 +809,7 @@ static int more_plain(void)
     u8 type;
     int len, i;
     if (!read_record(&type, &len)) return 0;
-    if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+    if (type == CT_ALERT && len >= 2) { alert(s_rec[6]); return 0; }
     if (type != CT_HANDSHAKE) { why("it sent something else in the middle of its hello"); return 0; }
     if (s_hsbuf_len + len > HS_MAX) { why("its certificates were too big for us"); return 0; }
     for (i = 0; i < len; i++) s_hsbuf[s_hsbuf_len + i] = s_rec[5 + i];
@@ -858,7 +875,7 @@ static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret
             }
             ske = 1;
         } else if (mt == HS_CERT_REQ) {
-            asked_cert = 1;                  /* we have none: an empty one, then */
+            asked_cert = s_asked_cert = 1;   /* we have none: an empty one, then */
         } else if (mt == HS_HELLO_DONE) {
             done = 1;
         } else if (mt != HS_CERT_STATUS) {
@@ -942,7 +959,7 @@ static int tls12_rest(const char *host, const u8 cli_random[32], const u8 secret
         u8 type;
         int len;
         if (!read_record(&type, &len)) return 0;
-        if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+        if (type == CT_ALERT && len >= 2) { alert(s_rec[6]); return 0; }
         if (type == CT_HANDSHAKE) continue;          /* a session ticket: not wanted */
         if (type == CT_CCS) break;
         why("it did not finish its hello");
@@ -1038,6 +1055,7 @@ int tls_connect(const char *host)
     s_hsbuf_len = 0;
     s_plain_len = s_plain_pos = 0;
     s_hs_skip = s_hdr_n = 0;
+    s_asked_cert = s_cert_alert = 0;
     s_why[0] = 0;
     if (!s_rec) {
         s_rec = (u8 *)halloc(REC_MAX + 64);
@@ -1073,7 +1091,7 @@ int tls_connect(const char *host)
     for (;;) {
         if (!read_record(&type, &len)) return 0;
         if (type == CT_CCS) continue;
-        if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+        if (type == CT_ALERT && len >= 2) { alert(s_rec[6]); return 0; }
         if (type != CT_HANDSHAKE || len < 4 || s_rec[5] != HS_SERVER_HELLO) {
             why("its first answer was not a hello");
             return 0;
@@ -1087,7 +1105,7 @@ int tls_connect(const char *host)
         for (;;) {
             if (!read_record(&type, &len)) return 0;
             if (type == CT_CCS) continue;
-            if (type == CT_ALERT && len >= 2) { why(alert_name(s_rec[6])); return 0; }
+            if (type == CT_ALERT && len >= 2) { alert(s_rec[6]); return 0; }
             if (type != CT_HANDSHAKE || len < 4 || s_rec[5] != HS_SERVER_HELLO) {
                 why("its second answer was not a hello");
                 return 0;
@@ -1183,6 +1201,12 @@ int tls_connect(const char *host)
             }
             drop_message(ml);
             stage = 3;
+        } else if (mt == HS_CERT_REQ && stage == 1 && !s_asked_cert) {
+            if (ml < 1 || 1 + body[0] > ml) { why("its request for our certificate did not add up"); return 0; }
+            s_cr_ctx_len = body[0];
+            for (i = 0; i < s_cr_ctx_len; i++) s_cr_ctx[i] = body[1 + i];
+            s_asked_cert = 1;
+            drop_message(ml);
         } else if (mt == HS_ENC_EXT && stage == 0) {
             drop_message(ml);
             stage = 1;
@@ -1198,15 +1222,27 @@ int tls_connect(const char *host)
     derive(master, "exp master", s_exp);     /* for tls_export */
     s_exp_ok = 1;
 
+    {
+        static const u8 ccs[6] = { CT_CCS, 3, 3, 0, 1, 1 };
+        tcp_write(ccs, 6);               /* for middleboxes, as 1.3 allows  */
+    }
+    /* Asked for our certificate: an empty one, its request's label echoed. */
+    if (s_asked_cert) {
+        u8 cm[4 + 1 + 255 + 3];
+        int cl = 1 + s_cr_ctx_len + 3;
+        cm[0] = HS_CERT; cm[1] = 0; cm[2] = 0; cm[3] = (u8)cl;
+        cm[4] = (u8)s_cr_ctx_len;
+        for (i = 0; i < s_cr_ctx_len; i++) cm[5 + i] = s_cr_ctx[i];
+        cm[5 + s_cr_ctx_len] = cm[6 + s_cr_ctx_len] = cm[7 + s_cr_ctx_len] = 0;
+        sha256_update(&s_transcript, cm, (u32)(4 + cl));
+        if (!send_record(CT_HANDSHAKE, cm, 4 + cl)) { why("could not send our answer"); return 0; }
+    }
+
     /* Our Finished, under our handshake key. */
     transcript_now(h);
     expand_label(cli_hs, "finished", 0, 0, fkey, 32);
     fin[0] = HS_FINISHED; fin[1] = 0; fin[2] = 0; fin[3] = 32;
     hmac_sha256(fkey, 32, h, 32, fin + 4);
-    {
-        static const u8 ccs[6] = { CT_CCS, 3, 3, 0, 1, 1 };
-        tcp_write(ccs, 6);               /* for middleboxes, as 1.3 allows  */
-    }
     if (!send_record(CT_HANDSHAKE, fin, 36)) { why("could not send our Finished"); return 0; }
 
     set_keys(&s_rd, srv_ap);
@@ -1301,7 +1337,7 @@ int tls_read(u8 *buf, int max, int wait_ms)
         if (!ct) { why("a record failed its seal"); s_up = 0; return -2; }
         if (ct == CT_ALERT) {
             if (plen >= 2 && s_plain[1] == 0) { s_eof = 1; return 0; }   /* close_notify */
-            why(alert_name(plen >= 2 ? s_plain[1] : 0));
+            alert(plen >= 2 ? s_plain[1] : 0);
             s_up = 0;
             return -2;
         }

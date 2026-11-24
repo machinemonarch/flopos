@@ -284,25 +284,45 @@ int ecdsa_verify(int curve, const u8 *pub, int publen,
 }
 
 /* ---- ECDH on P-256 and P-384 -----------------------------------------------
- * For servers that have no X25519.  k P by a doubling and an
- * addition at every bit, the sum kept or not by a mask, so the work is the
- * same whatever the secret's bits are. */
+ * For servers that have no X25519, with a secret k, so k P must take the
+ * same time whatever k is.  The Montgomery ladder: two points a P apart,
+ * and at every bit one addition and one doubling, the two swapped in and
+ * out by a mask, never by a branch.  k is first made k + n or k + 2n,
+ * whichever has the bit just above the order's set -- the same point in
+ * the end, from a number of the same length whatever k is -- so the
+ * ladder always starts from P and never from nowhere. */
+static void pt_swap(Pt *a, Pt *b, u32 bit)
+{
+    u32 m = 0u - bit, t;
+    int j;
+    for (j = 0; j < s_w; j++) {
+        t = m & (a->x[j] ^ b->x[j]); a->x[j] ^= t; b->x[j] ^= t;
+        t = m & (a->y[j] ^ b->y[j]); a->y[j] ^= t; b->y[j] ^= t;
+        t = m & (a->z[j] ^ b->z[j]); a->z[j] ^= t; b->z[j] ^= t;
+    }
+}
+
 static void pt_mul(Pt *r, const Pt *p, const u32 *k)
 {
-    static Pt acc, sum;
-    int i, j;
-    for (j = 0; j < L; j++) acc.x[j] = acc.y[j] = acc.z[j] = 0;
-    for (i = s_w * 32 - 1; i >= 0; i--) {
-        u32 m = (u32)0 - (u32)bit(k, i);
-        pt_double(&acc, &acc);
-        pt_add(&sum, &acc, p);
-        for (j = 0; j < s_w; j++) {
-            acc.x[j] ^= m & (acc.x[j] ^ sum.x[j]);
-            acc.y[j] ^= m & (acc.y[j] ^ sum.y[j]);
-            acc.z[j] ^= m & (acc.z[j] ^ sum.z[j]);
-        }
+    static Pt r0, r1;
+    u32 k1[L + 1], k2[L + 1], m;
+    int i, nbits = s_w * 32;              /* both orders fill their words   */
+
+    k1[s_w] = bn_add(k1, k, s_fn.m, s_w);                    /* k + n      */
+    k2[s_w] = k1[s_w] + bn_add(k2, k1, s_fn.m, s_w);         /* k + 2n     */
+    m = 0u - (k1[s_w] & 1);              /* k + n long enough: that one    */
+    for (i = 0; i <= s_w; i++) k2[i] ^= m & (k2[i] ^ k1[i]);
+
+    r0 = *p;
+    pt_double(&r1, p);
+    for (i = nbits - 1; i >= 0; i--) {
+        u32 b = (u32)bit(k2, i);
+        pt_swap(&r0, &r1, b);
+        pt_add(&r1, &r0, &r1);
+        pt_double(&r0, &r0);
+        pt_swap(&r0, &r1, b);
     }
-    *r = acc;
+    *r = r0;
 }
 
 /* A point's x and y, big-endian: X / Z^2 and Y / Z^3. */
@@ -342,8 +362,12 @@ int ecdh(int curve, const u8 *secret, const u8 *peer, u8 *shared, u8 *pub)
     bn_from_be(b, s_w, C->b, bytes);
     mont_to(&s_fp, s_b, b);
     for (i = 0; i < L; i++) k[i] = 0;
-    bn_from_be(k, s_w, secret, bytes);
-    if (bn_cmp(k, s_fn.m, s_w) >= 0) bn_sub(k, k, s_fn.m, s_w);
+    for (i = 0; i < bytes; i++)          /* not bn_from_be: it skips zeros  */
+        k[(bytes - 1 - i) / 4] |= (u32)secret[i] << (8 * ((bytes - 1 - i) % 4));
+    {
+        u32 d[L], m = 0u - (bn_sub(d, k, s_fn.m, s_w) ^ 1);   /* k >= n: k - n */
+        for (i = 0; i < s_w; i++) k[i] ^= m & (k[i] ^ d[i]);
+    }
     if (bn_is_zero(k, s_w)) return 0;
     if (pub) {
         if (!pt_load(&G, C->g, bytes)) return 0;
