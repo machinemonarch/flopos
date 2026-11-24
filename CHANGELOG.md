@@ -6,6 +6,8 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+## 1.49.0 — 2026-11-24
+
 ### FEATURES
 
 None in this release.

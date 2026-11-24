@@ -24,12 +24,12 @@ fuzz what takes outside input, check on the bench, fix, and note here
 what was found. Sizes are rough.
 
 1. ~~**The network's front door** (about 6,000 lines): network card drivers, IP, TCP, DNS, NTP and NTS. Everything a stranger's packet touches first.~~ Done in 1.48.0.
-2. ~~**TLS and certificates** (about 5,000): `tls.c`, `x509.c`, the key exchanges and signatures. Checked against test vectors and the TLS bench.~~ Done, in the next release.
-3. ~~**browzer's reading of pages** (about 8,500): HTTP, HTML, CSS, cookies, addresses, playlists (HLS's included).~~ Done, in the next release.
+2. ~~**TLS and certificates** (about 5,000): `tls.c`, `x509.c`, the key exchanges and signatures. Checked against test vectors and the TLS bench.~~ Done in 1.49.0.
+3. ~~**browzer's reading of pages** (about 8,500): HTTP, HTML, CSS, cookies, addresses, playlists (HLS's included).~~ Done in 1.49.0.
 4. **The JavaScript room** (about 10,500): the engine, the page objects, the wall around them.
 5. **Sound decoders** (about 7,500): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers, HLS's sound pieces (transport stream and MP4 unpacking, in browzer), and the small bit-reading and sound libraries under them. Already fuzzed; this round reads them.
 6. **The wall between apps and the system** (about 2,500): `wall.c`, `apps.c`, every call an app can make, and the apps' side of it (`src/apps/sdk`).
-7. ~~**Disk and files** (about 1,800)~~ Done on dev, in the next release: `disk.c`, `fs.c`, `store.c` (STATE.BIN), the inventory app, and the file calls in `wall.c` and the SDK. Done only when every row below names its proof, kept in `test/fstest/evidence/` or a commit:
+7. ~~**Disk and files** (about 1,800)~~ Done in 1.49.0: `disk.c`, `fs.c`, `store.c` (STATE.BIN), the inventory app, and the file calls in `wall.c` and the SDK. Done only when every row below names its proof, kept in `test/fstest/evidence/` or a commit:
    - **Doors:** every way outside bytes get in (a floppy made on another PC: boot sector, FAT, folders; an app's names, paths and buffers; STATE.BIN) listed first. Proof: `doors.txt`.
    - **Power cut:** QEMU killed at every disk write of a save, new folder, delete, move and STATE.BIN save; after each, the floppy checks clean and the file is wholly old or wholly new. Proof: the run's output.
    - **Bad floppy:** AFL++ on the mount, find, read and write code with broken FATs, looping chains and odd folder entries. Proof: the run's output and coverage.
