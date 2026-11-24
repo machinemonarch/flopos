@@ -40,13 +40,15 @@ def main():
     cmd = ["qemu-system-i386", "-icount", "shift=4,sleep=on,align=" + ("on" if slow else "off"), "-machine", "pc", "-cpu", "pentium", "-m", "32",
            "-drive", "file=%s,if=floppy,format=raw,snapshot=on" % image, "-boot", "a", "-vga", "std", "-display", "none",
            "-monitor", "stdio", "-audiodev", "none,id=snd1", "-device", "sb16,audiodev=snd1",
-           "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9"]
+           "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9",
+           "-rtc", "base=localtime"]             # Swedish time, as the laptop's clock keeps
     boots, lock, deaf = [], threading.Lock(), [0]
     def boot(w):
         """A fresh machine at browzer's door: its own serial log (serial-W-N.log)."""
         with lock: boots.append(None); log = os.path.join(out, "serial-%d-%d.log" % (w, len(boots)))
         if os.path.exists(log): os.remove(log)
-        q = subprocess.Popen(cmd + ["-serial", "file:" + log], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        q = subprocess.Popen(cmd + ["-serial", "file:" + log], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             env=dict(os.environ, TZ="Europe/Stockholm"))
         with lock: boots[boots.index(None)] = q
         mon, wire = bench.Monitor(q), bench.Wire(log)
         if not wire.wait(r"your answer:", 90): sys.exit("FAILED: no riddle on the serial wire")

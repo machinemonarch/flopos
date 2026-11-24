@@ -100,12 +100,14 @@ def main():
            "-drive", "file=%s,if=floppy,format=raw,snapshot=on" % a.image, "-boot", "a", "-vga", "std", "-display", "none",
            "-monitor", "stdio", "-audiodev", "wav,id=snd1,path=%s" % os.path.join(a.out, "sound.wav"),
            "-machine", "pcspk-audiodev=snd1", "-device", "sb16,audiodev=snd1", "-device", "adlib,audiodev=snd1", "-serial", "file:" + log,
-           "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9"]
+           "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9",
+           "-rtc", "base=localtime"]             # Swedish time, as the laptop's clock keeps
     # sleep=off: when FLOPOS idles, its clock jumps to its next timer instead of
     # waiting it out.  --slow and --real keep the real-time wait.
     real = a.slow or a.real or os.environ.get("FLOPOS_REAL") == "1"
     cmd[1:1] = ["-icount", "shift=4,sleep=%s,align=%s" % ("on" if real else "off", "on" if a.slow else "off")]
-    q = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    q = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         env=dict(os.environ, TZ="Europe/Stockholm"))
     mon, wire = Monitor(q), Wire(log)
     try:
         if not wire.wait(r"your answer:", 90): sys.exit("no riddle on the serial wire")

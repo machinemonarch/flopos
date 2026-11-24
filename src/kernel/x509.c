@@ -530,8 +530,6 @@ static void date_of(u32 d, char *out)
 int x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
                char *why, int whycap)
 {
-    u8 h, mi, se, mo, da;
-    u16 yr;
     u32 nd, nt;
     int i, cur = 0, depth, hosted = 0, used[CHAIN_MAX];
 
@@ -549,13 +547,11 @@ int x509_check(const u8 *const *certs, const int *lens, int n, const char *host,
     }
     if (!roots_load()) { fmt_str(why, (usize)whycap, "ROOTS.DAT is missing from this floppy"); return 0; }
 
-    if (!rtc_read(&h, &mi, &se, &yr, &mo, &da) || yr < 2024) {
+    if (!rtc_utc(&nd, &nt) || nd < 20240000u) {
         fmt_str(why, (usize)whycap, "this laptop's clock says %u, so no certificate can be dated; once the network is up it sets itself",
-                (u32)yr);
+                nd / 10000u);
         return 0;
     }
-    nd = (u32)yr * 10000u + (u32)mo * 100u + da;
-    nt = (u32)h * 10000u + (u32)mi * 100u + se;
 
     /* The site's own certificate: its name, its dates, its purpose. */
     {
