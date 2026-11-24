@@ -326,6 +326,9 @@ def seeds_net(d):
                                                      frame(tcp(1001 + (1 << 31) - 30000, 0, A, body[:100])))
     open(os.path.join(d, "dns-other.bin"), "wb").write(frame(dns([rr(b"\xc0\x0c", 1, ip("6.6.6.6"))], qd=0)) +
                                                       frame(dns([rr(b"\xc0\x0c", 1, ip("1.2.3.4"))])))
+    # FLOPOS sending (modes 512, 2048): a server that only acknowledges, so a lost piece shows as the same acknowledgement again
+    open(os.path.join(d, "tcp-up.bin"), "wb").write(frame(synack) + frame(tcp(1001, 0, A | P, b"HTTP/1.0 100 Go on\r\n\r\n")) +
+                                                   b"".join(frame(tcp(1023, 0, A)) for _ in range(40)))
     open(os.path.join(d, "tcp-rst.bin"), "wb").write(frame(synack) + frame(tcp(1001, 0, A, b"hi")) + frame(tcp(1500, 0, R)) + frame(tcp(1003, 0, R)))
     ping = eth(ipv4(1, "10.0.2.2", "10.0.2.15", icmp(bytes([8, 0, 0, 0, 0, 1, 0, 1]) + b"abcdefgh")))
     pong = eth(ipv4(1, "10.0.2.2", "10.0.2.15", icmp(bytes([0, 0, 0, 0, 0x46, 0x4c, 0, 1]) + b"abcdefgh")))
@@ -431,11 +434,46 @@ TARGETS = {
                 os.path.join(OUT, "made", "browzer"), lambda: seeds_browzer(os.path.join(OUT, "made", "browzer")), {}),
 }
 
+def cover_build(name, exe, incs, src):
+    """The target built to count its branches: each source its own object in
+    build/fuzz/cover-NAME, the harness as harness.o (it shares a name with
+    the file it tests, and gcov would mix the two up)."""
+    import shutil
+    d = os.path.join(OUT, "cover-" + name)
+    os.makedirs(d, exist_ok=True)
+    for f in os.listdir(d):                       # last time's counts, not the objects just built
+        if f.endswith((".gcda", ".gcov")): os.remove(os.path.join(d, f))
+    objs = []
+    for f in [os.path.join(ROOT, "test/fuzz/fuzz.c")] + src:
+        if f.endswith(".o"): objs.append(f); continue
+        base = "harness" if f.startswith(os.path.join(ROOT, "test", "fuzz")) and not f.endswith("fuzz.c") else os.path.splitext(os.path.basename(f))[0]
+        o = os.path.join(d, base + ".o")
+        r = subprocess.run(CC + incs + ["--coverage", "-c", f, "-o", o], capture_output=True, text=True, cwd=d)
+        if r.returncode: return r
+        objs.append(o)
+    return subprocess.run(CC + ["--coverage", "-o", exe] + objs + ["-lm"], capture_output=True, text=True, cwd=d)
+
+def cover_report(name, src):
+    """One line: for each kernel file in the target (one #included counts
+    too), its branches taken at least once."""
+    import re
+    d = os.path.join(OUT, "cover-" + name)
+    got = {}
+    for o in sorted(os.listdir(d)):
+        if not o.endswith(".gcno"): continue
+        r = subprocess.run(["gcov", "-b", "-o", os.path.join(d, o[:-5] + ".o"), o[:-5] + ".c"], capture_output=True, text=True, cwd=d)
+        for m in re.finditer(r"File '([^']+)'\n(?:.*\n)*?Taken at least once:([0-9.]+%) of (\d+)", r.stdout):
+            if "/src/kernel/" in m.group(1) and not m.group(1).endswith(("fmt.c", ".h")):
+                got[os.path.basename(m.group(1))] = "%s of %s" % (m.group(2), m.group(3))
+    return "ok (%s branches taken: %s; unreached in %s/*.gcov)" % (name, ", ".join("%s %s" % kv for kv in sorted(got.items())), d)
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("targets", nargs="*")
     ap.add_argument("--runs", type=int, default=20000)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--cover", action="store_true",
+                    help="count which branches the inputs reach (gcov -b); per file in build/fuzz/cover-TARGET/*.gcov")
     a = ap.parse_args()
     os.makedirs(FINDS, exist_ok=True)
     bad = 0
@@ -446,18 +484,28 @@ def main():
         src = [s for s in src if os.path.exists(s)]
         incs = sum((["-I", os.path.join(ROOT, i)] for i in inc), [])
         for f, define in (renamed[0] if renamed else {}).items():      # built apart, with a name changed
-            obj = os.path.join(OUT, "%s-s%d-%s.o" % (name, a.seed, os.path.basename(f)))
-            subprocess.run(CC + incs + [define, "-c", os.path.join(ROOT, f), "-o", obj], check=True)
+            if a.cover:
+                d = os.path.join(OUT, "cover-" + name); os.makedirs(d, exist_ok=True)
+                obj = os.path.join(d, os.path.splitext(os.path.basename(f))[0] + ".o")
+                subprocess.run(CC + incs + ["--coverage", define, "-c", os.path.join(ROOT, f), "-o", obj], check=True, cwd=d)
+            else:
+                obj = os.path.join(OUT, "%s-s%d-%s.o" % (name, a.seed, os.path.basename(f)))
+                subprocess.run(CC + incs + [define, "-c", os.path.join(ROOT, f), "-o", obj], check=True)
             src.append(obj)
-        r = subprocess.run(CC + incs + ["-o", exe,
-                           os.path.join(ROOT, "test/fuzz/fuzz.c")] + src + ["-lm"], capture_output=True, text=True)
+        if a.cover:
+            r = cover_build(name, exe, incs, src)
+        else:
+            r = subprocess.run(CC + incs + ["-o", exe,
+                               os.path.join(ROOT, "test/fuzz/fuzz.c")] + src + ["-lm"], capture_output=True, text=True)
         if r.returncode: print("FAILED  %s: does not build\n%s" % (name, r.stderr[-600:])); bad = 1; continue
         if make: make()
         if not os.path.isdir(seeds) or not os.listdir(seeds):
             print("FAILED  %s: no inputs in %s" % (name, seeds)); bad = 1; continue
         r = subprocess.run([exe, seeds, str(a.runs), str(a.seed), FINDS], capture_output=True, text=True,
                            env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0", **env))
-        if r.returncode == 0 and r.stdout.startswith("ok"):
+        if r.returncode == 0 and r.stdout.startswith("ok") and a.cover:
+            print(cover_report(name, src))
+        elif r.returncode == 0 and r.stdout.startswith("ok"):
             print(r.stdout.strip())
         else:
             lines = [l for l in r.stderr.splitlines() if "ERROR" in l or "runtime error" in l or l.startswith("kept")

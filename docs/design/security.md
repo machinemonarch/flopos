@@ -52,6 +52,11 @@ Weighed before it was written, and kept to what Chrome offers:
 - **TCP starting numbers and ports (1.31.4):** from the random pool.
 - **DNS (1.32.0):** random question number and port, answers only from the server asked.
 - **Stack tripwire (1.32.0):** a known value 108 KB down the stack, checked 250 times a second.
+- **Stack canaries (after 1.47):** the kernel, apps and the script room are built with `-fstack-protector-strong`; a changed value closes the program (`test/walltest` case 13).
+- **Only real memory mapped (after 1.47):** the page tables map installed RAM and the screen's buffer, nothing else (`wall.c`).
+- **Apps' code read-only (after 1.47):** whole pages, up to `AppHeader.ro_end` (`test/walltest` case 14).
+- **The script room's door (after 1.47):** each request must match its exact shape in browzer's table (`src/apps/browzer/script.c`).
+- **Network audit (after 1.47):** `test/fuzz` targets `net` and `card` (the NE2000 and 3C589 drivers behind a pretend card); `--cover` showed TCP 90% and IP 91% of branches reached; on the cards, every reading of what the card hands over, but not its never-answers paths.
 - **Fuzzing (1.32.1):** `test/fuzz` found three memory faults (two tracker songs, one long attribute name in browzer), all fixed. Network packets below TLS were reviewed by hand instead.
 - **Ogg (before 1.19.0):** four ways a crafted file could write past its buffers.
 

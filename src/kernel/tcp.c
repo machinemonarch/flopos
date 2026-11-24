@@ -87,6 +87,7 @@ static u32 s_recover;                    /* fast recovery lasts until this is ac
 static u32 s_srtt, s_rttvar;             /* in ms; 0 until the first sample */
 static int s_timing;
 static u32 s_time_seq, s_time_at;
+static u32 s_snd_max;                   /* the furthest ever sent: below it is a resend */
 #define RTO_MIN 200
 #define RTO_MAX 8000
 
@@ -220,7 +221,10 @@ static void output(void)
         if (flight == 0) s_rtx_at = ms_now() + s_rto;
         segment(F_ACK | F_PSH, s_snd_nxt, s_tx + flight, n);
         s_snd_nxt += (u32)n;
-        if (!s_timing) { s_timing = 1; s_time_seq = s_snd_nxt; s_time_at = ms_now(); }
+        if (before(s_snd_max, s_snd_nxt)) {         /* new: timed, if nothing is (a resend never is) */
+            if (!s_timing && !before(s_snd_nxt - (u32)n, s_snd_max)) { s_timing = 1; s_time_seq = s_snd_nxt; s_time_at = ms_now(); }
+            s_snd_max = s_snd_nxt;
+        }
     }
 }
 
@@ -414,7 +418,7 @@ void tcp_input(u32 from, const u8 *seg, int len)
                 segment(F_ACK | F_PSH, s_snd_una, s_tx, s_tx_len < (int)s_peer_mss ? s_tx_len : (int)s_peer_mss);
             } else if (s_recovering) s_cwnd += s_peer_mss;
         }
-        s_peer_win = get16(seg + 14);
+        if (!before(ack, s_snd_una)) s_peer_win = get16(seg + 14);   /* an old one's window is old too */
     }
 
     /* What they have sent us, put where it belongs.  If it is the next
@@ -487,7 +491,7 @@ int tcp_connect(u32 to, u16 port, int wait_ms)
     s_rport = port;
     s_iss = r;
     s_snd_una = s_iss;
-    s_snd_nxt = s_iss + 1;
+    s_snd_nxt = s_snd_max = s_iss + 1;
     s_rcv_nxt = 0;
     s_peer_win = MSS;
     s_peer_mss = 536;
@@ -582,6 +586,7 @@ void tcp_close(void)
 
     segment(F_FIN | F_ACK, s_snd_nxt, 0, 0);
     s_snd_nxt++;
+    if (before(s_snd_max, s_snd_nxt)) s_snd_max = s_snd_nxt;   /* the goodbye counts as sent */
     s_state = (s_state == CLOSE_WAIT) ? LAST_ACK : FIN_WAIT1;
     s_rtx_at = ms_now() + s_rto;
 

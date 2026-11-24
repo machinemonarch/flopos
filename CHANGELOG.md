@@ -6,6 +6,15 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+### FEATURES
+
+#### Network
+
+- **A busy line is shared fairly.** Sending starts with a few pieces and
+  grows while nothing is lost, backs off when something is, resends a
+  single lost piece at once, and the resend timer is measured from real
+  answers instead of guessed.
+
 ### SECURITY FIXES
 
 #### Network
@@ -37,6 +46,25 @@ without it. Each version's notes are also written next to its image, as
 - **Damaged packets are thrown away:** the checksum on every IP header
   and every ping is now checked. And the address handed out by DHCP is
   taken only from the server whose offer was accepted.
+- **No stray byte goes out with a frame.** Both card drivers read one
+  byte past the end of a frame of odd length when handing it to the
+  card. Now the last byte is sent on its own.
+
+#### Kernel
+
+- **A stack overrun stops the program.** The kernel, the apps and the
+  script room keep a secret value beside each function's return address;
+  if it has changed on the way out, the program is closed instead of
+  jumping wherever the overrun points.
+- **Only memory that is really there can be reached** (and the screen's).
+  A stray pointer now stops at once instead of reading junk.
+- **An app's own code is read-only while it runs,** so a bug cannot be
+  turned into new instructions.
+
+#### browzer
+
+- **Requests from the script room must have exactly the expected shape,**
+  or they are refused.
 
 ### BUG FIXES
 
@@ -55,6 +83,20 @@ without it. Each version's notes are also written next to its image, as
   download is cut short. The emulated card writes over a frame when its
   memory fills exactly; FLOPOS now sees the damage and starts afresh. (The
   laptop's own card was never affected.)
+- **A resent piece no longer fools the resend timer.** After a resend,
+  the time to the answer was measured from the resend, so the timer
+  could shrink to almost nothing and FLOPOS resent pieces that were
+  only slow.
+- **An old acknowledgement no longer changes how much the server will
+  take.** One arriving late, out of turn, could shut the window until
+  the next ask.
+- **Waits for the network card are timed by the clock,** not counted in
+  turns of a loop, so they last as long on any machine.
+
+#### Kernel
+
+- **The serial line's key wait no longer hangs after 49 days** switched
+  on, the same clock wrap as the network's.
 
 ## 1.47.0 — 2026-11-23
 

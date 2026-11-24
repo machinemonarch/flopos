@@ -19,7 +19,10 @@
  * Bit 6: nobody answers ARP; bit 7: answers come from changing cards.
  * Bit 8: FLOPOS hangs up first; bit 9: it sends more than the other end
  * takes, then waits long enough for TCP to give up.  Bit 10: settings
- * typed by hand are on the floppy.  The input's start is also read as an
+ * typed by hand are on the floppy.  Bit 11: a piece of ours went missing:
+ * the helpful card says so, acknowledging only up to it, three times while
+ * more is out, and then everything (TCP's quick resend and recovery).
+ * The input's start is also read as an
  * address typed by hand.
  * What is left of the input comes at the end.
  */
@@ -34,7 +37,7 @@ static const u8 *s_in;
 static u32 s_len, s_at, s_mode;
 static u32 s_now, s_rand = 1;
 static u8 s_last_udp[NET_MTU], s_last_tcp[NET_MTU], s_arp[60];
-static int s_last_udp_len, s_last_tcp_len, s_arp_len, s_credit;
+static int s_last_udp_len, s_last_tcp_len, s_arp_len, s_credit, s_lost;
 static const u8 s_mac[6] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
 
 /* What the kernel would have given. */
@@ -77,6 +80,7 @@ static void tcp_rules(void)
     if (s_tx_len < 0 || s_tx_len > TX_SIZE) fuzz_fail("send buffer count out of bounds");
     if (before(s_snd_nxt, s_snd_una)) fuzz_fail("sent before acknowledged");
     if (s_snd_nxt - s_snd_una > (u32)s_tx_len + 2) fuzz_fail("more on the way than was written");
+    if (before(s_snd_max, s_snd_nxt)) fuzz_fail("sent past the furthest it knows it sent");
     if (s_nooo < 0 || s_nooo > OOO_MAX) fuzz_fail("too many pieces ahead");
     for (k = 0; k < s_nooo; k++) {
         if (!before(s_ooo[k].start, s_ooo[k].end)) fuzz_fail("an empty or backwards piece");
@@ -177,6 +181,12 @@ static void helpful(u8 *f, int len)
         if (t[13] & 0x10) {                              /* acknowledging what we sent */
             u32 sl = (u32)(g16(s_last_tcp + 16) - 20 - (s_last_tcp[46] >> 4) * 4);
             p32(t + 8, g32(ts + 4) + sl + ((ts[13] & 3) ? 1 : 0));
+            if ((s_mode & 2048) && s_lost < 3 && s_snd_nxt != s_snd_una && s_state == ESTAB) {
+                p32(t + 8, s_snd_una);                   /* bit 11: up to the missing piece */
+                p16(t + 14, s_peer_win);
+                t[13] &= (u8)~0x03;                      /* no SYN or FIN, which never count */
+                s_lost++;
+            }
         }
         p16(t + 16, 0);
         p16(t + 16, tsum(h, t, tl));
@@ -224,7 +234,7 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
 {
     static u8 buf[70000];
     int i;
-    s_in = data; s_len = len; s_at = 0; s_mode = mode; s_arp_len = 0; s_credit = 0;
+    s_in = data; s_len = len; s_at = 0; s_mode = mode; s_arp_len = 0; s_credit = 0; s_lost = 0;
     s_last_udp_len = s_last_tcp_len = 0;
     net_up();
     {                                                   /* an address typed by hand: the input as text */

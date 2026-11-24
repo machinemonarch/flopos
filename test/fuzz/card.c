@@ -8,6 +8,10 @@
  * (bit 0: the 3C589, else the NE2000) and how big a buffer each frame is
  * read into (bits 1-3: odd sizes too, so a frame one byte too long shows);
  * the input is the card's memory and the numbers its registers give.
+ * Bit 5: the 3C589 is looked for in the sockets, and its card's own
+ * description (CIS tuples) comes from the input.  Bit 6: the card's
+ * address and eeprom words come from the input (a broken or foreign card).
+ * Bit 7: the 3C589's send status comes from the input (errors).
  * Every frame is read into a buffer exactly that size, under the memory
  * checker, and the driver's own idea of the ring must stay inside it.
  */
@@ -41,7 +45,19 @@ int  pcic_map_io(int sock, u16 io, int n) { (void)sock; (void)io; (void)n; retur
 void pcic_set_irq(int sock, int irq) { (void)sock; (void)irq; }
 void pcic_attr_write(int sock, u32 a, u8 v) { (void)sock; (void)a; (void)v; }
 u8   pcic_attr_read(int sock, u32 a) { (void)sock; (void)a; return 1; }
-int  pcic_cis_walk(int sock, int (*fn)(u8, const u8 *, int, void *), void *ctx) { (void)sock; (void)fn; (void)ctx; return 0; }
+int  pcic_cis_walk(int sock, int (*fn)(u8, const u8 *, int, void *), void *ctx)   /* bit 5: tuples from the input */
+{
+    u8 body[256];
+    int n, k, len;
+    (void)sock;
+    for (n = 0; n < 8 && s_at < s_len; n++) {
+        u8 code = nextb();
+        len = nextb() & 15;
+        for (k = 0; k < len; k++) body[k] = nextb();
+        if (fn(code, body, len, ctx)) break;
+    }
+    return n;
+}
 
 /* ---- the NE2000: a DP8390's registers and 32 KB ------------------------- */
 static u8  ne_mem[0x8000], ne_cmd, ne_pstart = 0x46, ne_pstop = 0x80;
@@ -82,9 +98,10 @@ static u16 el_ee;
 static u16 el_read16(int r)
 {
     if (r == 0x0E) return 0;                                  /* status: not busy */
-    if (el_win == 0 && r == 0x0A) return 0;                   /* eeprom: done   */
+    if (el_win == 0 && r == 0x0A) return (s_mode & 64) && (nextb() & 3) == 0 ? 0x8000 : 0;   /* eeprom: done, or busy */
     if (el_win == 0 && r == 0x0C) {
         int a = el_ee & 0x3F;
+        if (s_mode & 64) { u16 v = nextb(); return (u16)(v | nextb() << 8); }
         return a == 7 ? 0x6D50 : a == 3 ? 0x9058 : a == 0 ? 0x0050 : a == 1 ? 0x0412 : 0x3456;
     }
     if (el_win == 1 && r == 0x08) { u16 v = nextb(); return (u16)(v | nextb() << 8); }   /* RX status */
@@ -96,7 +113,7 @@ static u16 el_read16(int r)
 void outb(u16 port, u8 v) { if (!s_el3 && port >= 0x300 && port < 0x320) ne_write(port - 0x300, v); }
 u8 inb(u16 port)
 {
-    if (s_el3) return 0;                 /* TX status: nothing to report    */
+    if (s_el3) return (s_mode & 128) ? nextb() : 0;   /* TX status: nothing, or bit 7's */
     return port >= 0x300 && port < 0x320 ? ne_read(port - 0x300) : 0xFF;
 }
 void outw(u16 port, u16 v)
@@ -134,12 +151,13 @@ void fuzz_one(const u8 *data, u32 len, u32 mode)
     s_el3 = (int)(mode & 1);
     memset(ne_mem, 0, sizeof ne_mem);
     for (i = 0; i < 6; i++) ne_mem[2 * i] = ne_mem[2 * i + 1] = (u8)(0x52 + i * 2);   /* the PROM's address */
+    if (mode & 64) for (i = 0; i < 6; i++) ne_mem[2 * i] = ne_mem[2 * i + 1] = len > (u32)i ? (u8)~data[len - 1 - i] : 0xFF;
     if (!s_el3) {                        /* the ring, from the input       */
         for (i = 0x4600; i < 0x8000 && s_at < s_len; i++) ne_mem[i] = s_in[s_at++];
         s_at = 0;
     }
     nic = s_el3 ? &g_nic_el3 : &g_nic_ne2000;
-    if (s_el3 ? !el3_start(0, 0x3F8, 0x300) : !nic->start()) return;
+    if (s_el3 && !(mode & 32) ? !el3_start(0, 0x3F8, 0x300) : !nic->start()) return;
 
     buf = malloc((size_t)max);
     for (i = 0; i < 200 && (s_at < s_len || i < 4); i++) {
