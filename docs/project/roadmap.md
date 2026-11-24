@@ -24,7 +24,7 @@ fuzz what takes outside input, check on the bench, fix, and note here
 what was found. Sizes are rough.
 
 1. ~~**The network's front door** (about 6,000 lines): network card drivers, IP, TCP, DNS, NTP and NTS. Everything a stranger's packet touches first.~~ Done in 1.48.0.
-2. **TLS and certificates** (about 5,000): `tls.c`, `x509.c`, the key exchanges and signatures. Checked against test vectors and the TLS bench.
+2. ~~**TLS and certificates** (about 5,000): `tls.c`, `x509.c`, the key exchanges and signatures. Checked against test vectors and the TLS bench.~~ Done, in the next release.
 3. **browzer's reading of pages** (about 8,500): HTTP, HTML, CSS, cookies, addresses, playlists, HLS.
 4. **The JavaScript room** (about 10,500): the engine, the page objects, the wall around them.
 5. **Sound decoders** (about 7,500): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers, and the small bit-reading and sound libraries under them. Already fuzzed; this round reads them.
