@@ -162,7 +162,10 @@ fi
 
 [ -b "$DEVICE" ] || die "$DEVICE is not a block device."
 
-dev_size=$(blockdev --getsize64 "$DEVICE" 2>/dev/null || echo 0)
+# From sysfs, which needs no permission on the device itself: blockdev has
+# to open it, and on a drive the udev rule has not reached yet (plugged in
+# empty, the disk put in later) that is refused and read as 0 bytes.
+dev_size=$(( $(cat "/sys/block/${DEVICE#/dev/}/size" 2>/dev/null || echo 0) * 512 ))
 if [ "$dev_size" -ne "$FLOPPY_BYTES" ]; then
     human=$(numfmt --to=iec --suffix=B "$dev_size" 2>/dev/null || echo "$dev_size bytes")
     die "REFUSING: $DEVICE is $human, not a 1.44MB floppy.
