@@ -53,29 +53,12 @@ None in this release.
 
 #### Files
 
-- **Deleting JOURNAL.TXT on another computer no longer costs you a document.**
-  FLOPOS wrote the journal and its settings to where the build had put
-  them, even after the files had gone, so a document saved in that spot
-  was written over at the next save. It now finds both by name at every
-  start, and leaves them alone if they have changed size.
-- **A power cut while saving no longer bends the floppy's table.** A
-  table entry can lie across two sectors; cut between them, it pointed
-  anywhere, and the next start kept it that way. The next start now
-  mends it from the spare copy. A folder that grew when the power went
-  could also be pointed at a cluster still marked free, later given to
-  another file; the two steps are now written apart.
-- **A sector of the journal or the settings that a power cut left
-  unreadable no longer stops FLOPOS saving.** It is read as empty and
-  written again at the next save.
-- **Files from another computer with signs like $, ( or @ in their names
-  can be opened, renamed and dropped.** They showed in the inventory, but
-  nothing could be done with them. Windows's device names (CON, NUL,
-  COM1...) can no longer be made: Windows could not open them.
-- **The inventory says when a folder holds more than it shows.** It
-  shows the first 400 things; the rest were left out without a word.
-- **Small inventory slips:** a start folder typed with \ or a leading /
-  now works like one typed plainly, and a thing renamed while carried
-  can still be put down.
+- **Deleting JOURNAL.TXT on a PC no longer costs you a document.** The journal could be saved over it.
+- **A power cut while saving no longer damages the floppy's table.** Two ways a cut could leave it pointing at the wrong place are mended.
+- **A sector a power cut left unreadable no longer stops saving.** The journal and settings rewrite it.
+- **Files named with $, ( or @ on a PC can be opened and dropped.** CON, NUL and the other Windows device names are refused.
+- **The inventory says when a folder holds more than its 400 shown.**
+- **STATE.BIN is 512 bytes, down from 8 KB.** The space of the taught words (gone since 1.32.0) is back; writefloppy carries the settings over.
 
 ### SECURITY FIXES
 
@@ -158,13 +141,7 @@ None in this release.
 
 #### Files
 
-- **A floppy changed on another computer can't make FLOPOS write past
-  its memory.** The sizes in its boot sector were believed: a large
-  enough count of clusters let FLOPOS write beyond its copy of the
-  table, and a floppy swapped in while it ran could overrun the buffers
-  made for the first. They are now held to what a FAT12 floppy can be,
-  and a folder that leads back into itself can no longer stall a move.
-
+- **A floppy changed on a PC can't make FLOPOS write past its memory.** Its sizes are now checked.
 
 ## 1.48.0 — 2026-11-24
 

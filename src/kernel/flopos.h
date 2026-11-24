@@ -1017,15 +1017,6 @@ u8     disk_last_status(void);
  * never parses FAT: it is handed a starting sector and a length for each,
  * and overwrites the data in place.
  */
-#define TAUGHT_MAX 48
-#define WORD_MAX   20
-#define RESP_MAX   72
-
-typedef struct {
-    char word[WORD_MAX];
-    char resp[RESP_MAX];
-} Taught;
-
 
 void   store_init(void);
 int    store_ready(void);
