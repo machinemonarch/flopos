@@ -26,7 +26,7 @@ TOTAL_SECTORS = 2880            # 1.44MB: 80 cylinders * 2 heads * 18 sectors
 # overwrites their data sectors and never has to touch the FAT or the
 # directory. That is what lets the kernel do without a filesystem driver.
 JOURNAL_BYTES = 8192
-STATE_BYTES = 8192
+STATE_BYTES = 512
 
 BOOKMARK_BYTES = 8192
 

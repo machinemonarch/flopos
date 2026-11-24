@@ -32,6 +32,13 @@ for f in JOURNAL.TXT STATE.BIN BOOKMARK.TXT SITES.TXT; do
         if [ "$want" -gt 0 ] && [ "$want" = "$have" ]; then
             mcopy -o -n -i "$NEW" "$DIR/$f" "::$f"
             echo "$f"
+        elif [ "$f" = STATE.BIN ] && [ "$want" -ge 512 ] && [ "$have" -gt "$want" ]; then
+            # The 8 KB STATE.BIN from before 1.49: its header (the boot count)
+            # and its settings, which live at its far end, into the new size.
+            { head -c 24 "$DIR/$f"; head -c 4096 /dev/zero | head -c $((want - 24 - 448)); tail -c 448 "$DIR/$f"; } > "$DIR/$f.new"
+            mv -- "$DIR/$f.new" "$DIR/$f"
+            mcopy -o -n -i "$NEW" "$DIR/$f" "::$f"
+            echo "$f"
         fi
     fi
 done
