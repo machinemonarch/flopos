@@ -16,7 +16,8 @@ QEMU's guest reaches it at http://10.0.2.2:PORT/.  Pages:
   /api/nowplaying/chiptune   the station's JSON, naming its streams
   /radio/il          a radio directory's country page: names only, and the Radio
                      Browser directory named in a <link rel="preconnect">
-  /radio-browser/json/stations/bycountrycodeexact/IL   that directory's answer
+  /json/stations/bycountrycodeexact/IL   that directory's answer, asked for by the
+                     directory's own name, radio-browser.10.0.2.2.nip.io
   /js/...            pages with scripts for the script room (see JS below)
   /css/basic         a page whose styles hide things and pin a pop-up
   /hls/master.m3u8   HLS: a master playlist of two bitrates (the high one is
@@ -34,6 +35,10 @@ QEMU's guest reaches it at http://10.0.2.2:PORT/.  Pages:
   /audit/narrow      drop-down lists in table cells too narrow for them
   /audit/moved       a redirect to a relative address (echo/rel)
   /audit/odd         a refresh to an address with a space, a line end and an å in it
+  /audit/long        a link 712 characters long
+  /audit/away        (over https) a redirect to the same server by another name
+  /audit/cookieset   sets a cookie of 3000 bytes; /audit/cookie says how much came back,
+                     and its style sheet shows COOKIE WHOLE only if all of it did
   /audit/echo/...    a page whose title is the path it was asked for, as it came
   /audit/css         a style sheet whose selectors would try every way there is
   /codecs/NAME       a file test/audiotest/codecs.py made (build/audiotest/codecs/),
@@ -77,8 +82,8 @@ PAGES = {
               "&quot;:&quot;Show 170&quot;,&quot;image&quot;:&quot;http:\\/\\/10.0.2.2:%d\\/art.webp&quot;,"
               "&quot;url&quot;:&quot;http:\\/\\/10.0.2.2:%d\\/Flashback\\/170.mp3&quot;}\"></div>"
               "<script>var api='%s/api/radio/v2/listening';</script>" % (PORT, PORT, HOST)),
-    "/radio/il": ("<html><head><link rel=\"preconnect\" href=\"%s/radio-browser\" /><title>radio page</title></head>"
-                  "<body><h1>Radio stations from Israel</h1><ul><li>Radio 103FM</li><li>Glglz</li></ul></body></html>" % HOST),
+    "/radio/il": ("<html><head><link rel=\"preconnect\" href=\"http://radio-browser.10.0.2.2.nip.io:%d\" /><title>radio page</title></head>"
+                  "<body><h1>Radio stations from Israel</h1><ul><li>Radio 103FM</li><li>Glglz</li></ul></body></html>" % PORT),
     "/public/chiptune": ("<title>24/7 Chiptune Radio</title><div id=\"app\"></div>"
                          "<img src=\"/api/nowplaying/chiptune/art/1.jpg\"><script>/* a player */</script>"),
 }
@@ -284,6 +289,7 @@ fetch(other + '/api/cors-put', {method: 'PUT', headers: {'Content-Type': 'applic
 <p>After the table.</p>""",
     "/audit/narrow": ("<title>audit narrow</title><table><tr>" + '<td><select name="s0"><option>a long choice number 0</option><option>another</option></select></td><td><select name="s1"><option>a long choice number 1</option><option>another</option></select></td><td><select name="s2"><option>a long choice number 2</option><option>another</option></select></td><td><select name="s3"><option>a long choice number 3</option><option>another</option></select></td><td><select name="s4"><option>a long choice number 4</option><option>another</option></select></td><td><select name="s5"><option>a long choice number 5</option><option>another</option></select></td><td><select name="s6"><option>a long choice number 6</option><option>another</option></select></td><td><select name="s7"><option>a long choice number 7</option><option>another</option></select></td><td><select name="s8"><option>a long choice number 8</option><option>another</option></select></td><td><select name="s9"><option>a long choice number 9</option><option>another</option></select></td><td><select name="s10"><option>a long choice number 10</option><option>another</option></select></td><td><select name="s11"><option>a long choice number 11</option><option>another</option></select></td>' + "</tr></table>"
                       "<fl-tab><fl-tr><fl-td tx=\"0\" tw=\"2\"><select name=\"f\"><option>forged</option></select></fl-td></fl-tr></fl-tab><p>THE END</p>"),
+    "/audit/long": '<title>audit long</title><p><a href="/audit/echo/' + "x" * 700 + '">a long link</a></p>',
     "/audit/odd": "<title>audit odd</title><meta http-equiv=\"refresh\" content=\"0; url=/audit/echo/a b\n?c=\u00e5\">",
     "/audit/css": ("<title>audit css</title><style>x ~ a ~ a ~ a ~ a ~ a ~ a ~ a { color: red } "
                    "x a a a a a a b { color: red }</style>" + "<a>a</a>" * 600 + "<div>" * 150 + "<b>deep</b>" + "</div>" * 150 + "<p>THE END</p>"),
@@ -513,7 +519,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         p = self.path
         if p == "/audit/moved": return self.send(302, "text/html", b"moved", [("Location", "echo/rel")])
         if p.startswith("/audit/echo/"):                  # the path as it came, to see what browzer asked for
-            return self.send(200, "text/html", ("<title>echo %s</title>" % p.replace("&", "&amp;").replace("<", "&lt;")).encode())
+            t = p if len(p) <= 50 else "long %d" % len(p)   # a long one by its length: titles are short
+            return self.send(200, "text/html", ("<title>echo %s</title>" % t.replace("&", "&amp;").replace("<", "&lt;")).encode())
+        if p in ("/audit/cookieset", "/audit/cookie", "/audit/cookie.css"):   # a 3000-byte cookie, back whole?
+            got = (self.headers.get("Cookie") or "").partition("big=")[2].partition(";")[0]
+            whole = got == "v" * 3000
+            if p == "/audit/cookieset":
+                return self.send(200, "text/html", b"<title>cookie set</title>", [("Set-Cookie", "big=" + "v" * 3000 + "; Path=/")])
+            if p == "/audit/cookie.css": return self.send(200, "text/css", b"p.ok { display: block }" if whole else b"")
+            return self.send(200, "text/html", ('<title>cookie %d</title><style>.ok { display: none }</style>'
+                             '<link rel="stylesheet" href="/audit/cookie.css"><p class="ok">COOKIE WHOLE</p><p>END</p>' % len(got)).encode())
+        if p == "/audit/away":                            # over https: to another site, which must still prove itself
+            return self.send(302, "text/html", b"away", [("Location", "https://10.0.2.2.nip.io:8151/audit/echo/away")])
         if p == "/api/cors-ok":
             cookie = self.headers.get("Cookie") or ""
             return self.send(200, "application/json", json.dumps({"ok": "yes", "cookie": cookie or "none", "origin": self.headers.get("Origin") or "none"}).encode(),
@@ -548,7 +565,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                               {"url": HOST + "/listen/chiptune/low.ogg", "format": "ogg", "bitrate": 64}]},
                        "now_playing": {"song": {"art": HOST + "/api/nowplaying/chiptune/art/1.jpg", "title": "A tune"}}}
             return self.send(200, "application/json", json.dumps(station).replace("/", "\\/").encode())
-        if p.startswith("/radio-browser/json/stations/bycountrycodeexact/IL?"):
+        if p.startswith("/json/stations/bycountrycodeexact/IL?"):
             st = [{"name": "Radio 103FM", "url_resolved": HOST + "/listen/103.mp3", "codec": "MP3", "bitrate": 0, "tags": "a,b"},
                   {"name": "\u05d2\u05dc\u05d2\u05dc\u05e6 - Glglz", "url_resolved": HOST + "/listen/glglz_mp3", "codec": "MP3", "bitrate": 128},
                   {"name": "\u05d2\u05dc\u05e6", "url_resolved": HOST + "/listen/glz?a=1&b=2", "codec": "AAC+", "bitrate": 64}]

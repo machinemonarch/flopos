@@ -102,7 +102,8 @@ int    url_resolve(const char *base, const char *href, char *out, int max);
 
 /* ---- a page ------------------------------------------------------------------ */
 #define PAGE_LINKS    2048               /* links and form fields, together */
-#define PAGE_HREF_MAX 200
+#define PAGE_HREF_MAX 1024              /* a link's address, a form's, the page's own */
+#define PAGE_HREF_POOL (512u * 1024)     /* the links' addresses, each as long as it is */
 #define PAGE_FORMS    24
 #define PAGE_FIELDS   64
 #define PAGE_POOL     65536              /* field names and values          */
@@ -144,7 +145,9 @@ typedef struct {
     int   width, max_lines;
     int   lines, col, full;
     char  title[64];
-    char  (*href)[PAGE_HREF_MAX];        /* PAGE_LINKS addresses            */
+    char *hpool;                         /* PAGE_HREF_POOL bytes: the links' addresses */
+    u32   hpool_used;
+    u32  *hat;                           /* PAGE_LINKS: where each starts in hpool (0: "") */
     int   nlinks;
     char  url[PAGE_HREF_MAX + 16];
     char  note[128];
@@ -171,9 +174,11 @@ typedef struct {
     u16       *link_node;                /* PAGE_LINKS + 1: link -> element in the tree */
 } Page;
 
+#define page_href(pg, i) ((pg)->hpool + (pg)->hat[i])   /* link i+1's address */
 void   page_clear(Page *pg);
 void   cookie_set(const Url *u, const char *line);     /* a Set-Cookie's value */
 int    cookie_header(const Url *u, char *out, int cap); /* "Cookie: ...\r\n", or 0 */
+#define JAR_HEADER 16384                 /* room for a site's cookies in one request */
 int    http_page(const char *url, Page *pg);
 int    http_load(const char *url, Page *pg, const u8 *post, int postlen);
 void   http_page_html(const char *html, Page *pg);
@@ -203,5 +208,12 @@ extern void (*web_page_loaded)(Page *pg, const Url *u);
 /* A response's headers, a byte at a time, into a buffer: see web.c. */
 typedef struct { int len, line, skip; u32 last; } Head;
 int head_byte(Head *h, char *buf, int cap, u8 b);
+
+/* "Go there anyway" (a in browzer): the one site whose proof is not asked
+ * for during that load, and the check set for each connection by it.
+ * Anything else that load reaches -- a redirect elsewhere, a style sheet
+ * from another site -- is checked as always. */
+extern char web_unchecked[64];
+void web_check_for(const char *host);
 
 #endif

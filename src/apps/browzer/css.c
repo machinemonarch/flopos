@@ -538,12 +538,8 @@ static void compute(u32 n, const Node *parent, int depth)
     if (x->disp == D_NONE || (s_best[P_VISIBILITY] && s_val[P_VISIBILITY]) || (s_best[P_OPACITY] && s_val[P_OPACITY]) ||
         (s_best[P_POSITION] && s_val[P_POSITION] == 1) ||
         (s_best[P_POSITION] && s_val[P_POSITION] == 2 && ((s_best[P_TINY] && s_val[P_TINY]) || (s_best[P_CLIP] && s_val[P_CLIP]))) ||
-        dom_attr(n, "hidden") || (eq(t, "input") && dom_attr(n, "type") && eq(dom_attr(n, "type"), "hidden") && 0) ||
-        (eq(t, "dialog") && !dom_attr(n, "open")))
+        dom_attr(n, "hidden") || (eq(t, "dialog") && !dom_attr(n, "open")))
         x->flags |= NF_HIDDEN;
-    if (s_best[P_VISIBILITY] && !s_val[P_VISIBILITY] && parent && !(parent->flags & NF_HIDDEN) && x->disp != D_NONE) {
-        /* visibility: visible under a hidden parent shows again -- only for visibility */
-    }
     for (c = x->first; c; c = g_node[c].next) compute(c, x, depth + 1);
 }
 

@@ -29,12 +29,22 @@
 #include "../sdk/gen/app_glyphs.h"
 
 /* A line down the serial cable, if there is one. */
+static void wire_clean(char *line)
+{
+    for (; line[0] && line[1]; line++) if ((u8)line[0] < ' ') line[0] = '?';   /* the last \n stays */
+}
+
 static void wire(const char *a, const char *b)
 {
     char line[200];
     fmt_str(line, sizeof line, "%s%s\n", a, b);
+    wire_clean(line);                    /* a page's text never forges a line of its own */
     A->wire(line);
 }
+
+char web_unchecked[64];
+static int eq_ci(const char *a, const char *b);
+void web_check_for(const char *host) { A->conn_check(!(web_unchecked[0] && eq_ci(host, web_unchecked))); }
 
 /* ---- where the words go ---------------------------------------------- */
 static Page *s_pg;                       /* a page, or 0 for the terminal  */
@@ -107,6 +117,8 @@ void page_clear(Page *pg)
     pg->full = 0;
     page_line_clear(0);
     pg->nlinks = 0;
+    pg->hpool[0] = 0;                    /* offset 0: no address (a field's link) */
+    pg->hpool_used = 1;
     pg->nforms = 0;
     pg->nfields = 0;
     pg->nopts = 0;
@@ -177,7 +189,7 @@ static int  s_opt = -1, s_opt_val, s_opt_sel;   /* the <option> being read     *
 static int  s_checked;                   /* the tag says checked or selected */
 #define OPT_LAB 60                       /* bytes of a choice's words kept  */
 static char s_alt[60];
-static char s_equiv[16], s_content[256], s_src[PAGE_HREF_MAX];   /* meta, frames */
+static char s_equiv[16], s_content[PAGE_HREF_MAX + 32], s_src[PAGE_HREF_MAX];   /* meta, frames */
 static int  s_refresh_go;                 /* a refresh of 0 s elsewhere: stop reading */
 static char s_wattr[8], s_hattr[8];      /* an image's width and height    */
 static char *s_aval;
@@ -462,20 +474,33 @@ static void decode_amp(char *s)
     *w = 0;
 }
 
-static u16 add_link(void)
+/* A new link to u, its address kept in the page's pool with room for
+ * `room` bytes (an address read in pieces grows into it); 0 if the page
+ * has no room for another. */
+static u16 link_new(const char *u, u32 room, u16 node)
 {
-    int i;
-    if (!s_pg || !s_href[0] || s_pg->nlinks >= PAGE_LINKS) return 0;
-    decode_amp(s_href);
-    for (i = 0; s_href[i] && i < PAGE_HREF_MAX - 1; i++) s_pg->href[s_pg->nlinks][i] = s_href[i];
-    s_pg->href[s_pg->nlinks][i] = 0;
+    u32 n = 0, i;
+    if (!s_pg || !u[0] || s_pg->nlinks >= PAGE_LINKS) return 0;
+    while (u[n] && n < PAGE_HREF_MAX - 1) n++;
+    if (room < n + 1) room = n + 1;
+    if (room > PAGE_HREF_POOL - s_pg->hpool_used) return 0;
+    s_pg->hat[s_pg->nlinks] = s_pg->hpool_used;
+    for (i = 0; i < n; i++) s_pg->hpool[s_pg->hpool_used + i] = u[i];
+    s_pg->hpool[s_pg->hpool_used + n] = 0;
+    s_pg->hpool_used += room;
     ++s_pg->nlinks;
     if (s_pg->link_field) s_pg->link_field[s_pg->nlinks] = 0;
-    if (s_pg->link_node) s_pg->link_node[s_pg->nlinks] = fl_num(s_fl);
+    if (s_pg->link_node) s_pg->link_node[s_pg->nlinks] = node;
     return (u16)s_pg->nlinks;
 }
 
-static int eq_ci(const char *a, const char *b);
+static u16 add_link(void)
+{
+    if (!s_pg || !s_href[0]) return 0;
+    decode_amp(s_href);
+    return link_new(s_href, 0, fl_num(s_fl));
+}
+
 static int stop_asked(void);
 static int lower_eq(const char *a, const char *b, int n);
 static int conn_write(const u8 *d, int n);
@@ -488,21 +513,12 @@ static void wire_line(const char *what, const char *t)
 {
     char line[PAGE_HREF_MAX + 80];
     fmt_str(line, sizeof line, "[page] %s%s\n", what, t);
+    wire_clean(line);
     A->wire(line);
 }
 
 /* A link made from an address, not from s_href (which a tag may be using). */
-static u16 add_link_to(const char *u)
-{
-    int i;
-    if (!s_pg || !u[0] || s_pg->nlinks >= PAGE_LINKS) return 0;
-    for (i = 0; u[i] && i < PAGE_HREF_MAX - 1; i++) s_pg->href[s_pg->nlinks][i] = u[i];
-    s_pg->href[s_pg->nlinks][i] = 0;
-    ++s_pg->nlinks;
-    if (s_pg->link_field) s_pg->link_field[s_pg->nlinks] = 0;
-    if (s_pg->link_node) s_pg->link_node[s_pg->nlinks] = 0;
-    return (u16)s_pg->nlinks;
-}
+static u16 add_link_to(const char *u) { return link_new(u, 0, 0); }
 
 static int is_http(const u16 *w, int n)
 {
@@ -520,7 +536,7 @@ static void bare_link(void)
     int i, k;
     if (!s_pg) { s_bare = 0; return; }
     if (s_bare) {                                  /* the rest of a long one */
-        char *h = s_pg->href[s_bare - 1];
+        char *h = page_href(s_pg, s_bare - 1);
         for (k = 0; h[k]; k++) { }
         for (i = 0; i < s_word_len && k < PAGE_HREF_MAX - 1; i++) h[k++] = s_word[i] < 0x80 ? (char)s_word[i] : '?';
         h[k] = 0;
@@ -530,7 +546,7 @@ static void bare_link(void)
         u16 id;
         for (i = 0; i < s_word_len && i < PAGE_HREF_MAX - 1; i++) u[i] = s_word[i] < 0x80 ? (char)s_word[i] : '?';
         u[i] = 0;
-        id = add_link_to(u);
+        id = link_new(u, PAGE_HREF_MAX, 0);   /* room for the rest of it, in pieces */
         if (id) {
             s_bare = id;
             for (i = 0; i < s_word_len; i++) { s_word_link[i] = id; s_word_col[i] = C_ACCENT; }
@@ -538,7 +554,7 @@ static void bare_link(void)
     }
     if (s_bare && !s_word_cont) {
         /* It has ended.  A full stop or bracket after it is the sentence's. */
-        char *h = s_pg->href[s_bare - 1];
+        char *h = page_href(s_pg, s_bare - 1);
         for (k = 0; h[k]; k++) { }
         while (k > 0 && (h[k - 1] == '.' || h[k - 1] == ',' || h[k - 1] == ')' || h[k - 1] == ';' ||
                          h[k - 1] == ':' || h[k - 1] == '!' || h[k - 1] == '?' || h[k - 1] == '"' || h[k - 1] == '\''))
@@ -733,6 +749,7 @@ static void side_fetch(const Url *u, const char *path, const char *what, void (*
     char req[URL_PATH_MAX + 400];
     int n, i, status = 0, state = 0, sp = 0;
     u32 got = 0, last = 0;
+    web_check_for(u->host);
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) return;
     note(what, C_DIM);
     fmt_str(req, sizeof req, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
@@ -894,6 +911,8 @@ static void radiobrowser(const Url *page)
     cc[2] = 0;
     if (p[9] && p[9] != '/' && p[9] != '?' && p[9] != '#') return;
     if (!url_parse(s_rb, &d)) return;
+    for (k = 0; d.host[k]; k++) { }
+    if (!has_at(d.host, k, "radio-browser")) return;   /* the directory itself, not any site the page names */
     for (k = 0; d.path[k]; k++) { }
     while (k && d.path[k - 1] == '/') d.path[--k] = 0;
     fmt_str(path, sizeof path, "%s/json/stations/bycountrycodeexact/%s?order=votes&reverse=true&hidebroken=true&limit=40",
@@ -909,14 +928,21 @@ static void radiobrowser(const Url *page)
 /* At the end of a page: what it named, as links, unless it links to them. */
 /* Lines first.. (the end) of the page moved to its top: the sound a page
  * names, where it is seen at once rather than under a long page. */
+static void cells_flip(PageCell *a, u32 n)
+{
+    u32 i;
+    for (i = 0; i < n / 2; i++) { PageCell t = a[i]; a[i] = a[n - 1 - i]; a[n - 1 - i] = t; }
+}
+
 static void move_to_top(int first)
 {
-    static PageCell tmp[48 * 160];
     int w = s_pg->width, k = s_pg->lines - first, i;
-    if (k <= 0 || first <= 0 || k > 48 || w > 160 || s_pg->full) return;
-    memcpy(tmp, &s_pg->cells[first * w], (u32)(k * w) * sizeof(PageCell));
-    memmove(&s_pg->cells[k * w], &s_pg->cells[0], (u32)(first * w) * sizeof(PageCell));
-    memcpy(s_pg->cells, tmp, (u32)(k * w) * sizeof(PageCell));
+    u32 all = (u32)(s_pg->lines * w), head = (u32)(first * w);
+    if (k <= 0 || first <= 0 || k > 48 || s_pg->full) return;
+    /* turned round in place, as three reversals: no copy of the page needed */
+    cells_flip(s_pg->cells, head);
+    cells_flip(s_pg->cells + head, all - head);
+    cells_flip(s_pg->cells, all);
     for (i = 0; i < s_pg->nfields; i++) if (s_pg->fields[i].width) s_pg->fields[i].line = (u16)(s_pg->fields[i].line + k);
 }
 
@@ -931,11 +957,11 @@ static void sniff_list(void)
     int i, j, shown = 0, first = 0, many = 0;
     if (s_sn_on) sniff_end();
     for (i = 0; i < s_nsniffed; i++) {          /* how many will be listed */
-        for (j = 0; j < s_pg->nlinks && !eq_ci(s_pg->href[j], s_sniffed[i]); j++) { }
+        for (j = 0; j < s_pg->nlinks && !eq_ci(page_href(s_pg, j), s_sniffed[i]); j++) { }
         if (j == s_pg->nlinks) many++;
     }
     for (i = 0; i < s_nsniffed; i++) {
-        for (j = 0; j < s_pg->nlinks && !eq_ci(s_pg->href[j], s_sniffed[i]); j++) { }
+        for (j = 0; j < s_pg->nlinks && !eq_ci(page_href(s_pg, j), s_sniffed[i]); j++) { }
         if (j < s_pg->nlinks) continue;
         if (!shown++) {
             newline(2);
@@ -1052,7 +1078,7 @@ static u16 field_link(int fi)
 {
     Page *p = s_pg;
     if (p->nlinks >= PAGE_LINKS) return 0;
-    p->href[p->nlinks][0] = 0;
+    p->hat[p->nlinks] = 0;               /* no address: a field */
     p->nlinks++;
     p->link_field[p->nlinks] = (u16)(fi + 1);
     if (p->link_node) p->link_node[p->nlinks] = p->fields[fi].node;
@@ -1687,6 +1713,7 @@ static u32 entity_code(const char *n)
                     (hex && c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
             if (d < 0) return 0;
             v = v * (hex ? 16 : 10) + (u32)d;
+            if (v >= 0x110000) return 0;        /* too big to be a letter: no wrapping round to one */
             any = 1;
         }
         return any && v < 0x110000 ? v : 0;
@@ -1740,7 +1767,7 @@ static void attr_begin_value(void)
         static const struct { const char *n; char *buf; int max; } more[] = {
             { "action", s_action, PAGE_HREF_MAX }, { "method", s_method, 8 },
             { "type", s_type, 12 }, { "name", s_fname, 64 },
-            { "http-equiv", s_equiv, 16 }, { "content", s_content, 256 }, { "src", s_src, PAGE_HREF_MAX },
+            { "http-equiv", s_equiv, 16 }, { "content", s_content, (int)sizeof s_content }, { "src", s_src, PAGE_HREF_MAX },
             { "value", s_val, VAL_MAX }, { "size", s_size, 6 }, { "cols", s_size, 6 },
             { "fl", s_fl, 8 }, { "c", s_flc, 6 }, { "a", s_fla, 6 }, { "al", s_flal, 4 },
             { "in", s_flin, 4 }, { "n", s_fln, 8 }, { "tx", s_fltx, 6 }, { "tw", s_fltw, 6 },
@@ -2040,7 +2067,7 @@ static u32 number_at(const char *v)
  * whole, but the end is still found: before, a page with 9 KB of headers
  * (Wikipedia's) filled the buffer, its end was never seen, and the page
  * never came. */
-#define HEAD_LINE 2048
+#define HEAD_LINE 5120                   /* a Set-Cookie of 4096 bytes and its attributes */
 int head_byte(Head *h, char *buf, int cap, u8 b)
 {
     h->last = (h->last << 8) | b;
@@ -2061,7 +2088,7 @@ static void conn_close(void) { A->conn_close(); }
 static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, int postlen)
 {
     static u8 buf[4096];
-    static char head[8192];
+    static char head[16384];
     Head hd = { 0, 0, 0, 0 };
     char req[URL_PATH_MAX + 400];            /* the address, and room for the rest: on the stack, not in the 8 MB */
     char line[96];
@@ -2081,6 +2108,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     s_nm_on = 0; s_nm[0] = 0; s_nm_age = 0xFFFFFFFFu;
     if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->wanted_cert = 0; s_pg->who[0] = 0; }
     if (!s_pg) main_pump(1);
+    web_check_for(u->host);
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) {
         ConnInfo ci;
         A->conn_info(&ci);
@@ -2128,7 +2156,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     {
         /* Cookies the site gave us before (cookie.c), then the blank line
          * that ends the headers. */
-        static char ck[4096];
+        static char ck[JAR_HEADER];
         int cn = cookie_header(u, ck, (int)sizeof ck);
         if (cn) conn_write((const u8 *)ck, cn);
         conn_write((const u8 *)"\r\n", 2);
@@ -2328,8 +2356,15 @@ static int get(const char *url, Page *pg, const u8 *post, int postlen)
         if (s_status != 307 && s_status != 308) { post = 0; postlen = 0; }
         {   /* "/x", "x", "//host/x" or a whole address: from where it was said */
             char here[URL_MAX], full[URL_MAX];
+            int was_secure = u.secure;
             url_text(&u, here, (int)sizeof here);
             if (!url_resolve(here, moved, full, (int)sizeof full) || !url_parse(full, &u)) break;
+            if (post && was_secure && !u.secure) {    /* a form sent encrypted is never sent on in the clear */
+                note("It wants the form sent on unencrypted, so it was not.", C_ACCENT);
+                if (!pg) term_plain(0);
+                s_pg = keep;
+                return 0;
+            }
         }
         if (pg) page_clear(pg);
     }

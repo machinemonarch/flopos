@@ -32,7 +32,7 @@ static u32  s_nattr;
 static u32 pool_put(const char *s, u32 n)
 {
     u32 at = g_pool_used, i;
-    if (g_pool_used + n + 1 > DOM_POOL) { g_dom_full = 1; return 0; }
+    if (n >= DOM_POOL - g_pool_used) { g_dom_full = 1; return 0; }   /* never wraps round, whatever n is */
     for (i = 0; i < n; i++) g_pool[at + i] = s[i];
     g_pool[at + n] = 0;
     g_pool_used += n + 1;
@@ -118,7 +118,7 @@ u32 dom_text_node(const char *t, u32 len)
 static int is_ancestor(u32 a, u32 n)
 {
     int guard = 0;
-    for (; n && guard++ < 4096; n = g_node[n].parent) if (n == a) return 1;
+    for (; n && guard++ < DOM_NODES; n = g_node[n].parent) if (n == a) return 1;   /* the whole chain: a deeper one let loops in */
     return 0;
 }
 
