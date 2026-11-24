@@ -5,9 +5,10 @@
 # hands out root to get at a device that holds 1.4 megabytes.  This hands
 # out the device instead, which is the thing actually wanted.
 #
-# The match is deliberately narrow: a removable USB block device whose
-# whole capacity is 2880 sectors.  Nothing but a 1.44MB floppy is 2880
-# sectors, so this cannot widen to anything that matters.
+# The match is deliberately narrow: a removable USB drive that speaks
+# UFI (interface subclass 04), the command set USB floppy drives use and
+# nothing else does.  Not by the disk's size: a drive plugged in empty has
+# none, and the rule never matched it again when a disk went in.
 #
 # TAG+="uaccess" gives it to whoever is logged in at the machine, which
 # systemd-logind maintains, rather than to a group that persists whether
@@ -19,5 +20,5 @@
 # then unplug the drive and plug it back in.
 
 SUBSYSTEM=="block", KERNEL=="sd[a-z]", SUBSYSTEMS=="usb", \
-  ATTR{removable}=="1", ATTR{size}=="2880", \
+  ATTR{removable}=="1", ATTRS{bInterfaceClass}=="08", ATTRS{bInterfaceSubClass}=="04", \
   TAG+="uaccess", MODE="0660", GROUP="disk"
