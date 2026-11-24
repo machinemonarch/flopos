@@ -25,9 +25,9 @@ what was found. Sizes are rough.
 
 1. ~~**The network's front door** (about 6,000 lines): network card drivers, IP, TCP, DNS, NTP and NTS. Everything a stranger's packet touches first.~~ Done in 1.48.0.
 2. ~~**TLS and certificates** (about 5,000): `tls.c`, `x509.c`, the key exchanges and signatures. Checked against test vectors and the TLS bench.~~ Done, in the next release.
-3. **browzer's reading of pages** (about 8,500): HTTP, HTML, CSS, cookies, addresses, playlists, HLS.
+3. **browzer's reading of pages** (about 8,500): HTTP, HTML, CSS, cookies, addresses, playlists (HLS's included).
 4. **The JavaScript room** (about 10,500): the engine, the page objects, the wall around them.
-5. **Sound decoders** (about 7,500): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers, and the small bit-reading and sound libraries under them. Already fuzzed; this round reads them.
+5. **Sound decoders** (about 7,500): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers, HLS's sound pieces (transport stream and MP4 unpacking, in browzer), and the small bit-reading and sound libraries under them. Already fuzzed; this round reads them.
 6. **The wall between apps and the system** (about 2,500): `wall.c`, `apps.c`, every call an app can make, and the apps' side of it (`src/apps/sdk`).
 7. **Disk and files** (about 2,500): FAT12 writing, STATE.BIN, the inventory.
 8. **maelcum and the tape** (about 2,500): reading tapes, sealing, packing.
