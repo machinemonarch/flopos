@@ -23,3 +23,6 @@ It refuses if Unreleased is empty. Otherwise it bumps the version
 `releases/flopos-X.Y.Z.img`, and moves the Unreleased notes under the new
 version with today's date, also writing them to
 `releases/flopos-X.Y.Z.txt`.
+
+Then commit it as `Release X.Y.Z`, tag it `vX.Y.Z`, bring main up to dev
+(`git merge --ff-only dev` on main), and push dev, main and the tag.
