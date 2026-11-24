@@ -95,10 +95,12 @@ static void out_char_at(int ch, u8 col, u16 link, u8 at)
 static void out_char(int ch, u8 col, u16 link) { out_char_at(ch, col, link, 0); }
 
 static int s_select, s_opt;              /* a list being read (below)       */
+static void table_drop(Page *pg);
 
 void page_clear(Page *pg)
 {
     Page *keep = s_pg;
+    table_drop(pg);                      /* a table the last page left open */
     s_pg = pg;
     pg->lines = 1;
     pg->col = 0;
@@ -474,6 +476,7 @@ static u16 add_link(void)
 }
 
 static int eq_ci(const char *a, const char *b);
+static int stop_asked(void);
 static int lower_eq(const char *a, const char *b, int n);
 static int conn_write(const u8 *d, int n);
 static int conn_read(u8 *b, int n, int w);
@@ -753,6 +756,7 @@ static void side_fetch(const Url *u, const char *path, const char *what, void (*
             got++;
         }
         if (state && status != 200) break;
+        if (stop_asked()) break;
         main_pump(0);
     }
     conn_close();
@@ -1095,9 +1099,10 @@ void page_field_show(Page *pg, int fi)
     PageCell *c;
     const u8 *v = (const u8 *)pg->pool + f->val;
     u32 k = 0;
-    int n = 0, skip, i;
+    int n = 0, skip, i, fw = f->width;
 
-    if (!f->width) return;
+    if (!fw || f->col >= pg->width) return;
+    if (f->col + fw > pg->width) fw = pg->width - f->col;   /* never past its row */
     c = &pg->cells[f->line * pg->width + f->col];
     if (f->kind == FK_CHECK || f->kind == FK_RADIO) {       /* [x]  (*)      */
         c[0].ch = f->on ? (f->kind == FK_RADIO ? '*' : 'x') : ' ';
@@ -1107,8 +1112,8 @@ void page_field_show(Page *pg, int fi)
     if (f->kind == FK_SELECT) {                              /* [words v]     */
         const PageOption *o = &pg->opts[f->opt0 + f->sel];
         v = (const u8 *)pg->pool + o->lab;
-        for (i = 0; i < f->width; i++) { c[i].ch = ' '; c[i].col = C_BRIGHT; }
-        for (k = 0, i = 0; k < o->llen && i < f->width - 2; i++) {
+        for (i = 0; i < fw; i++) { c[i].ch = ' '; c[i].col = C_BRIGHT; }
+        for (k = 0, i = 0; k < o->llen && i < fw - 2; i++) {
             u32 cp = v[k++];
             if (cp >= 0xC0) {
                 int more = cp >= 0xF0 ? 3 : cp >= 0xE0 ? 2 : 1;
@@ -1117,13 +1122,13 @@ void page_field_show(Page *pg, int fi)
             }
             c[i].ch = glyph_for(cp);
         }
-        c[f->width - 1].ch = 'v';
-        c[f->width - 1].col = C_GREY;
+        c[fw - 1].ch = 'v';
+        c[fw - 1].col = C_GREY;
         return;
     }
     for (k = 0; k < f->vlen; k++) if ((v[k] & 0xC0) != 0x80) n++;     /* characters */
-    skip = n > f->width - 1 ? n - (f->width - 1) : 0;                 /* room for the caret */
-    for (i = 0; i < f->width; i++) { c[i].ch = '_'; c[i].col = C_DIM; }
+    skip = n > fw - 1 ? n - (fw - 1) : 0;                 /* room for the caret */
+    for (i = 0; i < fw; i++) { c[i].ch = '_'; c[i].col = C_DIM; }
     for (k = 0, i = 0; k < f->vlen; ) {
         u32 cp = v[k++];
         if (cp >= 0xC0) {
@@ -1132,7 +1137,7 @@ void page_field_show(Page *pg, int fi)
             while (more-- && k < f->vlen) cp = (cp << 6) | (v[k++] & 0x3F);
         }
         if (skip) { skip--; continue; }
-        if (i >= f->width) break;
+        if (i >= fw) break;
         c[i].ch = f->kind == FK_PASSWORD ? '*' : cp == '\n' ? ' ' : glyph_for(cp);
         c[i].col = C_BRIGHT;
         i++;
@@ -1248,6 +1253,7 @@ static void select_end(void)
     }
     if (w > 30) w = 30;
     if (w > out_width() - 6) w = out_width() - 6;
+    if (w < 1) w = 1;                    /* a narrow table cell: the box still fits in a row */
     f->val = p->opts[f->opt0 + f->sel].val;
     f->vlen = p->opts[f->opt0 + f->sel].vlen;
     id = field_link(fi);
@@ -1317,6 +1323,20 @@ static int s_tab_ok, s_tab_keep, s_tab_used, s_in_cell, s_ntcell;
 static PageCell *s_tab_base;
 static struct { PageCell *at; int w, x, h, f0, f1; } s_tcell[TAB_CELLS];
 static struct { PageCell *cells; int width, lines, col, full, max_lines, scol, indent, newlines, space; } s_tmain;
+
+/* A page that ended (or was stopped) inside a table: the page's own
+ * lines and width back, before anything else is drawn.  Left as it was,
+ * the next page was drawn into a cell's scratch rows, as wide as the
+ * page, and ran off their end. */
+static void table_drop(Page *pg)
+{
+    if (s_in_cell) {
+        pg->cells = s_tmain.cells; pg->width = s_tmain.width; pg->lines = s_tmain.lines;
+        pg->col = s_tmain.col; pg->full = s_tmain.full; pg->max_lines = s_tmain.max_lines;
+    }
+    if (s_tab_ok) pg->max_lines = s_tab_keep;
+    s_in_cell = s_tab_ok = s_ntcell = s_tab_used = 0;
+}
 
 static int cell_line_empty(const PageCell *row, int w)
 {
@@ -1877,7 +1897,8 @@ static void html_byte(u8 b)
 static void filter_reset(int html)
 {
     s_sdepth = s_bdepth = s_indent = 0;
-    s_tab_ok = s_in_cell = s_ntcell = s_tab_used = 0;
+    if (s_pg) table_drop(s_pg);
+    s_ntcell = s_tab_used = 0;
     s_scol = s_sat = 0;
     s_html = html;
     s_hstate = H_TEXT;
@@ -2305,16 +2326,10 @@ static int get(const char *url, Page *pg, const u8 *post, int postlen)
         /* After a form, "see over there" means go and look, not send it
          * again -- except 307 and 308, which mean send it there too. */
         if (s_status != 307 && s_status != 308) { post = 0; postlen = 0; }
-        if (moved[0] == '/' && moved[1] != '/') {        /* same server    */
-            int i;
-            for (i = 0; moved[i] && i < URL_PATH_MAX - 1; i++) u.path[i] = moved[i];
-            u.path[i] = 0;
-        } else if (moved[0] == '/' && moved[1] == '/') {  /* same scheme    */
-            char full[URL_MAX];
-            fmt_str(full, sizeof full, "%s:%s", u.secure ? "https" : "http", moved);
-            if (!url_parse(full, &u)) break;
-        } else if (!url_parse(moved, &u)) {
-            break;
+        {   /* "/x", "x", "//host/x" or a whole address: from where it was said */
+            char here[URL_MAX], full[URL_MAX];
+            url_text(&u, here, (int)sizeof here);
+            if (!url_resolve(here, moved, full, (int)sizeof full) || !url_parse(full, &u)) break;
         }
         if (pg) page_clear(pg);
     }

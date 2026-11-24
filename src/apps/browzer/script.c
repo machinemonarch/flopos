@@ -270,12 +270,12 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
                                 while (c < end && *c != '\r') s_rhead[s_rhead_n++] = *c++;
                                 s_rhead[s_rhead_n++] = '\n';
                             }
-                            if (((ln[0] | 32) == 'l') && ((ln[1] | 32) == 'o') && ((ln[8] | 32) == ':' || ln[8] == ':')) {
+                            if (!lower_cmp_n(ln, "location:", 9)) {          /* never past a short line's end */
                                 char *v = ln + 9; int k = 0;
                                 while (*v == ' ') v++;
                                 while (v < end && *v != '\r' && k < PAGE_HREF_MAX - 1) loc[k++] = *v++;
                                 loc[k] = 0;
-                            } else if (((ln[0] | 32) == 's') && ((ln[4] | 32) == '-') && ((ln[5] | 32) == 'c') && ln[10] == ':') {
+                            } else if (!lower_cmp_n(ln, "set-cookie:", 11)) {
                                 char save = *end;
                                 *end = 0;
                                 if (!s_cross && !s_anon) cookie_set(&u, ln + 11);   /* another site's: not kept */
@@ -290,7 +290,7 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
                                     while (v < end && *v != '\r' && k < 95) dst[k++] = *v++;
                                     dst[k] = 0;
                                 }
-                            } else if (ctype && ((ln[0] | 32) == 'c') && ((ln[8] | 32) == 't') && ln[12] == ':') {
+                            } else if (ctype && !lower_cmp_n(ln, "content-type:", 13)) {
                                 char *v = ln + 13; int k = 0;
                                 while (*v == ' ') v++;
                                 while (v < end && *v != '\r' && *v != ';' && k < ccap - 1) ctype[k++] = *v++;

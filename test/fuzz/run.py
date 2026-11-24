@@ -112,6 +112,21 @@ text</textarea><button type="submit" name="go" value="1">Go</button><input type=
 <p>שלום 世界 😀 end</p></body></html>"""
     resp("page.bin", page)
     resp("small.bin", "<title>t</title><p>Just <a href='/a'>one</a> link.</p>")
+    # Audit part 3: lists in cells narrower than they are, a form whose
+    # values grow sixfold when sent, links with spaces and line ends in
+    # them, a relative redirect, a plain page setting a Secure cookie, and
+    # selectors that would try every way there is.
+    cells = "".join("<td><select name=s%d><option>a long choice %d</option><option>b</option></select></td>" % (i, i) for i in range(12))
+    resp("narrow.bin", "<title>n</title><table><tr>" + cells + "</tr></table><fl-tab><fl-tr><fl-td tx=0 tw=2><select name=f>"
+         "<option>forged</option></select><input name=q><input type=checkbox name=c></fl-td></fl-tr></fl-tab>")
+    resp("bigform.bin", "<title>f</title><form method=post action=/x>" + "".join('<input type=hidden name=h%d value="%s">' % (i, "&#10;" * 9000)
+         for i in range(8)) + "<input type=submit value=Go></form>")
+    resp("oddlinks.bin", '<title>o</title><a href="/a b\r\nX-Evil: 1">one</a> <a href="http://h\r\nost/x">two</a> '
+         '<a href="http://h:99999999999/">three</a> <a href="/\u00e5\u00e4\u00f6?q=\u00e5 \u00e4">four</a> <a href="//' + "x" * 80 + '/">five</a>'
+         '<meta http-equiv="refresh" content="0; url=/a b\n?c=d">')
+    resp("relmove.bin", "moved", status="302 Found", extra="Location: next/page?x=1\r\nSet-Cookie: s=1; Secure\r\n")
+    resp("hardcss.bin", "<title>c</title><style>x ~ a ~ a ~ a ~ a ~ a ~ a ~ a { color: red } x a a a a a a b { color: red } "
+         "/* open comment {</style>" + "<a>a</a>" * 300 + "<div>" * 120 + "<b>deep</b>" + "</div>" * 120)
     # HLS: every request answered alike, so a playlist's segments are the
     # playlist again, or the transport packets below
     resp("hls-master.bin", "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\nlo.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=999999999999\nhi.m3u8\n",

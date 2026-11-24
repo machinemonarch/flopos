@@ -233,7 +233,7 @@ int dom_has_class(u32 n, const char *cls, u32 len)
 static u32 text_into(u32 n, char *out, u32 cap, u32 at, int depth)
 {
     u32 c;
-    if (depth > 200) return at;
+    if (depth > 200 || at + 1 >= cap) return at;     /* full: the rest is not looked at */
     if (g_node[n].type == N_TEXT) {
         u32 k;
         for (k = 0; k < g_node[n].len && at + 1 < cap; k++) out[at++] = g_pool[g_node[n].name + k];
@@ -351,8 +351,10 @@ static void aval_utf8(u32 cp)
     char b[4]; int n = 0, i;
     if (cp < 0x80) b[n++] = (char)cp;
     else if (cp < 0x800) { b[n++] = (char)(0xC0 | (cp >> 6)); b[n++] = (char)(0x80 | (cp & 0x3F)); }
-    else { b[n++] = (char)(0xE0 | (cp >> 12)); b[n++] = (char)(0x80 | ((cp >> 6) & 0x3F)); b[n++] = (char)(0x80 | (cp & 0x3F)); }
-    for (i = 0; i < n; i++) if (s_avlen < sizeof s_aval - 1) s_aval[s_avlen++] = b[i];
+    else if (cp < 0x10000) { b[n++] = (char)(0xE0 | (cp >> 12)); b[n++] = (char)(0x80 | ((cp >> 6) & 0x3F)); b[n++] = (char)(0x80 | (cp & 0x3F)); }
+    else { b[n++] = (char)(0xF0 | (cp >> 18)); b[n++] = (char)(0x80 | ((cp >> 12) & 0x3F)); b[n++] = (char)(0x80 | ((cp >> 6) & 0x3F)); b[n++] = (char)(0x80 | (cp & 0x3F)); }
+    if (s_avlen + (u32)n > sizeof s_aval - 1) return;   /* a letter whole, or not at all */
+    for (i = 0; i < n; i++) s_aval[s_avlen++] = b[i];
 }
 
 static void close_to(const char *tag)
@@ -954,9 +956,19 @@ static int part_match(const Part *p, u32 n)
     return 1;
 }
 
+/* Tries left for the selector being matched, and for the whole page's
+ * styles (or one querySelector).  "a ~ a ~ a ~ a ~ b" over a thousand
+ * brothers, or eight ancestors deep in a deep page, would otherwise try
+ * every way there is, and a page could stop browzer so with one line of
+ * its style sheet, or a few thousand.  Out of tries: no match.  A real
+ * selector takes a few tries for each ancestor. */
+static u32 s_tries, s_tries_all = SEL_TRIES_ALL;
+
 static int match_from(const Part *s, int count, int k, u32 n)
 {
     const Part *p = &s[k];
+    if (!s_tries || !s_tries_all) return 0;
+    s_tries--; s_tries_all--;
     if (!part_match(p, n)) return 0;
     if (k + 1 >= count) return 1;
     switch (p->comb) {
@@ -967,7 +979,9 @@ static int match_from(const Part *s, int count, int k, u32 n)
     }
 }
 
-int sel_match(const Part *s, int count, u32 n) { return count > 0 && match_from(s, count, 0, n); }
+void sel_budget(void) { s_tries_all = SEL_TRIES_ALL; }
+
+int sel_match(const Part *s, int count, u32 n) { s_tries = 4000; return count > 0 && match_from(s, count, 0, n); }
 
 /* querySelector(All): in document order below `from`, comma lists too. */
 int dom_query(u32 from, const char *sel, u32 len, u16 *out, int max)
@@ -975,6 +989,7 @@ int dom_query(u32 from, const char *sel, u32 len, u16 *out, int max)
     static Part list[8][SEL_PARTS];
     int nn[8], nsel = 0, found = 0;
     u32 i = 0, keep = g_selpool_used;
+    sel_budget();
     while (i < len && nsel < 8) {
         u32 st = i;
         int depth = 0;

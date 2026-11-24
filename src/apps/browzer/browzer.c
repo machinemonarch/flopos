@@ -1445,7 +1445,7 @@ static int marks_write(void)
     if (!A->file_find("BOOKMARK.TXT", &f) || f.size > sizeof s_mfile) return 0;
     for (i = 0; i < s_nmarks; i++) {
         Mark *m = &s_mark[i];
-        if (n + PAGE_HREF_MAX + 70 > (int)f.size - 1) break;
+        if (n + PAGE_HREF_MAX + 70 > (int)f.size - 1) return 0;   /* not all of them fit */
         if (m->home) { s_mfile[n++] = '*'; s_mfile[n++] = ' '; }
         for (k = 0; m->url[k]; k++) s_mfile[n++] = (u8)m->url[k];
         s_mfile[n++] = ' ';
@@ -1534,6 +1534,18 @@ static int html_text(char *out, int n, int cap, const char *t)
         else out[n++] = *t;
     }
     return n;
+}
+
+/* The same, for a page made with fmt_str: what a station, a file or a
+ * server said about itself is shown as words, never read as tags.  Four
+ * at a time, each until the fifth after it. */
+static const char *esc(const char *t)
+{
+    static char b[4][400];
+    static int at;
+    char *o = b[at++ & 3];
+    o[html_text(o, 0, (int)sizeof b[0], t)] = 0;
+    return o;
 }
 
 static int put(char *out, int n, int cap, const char *t)
@@ -1634,8 +1646,12 @@ static void mark_this(void)
     m->title[i] = 0;
     m->home = 0;
     s_nmarks++;
-    say(marks_write() ? "Added to your bookmarks, which the home page lists. \1m\1 lists them too, to change them."
-                      : "Could not write BOOKMARK.TXT to the floppy.", C_ACCENT);
+    if (!marks_write()) {                        /* not kept on the floppy: not kept */
+        s_nmarks--;
+        say("Could not write BOOKMARK.TXT to the floppy, or it is full. d on one in m makes room.", C_ACCENT);
+        return;
+    }
+    say("Added to your bookmarks, which the home page lists. \1m\1 lists them too, to change them.", C_ACCENT);
 }
 
 /* p or d on the bookmarks page, for the bookmark picked. */
@@ -1689,7 +1705,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
     if (s_dl_state) {
         /* Not a page: what came instead. */
         static char html[900];
-        char name[64];
+        char name[64], hname[400];
         const char *what = 0, *u;
         int i, k = 0, st = s_dl_state;
         s_dl_state = DL_NONE;
@@ -1697,6 +1713,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
         while (u[k] && u[k] != '?' && u[k] != '#' && k < 63) { name[k] = u[k]; k++; }
         name[k] = 0;
         if (!name[0]) fmt_str(name, sizeof name, "%s", s_station[0] ? s_station : "this");
+        hname[html_text(hname, 0, (int)sizeof hname, name)] = 0;   /* the server's words: shown, never read as tags */
 
         /* A station that hung up is called again, five times at most in a
          * row; a minute of listening starts the count again. */
@@ -1729,7 +1746,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
             what = "<p>A playlist, but with no address in it that browzer can follow.</p>";
         }
         if (what) {
-            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1>%s", name, name, what);
+            fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1>%s", hname, hname, what);
         } else if (st == DL_CAME && tracker_load(s_dl, s_dl_len, DL_MAX, 22050)) {
             /* Loaded once only: loading changes the file where it lies. */
             if (music_start(1, 0)) {
@@ -1739,11 +1756,11 @@ static void go_with(const char *url, const u8 *post, int postlen)
                 music_feed();
                 fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>A %u-channel %s song, playing.</p>"
                         "<p>It goes on playing while you browse. <kbd>s</kbd> stops it.</p>",
-                        tracker_title()[0] ? tracker_title() : name, tracker_title()[0] ? tracker_title() : name,
+                        tracker_title()[0] ? esc(tracker_title()) : hname, tracker_title()[0] ? esc(tracker_title()) : hname,
                         (u32)tracker_channels(), tracker_kind());
             } else
                 fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A song -- but this machine has "
-                        "no sound card that plays recordings.</p>", name);
+                        "no sound card that plays recordings.</p>", hname);
         } else if (st == DL_CAME) {
             s_in.buf = s_dl; s_in.len = s_dl_len; s_in.pos = 0; s_in.done = 1;
             s_buffering = 0;
@@ -1753,32 +1770,32 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     music_feed();
                     fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s%s, playing.</p>"
                             "<p>It goes on playing while you browse. <kbd>s</kbd> stops it.</p>",
-                            name, name, s_dec.kind, kbps_text());
+                            hname, hname, s_dec.kind, kbps_text());
                 } else
                     fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>A recording -- but this "
-                            "machine has no sound card that plays recordings.</p>", name);
+                            "machine has no sound card that plays recordings.</p>", hname);
             } else
                 fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>That is %s, %u bytes, "
-                        "and browzer cannot show it or play it.</p>", s_dl_type, s_dl_len);
+                        "and browzer cannot show it or play it.</p>", esc(s_dl_type), s_dl_len);
         } else if (st == DL_STREAM_END) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>%s</p>%s%s%s",
-                    s_station[0] ? s_station : name, s_station[0] ? s_station : name,
+                    s_station[0] ? esc(s_station) : hname, s_station[0] ? esc(s_station) : hname,
                     s_esc ? "Stopped." : s_live ? "The station stopped answering, five times running." :
                     s_music ? "That was all of it; the last of it is still playing." : "The stream ended.",
-                    s_now[0] ? "<p>Last playing: " : "", s_now[0] ? s_now : "", s_now[0] ? "</p>" : "");
+                    s_now[0] ? "<p>Last playing: " : "", s_now[0] ? esc(s_now) : "", s_now[0] ? "</p>" : "");
         } else if (st == DL_UNPLAYABLE && s_hls_why) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is a radio stream in pieces (HLS). %s</p>",
-                    name, name, s_hls_why);
+                    hname, hname, s_hls_why);
             s_hls_why = 0;
         } else if (st == DL_UNPLAYABLE) {
             fmt_str(html, sizeof html, "<title>%s</title><h1>%s</h1><p>That is %s, which browzer cannot play "
-                    "(mp3, mp2, AAC, .m4a, Ogg, Opus, FLAC, wav, .mod, .xm, .s3m and .it it can).</p>", name, name, s_dl_type);
+                    "(mp3, mp2, AAC, .m4a, Ogg, Opus, FLAC, wav, .mod, .xm, .s3m and .it it can).</p>", hname, hname, esc(s_dl_type));
         } else if (st == DL_NOCARD) {
             fmt_str(html, sizeof html, "<title>no sound</title><h1>%s</h1><p>This machine has no sound card "
-                    "that plays recordings.</p>", name);
+                    "that plays recordings.</p>", hname);
         } else if (st == DL_BIG) {
             fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>That is %s, too big to keep "
-                    "here: 2 MB at most.</p>", s_dl_type);
+                    "here: 2 MB at most.</p>", esc(s_dl_type));
         } else {
             fmt_str(html, sizeof html, "<title>a file</title><h1>Not a page</h1><p>It stopped coming before "
                     "it was all here.</p>");
@@ -1815,12 +1832,12 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     "<p>%s</p><p>That can mean somebody is pretending to be it, or that the "
                     "site is set up wrong, or that this laptop's clock is.</p>"
                     "<p><kbd>a</kbd> goes there anyway, unchecked -- type nothing private. "
-                    "backspace goes back.</p>", why);
+                    "backspace goes back.</p>", esc(why));
         else
             fmt_str(html, sizeof html,
                     "<title>could not open it</title><h2>That page did not come.</h2>"
                     "<p>%s</p><p>r tries again, backspace goes back, g goes somewhere else.</p>",
-                    why[0] ? why : "Nothing answered.");
+                    why[0] ? esc(why) : "Nothing answered.");
         if (s_pg.wanted_cert) A->wire("[page] not on the list: it wanted a certificate of ours\n");
         {
             int untrusted = s_pg.untrusted;
@@ -1888,7 +1905,7 @@ static int urlenc(u8 *out, int n, int cap, const char *p, u32 len)
 {
     static const char hexd[] = "0123456789ABCDEF";
     u32 i;
-    for (i = 0; i < len && n < cap - 3; i++) {
+    for (i = 0; i < len && n < cap - 7; i++) {          /* room for the longest, and what follows */
         u8 c = (u8)p[i];
         if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
             c == '-' || c == '_' || c == '.' || c == '*') out[n++] = c;
@@ -1930,12 +1947,13 @@ static void submit(PageField *by)
         if (f->kind == FK_SUBMIT && f != by) continue;
         if ((f->kind == FK_CHECK || f->kind == FK_RADIO) && !f->on) continue;
         if (f->kind == FK_SELECT && !f->nopt) continue;
+        if (n >= cap - 8) break;                       /* too big: said below */
         if (n) s_body[n++] = '&';
         n = urlenc(s_body, n, cap, s_pg.pool + f->name, f->nlen);
         s_body[n++] = '=';
         n = urlenc(s_body, n, cap, s_pg.pool + f->val, f->vlen);
     }
-    if (n >= cap - 4) {
+    if (n >= cap - 8) {
         fmt_str(s_pg.note, sizeof s_pg.note, "That form is too big to send.");
         s_pg.note_col = C_ACCENT;
         return;
