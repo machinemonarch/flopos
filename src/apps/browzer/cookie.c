@@ -25,7 +25,7 @@ typedef struct {
     char host[64];
     char path[64];
     char name[64];
-    char value[1024];
+    char value[4096];                    /* as long as the standard lets one be */
     u8   subdomains, secure;
 } Cookie;
 
@@ -51,6 +51,25 @@ static int starts_ci(const char *s, int n, const char *w)
     int i;
     for (i = 0; w[i]; i++) if (i >= n || lc(s[i]) != w[i]) return 0;
     return 1;
+}
+
+/* A name under which many unrelated sites live: co.uk, com.au, org.br,
+ * ac.jp -- a common word for a kind of site, then a country.  A cookie
+ * for one of them would go to all those sites.  (Browsers keep a list of
+ * thousands; these words cover the most of it in a few bytes.) */
+static int shared_ending(const char *d)
+{
+    static const char *const kinds[] = { "co", "com", "net", "org", "gov", "edu", "ac", "or", "ne", "go",
+                                         "gob", "mil", "nom", "ltd", "plc", "sch", 0 };
+    int n = 0, dot = -1, k;
+    while (d[n]) { if (d[n] == '.') { if (dot >= 0) return 0; dot = n; } n++; }   /* two labels only */
+    if (dot < 0 || n - dot - 1 != 2) return 0;                                   /* the last a country's */
+    for (k = 0; kinds[k]; k++) {
+        int j;
+        for (j = 0; kinds[k][j] && lc(d[j]) == kinds[k][j]; j++) { }
+        if (!kinds[k][j] && j == dot) return 1;
+    }
+    return 0;
 }
 
 /* host is the cookie's host, or one of its subdomains when allowed. */
@@ -139,7 +158,7 @@ void cookie_set(const Url *u, const char *line)
             k = d[0] == '.' ? 1 : 0;
             while (d[k + dl]) { if (d[k + dl] == '.') dot = 1; dl++; }
             while (u->host[hl]) hl++;
-            if (!dot || dl > hl) return;
+            if (!dot || dl > hl || shared_ending(d + k)) return;
             if (!same_ci(d + k, u->host + hl - dl) || (hl > dl && u->host[hl - dl - 1] != '.')) return;
             for (i = 0; i <= dl; i++) c.host[i] = d[k + i];
             c.subdomains = 1;

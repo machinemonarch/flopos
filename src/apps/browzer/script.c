@@ -216,7 +216,8 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
             char *out, int cap, int *status, char *ctype, int ccap)
 {
     u8 *buf = s_wbuf;
-    char req[PAGE_HREF_MAX + 600], ck[512];
+    char req[PAGE_HREF_MAX + 600];
+    static char ck[JAR_HEADER];          /* the site's cookies, all of them, as its pages get them */
     Url u;
     int n, i, state = 0, got = 0, hops;
     char loc[PAGE_HREF_MAX], where[PAGE_HREF_MAX + 16];
@@ -225,26 +226,30 @@ int web_get(const char *url, const char *method, const u8 *body, int blen, const
     for (i = 0; url[i] && i < PAGE_HREF_MAX + 15; i++) where[i] = url[i];
     where[i] = 0;
     for (hops = 0; hops < 3; hops++) {
-        char head[2048];
+        static char head[8192];          /* room for a long Set-Cookie (web.c's HEAD_LINE) */
         Head hd = { 0, 0, 0, 0 };
         if (!url_parse(where, &u)) return -1;
         s_acao[0] = s_acam[0] = 0;
         if (!s_resume) {
             u32 total = s_up_total > (u32)blen ? s_up_total : (u32)blen;
             web_end();                               /* a stream left open: ended */
+            web_check_for(u.host);
             if (!A->conn_open(u.host, u.port, u.secure, 0)) return -1;
             ck[0] = 0;
             if (s_cross) fmt_str(ck, sizeof ck, "Origin: %s\r\n%s", s_origin, s_extra);
             else if (!s_anon) cookie_header(&u, ck, sizeof ck);
             if (body && blen >= 0 && method && method[0] == 'P')
                 fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
-                        "Content-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
-                        method, u.path, u.host, A->os_version(), btype && btype[0] ? btype : "text/plain", total, ck);
+                        "Content-Type: %s\r\nContent-Length: %u\r\nConnection: close\r\n",
+                        method, u.path, u.host, A->os_version(), btype && btype[0] ? btype : "text/plain", total);
             else
                 fmt_str(req, sizeof req, "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: " BROWZER_UA "\r\n"
-                        "Accept: */*\r\n%sConnection: close\r\n\r\n", method && method[0] ? method : "GET", u.path, u.host, A->os_version(), ck);
+                        "Accept: */*\r\nConnection: close\r\n", method && method[0] ? method : "GET", u.path, u.host, A->os_version());
             for (n = 0; req[n]; n++) { }
             A->conn_write((const u8 *)req, n);
+            for (n = 0; ck[n]; n++) { }          /* the cookies (or where it comes from), however long, */
+            if (n) A->conn_write((const u8 *)ck, n);
+            A->conn_write((const u8 *)"\r\n", 2);   /* then the blank line that ends the head */
             if (body && blen > 0 && method && method[0] == 'P') A->conn_write(body, blen);
             if (total > (u32)blen && method && method[0] == 'P') { s_up_open = 1; return -2; }   /* the rest in pieces */
         }
@@ -1141,7 +1146,7 @@ int script_click(Page *pg, int link)
     n = pg->link_node[link];
     if (!n || n >= g_nodes) return 0;
     fields_to_tree();
-    if (event_at(n, "click", 0) || (pg->href[link - 1][0] == 'f' && pg->href[link - 1][1] == 'l')) {
+    if (event_at(n, "click", 0) || (page_href(pg, link - 1)[0] == 'f' && page_href(pg, link - 1)[1] == 'l')) {
         drain_imports();                         /* import() and Workers the click asked for */
         run_scripts();
         if (g_dom_dirty) redraw();

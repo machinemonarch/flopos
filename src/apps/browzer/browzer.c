@@ -39,7 +39,8 @@ const Api *A;
 /* Everything a page needs, kept here in the app's own memory. */
 static Page      s_pg;
 static PageCell  s_cells[MAX_CELLS];
-static char      s_hrefs[PAGE_LINKS][PAGE_HREF_MAX];
+static char      s_hpool[PAGE_HREF_POOL];
+static u32       s_hat[PAGE_LINKS];
 static PageForm  s_forms[PAGE_FORMS];
 static PageField s_fields[PAGE_FIELDS];
 static char      s_pool[PAGE_POOL];
@@ -1335,8 +1336,8 @@ static void draw(void)
                                                     "a box: \1enter\1 to type into it", C_ACCENT, pp, s_w - 12);
     } else if (s_sel && !s_loading) {
         char where[PAGE_HREF_MAX + 16];
-        if (!url_resolve(s_pg.url, s_pg.href[s_sel - 1], where, sizeof where))
-            fmt_str(where, sizeof where, "(not a page: %s)", s_pg.href[s_sel - 1]);
+        if (!url_resolve(s_pg.url, page_href(&s_pg, s_sel - 1), where, sizeof where))
+            fmt_str(where, sizeof where, "(not a page: %s)", page_href(&s_pg, s_sel - 1));
         term_win_text(2, s_h - 2, "->", C_ACCENT, pp);
         put_text_clipped(5, s_h - 2, where, C_TEXT, pp, s_w - 12);
     } else if (s_pg.note[0]) {
@@ -1445,7 +1446,10 @@ static int marks_write(void)
     if (!A->file_find("BOOKMARK.TXT", &f) || f.size > sizeof s_mfile) return 0;
     for (i = 0; i < s_nmarks; i++) {
         Mark *m = &s_mark[i];
-        if (n + PAGE_HREF_MAX + 70 > (int)f.size - 1) return 0;   /* not all of them fit */
+        int ul = 0, tl = 0;
+        while (m->url[ul]) ul++;
+        while (m->title[tl]) tl++;
+        if (n + 2 + ul + 1 + tl + 2 > (int)f.size - 1) return 0;   /* not all of them fit */
         if (m->home) { s_mfile[n++] = '*'; s_mfile[n++] = ' '; }
         for (k = 0; m->url[k]; k++) s_mfile[n++] = (u8)m->url[k];
         s_mfile[n++] = ' ';
@@ -1569,10 +1573,15 @@ static int mark_link(char *page, int n, int cap, int i)
     return put(page, n, cap, "</a>");
 }
 
+/* The home page and the bookmarks page, made here in turn.  What they
+ * show comes from BOOKMARK.TXT, 8 KB at most: each address twice, each
+ * byte five at most once made safe, and the words around them. */
+static char s_mypage[sizeof s_home_top + sizeof s_home_help + 2 * 5 * 8192 + MARKS * 60 + 600];
+
 static void home(void)
 {
-    static char page[sizeof s_home_top + sizeof s_home_help + MARKS * (PAGE_HREF_MAX * 5 + 140) + 200];
-    int n = 0, i, pass, cap = (int)sizeof page;
+    char *page = s_mypage;
+    int n = 0, i, pass, cap = (int)sizeof s_mypage;
 
     marks_read();
     n = put(page, n, cap, s_home_top);
@@ -1604,8 +1613,8 @@ static void home(void)
 /* The list of them, as a page: pick one with tab, then p or d. */
 static void marks_page(void)
 {
-    static char page[MARKS * (PAGE_HREF_MAX * 2 + 140) + 600];
-    int n = 0, i, cap = (int)sizeof page;
+    char *page = s_mypage;
+    int n = 0, i, cap = (int)sizeof s_mypage;
 
     marks_read();
     n = put(page, n, cap, "<title>bookmarks</title><h1>Bookmarks</h1>");
@@ -1660,7 +1669,7 @@ static void mark_change(int key)
     char url[PAGE_HREF_MAX + 16];
     int i, top = s_top;
     if (!s_sel || field_of(s_sel)) { say("Pick one with tab first.", C_ACCENT); return; }
-    for (i = 0; s_pg.href[s_sel - 1][i] && i < (int)sizeof url - 1; i++) url[i] = s_pg.href[s_sel - 1][i];
+    for (i = 0; page_href(&s_pg, s_sel - 1)[i] && i < (int)sizeof url - 1; i++) url[i] = page_href(&s_pg, s_sel - 1)[i];
     url[i] = 0;
     i = mark_find(url);
     if (i < 0) return;
@@ -2168,7 +2177,7 @@ static void follow(void)
     PageField *f;
     if (!s_sel) return;
     if (script_click(&s_pg, s_sel)) return;            /* a script took it      */
-    if (s_pg.href[s_sel - 1][0] == 'f' && s_pg.href[s_sel - 1][1] == 'l') return;   /* flopos:node: only for scripts */
+    if (page_href(&s_pg, s_sel - 1)[0] == 'f' && page_href(&s_pg, s_sel - 1)[1] == 'l') return;   /* flopos:node: only for scripts */
     if ((f = field_of(s_sel)) != 0) {
         if (f->kind == FK_SUBMIT) submit(f);
         else if (f->kind == FK_CHECK) { f->on = !f->on; page_field_show(&s_pg, (int)(f - s_pg.fields)); script_changed(&s_pg, (int)(f - s_pg.fields)); }
@@ -2177,7 +2186,7 @@ static void follow(void)
         else s_typing = (int)(f - s_pg.fields);
         return;
     }
-    if (!url_resolve(s_pg.url, s_pg.href[s_sel - 1], url, sizeof url)) return;
+    if (!url_resolve(s_pg.url, page_href(&s_pg, s_sel - 1), url, sizeof url)) return;
     push_history();
     go(url);
 }
@@ -2250,7 +2259,8 @@ void browzer_run(const char *start)
 
     if (!s_ready) {
         s_pg.cells = s_cells;
-        s_pg.href = s_hrefs;
+        s_pg.hpool = s_hpool;
+        s_pg.hat = s_hat;
         s_pg.forms = s_forms;
         s_pg.fields = s_fields;
         s_pg.pool = s_pool;
@@ -2456,8 +2466,10 @@ void browzer_run(const char *start)
                 char u[PAGE_HREF_MAX + 16]; int i;
                 for (i = 0; s_pg.url[i]; i++) u[i] = s_pg.url[i];
                 u[i] = 0;
-                A->conn_check(0);
-                go(u);
+                Url h;
+                if (url_parse(u, &h)) fmt_str(web_unchecked, sizeof web_unchecked, "%s", h.host);
+                go(u);                   /* that site unchecked; anything else it leads to, checked */
+                web_unchecked[0] = 0;
                 A->conn_check(1);
             }
             break;

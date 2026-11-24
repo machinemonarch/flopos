@@ -36,6 +36,18 @@ None in this release.
   When BOOKMARK.TXT was full, the new one was kept only until browzer
   closed, while the message said it was saved. It now says the file is
   full.
+- **Links up to 1024 characters long work.** browzer cut every link at
+  199 characters without saying so, so long ones led to the wrong page,
+  and a search form sent past about 200 was refused. Links now share one
+  store, each taking only its own length, so the longer limit costs
+  0.2 MB rather than 2 MB.
+- **Long cookies come back whole.** A cookie over about 2000 bytes was
+  thrown away unread, one over 1023 was cut, and a page's style sheets
+  and scripts got only the first 500 or so bytes of the site's cookies,
+  so a site with a long login cookie forgot you.
+  Cookies now keep up to 4096 bytes, as the standard allows, and every
+  request sends them all. A refresh to an address longer than about 250
+  characters was cut short too; it now holds 1024.
 - **Esc stops browzer asking a radio directory for its stations.** A slow
   directory could keep browzer waiting with no way out.
 
@@ -90,12 +102,33 @@ None in this release.
   page.** A station's name, its song titles, a file's type or a
   certificate's complaint were put into browzer's own pages as written,
   so they could add links, forms or a redirect there.
+- **"Go there anyway" goes only there.** After a, the one site that
+  couldn't prove itself was let through, but so was everything else that
+  load reached: a redirect to another site, another site's style sheet.
+  Those now have to prove themselves as always.
+- **A form sent encrypted is never sent on in the clear.** A server
+  answering "send it again over there" (307 or 308) to a plain http
+  address got the form unencrypted. browzer now stops and says so.
+- **A cookie can no longer be set for a whole country's sites.** A page
+  could name co.uk, com.au or the like as its domain, and the cookie
+  went to every site under it. These shared endings are refused now.
+- **A page can no longer write lines of its own into the serial log.**
+  A line end in a station's address went down the serial wire as it
+  was, so a page could fake what browzer reports there, which the test
+  bench reads.
+- **A script can no longer tie the page's tree in a loop.** In a page
+  nested deeper than 4096, moving an element into one of its own
+  descendants wasn't caught, and browzer then went round forever.
+- **The radio directory browzer asks is the directory.** A page could
+  name any site with "radio-browser" anywhere in its address; the
+  directory's own name must now have it.
 - **A plain http page can no longer set or replace a Secure cookie.**
   Secure cookies are for https sites only, as the cookie standard says.
 - **Smaller fixes.** A style sheet with a comment left open read one byte
   past its end; a header line shorter than nine letters was read a few
   bytes past its end; a letter outside the first 65536 in an attribute
-  (&#x1F600;) came out as three wrong bytes.
+  (&#x1F600;) came out as three wrong bytes; a huge numeric entity could
+  wrap round to a real letter.
 
 ## 1.48.0 — 2026-11-24
 

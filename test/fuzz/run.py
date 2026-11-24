@@ -88,7 +88,7 @@ def seeds_browzer(d):
         open(os.path.join(d, name), "wb").write(head.encode() + body)
     page = """<!DOCTYPE html><html lang="sv"><head><meta charset="utf-8"><title>A page &amp; its title</title>
 <meta http-equiv="refresh" content="30; url=/again"><style>p { color: red }</style>
-<link rel="preconnect" href="http://fuzz.test/radio-browser" /><script>var x = "<p>not a tag</p>";</script></head>
+<link rel="preconnect" href="http://radio-browser.fuzz.test" /><script>var x = "<p>not a tag</p>";</script></head>
 <body><h1>Heading one</h1><h2>Räksmörgås &aring;&auml;&ouml; &#229; &#xE5; &quot;quoted&quot; &lt;tag&gt; &nbsp; &copy; &unknown; &#99999999;</h2>
 <p>A paragraph with a <a href="/next?a=1&amp;b=2">link</a>, <b>bold</b>, <i>italic</i>, <u>underlined</u>,
 <kbd>Ctrl</kbd>+<kbd>S</kbd> and <code>http://fuzz.test/listen/radio.mp3</code> and a word that is far too long to fit:
@@ -125,6 +125,11 @@ text</textarea><button type="submit" name="go" value="1">Go</button><input type=
          '<a href="http://h:99999999999/">three</a> <a href="/\u00e5\u00e4\u00f6?q=\u00e5 \u00e4">four</a> <a href="//' + "x" * 80 + '/">five</a>'
          '<meta http-equiv="refresh" content="0; url=/a b\n?c=d">')
     resp("relmove.bin", "moved", status="302 Found", extra="Location: next/page?x=1\r\nSet-Cookie: s=1; Secure\r\n")
+    resp("longlinks.bin", "<title>l</title>" + "".join('<a href="/%s">%d</a> ' % ("y" * (37 * i % 1100), i) for i in range(700)) +
+         "<p>http://fuzz.test/" + "z" * 1500 + " end</p>")
+    resp("cookies.bin", "<title>c</title>", extra="Set-Cookie: a=1; Domain=co.uk\r\nSet-Cookie: b=2; Domain=.Com.AU\r\n"
+         "Set-Cookie: c=3; Domain=dn.se\r\nSet-Cookie: d=4; Secure\r\n")
+    resp("post307.bin", "again", status="307 Temporary Redirect", extra="Location: http://fuzz.test/plain\r\n")
     resp("hardcss.bin", "<title>c</title><style>x ~ a ~ a ~ a ~ a ~ a ~ a ~ a { color: red } x a a a a a a b { color: red } "
          "/* open comment {</style>" + "<a>a</a>" * 300 + "<div>" * 120 + "<b>deep</b>" + "</div>" * 120)
     # HLS: every request answered alike, so a playlist's segments are the
