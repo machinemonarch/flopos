@@ -1,0 +1,3 @@
+== src/kernel/fs.c
+== src/kernel/store.c
+== src/kernel/disk.c

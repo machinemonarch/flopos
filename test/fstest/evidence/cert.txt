@@ -1,0 +1,15 @@
+Part 7, SEI CERT C rules read line by line in disk.c, fs.c, store.c, inventory.c.
+
+- INT30-C (unsigned wrap): fs_mount total - data_lba wrapped on a bad floppy -> fixed (refused). walk run*per bounded (run < 64, spc <= 64). inv_room fat_free*spc*512 < 4 GB. None else.
+- INT31-C (conversions): fs_read returns int of a u32 size; sizes are under 1.44 MB. None.
+- INT32-C (signed overflow): none (all counts unsigned or small).
+- ARR30-C (out of bounds): s_fat/s_fat_dirty past their end with a bad floppy's cluster count -> fixed (clusters clamped to the table). walk merged one cluster past the last -> fixed (cl_ok(c+1)). journal end mark at s_journal[cap] -> fixed. inventory s_dir + cut + 1 with cut = -1 -> fixed (cppcheck).
+- STR31-C (string room): all copies bounded (copy(), each_back, clockset). None.
+- EXP33-C (uninitialised): FsFile f in inv_write set before use; Slot b filled by dir_room. gcc -fanalyzer: none.
+- MEM30-35: halloc results unchecked in fs_mount and store_init -> fixed (checked). No frees in this part.
+- ERR33-C (unchecked errors): fat_flush result ignored after a failed dir_room (deliberate: only lost clusters at worst). store_save result shown by "remember"; at goodbye ignored (nothing to do). None else.
+
+Tool warnings answered (after the fixes):
+- gcc -fanalyzer: none.
+- cppcheck store.c:196 "FLOPOS_VERSION accessed at index 14": false; the loop stops at the version's ending zero. The rest are style (variable scope, const).
+- scan-build fs.c walk "done += rest never read": true and harmless; kept so the count stays right if the loop changes.

@@ -24,7 +24,7 @@ how many KB of how many. The system's own files count too.
 
 ## Names
 
-Up to eight letters or digits, a dot, and up to three more: `LETTER.MD`.
+Up to eight letters, digits or the signs FAT12 allows (`! # $ % & ' ( ) - @ ^ _ { } ~`), a dot, and up to three more: `LETTER.MD`. Not Windows's device names (`CON`, `NUL`, `COM1`...), which it could not open.
 Folders have no dot and nest seven deep. That is FAT12's own format, so
 any computer reads the floppy. A long name copied in from elsewhere shows
 by its short form (`MYLONG~1.MD`).

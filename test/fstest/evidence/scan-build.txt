@@ -1,0 +1,13 @@
+== src/kernel/fs.c
+src/kernel/fs.c:270:17: warning: Value stored to 'done' is never read [deadcode.DeadStores]
+  270 |                 done += rest;
+      |                 ^       ~~~~
+1 warning generated.
+scan-build: Analysis run complete.
+scan-build: 1 bug found.
+== src/kernel/store.c
+scan-build: Analysis run complete.
+scan-build: No bugs found.
+== src/kernel/disk.c
+scan-build: Analysis run complete.
+scan-build: No bugs found.

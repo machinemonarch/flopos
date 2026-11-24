@@ -5,12 +5,10 @@
  * and in one piece: JOURNAL.TXT, which is plain text anybody can read on
  * any machine, and STATE.BIN, which holds the settings and the count of boots.
  *
- * Because both files never change length, FLOPOS can overwrite their data
- * sectors in place and never touch the FAT or the directory.  That is the
- * whole reason there is no filesystem driver here: the build already did
- * the filesystem's job, and left behind the two numbers -- a starting
- * sector and a length -- that the kernel needs.  tools/build/mkimage.py patches
- * those into the signature block below.
+ * Because both files never change length, FLOPOS overwrites their data
+ * sectors in place and never touches the FAT or the directory.  Where they
+ * are is looked up by name at boot (fs_one_piece), not taken from the
+ * build: deleted and copied back on another computer, they move.
  *
  * Nothing is written unless something asks.  A command that saves says so.
  * ===========================================================================
@@ -18,15 +16,6 @@
 #include "flopos.h"
 #include "io.h"
 #include "gen/version.h"
-
-/* mkimage.py finds this by its signature and fills in the numbers.  The
- * volatile stops the compiler deciding the zeroes are the final word. */
-/* In the kernel's front part, which the floppy keeps unpacked
- * (linker.ld), so mkimage.py can still find and patch it. */
-volatile DiskMap g_diskmap __attribute__((section(".lowdata"))) = {
-    { 'F','L','O','P','O','S','-','D','I','S','K','M','A','P','!',0 },
-    0, 0, 0, 0
-};
 
 #define SECTOR 512
 
@@ -40,6 +29,7 @@ static int     s_taught_n;
 static int     s_taught_dirty;
 
 static int s_ready;
+static u32 s_jlba, s_jsec, s_slba, s_ssec;  /* where the two files really are */
 
 int store_ready(void) { return s_ready; }
 u32 store_journal_used(void) { return s_journal_len; }
@@ -62,7 +52,7 @@ static void journal_find_end(void)
 {
     u32 i;
     s_journal_len = 0;
-    for (i = 0; i < s_journal_cap; i++) {
+    for (i = 0; i + 1 < s_journal_cap; i++) {         /* room kept for the end mark */
         if (s_journal[i] == EOF_MARK || s_journal[i] == 0) break;
     }
     s_journal_len = i;
@@ -284,6 +274,24 @@ int store_net_set(u32 how, u32 ip, u32 mask, u32 gw, u32 dns)
     return store_save();
 }
 
+/* A file's sectors into memory.  A sector a power cut left unreadable
+ * comes back as zeros and the file is marked for writing, so the next
+ * save mends it; otherwise it would stay unreadable, and nothing would
+ * ever be saved again.  Only the first sector must read: it says what the
+ * file is. */
+static int read_mend(u32 lba, u32 n, u8 *dst, int *dirty)
+{
+    u32 i;
+    if (disk_read_run(lba, n, dst)) return 1;
+    for (i = 0; i < n; i++) {
+        if (disk_read_run(lba + i, 1, dst + i * SECTOR)) continue;
+        if (i == 0) return 0;
+        memset8(dst + i * SECTOR, 0, SECTOR);
+        *dirty = 1;
+    }
+    return 1;
+}
+
 /* Both files, from the floppy into memory, and checked.  0 leaves the
  * store read-only. */
 static int read_in(void)
@@ -292,10 +300,8 @@ static int read_in(void)
     StateHdr *h = (StateHdr *)statebuf;
     int i;
 
-    if (!disk_read_run(g_diskmap.journal_lba, g_diskmap.journal_sectors, s_journal))
-        return 0;
-    if (!disk_read_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
-        return 0;
+    if (!read_mend(s_jlba, s_jsec, s_journal, &s_journal_dirty)) return 0;
+    if (!read_mend(s_slba, s_ssec, statebuf, &s_taught_dirty)) return 0;
 
     /* Before trusting any of this enough to write to it, check that the
      * sectors the build pointed us at really are the journal.  If the disk
@@ -334,16 +340,22 @@ void store_init(void)
     u8 *statebuf;
 
     s_ready = 0;
-    if (g_diskmap.journal_sectors == 0 || g_diskmap.state_sectors == 0) return;
+    /* Where the files are now, not where the build put them: deleted
+     * and copied back on another computer, they move, and the old place
+     * may by now hold a file of the inventory.  Changed in size or no
+     * longer in one piece, they are left alone: read-only. */
+    if (!fs_one_piece("JOURNAL.TXT", &s_jlba, &s_jsec) || !fs_one_piece("STATE.BIN", &s_slba, &s_ssec)) return;
+    if (s_ssec * SECTOR < sizeof(StateHdr) + TAUGHT_MAX * sizeof(Taught) || s_ssec * SECTOR < 448) return;
 
-    s_journal_cap = g_diskmap.journal_sectors * SECTOR;
+    s_journal_cap = s_jsec * SECTOR;
     s_journal = (u8 *)halloc(s_journal_cap);
-    statebuf  = (u8 *)halloc(g_diskmap.state_sectors * SECTOR);
+    statebuf  = (u8 *)halloc(s_ssec * SECTOR);
+    if (!s_journal || !statebuf) { s_journal = 0; return; }
     s_taught  = (Taught *)(statebuf + sizeof(StateHdr));
-    s_set     = (Settings *)(statebuf + g_diskmap.state_sectors * SECTOR - 64);
-    s_clk     = (SavedClock *)(statebuf + g_diskmap.state_sectors * SECTOR - 128);
-    s_keys    = (SavedKeys *)(statebuf + g_diskmap.state_sectors * SECTOR - 192);
-    s_clkset  = (ClockSet *)(statebuf + g_diskmap.state_sectors * SECTOR - 448);
+    s_set     = (Settings *)(statebuf + s_ssec * SECTOR - 64);
+    s_clk     = (SavedClock *)(statebuf + s_ssec * SECTOR - 128);
+    s_keys    = (SavedKeys *)(statebuf + s_ssec * SECTOR - 192);
+    s_clkset  = (ClockSet *)(statebuf + s_ssec * SECTOR - 448);
 
     if (!read_in()) return;
     s_boots++;
@@ -356,8 +368,12 @@ void store_init(void)
  * writing, since memory and the floppy now agree. */
 void store_reload(void)
 {
+    u32 jl, js, sl, ss;
     if (!s_journal) return;
     s_ready = 0;
+    if (!fs_one_piece("JOURNAL.TXT", &jl, &js) || !fs_one_piece("STATE.BIN", &sl, &ss) ||
+        js != s_jsec || ss != s_ssec) return;
+    s_jlba = jl; s_slba = sl;
     if (!read_in()) return;
     s_journal_dirty = 0;
     s_taught_dirty = 0;
@@ -378,8 +394,7 @@ int store_save(void)
         u32 i;
         s_journal[s_journal_len] = EOF_MARK;
         for (i = s_journal_len + 1; i < s_journal_cap; i++) s_journal[i] = 0;
-        if (!disk_write_run(g_diskmap.journal_lba, g_diskmap.journal_sectors,
-                       s_journal))
+        if (!disk_write_run(s_jlba, s_jsec, s_journal))
             ok = 0;
         else
             s_journal_dirty = 0;
@@ -393,7 +408,7 @@ int store_save(void)
         h->count    = (u32)s_taught_n;
         h->boots    = s_boots;
         h->checksum = taught_checksum();
-        if (!disk_write_run(g_diskmap.state_lba, g_diskmap.state_sectors, statebuf))
+        if (!disk_write_run(s_slba, s_ssec, statebuf))
             ok = 0;
         else
             s_taught_dirty = 0;

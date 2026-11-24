@@ -59,6 +59,7 @@ static u8  s_fat_dirty[FAT_SECS];        /* changed in memory, not yet on the di
 static u8  s_fat_mend[FAT_SECS];         /* unreadable in the first copy; taken from the spare */
 static int s_checked;                    /* the two copies have been made to agree */
 static u32 s_inv;                        /* the inventory folder's first cluster, 0: none */
+static u32 s_have_spf, s_have_root;      /* what the buffers were made for  */
 static const char *s_why = "";
 
 static u16 get16(const u8 *p) { return (u16)(p[0] | (p[1] << 8)); }
@@ -79,25 +80,35 @@ int fs_mount(void)
     s_root_n = get16(s_boot + 17);
     total = get16(s_boot + 19);
     spf = get16(s_boot + 22);
-    if (!s_spc || !fats || !spf || !s_root_n || !total) return 0;
+    /* A floppy changed on another computer can say anything here: only
+     * what a FAT12 floppy can be, and never more than the buffers were
+     * first made for (the floppy may be swapped while FLOPOS runs). */
+    if (!s_spc || s_spc > 64 || !reserved || !fats || fats > 2 || !spf || spf > FAT_SECS ||
+        !s_root_n || s_root_n > 512 || !total) return 0;
 
     s_fat_lba = reserved;
     s_root_lba = reserved + fats * spf;
     s_data_lba = s_root_lba + (s_root_n * 32 + 511) / 512;
+    if (total <= s_data_lba) return 0;
     s_clusters = (total - s_data_lba) / s_spc;
+    if (s_clusters > spf * 512 * 2 / 3 - 2) s_clusters = spf * 512 * 2 / 3 - 2;   /* what the table can hold */
+    if (s_clusters > 4084) s_clusters = 4084;                                   /* FAT12's most        */
 
     s_fats = fats; s_spf = spf;
     if (!s_fat) {
         s_fat = (u8 *)halloc(spf * 512);
         s_spare = (u8 *)halloc(spf * 512);
         s_root = (u8 *)halloc(((s_root_n * 32 + 511) / 512) * 512);
+        if (!s_fat || !s_spare || !s_root) { s_fat = 0; return 0; }
+        s_have_spf = spf; s_have_root = s_root_n;
     }
+    if (spf > s_have_spf || s_root_n > s_have_root) return 0;
     for (i = 0; i < FAT_SECS; i++) s_fat_dirty[i] = 0;
     if (!disk_read_run(s_fat_lba, spf, s_fat)) {
         /* A sector of the table will not read: a write to it was cut
          * short.  The spare copy is written first, so it has that sector
          * whole. */
-        if (fats < 2 || spf > FAT_SECS) return 0;
+        if (fats < 2) return 0;
         for (i = 0; i < spf; i++) {
             if (disk_read_run(s_fat_lba + i, 1, s_fat + i * 512)) continue;
             if (!disk_read_run(s_fat_lba + spf + i, 1, s_fat + i * 512)) return 0;
@@ -119,10 +130,13 @@ int fs_mount(void)
         for (k = 0; k < 6 && e[k] == (u8)inv[k]; k++) { }
         if (k == 6) { s_inv = get16(e + 26); break; }
     }
-    if (s_inv < 2 || s_inv >= s_clusters + 2 || spf > FAT_SECS) s_inv = 0;
+    if (s_inv < 2 || s_inv >= s_clusters + 2) s_inv = 0;
     s_mounted = 1;
     return 1;
 }
+
+static int  cl_ok(u32 c) { return c >= 2 && c < s_clusters + 2; }
+static u32  cl_lba(u32 c) { return s_data_lba + (c - 2) * s_spc; }
 
 static u32 next_cluster(u32 c)
 {
@@ -163,6 +177,21 @@ int fs_find(const char *name, FsFile *f)
         return 1;
     }
     return 0;
+}
+
+/* Where a top-folder file lies, if it is in one piece and a whole number
+ * of sectors long: what store.c writes in place.  0 otherwise. */
+int fs_one_piece(const char *name, u32 *lba, u32 *sectors)
+{
+    FsFile f;
+    u32 c, n, i;
+    if (!fs_find(name, &f) || !f.size || f.size % 512 || !cl_ok(f.first)) return 0;
+    n = (f.size + s_spc * 512 - 1) / (s_spc * 512);
+    for (c = f.first, i = 1; i < n; i++, c++)
+        if (next_cluster(c) != c + 1 || !cl_ok(c + 1)) return 0;
+    *lba = cl_lba(f.first);
+    *sectors = f.size / 512;
+    return 1;
 }
 
 /* Visit every file, for listings. */
@@ -211,7 +240,7 @@ static int walk(const FsFile *f, u8 *buf, u32 bytes, int write)
     while (done < bytes) {
         u32 start = c, run = 1, lba, sectors, take;
         if (c < 2 || c >= s_clusters + 2) return 0;
-        while (done + run * per < bytes && next_cluster(c) == c + 1 && run < 64) {
+        while (done + run * per < bytes && next_cluster(c) == c + 1 && cl_ok(c + 1) && run < 64) {
             c++;
             run++;
         }
@@ -287,6 +316,7 @@ static int s_io;                         /* the floppy failed to read       */
 static int bail(const char *why)
 {
     s_mounted = 0;
+    s_checked = 0;                       /* a write may have reached one copy of the table only */
     s_sec_lba = ~0u;
     return no(why);
 }
@@ -303,8 +333,6 @@ static int sec_load(u32 lba)
 static int sec_save(void) { return disk_write_run(s_sec_lba, 1, s_sec); }
 
 /* ---- the allocation table -------------------------------------------------- */
-static int  cl_ok(u32 c) { return c >= 2 && c < s_clusters + 2; }
-static u32  cl_lba(u32 c) { return s_data_lba + (c - 2) * s_spc; }
 
 static void fat_set(u32 c, u32 v)
 {
@@ -370,13 +398,45 @@ static u32 chain_alloc(u32 n)
     return first;
 }
 
+static int sec_same(u32 i)
+{
+    u32 k;
+    for (k = 0; k < 512 && s_spare[i * 512 + k] == s_fat[i * 512 + k]; k++) { }
+    return k == 512;
+}
+
+/* An entry of the table can lie across two sectors, and a cut between
+ * them leaves it half old, half new: a number that points anywhere.  The
+ * copies are written spare first, each from its first changed sector up,
+ * so a cut while the one in use was being written shows as its sector k
+ * already like the spare's and k+1 not yet: then the spare's entry is the
+ * whole one.  Any other difference, the one in use is whole. */
+static int mend_tears(void)
+{
+    u32 k, c;
+    for (k = 0; k + 1 < s_spf; k++) {
+        u32 b = (k + 1) * 512 - 1;               /* the last byte of sector k */
+        for (c = b * 2 / 3 - 1; c <= b * 2 / 3 + 1 && c + c / 2 != b; c++) { }
+        if (c + c / 2 != b || !sec_same(k) || sec_same(k + 1)) continue;
+        {
+            u32 v = get16(s_spare + b);
+            fat_set(c, (c & 1) ? v >> 4 : v & 0xFFF);
+        }
+        if (!disk_write_run(s_fat_lba + k + 1, 1, s_fat + (k + 1) * 512)) return 0;
+    }
+    for (k = 0; k < FAT_SECS; k++) s_fat_dirty[k] = 0;
+    return 1;
+}
+
 /* Before the first change of a session: is there an inventory, and do the
  * two copies of the table agree?  If a write was once cut short between
- * them, the one in use wins: it matches the folders, which are written
- * after it. */
+ * them, the one in use wins (after mend_tears): it matches the folders,
+ * which are written after it.  The spare is put right from its last
+ * sector down, so that a cut here never looks like a cut in the one in
+ * use. */
 static int ready(void)
 {
-    u32 i, k;
+    u32 i;
     s_io = 0;
     s_sec_lba = ~0u;
     if (!fs_mount()) return no("The floppy will not read.");
@@ -384,9 +444,9 @@ static int ready(void)
     if (s_checked) return 1;
     if (s_fats > 1) {
         int have = disk_read_run(s_fat_lba + s_spf, s_spf, s_spare);
-        for (i = 0; i < s_spf; i++) {
-            for (k = 0; have && k < 512 && s_spare[i * 512 + k] == s_fat[i * 512 + k]; k++) { }
-            if (have && k == 512) continue;
+        if (have && !mend_tears()) return no("The floppy would not take it.");
+        for (i = s_spf; i-- > 0; ) {
+            if (have && sec_same(i)) continue;
             if (!disk_write_run(s_fat_lba + s_spf + i, 1, s_fat + i * 512)) return no("The floppy would not take it.");
         }
     }
@@ -473,6 +533,10 @@ static int dir_room(u32 dirc, Slot *out)
         s_sec_lba = cl_lba(c) + k;
         if (!sec_save()) return bail("The floppy would not take it.");
     }
+    /* The new cluster taken first, then linked on, each its own write: in
+     * one, a cut could link the folder to a cluster still marked free,
+     * which the next file would be given. */
+    if (!fat_flush()) return bail("The floppy would not take it.");
     fat_set(last, c);
     if (!fat_flush()) return bail("The floppy would not take it.");
     out->lba = cl_lba(c); out->idx = 0;
@@ -517,17 +581,29 @@ static void stamp(u8 *e, int made)
 
 /* ---- names and paths ---------------------------------------------------------- */
 /* One name of a path, as the eleven letters FAT12 keeps: up to eight, a
- * dot, up to three.  Letters, digits and a few signs; no spaces, and
- * nothing that begins with a dot, so no path can climb out. */
+ * dot, up to three.  Letters, digits and the signs FAT12 allows in a
+ * short name, so a file another computer put here can be reached; no
+ * spaces, and nothing that begins with a dot, so no path can climb out.
+ * Not the names Windows keeps for its devices (CON, NUL, COM1...): it
+ * could not open such a file. */
+static int sfn_char(char c)
+{
+    static const char signs[] = "!#$%&'()-@^_`{}~";
+    int k;
+    if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) return 1;
+    for (k = 0; signs[k]; k++) if (c == signs[k]) return 1;
+    return 0;
+}
+
 static int name83(const char *s, int len, char out[11])
 {
-    int i = 0, n;
+    static const char dev[][5] = { "CON ", "PRN ", "AUX ", "NUL ", "COM", "LPT" };
+    int i = 0, n, k;
     for (n = 0; n < 11; n++) out[n] = ' ';
     for (n = 0; i < len && s[i] != '.'; i++, n++) {
         char c = s[i];
         if (c >= 'a' && c <= 'z') c = (char)(c - 32);
-        if (n >= 8) return 0;
-        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '~' || c == '!')) return 0;
+        if (n >= 8 || !sfn_char(c)) return 0;
         out[n] = c;
     }
     if (!n) return 0;
@@ -537,10 +613,13 @@ static int name83(const char *s, int len, char out[11])
         for (n = 8; i < len; i++, n++) {
             char c = s[i];
             if (c >= 'a' && c <= 'z') c = (char)(c - 32);
-            if (n >= 11) return 0;
-            if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '~' || c == '!')) return 0;
+            if (n >= 11 || !sfn_char(c)) return 0;
             out[n] = c;
         }
+    }
+    for (k = 0; k < 6; k++) {
+        if (out[0] != dev[k][0] || out[1] != dev[k][1] || out[2] != dev[k][2]) continue;
+        if (k < 4 ? out[3] == ' ' : (out[3] >= '1' && out[3] <= '9' && out[4] == ' ')) return 0;
     }
     return 1;
 }
@@ -595,6 +674,7 @@ static void item_of(const u8 *e, FsItem *it)
 /* How many levels of folders there are inside this one: 0 if it holds
  * only files.  Paths go eight names deep and no further, so that nothing
  * can be put where it could not be reached again. */
+static u32 s_budget;                     /* entries levels_below may still look at */
 static u32 levels_below(u32 c, u32 level)
 {
     DirIt it;
@@ -604,6 +684,7 @@ static u32 levels_below(u32 c, u32 level)
     dir_begin(&it, c);
     while ((e = dir_next(&it))) {
         u32 sub, n;
+        if (!s_budget--) return 99;              /* folders that lead back into each other */
         if (e[0] == 0x00) break;
         if (e[0] == 0xE5 || e[0] == '.' || (e[11] & 0x18) != 0x10) continue;
         sub = get16(e + 26);
@@ -834,6 +915,7 @@ int inv_move(const char *from, const char *to)
     if ((a.e[11] & 0x10) && lb[8] != ' ') return no("A folder's name has no dot in it.");
     if (a.e[11] & 0x10) {
         u32 depth = s_depth;
+        s_budget = s_clusters * s_spc * 16;      /* every entry the floppy could hold, once */
         if (depth + levels_below(get16(a.e + 26), 0) > 7) return no("That would put things too many folders deep.");
         if (s_io) return bail("The floppy will not read.");
     }

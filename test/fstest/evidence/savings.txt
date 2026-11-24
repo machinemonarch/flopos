@@ -1,0 +1,18 @@
+Part 7, savings (size of build/obj/*.o; floppy from mdir).
+
+Code, before -> after this part's fixes:
+- fs.o text 10,556 -> about 11,800 (the mend, the checks, the wider names).
+- store.o text 2,602 -> about 2,950; the disk map (32 bytes kernel, its patching in mkimage.py) removed.
+- disk.o 645, unchanged.
+- INVENTORY.APP 4,748 bytes on the floppy.
+
+RAM while FLOPOS runs (heap, made once):
+- FAT 4.5 KB + its spare copy 4.5 KB + root folder 7 KB (fs.c).
+- JOURNAL.TXT 8 KB + STATE.BIN 8 KB (store.c).
+- The spare copy is needed only for the first change of a session: could share another buffer, saving 4.5 KB. Not done: small against 32 MB.
+
+Floppy:
+- STATE.BIN is 8 KB; it uses about 5 KB for the taught words (gone since 1.32.0) and 448 bytes at its end for settings. Making it 1 KB saves 7 KB of floppy and 7 KB of RAM, but a floppy carried over by writefloppy would lose its settings once: trade-off T3, for Max.
+- JOURNAL.TXT 8 KB: what he chose; unchanged.
+
+Dead code: none left in this part (cppcheck and scan-build: one dead store, fs.c walk "done += rest", harmless, kept for clarity).

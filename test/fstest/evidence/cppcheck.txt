@@ -1,0 +1,57 @@
+src/kernel/fs.c:253:23: style: The scope of the variable 'tail' can be reduced. [variableScope]
+            static u8 tail[512];
+                      ^
+src/kernel/fs.c:775:12: style: The scope of the variable 'k' can be reduced. [variableScope]
+    int r, k;
+           ^
+src/kernel/fs.c:873:9: style: The scope of the variable 'e' can be reduced. [variableScope]
+    u8 *e;
+        ^
+src/kernel/fs.c:902:17: style: The scope of the variable 'c' can be reduced. [variableScope]
+    u32 pa, pb, c, guard = 0;
+                ^
+src/kernel/fs.c:902:20: style: The scope of the variable 'guard' can be reduced. [variableScope]
+    u32 pa, pb, c, guard = 0;
+                   ^
+src/kernel/fs.c:497:9: style: Variable 'e' can be declared as pointer to const [constVariablePointer]
+    u8 *e;
+        ^
+src/kernel/fs.c:521:9: style: Variable 'e' can be declared as pointer to const [constVariablePointer]
+    u8 *e;
+        ^
+src/kernel/fs.c:681:9: style: Variable 'e' can be declared as pointer to const [constVariablePointer]
+    u8 *e;
+        ^
+src/kernel/fs.c:719:9: style: Variable 'e' can be declared as pointer to const [constVariablePointer]
+    u8 *e;
+        ^
+src/kernel/fs.c:873:9: style: Variable 'e' can be declared as pointer to const [constVariablePointer]
+    u8 *e;
+        ^
+src/kernel/fs.c:270:22: style: Variable 'done' is assigned a value that is never used. [unreadVariable]
+                done += rest;
+                     ^
+src/kernel/store.c:196:41: warning: Either the condition 'i<15' is redundant or the array '"1.48.0"[7]' is accessed at index 14, which is out of bounds. [arrayIndexOutOfBoundsCond]
+    for (i = 0; i < 15 && FLOPOS_VERSION[i]; i++) s_keys->version[i] = FLOPOS_VERSION[i];
+                                        ^
+src/kernel/store.c:196:19: note: Assuming that condition 'i<15' is not redundant
+    for (i = 0; i < 15 && FLOPOS_VERSION[i]; i++) s_keys->version[i] = FLOPOS_VERSION[i];
+                  ^
+src/kernel/store.c:196:41: note: Array index out of bounds
+    for (i = 0; i < 15 && FLOPOS_VERSION[i]; i++) s_keys->version[i] = FLOPOS_VERSION[i];
+                                        ^
+src/kernel/store.c:196:86: error: Array '"1.48.0"[7]' accessed at index 14, which is out of bounds. [arrayIndexOutOfBounds]
+    for (i = 0; i < 15 && FLOPOS_VERSION[i]; i++) s_keys->version[i] = FLOPOS_VERSION[i];
+                                                                                     ^
+src/kernel/disk.c:34:9: style: The scope of the variable 'r' can be reduced. [variableScope]
+    u32 r, flags;
+        ^
+src/apps/inventory/inventory.c:185:12: style: The scope of the variable 'key' can be reduced. [variableScope]
+    int n, key, x;
+           ^
+src/apps/inventory/inventory.c:185:17: style: The scope of the variable 'x' can be reduced. [variableScope]
+    int n, key, x;
+                ^
+src/apps/inventory/inventory.c:230:9: style: The scope of the variable 'key' can be reduced. [variableScope]
+    int key, i;
+        ^

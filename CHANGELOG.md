@@ -51,6 +51,32 @@ None in this release.
 - **Esc stops browzer asking a radio directory for its stations.** A slow
   directory could keep browzer waiting with no way out.
 
+#### Files
+
+- **Deleting JOURNAL.TXT on another computer no longer costs you a document.**
+  FLOPOS wrote the journal and its settings to where the build had put
+  them, even after the files had gone, so a document saved in that spot
+  was written over at the next save. It now finds both by name at every
+  start, and leaves them alone if they have changed size.
+- **A power cut while saving no longer bends the floppy's table.** A
+  table entry can lie across two sectors; cut between them, it pointed
+  anywhere, and the next start kept it that way. The next start now
+  mends it from the spare copy. A folder that grew when the power went
+  could also be pointed at a cluster still marked free, later given to
+  another file; the two steps are now written apart.
+- **A sector of the journal or the settings that a power cut left
+  unreadable no longer stops FLOPOS saving.** It is read as empty and
+  written again at the next save.
+- **Files from another computer with signs like $, ( or @ in their names
+  can be opened, renamed and dropped.** They showed in the inventory, but
+  nothing could be done with them. Windows's device names (CON, NUL,
+  COM1...) can no longer be made: Windows could not open them.
+- **The inventory says when a folder holds more than it shows.** It
+  shows the first 400 things; the rest were left out without a word.
+- **Small inventory slips:** a start folder typed with \ or a leading /
+  now works like one typed plainly, and a thing renamed while carried
+  can still be put down.
+
 ### SECURITY FIXES
 
 #### Secure connections
@@ -129,6 +155,16 @@ None in this release.
   bytes past its end; a letter outside the first 65536 in an attribute
   (&#x1F600;) came out as three wrong bytes; a huge numeric entity could
   wrap round to a real letter.
+
+#### Files
+
+- **A floppy changed on another computer can't make FLOPOS write past
+  its memory.** The sizes in its boot sector were believed: a large
+  enough count of clusters let FLOPOS write beyond its copy of the
+  table, and a floppy swapped in while it ran could overrun the buffers
+  made for the first. They are now held to what a FAT12 floppy can be,
+  and a folder that leads back into itself can no longer stall a move.
+
 
 ## 1.48.0 — 2026-11-24
 
