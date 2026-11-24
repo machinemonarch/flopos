@@ -12,6 +12,8 @@
 #                                        and settings over from the disk
 #   tools/floppy/writefloppy.sh --dev           write your own build (dist/flopos.img)
 #                                        instead of the newest release
+#   tools/floppy/writefloppy.sh --no-verify     skip the read-back (saves about 50 s);
+#                                        the old disk's copy is kept until you delete it
 #
 # Upgrading keeps what you wrote: documents, the journal and settings
 # already on the floppy are copied into the new image before it goes down.
@@ -54,6 +56,7 @@ ASSUME_YES=0
 LOWLEVEL=0
 FULL=0
 FRESH=0
+NOVERIFY=0
 
 die()  { printf '\n  %s\n\n' "$*" >&2; exit 1; }
 note() { printf '  %s\n' "$*"; }
@@ -65,9 +68,10 @@ while [ $# -gt 0 ]; do
         --lowlevel)    LOWLEVEL=1 ;;
         --full)        FULL=1 ;;
         --fresh)       FRESH=1 ;;
+        --no-verify)   NOVERIFY=1 ;;
         -i|--image)    shift; IMAGE="${1:-}" ;;
         --dev)         IMAGE="$ROOT/dist/flopos.img" ;;
-        -h|--help)     sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)     sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         /dev/*)        DEVICE="$1" ;;
         *)             die "I don't understand '$1'. Try --help." ;;
     esac
@@ -84,6 +88,7 @@ escalate() {
     [ "$LOWLEVEL" -eq 1 ]   && args+=(--lowlevel)
     [ "$FULL" -eq 1 ]       && args+=(--full)
     [ "$FRESH" -eq 1 ]      && args+=(--fresh)
+    [ "$NOVERIFY" -eq 1 ]   && args+=(--no-verify)
     args+=(--image "$IMAGE")
     note "$1"
     exec sudo -- "${BASH_SOURCE[0]}" "${args[@]}"
@@ -345,8 +350,11 @@ dd if="$SNAP" of="$DEVICE" bs=$BLOCK count=$((WRITE_BYTES / BLOCK)) \
    conv=fsync status=progress
 
 # --- verify ---------------------------------------------------------------
-step "Reading it back to check every sector written"
-if cmp -n "$WRITE_BYTES" "$SNAP" "$DEVICE"; then
+if [ "$NOVERIFY" -eq 1 ]; then
+    step "Skipped the read-back (--no-verify). The write itself reported no error,"
+    note "but nothing has checked the disk. Run without --no-verify if it matters."
+    [ -n "${KEEPDIR:-}" ] && note "The old disk's files are still in: $KEEPDIR"
+elif step "Reading it back to check every sector written"; cmp -n "$WRITE_BYTES" "$SNAP" "$DEVICE"; then
     note ""
     note "  VERIFIED. All $WRITE_BYTES bytes match."
     # The copy of the old floppy's files is no longer needed.  Only ever
