@@ -16,134 +16,57 @@ None in this release.
 
 #### Secure connections
 
-- **A secure site that changes its key mid-download stays connected.**
-  TLS 1.3 lets a server move to a fresh key at any time, and ask the
-  client to do the same. FLOPOS didn't follow, so the next piece failed
-  its seal and the page or stream stopped. It now follows, both ways.
-- **A site that asks for your own certificate says so plainly.** Some
-  sites want the visitor to prove who they are with a certificate.
-  FLOPOS has none, so it now says that, and gets in where it's optional.
-  Where it isn't, the page gives the error code and what it means in
-  plain words, instead of "a handshake message out of turn".
+- **Sites that change keys mid-download stay connected.**
+- **Sites asking for your certificate say so plainly.**
 
 #### browzer
 
-- **A redirect to a relative address goes to the right place.** A server
-  may answer "moved to next/page", without the site's name. browzer took
-  that for a site called "next", and the page never came.
-- **Addresses with spaces or letters like å in them work.** browzer sent
-  them as written, which servers refuse; they now go as %20 and %C3%A5,
-  as other browsers send them.
-- **A bookmark that didn't fit on the floppy is no longer called added.**
-  When BOOKMARK.TXT was full, the new one was kept only until browzer
-  closed, while the message said it was saved. It now says the file is
-  full.
-- **Links up to 1024 characters long work.** browzer cut every link at
-  199 characters without saying so, so long ones led to the wrong page,
-  and a search form sent past about 200 was refused. Links now share one
-  store, each taking only its own length, so the longer limit costs
-  0.2 MB rather than 2 MB.
-- **Long cookies come back whole.** A cookie over about 2000 bytes was
-  thrown away unread, one over 1023 was cut, and a page's style sheets
-  and scripts got only the first 500 or so bytes of the site's cookies,
-  so a site with a long login cookie forgot you.
-  Cookies now keep up to 4096 bytes, as the standard allows, and every
-  request sends them all. A refresh to an address longer than about 250
-  characters was cut short too; it now holds 1024.
-- **Esc stops browzer asking a radio directory for its stations.** A slow
-  directory could keep browzer waiting with no way out.
+- **Relative redirects go to the right place.**
+- **Addresses with spaces or å work.**
+- **A full bookmark file says it's full.**
+- **Links up to 1024 characters work.**
+- **Cookies up to 4096 bytes come back whole.**
+- **Esc stops a slow radio directory.**
 
 #### Files
 
-- **Deleting JOURNAL.TXT on a PC no longer costs you a document.** The journal could be saved over it.
-- **A power cut while saving no longer damages the floppy's table.** Two ways a cut could leave it pointing at the wrong place are mended.
-- **A sector a power cut left unreadable no longer stops saving.** The journal and settings rewrite it.
-- **Files named with $, ( or @ on a PC can be opened and dropped.** CON, NUL and the other Windows device names are refused.
-- **The inventory says when a folder holds more than its 400 shown.**
-- **STATE.BIN is 512 bytes, down from 8 KB.** The space of the taught words (gone since 1.32.0) is back; writefloppy carries the settings over.
+- **Deleting JOURNAL.TXT on a PC can't cost a document.**
+- **Power cuts can't bend the floppy's table.**
+- **A sector unreadable after a power cut gets rewritten.**
+- **Names with $, ( or @ work; CON, NUL refused.**
+- **The inventory says when a folder holds over 400.**
+- **STATE.BIN is 512 bytes, down from 8 KB.**
 
 ### SECURITY FIXES
 
 #### Secure connections
 
-- **Certificate dates are checked in UTC.** The laptop's clock keeps
-  Swedish time and certificates are dated in UTC, so a certificate that
-  had run out up to two hours ago was still believed.
-- **A certificate's key can no longer stall the machine.** An RSA key
-  may carry any exponent, and one in a certificate not yet checked was
-  used as given; a huge one made a single check take minutes. Exponents
-  over 32 bits, even or below 3 are refused, as browsers do.
-- **A TLS 1.3 server is held to the rules of its hello.** It must hand
-  back our session number, ask for no compression, keep the cipher it
-  named when it asked us to say hello again, answer only with a key
-  share we offered, and send its messages in the order the standard
-  gives. A shared secret of all zeros is refused, and so is a
-  ChangeCipherSpec after the handshake.
-- **A certificate must be allowed to do what it is used for.** A site's
-  certificate that may not sign can't prove who the site is, and an
-  authority meant for something other than websites can't vouch for one.
-  Both are refused now.
-- **The older key exchange no longer gives away its key through timing.**
-  With servers that lack X25519, FLOPOS's secret for the P-256 or P-384
-  exchange shaped how long the sums took. They now take the same time
-  whatever the secret is.
+- **Certificate dates are checked in UTC.**
+- **Huge RSA exponents are refused.**
+- **TLS 1.3 servers must follow their hello's rules.**
+- **Certificates must be allowed to do what they're used for.**
+- **P-256 and P-384 take the same time whatever the key.**
 
 #### browzer
 
-- **A drop-down list in a narrow table no longer writes past the page.**
-  A page with lists in table cells narrower than six letters made
-  browzer fill hundreds of KB of its memory beyond the page, which could
-  crash it or worse.
-- **A page that ends inside a table no longer breaks the next one.**
-  The next page was drawn into a table cell's small scratch space as if
-  it were the whole page, and ran past its end.
-- **A big form can no longer write past the memory it is sent from.**
-  A form whose values grow when sent (each line end is six characters
-  on the way) could overflow its buffer by a few bytes per field.
-- **A link can no longer add lines to browzer's request.** A line end in
-  an address went into the request as it was, so a page could make
-  browzer send another site headers of its choosing. Line ends are now
-  dropped and other odd characters encoded, and a site name that is too
-  long or holds them is refused instead of cut short.
-- **A style sheet can no longer freeze browzer.** A selector such as
-  "x ~ a ~ a ~ a ~ a" over a long list made browzer try every way of
-  matching it, which takes forever. Matching now gives up after a fixed
-  number of tries per element and per page.
-- **What a station or file says is shown as words, never as part of the
-  page.** A station's name, its song titles, a file's type or a
-  certificate's complaint were put into browzer's own pages as written,
-  so they could add links, forms or a redirect there.
-- **"Go there anyway" goes only there.** After a, the one site that
-  couldn't prove itself was let through, but so was everything else that
-  load reached: a redirect to another site, another site's style sheet.
-  Those now have to prove themselves as always.
-- **A form sent encrypted is never sent on in the clear.** A server
-  answering "send it again over there" (307 or 308) to a plain http
-  address got the form unencrypted. browzer now stops and says so.
-- **A cookie can no longer be set for a whole country's sites.** A page
-  could name co.uk, com.au or the like as its domain, and the cookie
-  went to every site under it. These shared endings are refused now.
-- **A page can no longer write lines of its own into the serial log.**
-  A line end in a station's address went down the serial wire as it
-  was, so a page could fake what browzer reports there, which the test
-  bench reads.
-- **A script can no longer tie the page's tree in a loop.** In a page
-  nested deeper than 4096, moving an element into one of its own
-  descendants wasn't caught, and browzer then went round forever.
-- **The radio directory browzer asks is the directory.** A page could
-  name any site with "radio-browser" anywhere in its address; the
-  directory's own name must now have it.
-- **A plain http page can no longer set or replace a Secure cookie.**
-  Secure cookies are for https sites only, as the cookie standard says.
-- **Smaller fixes.** A style sheet with a comment left open read one byte
-  past its end; a header line shorter than nine letters was read a few
-  bytes past its end; a letter outside the first 65536 in an attribute
-  (&#x1F600;) came out as three wrong bytes; a huge numeric entity could
-  wrap round to a real letter.
+- **Drop-down lists in narrow tables can't overrun memory.**
+- **A page ending inside a table can't break the next.**
+- **Big forms can't overrun their buffer.**
+- **Links can't add lines to requests.**
+- **Style sheets can't freeze browzer.**
+- **Station names and titles show as text, never as page.**
+- **"Go there anyway" lets through only that site.**
+- **Encrypted forms are never resent in the clear.**
+- **Cookies can't be set for co.uk and the like.**
+- **Pages can't write into the serial log.**
+- **Scripts can't loop the page's tree.**
+- **Only the real radio directory is asked.**
+- **Plain http pages can't touch Secure cookies.**
+- **Four small out-of-bounds reads fixed.**
 
 #### Files
 
-- **A floppy changed on a PC can't make FLOPOS write past its memory.** Its sizes are now checked.
+- **A floppy edited on a PC can't overrun memory.**
 
 ## 1.48.0 — 2026-11-24
 
