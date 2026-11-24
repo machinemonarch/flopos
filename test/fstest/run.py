@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FLOPOS's file code against a floppy image, checked by this PC's own tools.
 
-    test/fstest/run.py [IMAGE] [--ops N] [--cuts N] [--seed S]
+    test/fstest/run.py [IMAGE] [--ops N] [--cuts N] [--seed S] [--san] [--sweep]
 
 Builds src/kernel/fs.c for this PC (build/fstest/fstest), then on a copy of the image
 (dist/flopos.img unless named):
@@ -20,8 +20,8 @@ import argparse, os, random, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BIN = os.path.join(ROOT, "build", "fstest", "fstest")
-NAMES = ["A", "NOTES.MD", "SONG.MOD", "LIST.TXT", "B", "OLD", "X1.MD", "LONGNAME.MD", "Z-9_~!.A", "DIR", "DEEP"]
-BAD = ["..", ".", "A/../B", "TOOLONGNAME.MD", "A+B", "X.TOOL", "a*b", "", "A/./B"]
+NAMES = ["A", "NOTES.MD", "SONG.MOD", "LIST.TXT", "B", "OLD", "X1.MD", "LONGNAME.MD", "Z-9_~!.A", "DIR", "DEEP", "A$(1)@^.{}", "CONX.MD"]
+BAD = ["..", ".", "A/../B", "TOOLONGNAME.MD", "A+B", "X.TOOL", "a*b", "", "A/./B", "CON", "NUL.TXT", "COM1.MD", "LPT9"]
 
 def fill(n, seed):
     x, out = seed, bytearray(n)
@@ -35,7 +35,10 @@ def summ(b):
     for c in b: h = ((h ^ c) * 16777619) & 0xFFFFFFFF
     return h
 
+KEEP = []                                   # on a failure, where to keep the disk before and after the cut
 def fail(msg):
+    for src, name in KEEP:
+        if os.path.exists(src): shutil.copy(src, os.path.join(ROOT, "build", "fstest", name))
     print("FAILED\n   " + msg); sys.exit(1)
 
 def run(img, lines, cut=None):
@@ -85,6 +88,13 @@ def step(m, rng):
         if b.count("/") + 1 + below > 7: ok = False
     return "mv %s %s" % (a, b), "room" if ok else "no", ("m", a, b) if ok else None
 
+KINDS = ["save new", "save over", "new folder", "delete file", "delete folder", "rename", "move", "folder grows"]
+def kind(m, eff):
+    if eff[0] == "w": return "save over" if eff[1] in m.files else "save new"
+    if eff[0] == "d": return "new folder"
+    if eff[0] == "r": return "delete folder" if eff[1] in m.dirs else "delete file"
+    return "rename" if m.parent(eff[1]) == m.parent(eff[2]) else "move"
+
 def apply(m, eff):
     if eff[0] == "w": m.files[eff[1]] = (eff[2], eff[3])
     elif eff[0] == "d": m.dirs.add(eff[1])
@@ -130,23 +140,29 @@ def compare(img, m, what, either=None):
         good = [fill(*mm.files[p]) for mm in (m, either) if mm and p in mm.files]
         if data not in good: fail("%s: %s reads back wrong (%d bytes)" % (what, p, len(data)))
 
-def fsck(img, lost_ok=False):
+def fsck(img, lost_ok=False, what=""):
     p = subprocess.run(["fsck.fat", "-n", img], capture_output=True, text=True)
     if p.returncode == 0: return
     bad = [l for l in p.stdout.splitlines()[1:] if l.strip() and "unused cluster" not in l.lower() and "Leaving filesystem unchanged" not in l
            and not l.startswith(img) and "Reclaim" not in l and "Free cluster summary" not in l]
-    if bad or not lost_ok: fail("fsck.fat: " + " / ".join((bad or p.stdout.splitlines())[:4]))
+    if bad or not lost_ok: fail("fsck.fat%s: " % (" after " + what if what else "") + " / ".join((bad or p.stdout.splitlines())[:4]))
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("image", nargs="?", default=os.path.join(ROOT, "dist", "flopos.img"))
     ap.add_argument("--ops", type=int, default=3000); ap.add_argument("--cuts", type=int, default=150)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--san", action="store_true", help="built with AddressSanitizer and UBSan")
+    ap.add_argument("--sweep", action="store_true", help="each change cut at every one of its writes, not one at random")
     a = ap.parse_args()
+    global BIN
+    if a.san: BIN += "-san"
     os.makedirs(os.path.dirname(BIN), exist_ok=True)
-    c = subprocess.run(["gcc", "-O1", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wno-unused-function", "-o", BIN,
+    tmp = "%s.%d" % (BIN, os.getpid())      # many runs at once: each builds its own, then swaps it in whole
+    c = subprocess.run(["gcc", "-O1", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wno-unused-function", "-o", tmp] + (["-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"] if a.san else []) + [
                         os.path.join(ROOT, "test", "fstest", "fstest.c")], capture_output=True, text=True)
     if c.returncode or c.stderr.strip(): fail("building: " + c.stderr[:400])
+    os.replace(tmp, BIN)
     work = tempfile.mkdtemp(prefix="fstest-img-")
     try:
         img = os.path.join(work, "a.img"); shutil.copy(a.image, img)
@@ -182,42 +198,58 @@ def main():
         for p, ans in zip(sorted(m.files), out):
             if ans != "ok %d %d" % (m.files[p][0], summ(fill(*m.files[p]))): fail("FLOPOS reads %s back wrong: %s" % (p, ans))
 
-        # 2. power cuts
+        # 2. power cuts.  --sweep: one change of each kind, cut at every one of its writes
+        forced = []
+        if a.sweep:                              # a folder whose one cluster is full: . and .. and 14 files
+            fill_up = ["mkdir GROW"] + ["write GROW/F%d 100 %d" % (i, i) for i in range(14)]
+            out, _ = run(img, fill_up)
+            if not all(o.startswith("ok") for o in out): fail("could not fill GROW: " + " / ".join(out[:3]))
+            m.dirs.add("GROW")
+            for i in range(14): m.files["GROW/F%d" % i] = (100, i)
+            forced = [("write GROW/F14 600 1", "room", ("w", "GROW/F14", 600, 1))]
         base = os.path.join(work, "base.img"); shutil.copy(img, base)
-        cuts = 0
-        while cuts < a.cuts:
+        KEEP[:] = [(base, "failed-before.img"), (img, "failed-after.img")]
+        cuts, swept, tries = 0, set(), 0
+        while (len(swept) < len(KINDS) and tries < 20000) if a.sweep else cuts < a.cuts:
+            tries += 1
             shutil.copy(base, img)
             trial = m.copy()
-            cmd, expect, eff = step(trial, rng)
+            cmd, expect, eff = forced.pop() if forced else step(trial, rng)
             if not eff: continue
+            k = "folder grows" if cmd.startswith("write GROW/F14 ") else kind(m, eff)
+            if a.sweep and k in swept: continue
             after = m.copy(); apply(after, eff)
             # With less room than the new copy needs, the old one has to give
             # way first: the one case where a cut can cost the file.  Not this test.
             if eff[0] == "w" and eff[2] + 2048 > int(run(img, ["room"])[0][0].split()[1]): continue
-            out, was_cut = run(img, [cmd], cut=rng.randrange(0, 12))
-            if not was_cut:
-                if not out or not out[0].startswith("ok"): continue
-                compare(img, after, "uncut " + cmd)
-                continue
-            cuts += 1
-            ans, _ = run(img, ["room", "write HEALED.TXT 700 5"])   # the next session: mends the table's copies, and can still write
-            healed = len(ans) > 1 and ans[1].startswith("ok")  # unless the disk is too full for it
-            # A move between folders is two entries in two places and cannot be
-            # cut cleanly: the thing may be listed in both, which a disk
-            # checker will remark on.  Nothing is lost; that is checked below.
-            if not (eff[0] == "m" and m.parent(eff[1]) != m.parent(eff[2])): fsck(img, lost_ok=True)
-            if healed:
-                for mm in (m, after): mm.files["HEALED.TXT"] = (700, 5)
-            files, dirs = on_disk(img)
-            # every file whole, old or new; a moved thing may be in both places
-            for p, data in files.items():
-                good = [fill(*mm.files[p]) for mm in (m, after) if p in mm.files]
-                if data not in good: fail("after a cut in '%s': %s is neither old nor new (%d bytes)" % (cmd, p, len(data)))
-            lost = (set(m.files) & set(after.files)) - set(files)
-            if lost: fail("after a cut in '%s': %s is gone" % (cmd, sorted(lost)))
-            if eff[0] in ("w",) and eff[1] in m.files and eff[1] not in files: fail("after a cut in '%s': the file is gone" % cmd)
-            for mm in (m, after): mm.files.pop("HEALED.TXT", None)
+            for at in (range(0, 10 ** 6) if a.sweep else [rng.randrange(0, 12)]):
+                shutil.copy(base, img)
+                out, was_cut = run(img, [cmd], cut=at)
+                if not was_cut:
+                    if out and out[0].startswith("ok"):
+                        compare(img, after, "uncut " + cmd)
+                        if a.sweep: swept.add(k); print("   %-13s %-40s cut at all %d writes" % (k, cmd, at))
+                    break
+                cuts += 1
+                ans, _ = run(img, ["room", "write HEALED.TXT 700 5"])   # the next session: mends the table's copies, and can still write
+                healed = len(ans) > 1 and ans[1].startswith("ok")  # unless the disk is too full for it
+                # A move between folders is two entries in two places and cannot be
+                # cut cleanly: the thing may be listed in both, which a disk
+                # checker will remark on.  Nothing is lost; that is checked below.
+                if not (eff[0] == "m" and m.parent(eff[1]) != m.parent(eff[2])): fsck(img, lost_ok=True, what="a cut at sector %d of '%s'" % (at, cmd))
+                if healed:
+                    for mm in (m, after): mm.files["HEALED.TXT"] = (700, 5)
+                files, dirs = on_disk(img)
+                # every file whole, old or new; a moved thing may be in both places
+                for p, data in files.items():
+                    good = [fill(*mm.files[p]) for mm in (m, after) if p in mm.files]
+                    if data not in good: fail("after a cut in '%s': %s is neither old nor new (%d bytes)" % (cmd, p, len(data)))
+                lost = (set(m.files) & set(after.files)) - set(files)
+                if lost: fail("after a cut in '%s': %s is gone" % (cmd, sorted(lost)))
+                if eff[0] in ("w",) and eff[1] in m.files and eff[1] not in files: fail("after a cut in '%s': the file is gone" % cmd)
+                for mm in (m, after): mm.files.pop("HEALED.TXT", None)
         if system_files(img) != before: fail("a system file changed")
+        if a.sweep and len(swept) < len(KINDS): fail("never swept: " + ", ".join(k for k in KINDS if k not in swept))
         print("ok (%d steps, %d power cuts, %d files and %d folders at the end)" % (done, cuts, len(m.files), len(m.dirs) - 1))
     finally:
         shutil.rmtree(work, ignore_errors=True)

@@ -24,7 +24,7 @@ static int  W, H, ROWS;
 #define BAR 24                           /* the fullness bar's cells        */
 static char s_dir[INV_PATH];             /* where we are; "" is the top     */
 static InvItem s_it[MAXI];
-static int  s_n, s_sel, s_top;
+static int  s_n, s_all, s_sel, s_top;     /* s_all: how many the folder holds */
 static char s_carry[INV_PATH];           /* what is picked up, by its whole path */
 static char s_carry_name[13];
 static char s_say[80];
@@ -32,7 +32,7 @@ static u8   s_say_c;
 
 /* ---- small things ----------------------------------------------------------- */
 static int len(const char *s) { int n = 0; while (s[n]) n++; return n; }
-static void copy(char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
+static void copy(char *d, const char *s, int cap) { int i = 0; for (; i < cap - 1 && s[i]; i++) d[i] = s[i]; d[i] = 0; }
 static int same(const char *a, const char *b) { for (; *a && *a == *b; a++, b++) { } return *a == *b; }
 static int up(int c) { return c >= 'a' && c <= 'z' ? c - 32 : c; }
 
@@ -95,9 +95,13 @@ static void look(const char *pick)
     int i, k;
     char m[100];
     s_n = 0;
-    if (A->inv_list(s_dir, take, 0) < 0) {
+    if ((s_all = A->inv_list(s_dir, take, 0)) < 0) {
         say(A->inv_why(), A_ACCENT);
-        if (*s_dir) { s_dir[0] = 0; s_n = 0; A->inv_list(s_dir, take, 0); }
+        if (*s_dir) { s_dir[0] = 0; s_n = 0; s_all = A->inv_list(s_dir, take, 0); }
+    }
+    if (s_all > s_n) {
+        A->format(m, sizeof m, "Only the first %u of %u things here are shown.", (u32)s_n, (u32)s_all);
+        say(m, A_ACCENT);
     }
     for (i = 1; i < s_n; i++) {                  /* folders first, then by name */
         InvItem t = s_it[i];
@@ -205,7 +209,7 @@ static void up_a_folder(void)
     int i, cut = -1;
     if (!*s_dir) return;
     for (i = 0; s_dir[i]; i++) if (s_dir[i] == '/') cut = i;
-    copy(was, s_dir + cut + 1, (int)sizeof was);
+    copy(was, s_dir + (cut + 1), (int)sizeof was);
     s_dir[cut < 0 ? 0 : cut] = 0;
     s_sel = s_top = 0;
     look(was);
@@ -232,13 +236,18 @@ int app_main(const Api *api, int argc, char **argv)
 
     /* Where to start: a folder, or a file's folder with the file picked out. */
     if (argc >= 2 && argv[1][0] && A->inv_stat(argv[1], &st)) {
-        copy(s_dir, argv[1], INV_PATH);
-        for (i = 0; s_dir[i]; i++) s_dir[i] = (char)up(s_dir[i]);
+        int k = 0;
+        for (i = 0; argv[1][i] && k < INV_PATH - 1; i++) {     /* one plain / between names */
+            char c = argv[1][i] == '\\' ? '/' : (char)up(argv[1][i]);
+            if (c == '/' && (k == 0 || s_dir[k - 1] == '/')) continue;
+            s_dir[k++] = c;
+        }
+        s_dir[k] = 0;
         while (len(s_dir) && s_dir[len(s_dir) - 1] == '/') s_dir[len(s_dir) - 1] = 0;
         if (!st.folder) {
             int cut = -1;
             for (i = 0; s_dir[i]; i++) if (s_dir[i] == '/') cut = i;
-            copy(name, s_dir + cut + 1, (int)sizeof name);
+            copy(name, s_dir + (cut + 1), (int)sizeof name);
             s_dir[cut < 0 ? 0 : cut] = 0;
             pick = name;
         }
@@ -289,7 +298,8 @@ int app_main(const Api *api, int argc, char **argv)
             copy(to, it->name, (int)sizeof to);
             if (!ask("New name:", name, 13, to) || same(name, it->name)) break;
             if (!join(path, s_dir, it->name) || !join(to, s_dir, name)) break;
-            told(A->inv_move(path, to), "Renamed.");
+            told(i = A->inv_move(path, to), "Renamed.");
+            if (i && same(path, s_carry)) { copy(s_carry, to, INV_PATH); copy(s_carry_name, name, (int)sizeof s_carry_name); }
             look(name);
             break;
         case 'm': case 'M':

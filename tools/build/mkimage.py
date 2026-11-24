@@ -40,7 +40,6 @@ JOURNAL_HEADER = (
 
 # The kernel carries this signature in its data; the four numbers that
 # follow it are where these two files ended up.
-DISKMAP_MAGIC = b"FLOPOS-DISKMAP!\x00"
 
 # The boot sector reserves these words for us; mkimage finds them by
 # their placeholder values rather than by a hardcoded offset.  The first
@@ -277,14 +276,6 @@ def main():
     jrn_lba,  jrn_sectors  = locate(b"JOURNAL TXT", JOURNAL_BYTES)
     st_lba,   st_sectors   = locate(b"STATE   BIN", STATE_BYTES)
 
-    # ---- tell the kernel where they are -------------------------------
-    at = img.find(DISKMAP_MAGIC)
-    if at < 0:
-        sys.exit("the kernel carries no disk map signature")
-    if img.find(DISKMAP_MAGIC, at + 1) >= 0:
-        sys.exit("the disk map signature appears more than once")
-    struct.pack_into("<IIII", img, at + len(DISKMAP_MAGIC),
-                     jrn_lba, jrn_sectors, st_lba, st_sectors)
     if kern_lba + kern_sectors > TOTAL_SECTORS:
         sys.exit("kernel runs off the end of the disk")
 
@@ -341,7 +332,6 @@ def main():
           % (JOURNAL_BYTES, jrn_sectors, jrn_lba))
     print("   state       %6d bytes  (%d sectors) at LBA %d"
           % (STATE_BYTES, st_sectors, st_lba))
-    print("   disk map patched into the kernel at image offset %d" % at)
     print("   boot sector patched: picture @%d/%d, kernel @%d/%d"
           % (off_lba, off_cnt, off_klba, off_kcnt))
     print("   in use      %6d bytes  (%d%% of the disk)"

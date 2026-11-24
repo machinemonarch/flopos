@@ -1,0 +1,4 @@
+test/fstest/run.py --san (ASan + UBSan, stops at the first report).
+
+Before the fixes, 16 seeds (--ops 1500 --cuts 80): no memory or undefined-behaviour report in any. Seeds 9 and 14 failed fsck.fat (a table entry across two sectors torn by a cut): the bug fixed in this part.
+After the fixes: seed 14 replayed with --san as it failed: ok (1500 steps, 80 power cuts). Seed 9 replayed: ok.

@@ -989,6 +989,7 @@ int    disk_write_run(u32 lba, u32 sectors, const u8 *src);
 typedef struct { u32 first, size; } FsFile;
 int    fs_mount(void);
 int    fs_find(const char *name, FsFile *f);
+int    fs_one_piece(const char *name, u32 *lba, u32 *sectors);   /* where a fixed file lies */
 int    fs_read(const FsFile *f, u8 *buf, u32 max);
 int    fs_write_inplace(const FsFile *f, const u8 *buf);
 int    fs_is_file(const FsFile *f);      /* a real file's place and length  */
@@ -1025,13 +1026,6 @@ typedef struct {
     char resp[RESP_MAX];
 } Taught;
 
-typedef struct {
-    char magic[16];                      /* patched by tools/build/mkimage.py    */
-    u32  journal_lba, journal_sectors;
-    u32  state_lba,   state_sectors;
-} DiskMap;
-
-extern volatile DiskMap g_diskmap;
 
 void   store_init(void);
 int    store_ready(void);

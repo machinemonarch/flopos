@@ -29,7 +29,20 @@ what was found. Sizes are rough.
 4. **The JavaScript room** (about 10,500): the engine, the page objects, the wall around them.
 5. **Sound decoders** (about 7,500): mp3, mp2, AAC, MP4, Ogg, Vorbis, Opus, FLAC, trackers, HLS's sound pieces (transport stream and MP4 unpacking, in browzer), and the small bit-reading and sound libraries under them. Already fuzzed; this round reads them.
 6. **The wall between apps and the system** (about 2,500): `wall.c`, `apps.c`, every call an app can make, and the apps' side of it (`src/apps/sdk`).
-7. **Disk and files** (about 2,500): FAT12 writing, STATE.BIN, the inventory.
+7. ~~**Disk and files** (about 1,800)~~ Done on dev, in the next release: `disk.c`, `fs.c`, `store.c` (STATE.BIN), the inventory app, and the file calls in `wall.c` and the SDK. Done only when every row below names its proof, kept in `test/fstest/evidence/` or a commit:
+   - **Doors:** every way outside bytes get in (a floppy made on another PC: boot sector, FAT, folders; an app's names, paths and buffers; STATE.BIN) listed first. Proof: `doors.txt`.
+   - **Power cut:** QEMU killed at every disk write of a save, new folder, delete, move and STATE.BIN save; after each, the floppy checks clean and the file is wholly old or wholly new. Proof: the run's output.
+   - **Bad floppy:** AFL++ on the mount, find, read and write code with broken FATs, looping chains and odd folder entries. Proof: the run's output and coverage.
+   - **Failure paths:** disk full, read error, floppy pulled, out of memory: an error back, nothing half-written. Proof: an fstest case each.
+   - **Paths:** no name gets out of INVENTORY or onto a system file (`..`, `/`, long names, 8.3 clashes, empty names). Proof: an fstest case each.
+   - **Buffers that cut silently:** each fixed size listed with what happens at its edge. Proof: `buffers.txt`.
+   - **SEI CERT C:** INT30-32, ARR30, STR31, EXP33, MEM30-35, ERR33 read line by line. Proof: `cert.txt`, one line per hit or "none".
+   - **CWE Top 25:** each of the 25 marked as found, fixed or not reachable here, with why. Proof: `cwe.txt`.
+   - **Tools:** gcc -fanalyzer, cppcheck, clang scan-build, ASan and UBSan on fstest. Proof: each tool's output, every warning answered.
+   - **Savings:** nm sizes, dead code, oversized buffers, with RAM and floppy numbers before and after. Proof: `savings.txt`.
+   - **Privacy:** what the files keep about Max (times, journal lines). Proof: `doors.txt`.
+   - **Docs:** the docs about files and STATE.BIN match the code. Proof: the commit.
+   - **Per finding:** a severity, reproduced, checked in 1.48.0, a repo test, and whether it is proven only in QEMU. Trade-offs to Max one by one at the end.
 8. **maelcum and the tape** (about 2,500): reading tapes, sealing, packing.
 9. **The rest of the system** (about 8,500): the boot sector, memory, the screen, keys, the shell, scribe and the inventory.
 10. **The build** (about 4,000): `tools/` and the Makefile, especially anything that writes to a disk, and the generated tables checked against what made them.

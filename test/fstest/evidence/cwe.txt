@@ -1,0 +1,14 @@
+Part 7 against the CWE Top 25 (2024).
+
+- 79 XSS, 89 SQL, 78/77 command injection, 94 code injection, 352 CSRF, 918 SSRF, 502 deserialisation of objects, 862/863/306/287 web authentication and authorisation, 434 upload, 798 hard-coded credentials, 269 privilege management: not reachable here (no web, SQL, shell or log-in in this part). The app/system wall is part 6.
+- 787 out-of-bounds write: fixed (bad floppy cluster count, journal end mark, swapped floppy).
+- 125 out-of-bounds read: fixed (next_cluster past the table, walk one past the end).
+- 22 path traversal: none; '..', '.', empty names and separators refused (name83, follow), Windows device names now refused too. fstest BAD list.
+- 416 use after free: none (no frees).
+- 20 input validation: fixed (boot sector numbers, the store's files by place and size).
+- 476 NULL dereference: fixed (halloc results checked).
+- 190 integer overflow: fixed (total < data start).
+- 400 resource consumption: fixed (folders leading back into each other made a move take forever; levels_below budget). Loops bounded by guards elsewhere.
+- 401/770 limits: buffers.txt.
+- 362 race: one CPU, no file call from an interrupt; inv_list's callback must not call the inventory (documented in app.h); re-entry only re-reads sectors. None.
+- 200 information exposure: JOURNAL.TXT keeps unknown shell lines verbatim, trade-off T2.

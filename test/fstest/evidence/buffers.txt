@@ -1,0 +1,13 @@
+Part 7, fixed sizes and what happens at their edge.
+
+- fs.c FAT_SECS 16 sectors per FAT copy: a floppy saying more is refused (was: mounted read-only, with a 32 MB allocation tried).
+- fs.c root folder up to 512 entries: more is refused (a 1.44 MB floppy has 224).
+- fs.c buffers made at the first mount: a floppy swapped in later with a bigger table or root is refused (was: written past the buffers).
+- fs.c path depth 8 names: refused with "too many folders deep".
+- apps.h INV_PATH 80: the app's join() refuses with "too many folders deep"; the kernel never copies a path.
+- each_back name 15 + 0: an 8.3 name is at most 12.
+- inventory.c MAXI 400 things a folder: now says "Only the first 400 of N things here are shown." (was: the rest silently missing).
+- inventory.c name typed 12: an 8.3 name is at most 12.
+- store.c journal: full is full, new lines dropped (documented); end mark always fits (journal_find_end keeps a byte).
+- store.c journal line 160 bytes (store_journal_printf): longer lines cut. Callers print short sentences; the "didn't know" line is the shell's line (its own limit).
+- store.c clock servers 63 + 0 each: cut, matching nts.c.

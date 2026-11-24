@@ -1,0 +1,16 @@
+   folder grows  write GROW/F14 600 1                     cut at all 12 writes
+   move          mv DEEP/A/DIR/A/A/B DEEP/A/A/B           cut at all 3 writes
+   save over     write DEEP/A/DIR/A/A/CONX.MD 1 419277693 cut at all 6 writes
+   new folder    mkdir DEEP/A/DIR/A/A/B/B                 cut at all 4 writes
+   delete file   rm DEEP/A/DIR/A/A/CONX.MD                cut at all 3 writes
+   save new      write GROW/Z-9_~!.A 40000 75906862       cut at all 89 writes
+   rename        mv DEEP B                                cut at all 1 writes
+   delete folder rm DEEP/A/DIR/DEEP                       cut at all 3 writes
+ok (306 steps, 121 power cuts, 36 files and 14 folders at the end)
+
+The same sweep on the code before this part (f3ac3a5), 6 seeds: 3 failed at 'write GROW/F14' cut at write 8,
+"/INVENTORY/GROW and /INVENTORY/HEALED.TXT share clusters": a folder grown when the power went, linked to a
+cluster still marked free and then given to a file. Proven on this PC (fstest), not on the laptop.
+The journal and settings in place: tested in QEMU by test/fstest/moved.sh (old: the document came back as the
+journal; new: ok). A sector left unreadable by a cut: fixed in store.c, NOT proven (QEMU's injected read error
+also fails the write).

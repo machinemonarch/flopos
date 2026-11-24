@@ -83,6 +83,7 @@ def main():
     ap.add_argument("image"); ap.add_argument("out"); ap.add_argument("addresses", nargs="+")
     ap.add_argument("--slow", action="store_true"); ap.add_argument("--listen", type=float, default=0)
     ap.add_argument("--shots", action="store_true")
+    ap.add_argument("--keep", action="store_true", help="what FLOPOS writes stays on IMAGE (otherwise thrown away)")
     ap.add_argument("--real", action="store_true", help="the guest's clock waits as long as a real one (FLOPOS_REAL=1 too)")
     ap.add_argument("--site", default=os.path.expanduser("~/.cache/flopos-songs"))
     a = ap.parse_args()
@@ -97,7 +98,7 @@ def main():
     log = os.path.join(a.out, "serial.log")
     if os.path.exists(log): os.remove(log)
     cmd = ["qemu-system-i386", "-machine", "pc", "-cpu", "pentium", "-m", "32",
-           "-drive", "file=%s,if=floppy,format=raw,snapshot=on" % a.image, "-boot", "a", "-vga", "std", "-display", "none",
+           "-drive", "file=%s,if=floppy,format=raw%s" % (a.image, "" if a.keep else ",snapshot=on"), "-boot", "a", "-vga", "std", "-display", "none",
            "-monitor", "stdio", "-audiodev", "wav,id=snd1,path=%s" % os.path.join(a.out, "sound.wav"),
            "-machine", "pcspk-audiodev=snd1", "-device", "sb16,audiodev=snd1", "-device", "adlib,audiodev=snd1", "-serial", "file:" + log,
            "-netdev", "user,id=n0", "-device", "ne2k_isa,netdev=n0,iobase=0x300,irq=9",

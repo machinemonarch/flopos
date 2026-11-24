@@ -1,0 +1,12 @@
+Part 7, doors: every way outside bytes reach disk.c, fs.c, store.c and the inventory app.
+
+1. The floppy itself, changed on another computer: boot sector numbers (fs_mount), both FAT copies, the top folder, every folder under INVENTORY, file sizes and chains. Checked now: layout numbers bounded (fs_mount), chains bounded by guards, cluster numbers by cl_ok.
+2. JOURNAL.TXT and STATE.BIN as found on the floppy (store.c read_in): place found by name, size and one-piece checked; each section has its own mark and sum; counts bounded by TAUGHT_MAX; strings cut to their buffers.
+3. An app's calls (apps.c cases 16-19, 41-49, 63): every path and buffer checked by the wall (STR, BUF); paths followed from INVENTORY only (follow, name83); system files written in place only for BOOKMARK.TXT, JOURNAL.TXT, STATE.BIN at their exact size (may_write).
+4. The inventory app's command line (argv[1]): normalised to one / between names, then checked by inv_stat.
+5. A tape put back by maelcum (writes JOURNAL.TXT/STATE.BIN in place): store_reload re-finds both and re-checks them.
+
+Privacy (what the files keep about Max):
+- STATE.BIN: boot count, keyboard, network addresses typed by hand, clock servers, the clock at the last goodbye.
+- JOURNAL.TXT, readable on any PC: boot times, the wizard's questions and his answers, apps closed, and every shell line FLOPOS did not know ("didn't know: ..."), verbatim. A password typed at the wrong prompt lands there: trade-off T2.
+- File dates: the time each inventory file was made and changed.
