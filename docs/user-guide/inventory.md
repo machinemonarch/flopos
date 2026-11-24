@@ -42,11 +42,12 @@ another computer show up in FLOPOS.
 ## How safe it is
 
 Saves are ordered so a power cut leaves each file whole, old or new
-(see Techniques[^1]). Three things to know:
+(see Techniques[^1]). Four things to know:
 
 - A cut can leave a little space marked used; any disk checker frees it.
 - On a floppy too full for the new version beside the old, the old goes first, and a cut then can cost the file.
 - A move cut halfway lists the thing in both folders. Drop one.
+- A cut at the very moment a folder's list is written can leave that folder unreadable to FLOPOS. The files are still there; a disk checker on a PC brings them back.
 
 ## New releases
 

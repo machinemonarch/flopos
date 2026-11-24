@@ -1013,9 +1013,8 @@ int    disk_write(u32 lba, int count);
 u8     disk_last_status(void);
 
 /* --- store.c ----------------------------------------------------------- *
- * Two fixed-size files on the floppy, placed by the build.  The kernel
- * never parses FAT: it is handed a starting sector and a length for each,
- * and overwrites the data in place.
+ * Two fixed-size files on the floppy, found by name at boot
+ * (fs_one_piece) and overwritten in place.
  */
 
 void   store_init(void);

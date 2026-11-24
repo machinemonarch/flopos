@@ -77,7 +77,7 @@ whole of FAT12, in an order a power cut cannot turn into a broken disk
 (see Techniques[^2]).
 
 - **`disk.c`:** Sectors through the BIOS, via the buffer at 0x70000.
-- **`store.c`:** `JOURNAL.TXT` (plain text) and `STATE.BIN` (settings, with a checksum).
+- **`store.c`:** `JOURNAL.TXT` (plain text) and `STATE.BIN` (512 bytes of settings, each with a checksum), found by name at every start and written in place.
 - **`fs.c`:** FAT12: finding and reading files, writing system files in place, and the inventory (`inv_` calls).
 - **`apps.c`:** Loads `NAME.APP` (see Making apps[^3]).
 

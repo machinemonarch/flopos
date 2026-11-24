@@ -58,7 +58,7 @@ Checked against libopenmpt with `test/audiotest`.
 
 ## Files and paper
 
-- **A power-cut-safe FAT12** (`src/kernel/fs.c`): new data goes into unused clusters, then the spare allocation table, then the main one, then the folder entry; only then are the old clusters freed. The user's folder is a fence no path can climb out of. Tested with `fsck.fat` and mtools as judges, with random power cuts (`test/fstest`).
+- **A power-cut-safe FAT12** (`src/kernel/fs.c`): new data goes into unused clusters, then the spare allocation table, then the main one, then the folder entry; only then are the old clusters freed. A table entry split across two sectors and torn by a cut is mended from the spare at the next start; a folder grows in two writes. The user's folder is a fence no path can climb out of. Tested with `fsck.fat` and mtools as judges, with a cut at every write of each kind of change (`test/fstest`).
 - **A page that knows its size** (`src/apps/maelcum/sleeve.c`): maelcum's sleeve is a hand-written PDF 1.3 (a picture has no paper size, so printers stretch it). One-bit pictures packed by run length, about 22 KB.
 
 ## The system
