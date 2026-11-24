@@ -24,8 +24,16 @@ static int lower_eq(const char *a, const char *b, int n)
     return 1;
 }
 
+/* A byte that cannot go into a request as it is: a space, a control
+ * character, a quote or angle bracket, anything past ASCII.  Such bytes are
+ * sent as %XX, as browsers send them; tabs and line ends are dropped, as
+ * browsers drop them.  A line end left in would end the request's first
+ * line early, and whatever followed it would be read as a header. */
+static int needs_escape(u8 c) { return c <= ' ' || c >= 0x7F || c == '"' || c == '<' || c == '>'; }
+
 int url_parse(const char *u, Url *out)
 {
+    static const char hexd[] = "0123456789ABCDEF";
     int i = 0, n;
 
     out->port = 80;
@@ -33,19 +41,27 @@ int url_parse(const char *u, Url *out)
     if (lower_eq(u, "http://", 7)) u += 7;
     else if (lower_eq(u, "https://", 8)) { u += 8; out->secure = 1; out->port = 443; }
 
-    for (n = 0; u[i] && u[i] != '/' && u[i] != ':' && u[i] != '?' && u[i] != '#' && n < 63; i++)
+    for (n = 0; u[i] && u[i] != '/' && u[i] != ':' && u[i] != '?' && u[i] != '#'; i++) {
+        if (n >= 63 || needs_escape((u8)u[i])) return 0;    /* too long, or not a name */
         out->host[n++] = (u[i] >= 'A' && u[i] <= 'Z') ? (char)(u[i] + 32) : u[i];
+    }
     out->host[n] = 0;
     if (!n) return 0;
     if (u[i] == ':') {
         u32 p = 0;
-        for (i++; u[i] >= '0' && u[i] <= '9'; i++) p = p * 10 + (u32)(u[i] - '0');
-        if (!p || p > 65535) return 0;
+        for (i++; u[i] >= '0' && u[i] <= '9'; i++) if ((p = p * 10 + (u32)(u[i] - '0')) > 65535) return 0;
+        if (!p) return 0;
         out->port = (u16)p;
     }
     n = 0;
     if (u[i] != '/') out->path[n++] = '/';
-    for (; u[i] && u[i] != '#' && n < URL_PATH_MAX - 1; i++) out->path[n++] = u[i];
+    for (; u[i] && u[i] != '#' && n < URL_PATH_MAX - 1; i++) {
+        u8 c = (u8)u[i];
+        if (c == '\t' || c == '\r' || c == '\n') continue;
+        if (!needs_escape(c)) { out->path[n++] = (char)c; continue; }
+        if (n + 3 > URL_PATH_MAX - 1) break;
+        out->path[n++] = '%'; out->path[n++] = hexd[c >> 4]; out->path[n++] = hexd[c & 15];
+    }
     out->path[n] = 0;
     return 1;
 }

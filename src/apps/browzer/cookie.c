@@ -147,6 +147,15 @@ void cookie_set(const Url *u, const char *line)
         seg += 1 + (int)(a - (p + seg + 1)) + n;
     }
 
+    /* Secure is for https: a plain page can neither set such a cookie nor
+     * put its own in place of one (RFC 6265bis, 4.1.3 and 5.7). */
+    if (!u->secure) {
+        if (c.secure) return;
+        for (i = 0; i < s_n; i++)
+            if (s_jar[i].secure && same(s_jar[i].name, c.name) &&
+                (host_ok(&s_jar[i], u->host) || host_ok(&c, s_jar[i].host))) return;
+    }
+
     /* Replacing one already held, or forgetting it. */
     for (i = 0; i < s_n; i++)
         if (same_ci(s_jar[i].host, c.host) && s_jar[i].subdomains == c.subdomains &&

@@ -408,6 +408,7 @@ static void sheet(const char *s, u32 len, int depth)
             else if (c == '}') d--;
             i++;
         }
+        if (i > len) i = len;                    /* a comment left open ran to the end */
         be = d ? i : i - 1;
         if (s[ps] == '@') {
             u32 k = ps + 1, ns = ps + 1;
@@ -548,5 +549,6 @@ static void compute(u32 n, const Node *parent, int depth)
 
 void css_apply(void)
 {
+    sel_budget();
     compute(1, 0, 0);
 }

@@ -24,6 +24,21 @@ None in this release.
   Where it isn't, the page gives the error code and what it means in
   plain words, instead of "a handshake message out of turn".
 
+#### browzer
+
+- **A redirect to a relative address goes to the right place.** A server
+  may answer "moved to next/page", without the site's name. browzer took
+  that for a site called "next", and the page never came.
+- **Addresses with spaces or letters like å in them work.** browzer sent
+  them as written, which servers refuse; they now go as %20 and %C3%A5,
+  as other browsers send them.
+- **A bookmark that didn't fit on the floppy is no longer called added.**
+  When BOOKMARK.TXT was full, the new one was kept only until browzer
+  closed, while the message said it was saved. It now says the file is
+  full.
+- **Esc stops browzer asking a radio directory for its stations.** A slow
+  directory could keep browzer waiting with no way out.
+
 ### SECURITY FIXES
 
 #### Secure connections
@@ -49,6 +64,38 @@ None in this release.
   With servers that lack X25519, FLOPOS's secret for the P-256 or P-384
   exchange shaped how long the sums took. They now take the same time
   whatever the secret is.
+
+#### browzer
+
+- **A drop-down list in a narrow table no longer writes past the page.**
+  A page with lists in table cells narrower than six letters made
+  browzer fill hundreds of KB of its memory beyond the page, which could
+  crash it or worse.
+- **A page that ends inside a table no longer breaks the next one.**
+  The next page was drawn into a table cell's small scratch space as if
+  it were the whole page, and ran past its end.
+- **A big form can no longer write past the memory it is sent from.**
+  A form whose values grow when sent (each line end is six characters
+  on the way) could overflow its buffer by a few bytes per field.
+- **A link can no longer add lines to browzer's request.** A line end in
+  an address went into the request as it was, so a page could make
+  browzer send another site headers of its choosing. Line ends are now
+  dropped and other odd characters encoded, and a site name that is too
+  long or holds them is refused instead of cut short.
+- **A style sheet can no longer freeze browzer.** A selector such as
+  "x ~ a ~ a ~ a ~ a" over a long list made browzer try every way of
+  matching it, which takes forever. Matching now gives up after a fixed
+  number of tries per element and per page.
+- **What a station or file says is shown as words, never as part of the
+  page.** A station's name, its song titles, a file's type or a
+  certificate's complaint were put into browzer's own pages as written,
+  so they could add links, forms or a redirect there.
+- **A plain http page can no longer set or replace a Secure cookie.**
+  Secure cookies are for https sites only, as the cookie standard says.
+- **Smaller fixes.** A style sheet with a comment left open read one byte
+  past its end; a header line shorter than nine letters was read a few
+  bytes past its end; a letter outside the first 65536 in an attribute
+  (&#x1F600;) came out as three wrong bytes.
 
 ## 1.48.0 — 2026-11-24
 

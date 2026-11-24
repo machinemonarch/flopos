@@ -92,6 +92,8 @@ extern char g_selpool[65000];
 extern u32  g_selpool_used;
 int   sel_parse(const char *s, u32 len, Part *out, int max, int *specificity);   /* parts, 0: bad */
 int   sel_match(const Part *s, int count, u32 n);
+#define SEL_TRIES_ALL 30000000u          /* for one page's styles: past it, no more matches */
+void  sel_budget(void);                  /* a page's styles, or one query, begin */
 int   dom_query(u32 from, const char *sel, u32 len, u16 *out, int max);   /* -1: bad selector */
 
 /* drawing: the tree as HTML the page reader understands */
