@@ -29,6 +29,11 @@ static int rsa_open(const u8 *n, int nlen, const u8 *e, int elen,
                     const u8 *sig, int slen, int *k)
 {
     while (nlen > 0 && *n == 0) { n++; nlen--; }
+    /* e: at most 32 bits, odd, at least 3 (as browsers insist).  A key
+     * from a certificate not yet checked could otherwise carry an
+     * exponent as long as the modulus, and the sum would take minutes. */
+    while (elen > 0 && *e == 0) { e++; elen--; }
+    if (elen < 1 || elen > 4 || !(e[elen - 1] & 1) || (elen == 1 && e[0] < 3)) return 0;
     while (slen > 0 && *sig == 0 && slen > nlen) { sig++; slen--; }
     if (nlen < 128 || slen > nlen) return 0;            /* under 1024 bits: no */
     if (!mont_init(&s_m, n, nlen)) return 0;

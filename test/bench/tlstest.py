@@ -15,6 +15,7 @@ of IMAGE that trusts that authority, and starts these servers:
   18450  TLS 1.2, P-384 only, ECDSA on P-384
   18451  TLS 1.2, ECDHE-RSA with AES-128-CBC and SHA-1 only
   18452  TLS 1.2, ECDHE-RSA with AES-256-CBC and SHA-1 only
+  18453  TLS 1.3 that moves its key on mid-answer, and asks us to as well
 (Ports high enough that nothing else on the PC uses them: 8443 is often a
 tunnel's.)  Then run.py fetches each and prints ok or FAILED, one line each.
 Needs openssl and mtools.
@@ -37,13 +38,30 @@ while True:
     except Exception: pass
 '''
 
+# openssl s_server takes a line "K" on its input as: send a KeyUpdate,
+# asking for one back; "q" closes.  Each piece is fed after a pause, once
+# the handshake is done, so each is read alone.
+KEYUPD = r'''
+import subprocess, sys, time
+while True:
+    p = subprocess.Popen(["openssl", "s_server", "-accept", "18453", "-tls1_3", "-naccept", "1",
+                          "-cert", sys.argv[1], "-key", sys.argv[2]],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    for line in p.stdout:
+        if b"CIPHER is" in line: break
+    for part in (b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n", b"K\n",
+                 b"<title>key update</title><p>ok</p>\n", b"q\n"):
+        time.sleep(0.5); p.stdin.write(part); p.stdin.flush()
+    time.sleep(0.5); p.kill(); p.wait()
+'''
+
 def sh(*cmd): subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def main():
     if len(sys.argv) < 3: sys.exit(__doc__)
     img, wd = os.path.abspath(sys.argv[1]), sys.argv[2]
     os.makedirs(wd, exist_ok=True); os.chdir(wd)
-    for port in range(18443, 18453):                 # another program on one would answer in its place
+    for port in range(18443, 18454):                 # another program on one would answer in its place
         with socket.socket() as c:
             if not c.connect_ex(("127.0.0.1", port)): sys.exit("FAILED  port %d is in use by another program" % port)
     sh("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "30",
@@ -59,6 +77,7 @@ def main():
     sys.path.insert(0, HERE); import testca
     testca.image(img, "test.img", ca="ca.pem")     # the floppy's own roots, and this authority
     open("noems.py", "w").write(NOEMS)
+    open("keyupd.py", "w").write(KEYUPD)
     srv = lambda port, *a: subprocess.Popen(["openssl", "s_server", "-accept", str(port), "-www"] + list(a),
                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     procs = [srv(18443, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-cipher", "ECDHE-RSA-CHACHA20-POLY1305", "-groups", "X25519", "-sigalgs", "RSA+SHA256"),
@@ -70,7 +89,8 @@ def main():
              srv(18450, "-tls1_2", "-cert", "ec384.pem", "-key", "ec384.key", "-cipher", "ECDHE-ECDSA-AES128-GCM-SHA256", "-groups", "P-384"),
              srv(18451, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-cipher", "ECDHE-RSA-AES128-SHA"),
              srv(18452, "-tls1_2", "-cert", "rsa.pem", "-key", "rsa.key", "-cipher", "ECDHE-RSA-AES256-SHA"),
-             subprocess.Popen([sys.executable, "-I", "noems.py", "rsa.pem", "rsa.key"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
+             subprocess.Popen([sys.executable, "-I", "noems.py", "rsa.pem", "rsa.key"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
+             subprocess.Popen([sys.executable, "-I", "keyupd.py", "rsa.pem", "rsa.key"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
     time.sleep(1)
     try:
         steps = ["https://10.0.2.2:%d/=>%s" % (p, w) for p, w in
@@ -78,7 +98,8 @@ def main():
                   (18446, r"ChaCha20-Poly1305, X25519|AES-128-GCM, X25519"), (18447, r"no extended master secret"),
                   (18448, r"TLS 1.1 or older"), (18449, r"it asked for P-384(.|\n)*, P-384, "),
                   (18450, r"TLS 1.2, P-384"), (18451, r"AES-128-CBC with SHA-1(.|\n)*\[web\] 200"),
-                  (18452, r"AES-256-CBC with SHA-1(.|\n)*\[web\] 200"))]
+                  (18452, r"AES-256-CBC with SHA-1(.|\n)*\[web\] 200"),
+                  (18453, r"moved its key on, and ours(.|\n)*: key update"))]
         subprocess.run([sys.executable, os.path.join(HERE, "run.py"), "test.img", "out"] + sys.argv[3:] + steps)
     finally:
         for p in procs: p.terminate()

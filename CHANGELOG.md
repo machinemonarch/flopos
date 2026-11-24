@@ -6,6 +6,37 @@ without it. Each version's notes are also written next to its image, as
 
 ## Unreleased
 
+### FEATURES
+
+None in this release.
+
+### BUG FIXES
+
+#### Secure connections
+
+- **A secure site that changes its key mid-download stays connected.**
+  TLS 1.3 lets a server move to a fresh key at any time, and ask the
+  client to do the same. FLOPOS didn't follow, so the next piece failed
+  its seal and the page or stream stopped. It now follows, both ways.
+
+### SECURITY FIXES
+
+#### Secure connections
+
+- **Certificate dates are checked in UTC.** The laptop's clock keeps
+  Swedish time and certificates are dated in UTC, so a certificate that
+  had run out up to two hours ago was still believed.
+- **A certificate's key can no longer stall the machine.** An RSA key
+  may carry any exponent, and one in a certificate not yet checked was
+  used as given; a huge one made a single check take minutes. Exponents
+  over 32 bits, even or below 3 are refused, as browsers do.
+- **A TLS 1.3 server is held to the rules of its hello.** It must hand
+  back our session number, ask for no compression, keep the cipher it
+  named when it asked us to say hello again, answer only with a key
+  share we offered, and send its messages in the order the standard
+  gives. A shared secret of all zeros is refused, and so is a
+  ChangeCipherSpec after the handshake.
+
 ## 1.48.0 — 2026-11-24
 
 ### FEATURES

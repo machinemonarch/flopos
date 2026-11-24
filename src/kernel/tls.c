@@ -28,12 +28,12 @@
  * the person asked to go on anyway (tls_check(0)), and then everything
  * after says it was not checked.
  *
- * TLS 1.2, only as safe as 1.3 is: the same two ciphers, sealed the same
- * way (RFC 7905, RFC 5288), and a fresh key exchange every time -- X25519,
- * or P-256 for servers too old for that -- signed by the server.  Nothing
- * from 1.2's older half: no RSA key exchange, no CBC, no SHA-1, no
- * renegotiation, no compression.  The extended master secret (RFC 7627) is
- * used where the server has it.  And a server that speaks 1.3 but answers
+ * TLS 1.2: the same two ciphers, sealed the same way (RFC 7905, RFC
+ * 5288), and a fresh key exchange every time -- X25519, or P-256 or P-384
+ * for servers too old for that -- signed by the server.  Last of all, the
+ * two AES-CBC ciphers with SHA-1 checks that Chrome still offers.  No RSA
+ * key exchange, no renegotiation, no compression.  The extended master
+ * secret (RFC 7627) is used where the server has it.  And a server that speaks 1.3 but answers
  * 1.2 is refused: TLS 1.3 servers mark the answer so, and it means someone
  * in between has tampered with our hello to force the older one.
  * ===========================================================================
@@ -60,6 +60,7 @@
 #define HS_CERT           11
 #define HS_CERT_VERIFY    15
 #define HS_FINISHED       20
+#define HS_KEY_UPDATE     24
 
 typedef struct { u8 key[32], iv[12], mac[20]; u32 seq; } Dir;
 
@@ -96,6 +97,11 @@ static const u8 s_hrr[32] = {
     0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C };
 static int ec_bytes(u32 g) { return g == GROUP_P384 ? 48 : 32; }
 static u8  s_srv_random[32];
+static u8  s_sid[32];                    /* our session id: 1.3 echoes it  */
+static u32 s_hrr_suite;                  /* the suite a retry request named */
+static u8  s_rd_sec[32], s_wr_sec[32];   /* 1.3 application secrets, for KeyUpdate */
+static u8  s_hdr[4];                     /* a handshake header split across records */
+static int s_hdr_n, s_hs_skip;
 
 static int aes(void) { return s_suite == SUITE_AES128 || s_suite == S12_AES_EC || s_suite == S12_AES_RSA; }
 static int cbc(void) { return s_suite == S12_CBC128 || s_suite == S12_CBC256; }
@@ -443,6 +449,7 @@ static int client_hello(const char *host, const u8 random[32], const u8 session[
     int n, hl = 0, i, ext_at, sni_len;
 
     while (host[hl]) hl++;
+    if (hl > 253) return 0;              /* longer than any real name      */
     n = 5 + 4;                           /* record header, message header  */
     m[n++] = 3; m[n++] = 3;              /* "TLS 1.2", as 1.3 insists       */
     for (i = 0; i < 32; i++) m[n++] = random[i];
@@ -571,9 +578,11 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
     for (p = 0; p < 32; p++) s_srv_random[p] = b[2 + p];
     p = 34;
     sid = b[p++];
+    if (sid > 32) { why("its hello did not add up"); return 0; }
     p += sid;
     if (p + 3 > len) { why("its hello did not add up"); return 0; }
     s_suite = get16(b + p);
+    if (b[p + 2] != 0) { why("it wanted compression, which is not safe"); return 0; }
     p += 3;
     if (p + 2 > len) {                   /* no extensions: TLS 1.2 at best  */
         end = p;
@@ -588,7 +597,7 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
         if (p + 4 + (int)elen > end) break;
         if (type == 0x002b && elen == 2 && get16(e) == 0x0304) got_ver = 1;
         if (type == 0x0017 && elen == 0) s_ems = 1;
-        if (type == 0x0033 && elen == 36 && get16(e) == GROUP_X25519 && get16(e + 2) == 32) {
+        if (type == 0x0033 && !s_retry_group && elen == 36 && get16(e) == GROUP_X25519 && get16(e + 2) == 32) {
             int i;
             for (i = 0; i < 32; i++) server_pub[i] = e[4 + i];
             s_group = GROUP_X25519;
@@ -603,7 +612,7 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
             got_key = 1;
         }
         /* The hybrid: the ML-KEM ciphertext, then the X25519 public key. */
-        if (type == 0x0033 && elen == 4 + MLKEM_CT + 32 && get16(e) == GROUP_HYBRID &&
+        if (type == 0x0033 && s_offer_pq && !s_retry_group && elen == 4 + MLKEM_CT + 32 && get16(e) == GROUP_HYBRID &&
             get16(e + 2) == MLKEM_CT + 32) {
             int i;
             for (i = 0; i < MLKEM_CT; i++) s_mlkem_ct[i] = e[4 + i];
@@ -632,6 +641,12 @@ static int server_hello(const u8 *b, int len, u8 server_pub[32])
     }
     if (s_suite != SUITE_CHACHA && s_suite != SUITE_AES128) {
         why("it chose a cipher we did not offer");
+        return 0;
+    }
+    /* TLS 1.3 (RFC 8446 4.1.3): "TLS 1.2" on the outside, and our own
+     * session id handed back. */
+    if (b[0] != 3 || b[1] != 3 || sid != 32 || !same(b + 35, s_sid, 32)) {
+        why("its hello did not add up");
         return 0;
     }
     if (!got_key) { why("it sent no key share"); return 0; }
@@ -984,6 +999,7 @@ static int hello_again(const char *host, const u8 random[32], const u8 session[3
         p += 4 + (int)elen;
     }
     if (ver != 0x0304 || (suite != SUITE_CHACHA && suite != SUITE_AES128)) { why("its request for another hello was not one we can answer"); return 0; }
+    s_hrr_suite = suite;
     if (group != GROUP_P256 && group != GROUP_P384) { why("it wanted a key exchange we do not do"); return 0; }
 
     /* The transcript: message_hash(our first hello), then this request. */
@@ -1011,7 +1027,7 @@ int tls_connect(const char *host)
     u8 cli_hs[32], srv_hs[32], cli_ap[32], srv_ap[32], zero[32], h_empty[32];
     u8 h[32], fkey[32], mac[32], fin[4 + 32];
     u8 type;
-    int len, i, mt, ml, done = 0, have_cert = 0, proved = 0;
+    int len, i, mt, ml, done = 0, have_cert = 0, proved = 0, stage = 0;
     const u8 *body;
 
     s_up = 0;
@@ -1021,6 +1037,7 @@ int tls_connect(const char *host)
     s_eof = 0;
     s_hsbuf_len = 0;
     s_plain_len = s_plain_pos = 0;
+    s_hs_skip = s_hdr_n = 0;
     s_why[0] = 0;
     if (!s_rec) {
         s_rec = (u8 *)halloc(REC_MAX + 64);
@@ -1031,6 +1048,7 @@ int tls_connect(const char *host)
     rand_bytes(secret, 32);
     rand_bytes(random, 32);
     rand_bytes(session, 32);
+    for (i = 0; i < 32; i++) s_sid[i] = session[i];
     x25519_public(pub, secret);
     {
         u8 d[32], z[32];
@@ -1081,6 +1099,7 @@ int tls_connect(const char *host)
     }
     if (!server_hello(s_rec + 9, ml, server_pub)) return 0;
     if (s_retry_group && s_group != s_retry_group) { why("it did not use the key exchange it asked for"); return 0; }
+    if (s_retry_group && s_suite != s_hrr_suite) { why("it changed its cipher after asking for another hello"); return 0; }
     sha256_update(&s_transcript, s_rec + 5, (u32)(ml + 4));
     if (s_v12) {
         /* What else came in the same record -- its certificates, often --
@@ -1103,6 +1122,11 @@ int tls_connect(const char *host)
     } else {
         x25519(shared, secret, server_pub);
     }
+    if (s_group == GROUP_HYBRID || s_group == GROUP_X25519) {
+        u8 z = 0;                        /* a point of small order: no secret */
+        for (i = 0; i < 32; i++) z |= shared[(s_group == GROUP_HYBRID ? 32 : 0) + i];
+        if (!z) { why("its key exchange was not a real one"); return 0; }
+    }
     for (i = 0; i < 32; i++) zero[i] = 0;
     sha256(0, 0, h_empty);
     hkdf_extract(0, 0, zero, 32, early);
@@ -1122,7 +1146,7 @@ int tls_connect(const char *host)
             if (!more_handshake()) return 0;
             continue;
         }
-        if (mt == HS_FINISHED) {
+        if (mt == HS_FINISHED && stage == 3) {
             if (s_check && (!have_cert || !proved)) {
                 why("it never proved who it is");
                 s_untrusted = 1;
@@ -1141,13 +1165,14 @@ int tls_connect(const char *host)
             }
             drop_message(ml);
             done = 1;
-        } else if (mt == HS_CERT) {
+        } else if (mt == HS_CERT && stage == 1) {
             if (s_check) {
                 if (!check_certs(host, body, ml)) { s_untrusted = 1; return 0; }
                 have_cert = 1;
             }
             drop_message(ml);
-        } else if (mt == HS_CERT_VERIFY) {
+            stage = 2;
+        } else if (mt == HS_CERT_VERIFY && stage == 2) {
             if (s_check) {
                 if (!have_cert || !check_verify(body, ml)) {
                     why("it could not prove the certificate is its own");
@@ -1157,8 +1182,10 @@ int tls_connect(const char *host)
                 proved = 1;
             }
             drop_message(ml);
-        } else if (mt == HS_ENC_EXT) {
+            stage = 3;
+        } else if (mt == HS_ENC_EXT && stage == 0) {
             drop_message(ml);
+            stage = 1;
         } else {
             why("it sent a handshake message out of turn");
             return 0;
@@ -1184,8 +1211,50 @@ int tls_connect(const char *host)
 
     set_keys(&s_rd, srv_ap);
     set_keys(&s_wr, cli_ap);
+    for (i = 0; i < 32; i++) { s_rd_sec[i] = srv_ap[i]; s_wr_sec[i] = cli_ap[i]; }
     s_up = 1;
     s_checked = s_check;
+    return 1;
+}
+
+/* After the handshake a TLS 1.3 server sends two kinds of handshake
+ * message: tickets, which are not wanted and are skipped, and KeyUpdate,
+ * which moves its sending key on to the next -- and, if it asks, ours too
+ * (RFC 8446 4.6.3).  Messages may be split across records. */
+static void next_secret(Dir *d, u8 sec[32])
+{
+    u8 t[32];
+    int i;
+    expand_label(sec, "traffic upd", 0, 0, t, 32);
+    for (i = 0; i < 32; i++) sec[i] = t[i];
+    set_keys(d, sec);
+}
+
+static int after_handshake(int plen)
+{
+    static const u8 ku[5] = { HS_KEY_UPDATE, 0, 0, 1, 0 };
+    int at = 0, ml;
+    while (at < plen) {
+        if (s_hs_skip) {
+            int n = plen - at < s_hs_skip ? plen - at : s_hs_skip;
+            at += n; s_hs_skip -= n;
+            continue;
+        }
+        while (s_hdr_n < 4 && at < plen) s_hdr[s_hdr_n++] = s_plain[at++];
+        if (s_hdr_n < 4) break;
+        s_hdr_n = 0;
+        ml = (int)get24(s_hdr + 1);
+        if (s_hdr[0] != HS_KEY_UPDATE) { s_hs_skip = ml; continue; }
+        /* One byte, the last in its record: the key changes after it. */
+        if (ml != 1 || at + 1 != plen || s_plain[at] > 1) return 0;
+        next_secret(&s_rd, s_rd_sec);
+        serial_printf("[tls] the server moved its key on%s\n", s_plain[at] ? ", and ours" : "");
+        if (s_plain[at] == 1) {
+            if (!send_record(CT_HANDSHAKE, ku, 5)) return 0;
+            next_secret(&s_wr, s_wr_sec);
+        }
+        at++;
+    }
     return 1;
 }
 
@@ -1225,7 +1294,6 @@ int tls_read(u8 *buf, int max, int wait_ms)
             if (tcp_done()) { s_eof = 1; return 0; }
             return -1;
         }
-        if (type == CT_CCS) continue;
         if (type != CT_APPDATA && !(s_v12 && (type == CT_ALERT || type == CT_HANDSHAKE))) {
             why("an unencrypted record after the handshake"); s_up = 0; return -2;
         }
@@ -1237,7 +1305,10 @@ int tls_read(u8 *buf, int max, int wait_ms)
             s_up = 0;
             return -2;
         }
-        if (ct == CT_HANDSHAKE) continue;     /* session tickets: not wanted */
+        if (ct == CT_HANDSHAKE) {
+            if (!s_v12 && !after_handshake(plen)) { why("its key update did not add up"); s_up = 0; return -2; }
+            continue;                         /* 1.2: a renegotiation, refused by silence */
+        }
         if (ct == CT_APPDATA) {
             /* s_plain holds it; plen bytes of data, then the type byte. */
             s_plain_len = plen;

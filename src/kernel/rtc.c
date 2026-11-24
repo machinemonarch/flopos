@@ -182,6 +182,20 @@ static u32 sweden(u32 utc)
     return utc >= mar * 86400u + 3600u && utc < oct * 86400u + 3600u ? 7200u : 3600u;
 }
 
+/* The clock keeps Swedish time; certificates are dated in UTC.  The date
+ * as YYYYMMDD and the time of day as hhmmss, both UTC; 0 if unreadable. */
+int rtc_utc(u32 *date, u32 *tod)
+{
+    u32 local = rtc_seconds(), utc, y, m, d, s;
+    if (!local) return 0;
+    utc = local - sweden(local - 3600u);
+    date_from(utc / 86400u, &y, &m, &d);
+    s = utc % 86400u;
+    *date = y * 10000u + m * 100u + d;
+    *tod = s / 3600u * 10000u + s / 60u % 60u * 100u + s % 60u;
+    return 1;
+}
+
 /* ---- is the clock's battery any good? ---------------------------------------
  * The clock chip says so itself: register D's top bit stays set while its
  * battery holds up.  And the BIOS, at power-on, notes in byte 0x0E whether

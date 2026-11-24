@@ -479,6 +479,7 @@ void   term_input_line(int from_col, const char *s, int caret, u8 colour);
 int    rtc_read(u8 *hour, u8 *min, u8 *sec,
                 u16 *year, u8 *month, u8 *day);
 u32    rtc_seconds(void);                /* since 2000; 0 if unreadable    */
+int    rtc_utc(u32 *date, u32 *tod);     /* UTC as YYYYMMDD, hhmmss; 0 if unreadable */
 void   rtc_set_seconds(u32 s);
 int    clock_from_network(void);         /* ask a time server; 1 if set    */
 int    rtc_battery_ok(void);              /* the clock chip says its battery is good */

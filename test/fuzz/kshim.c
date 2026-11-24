@@ -53,6 +53,15 @@ int rtc_read(u8 *hour, u8 *min, u8 *sec, u16 *year, u8 *month, u8 *day)
     *year = (u16)(t->tm_year + 1900); *month = (u8)(t->tm_mon + 1); *day = (u8)t->tm_mday;
     return 1;
 }
+int rtc_utc(u32 *date, u32 *tod)
+{
+    u8 h, mi, se, mo, da;
+    u16 yr;
+    rtc_read(&h, &mi, &se, &yr, &mo, &da);
+    *date = (u32)yr * 10000u + (u32)mo * 100u + da;
+    *tod = (u32)h * 10000u + (u32)mi * 100u + se;
+    return 1;
+}
 u32  ms_now(void) { return s_now += 7; }
 void rand_add(u32 v) { (void)v; }
 void rand_bytes(u8 *out, int n)
