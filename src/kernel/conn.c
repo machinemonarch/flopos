@@ -117,6 +117,7 @@ void conn_info(ConnInfo *ci)
     ci->pq = s_secure && tls_post_quantum();
     ci->checked = s_secure && tls_checked();
     ci->untrusted = tls_untrusted();
+    ci->wanted_cert = s_secure ? tls_wanted_cert() : 0;
     for (i = 0; w[i] && i < (int)sizeof ci->who - 1; i++) ci->who[i] = w[i];
     ci->who[i] = 0;
     for (i = 0; c[i] && i < (int)sizeof ci->cipher - 1; i++) ci->cipher[i] = c[i];

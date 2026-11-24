@@ -150,6 +150,7 @@ typedef struct {
     char  note[128];
     char  who[48];                       /* who vouched for a secure page   */
     int   checked, untrusted;
+    int   wanted_cert;                   /* refused us for want of a certificate: its alert */
     u8    note_col;
     int   status, secure, pq;
     int   refresh;                       /* <meta refresh>: seconds, or 0   */

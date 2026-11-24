@@ -1799,7 +1799,17 @@ static void go_with(const char *url, const u8 *post, int postlen)
         why[i] = 0;
         for (i = 0; s_pg.url[i]; i++) where[i] = s_pg.url[i];
         where[i] = 0;
-        if (s_pg.untrusted)
+        if (s_pg.wanted_cert)
+            fmt_str(html, sizeof html,
+                    "<title>not on the list</title><h2>This site wants to know who you are.</h2>"
+                    "<p>ERROR CODE: TLS alert %d, %s</p>"
+                    "<p>In plain words: look buddy, you're not on the list. This site wants your "
+                    "browser to present proper credentials, a certificate of your own, and you "
+                    "don't have any. You're probably not supposed to be here.</p>"
+                    "<p><kbd>backspace</kbd> goes back, <kbd>g</kbd> goes somewhere else.</p>",
+                    s_pg.wanted_cert, s_pg.wanted_cert == 116 ? "certificate_required"
+                                    : s_pg.wanted_cert == 42 ? "bad_certificate" : "handshake_failure");
+        else if (s_pg.untrusted)
             fmt_str(html, sizeof html,
                     "<title>who is this?</title><h2>This site could not prove who it is.</h2>"
                     "<p>%s</p><p>That can mean somebody is pretending to be it, or that the "
@@ -1811,6 +1821,7 @@ static void go_with(const char *url, const u8 *post, int postlen)
                     "<title>could not open it</title><h2>That page did not come.</h2>"
                     "<p>%s</p><p>r tries again, backspace goes back, g goes somewhere else.</p>",
                     why[0] ? why : "Nothing answered.");
+        if (s_pg.wanted_cert) A->wire("[page] not on the list: it wanted a certificate of ours\n");
         {
             int untrusted = s_pg.untrusted;
             http_page_html(html, &s_pg);

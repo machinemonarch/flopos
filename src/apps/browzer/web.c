@@ -2058,12 +2058,12 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     s_refresh_go = 0;
     s_nsniffed = 0; s_sn_on = 0; s_bare = 0; s_azura = 0; s_rb[0] = 0;
     s_nm_on = 0; s_nm[0] = 0; s_nm_age = 0xFFFFFFFFu;
-    if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->who[0] = 0; }
+    if (s_pg) { s_pg->checked = 0; s_pg->untrusted = 0; s_pg->wanted_cert = 0; s_pg->who[0] = 0; }
     if (!s_pg) main_pump(1);
     if (!A->conn_open(u->host, u->port, u->secure, tls_note)) {
         ConnInfo ci;
         A->conn_info(&ci);
-        if (s_pg && u->secure) s_pg->untrusted = ci.untrusted;
+        if (s_pg && u->secure) { s_pg->untrusted = ci.untrusted; s_pg->wanted_cert = ci.wanted_cert; }
         note(A->conn_why(), C_ACCENT);
         return -1;
     }
@@ -2130,6 +2130,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
             else {
                 fmt_str(line, sizeof line, "Cut off: %s.", A->conn_why());
                 note(line, C_ACCENT);
+                if (s_pg && s_secure) { ConnInfo ci; A->conn_info(&ci); s_pg->wanted_cert = ci.wanted_cert; }
             }
             break;
         }
@@ -2265,7 +2266,7 @@ static int fetch_once(const Url *u, char *moved, int moved_max, const u8 *post, 
     } else {
         s_pg->bytes = body;
     }
-    return 0;
+    return s_pg && s_pg->wanted_cert ? -1 : 0;   /* refused after the handshake: nothing came */
 }
 
 /* Fetch url, following redirects, into the terminal (pg 0) or a page.

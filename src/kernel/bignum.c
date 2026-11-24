@@ -10,9 +10,11 @@
  * bit multiply-and-add, which the Pentium does in one instruction.
  *
  * RSA uses it with m the public modulus (up to 4096 bits); ECDSA with m
- * the curve's prime and the curve's order.  Only public values ever pass
- * through here -- signatures, keys, hashes -- so it does not need to be
- * careful about time.
+ * the curve's prime and the curve's order.  So does the P-256 and P-384
+ * key exchange, with a secret: so multiplying, adding and subtracting do
+ * the same work whatever the numbers are -- every result is worked out
+ * with and without the modulus taken off, and the right one kept by a
+ * mask, never by a branch.
  * ===========================================================================
  */
 #include "flopos.h"
@@ -69,12 +71,19 @@ u32 bn_sub(u32 *r, const u32 *a, const u32 *b, int n)
     u32 borrow = 0;
     int i;
     for (i = 0; i < n; i++) {
-        u32 x = a[i], y = b[i];
-        u32 d = x - y - borrow;
-        borrow = (x < y) || (x == y && borrow) ? 1 : 0;
-        r[i] = d;
+        u64 d = (u64)a[i] - b[i] - borrow;
+        r[i] = (u32)d;
+        borrow = (u32)(d >> 63);         /* went below zero: the top bit   */
     }
     return borrow;
+}
+
+/* r = a if c is 1, left alone if 0: the same work either way. */
+static void bn_keep(u32 *r, const u32 *a, int n, u32 c)
+{
+    u32 m = 0u - (c & 1);
+    int i;
+    for (i = 0; i < n; i++) r[i] ^= m & (r[i] ^ a[i]);
 }
 
 int bn_bits(const u32 *a, int n)
@@ -144,7 +153,11 @@ void mont_mul(const Mont *M, u32 *r, const u32 *a, const u32 *b)
         c += t[n]; t[n - 1] = (u32)c;
         t[n] = t[n + 1] + (u32)(c >> 32);
     }
-    if (t[n] || bn_cmp(t, M->m, n) >= 0) bn_sub(t, t, M->m, n);
+    {
+        static u32 d[BN_LIMBS + 2];
+        u32 borrow = bn_sub(d, t, M->m, n);
+        bn_keep(t, d, n, t[n] | (borrow ^ 1));    /* t - m, unless below zero */
+    }
     for (i = 0; i < n; i++) r[i] = t[i];
 }
 
@@ -178,11 +191,15 @@ void mont_pow(const Mont *M, u32 *r, const u32 *base, const u8 *exp, int elen)
 
 void mod_add(const Mont *M, u32 *r, const u32 *a, const u32 *b)
 {
-    u32 c = bn_add(r, a, b, M->n);
-    if (c || bn_cmp(r, M->m, M->n) >= 0) bn_sub(r, r, M->m, M->n);
+    static u32 d[BN_LIMBS];
+    u32 c = bn_add(r, a, b, M->n), borrow = bn_sub(d, r, M->m, M->n);
+    bn_keep(r, d, M->n, c | (borrow ^ 1));
 }
 
 void mod_sub(const Mont *M, u32 *r, const u32 *a, const u32 *b)
 {
-    if (bn_sub(r, a, b, M->n)) bn_add(r, r, M->m, M->n);
+    static u32 d[BN_LIMBS];
+    u32 borrow = bn_sub(r, a, b, M->n);
+    bn_add(d, r, M->m, M->n);
+    bn_keep(r, d, M->n, borrow);
 }
